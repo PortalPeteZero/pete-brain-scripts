@@ -53,7 +53,7 @@ def _cc_creds():
 
 SB_URL, SB_KEY = _cc_creds()
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY") or _secret_file("anthropic-api-key")
-MODEL = os.environ.get("AGENT_MODEL", "claude-opus-4-8")
+MODEL = os.environ.get("AGENT_MODEL", "claude-sonnet-4-6")  # fast + high-throughput default; Opus is 5 req/min on this org. Per-job model override still works.
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
 POLL_SECS = int(os.environ.get("AGENT_POLL_SECS", "5"))
 IDLE_LOG_EVERY = int(os.environ.get("AGENT_IDLE_LOG_EVERY", "120"))  # log a heartbeat every N idle polls
