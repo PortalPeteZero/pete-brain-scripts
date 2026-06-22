@@ -1,1 +1,6 @@
-{"$schema":"https://railway.app/railway.schema.json","deploy":{"startCommand":"python cc-data-map-sync.py"}}
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "deploy": {
+    "startCommand": "python railway-bootstrap.py"
+  }
+}
