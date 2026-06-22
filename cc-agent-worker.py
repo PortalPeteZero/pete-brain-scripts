@@ -14,7 +14,7 @@ Usage:
   cc-agent-worker.py --once     # claim + run a single job then exit (forced-fire test)
   cc-agent-worker.py --drain    # run all currently-pending jobs then exit
 """
-import json, os, sys, time, urllib.request, urllib.error
+import json, os, sys, time, urllib.request, urllib.error, urllib.parse
 from datetime import datetime
 try:
     from zoneinfo import ZoneInfo
@@ -57,6 +57,7 @@ MODEL = os.environ.get("AGENT_MODEL", "claude-opus-4-8")
 MAX_TOKENS = int(os.environ.get("AGENT_MAX_TOKENS", "4096"))
 POLL_SECS = int(os.environ.get("AGENT_POLL_SECS", "5"))
 IDLE_LOG_EVERY = int(os.environ.get("AGENT_IDLE_LOG_EVERY", "120"))  # log a heartbeat every N idle polls
+MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "12"))             # cap tool-use iterations per job
 
 SYSTEM = (
     "You are the Command Centre cloud agent for Pete Ashcroft's businesses — a 24/7 Claude "
@@ -65,7 +66,10 @@ SYSTEM = (
     "data homes in data_map. When you act, you write results back to the CC. Pete is based in "
     "Lanzarote and operates in the Atlantic/Canary timezone — reason about all dates and times in "
     "that timezone, never UTC. Be accurate and concise; if you are unsure, say so rather than "
-    "guessing. British English."
+    "guessing. British English. You have tools: cc_read (read-only SQL over the WHOLE Command Centre), "
+    "cc_search (full-text knowledge search), and cc_write (create/update/delete CC rows). Use cc_read / "
+    "cc_search to ground every answer in LIVE data rather than memory, and cc_write to actually carry out "
+    "work (create or complete tasks, save notes). Prefer doing over describing."
 )
 
 def sb(method, path, body=None, prefer=None):
@@ -87,22 +91,104 @@ def claim_job():
         j = j[0] if j else None
     return j if (j and j.get("id")) else None
 
-def run_with_claude(prompt, model):
-    body = {
-        "model": model, "max_tokens": MAX_TOKENS,
-        "system": f"{SYSTEM}\n\nThe current time is {now_canary()} (Pete's timezone, Atlantic/Canary).",
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode(),
-        headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-        method="POST",
-    )
+# ───────────────────────── the agent's hands (tools) ─────────────────────────
+# Pete wants maximal access on his owner system. READ = everything via cc_read (read-only enforced in
+# the DB). WRITE = any data table EXCEPT credentials/access-control, and update/delete MUST target rows
+# (no mass wipes). External world (email/Drive/calendar send) is the next, human-gated layer — not here.
+WRITE_DENY = {"secrets", "profiles", "grants", "group_grants", "module_grants", "groups"}
+
+TOOLS = [
+    {"name": "cc_read",
+     "description": ("Run a READ-ONLY SQL query (SELECT or WITH only) against the Command Centre Postgres "
+                     "and get rows back as JSON. Your window onto the source of truth: tasks, vault_notes "
+                     "(knowledge), crons, data_map, drive_files (the ~150k-file index), and every other "
+                     "table. Add a LIMIT when a query might return many rows."),
+     "input_schema": {"type": "object", "properties": {
+         "query": {"type": "string", "description": "a single SELECT/WITH statement"}}, "required": ["query"]}},
+    {"name": "cc_search",
+     "description": ("Full-text search across the knowledge base (vault_notes) — Pete's notes, lessons, "
+                     "decisions and processes. Returns the most relevant notes. Use for 'what do we know about X'."),
+     "input_schema": {"type": "object", "properties": {
+         "query": {"type": "string"}, "limit": {"type": "integer", "description": "max results, default 8"}},
+         "required": ["query"]}},
+    {"name": "cc_write",
+     "description": ("Create, update or delete rows in the Command Centre to DO work — create or complete a "
+                     "task, save a note/memory, etc. Works on any data table EXCEPT credentials/access "
+                     "tables. For update/delete you MUST pass a 'match' filter (you cannot change every row "
+                     "at once)."),
+     "input_schema": {"type": "object", "properties": {
+         "table": {"type": "string"}, "op": {"type": "string", "enum": ["insert", "update", "delete"]},
+         "data": {"type": "object", "description": "column→value (insert/update)"},
+         "match": {"type": "object", "description": "column→value filter — REQUIRED for update/delete"}},
+         "required": ["table", "op"]}},
+]
+
+def t_cc_read(a):
+    try:
+        return json.dumps(sb("POST", "rpc/cc_read", body={"q": (a.get("query") or "").strip()}))[:8000]
+    except urllib.error.HTTPError as e:
+        return f"ERROR: {e.read().decode()[:300]}"
+
+def t_cc_search(a):
+    try:
+        rows = sb("POST", "rpc/search_notes", body={"q": a.get("query") or "", "lim": int(a.get("limit") or 8)}) or []
+        slim = [{k: (v[:400] if isinstance(v, str) and k in ("body", "content") else v) for k, v in r.items()} for r in rows]
+        return json.dumps(slim)[:8000]
+    except urllib.error.HTTPError as e:
+        return f"ERROR: {e.read().decode()[:300]}"
+
+def t_cc_write(a):
+    table = (a.get("table") or "").strip().lower(); op = a.get("op")
+    data = a.get("data") or {}; match = a.get("match") or {}
+    if table in WRITE_DENY:
+        return f"ERROR: '{table}' is a credentials/access table — read-only to the agent."
+    if op in ("update", "delete") and not match:
+        return "ERROR: update/delete require a 'match' filter (no mass operations)."
+    try:
+        if op == "insert":
+            return f"inserted: {json.dumps(sb('POST', table, body=[data], prefer='return=representation'))[:1000]}"
+        qs = "&".join(f"{k}=eq.{urllib.parse.quote(str(v))}" for k, v in match.items())
+        if op == "update":
+            r = sb("PATCH", f"{table}?{qs}", body=data, prefer="return=representation")
+            return f"updated {len(r or [])} row(s): {json.dumps(r)[:800]}"
+        if op == "delete":
+            r = sb("DELETE", f"{table}?{qs}", prefer="return=representation")
+            return f"deleted {len(r or [])} row(s)"
+        return "ERROR: unknown op"
+    except urllib.error.HTTPError as e:
+        return f"ERROR: {e.read().decode()[:300]}"
+
+TOOL_FN = {"cc_read": t_cc_read, "cc_search": t_cc_search, "cc_write": t_cc_write}
+
+def _anthropic(model, system, messages):
+    body = {"model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages, "tools": TOOLS}
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
+        headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=180) as r:
-        resp = json.loads(r.read().decode())
-    text = "".join(b.get("text", "") for b in resp.get("content", []) if b.get("type") == "text")
-    return text, resp.get("usage")
+        return json.loads(r.read().decode())
+
+def run_agentic(prompt, model):
+    """Tool-use loop: Claude calls cc_read / cc_search / cc_write until it has a final answer."""
+    system = f"{SYSTEM}\n\nThe current time is {now_canary()} (Pete's timezone, Atlantic/Canary)."
+    messages = [{"role": "user", "content": prompt}]
+    tin = tout = 0
+    for step in range(MAX_STEPS):
+        resp = _anthropic(model, system, messages)
+        u = resp.get("usage") or {}; tin += u.get("input_tokens", 0); tout += u.get("output_tokens", 0)
+        content = resp.get("content", [])
+        messages.append({"role": "assistant", "content": content})
+        tool_uses = [b for b in content if b.get("type") == "tool_use"]
+        if resp.get("stop_reason") != "tool_use" or not tool_uses:
+            text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+            return text, {"input_tokens": tin, "output_tokens": tout}, step
+        results = []
+        for tu in tool_uses:
+            fn = TOOL_FN.get(tu["name"])
+            out = fn(tu.get("input") or {}) if fn else f"ERROR: unknown tool {tu['name']}"
+            print(f"    ↳ {tu['name']} {json.dumps(tu.get('input', {}))[:90]} → {str(out)[:90]}", flush=True)
+            results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": str(out)[:8000]})
+        messages.append({"role": "user", "content": results})
+    return "(stopped: hit max tool steps)", {"input_tokens": tin, "output_tokens": tout}, MAX_STEPS
 
 def complete(job_id, result, usage, model):
     sb("PATCH", f"agent_jobs?id=eq.{job_id}",
@@ -121,9 +207,9 @@ def process(job):
         prompt = f"{prompt}\n\n[context]\n{json.dumps(job['context'])[:4000]}"
     print(f"  ▶ job {jid[:8]} ({job.get('kind')}/{job.get('source')}) → {model}", flush=True)
     try:
-        text, usage = run_with_claude(prompt, model)
+        text, usage, steps = run_agentic(prompt, model)
         complete(jid, text, usage, model)
-        print(f"  ✓ job {jid[:8]} done ({(usage or {}).get('output_tokens','?')} out tok): {text[:90]!r}", flush=True)
+        print(f"  ✓ job {jid[:8]} done ({steps} tool-steps, {(usage or {}).get('output_tokens','?')} out tok): {text[:90]!r}", flush=True)
         return True
     except Exception as e:
         detail = ""
