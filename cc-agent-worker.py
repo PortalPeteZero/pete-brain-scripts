@@ -162,10 +162,22 @@ TOOL_FN = {"cc_read": t_cc_read, "cc_search": t_cc_search, "cc_write": t_cc_writ
 
 def _anthropic(model, system, messages):
     body = {"model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages, "tools": TOOLS}
-    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
-        headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=180) as r:
-        return json.loads(r.read().decode())
+    payload = json.dumps(body).encode()
+    for attempt in range(6):
+        req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload,
+            headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            # 429 rate-limit / 529 overloaded / 5xx → wait and retry (honour Retry-After); else raise
+            if e.code in (429, 500, 502, 503, 529) and attempt < 5:
+                ra = e.headers.get("retry-after")
+                wait = int(ra) if (ra and str(ra).isdigit()) else min(2 ** attempt + 1, 30)
+                print(f"    ⏳ {e.code} — backoff {wait}s (attempt {attempt+1}/6)", flush=True)
+                time.sleep(wait)
+                continue
+            raise
 
 def run_agentic(prompt, model):
     """Tool-use loop: Claude calls cc_read / cc_search / cc_write until it has a final answer."""
