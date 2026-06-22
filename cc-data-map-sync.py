@@ -19,7 +19,7 @@ DRY = "--dry" in sys.argv
 MAP = [
     ("Files & documents", "Cross", "Google Drive — 12 indexed drives (~150k files)", "drive_files index (cc-sql) + the synced Drive mount", "Any document/sheet/PDF/image/report. Find via the index, not the vault."),
     ("Knowledge (lessons/decisions/notes/memory)", "Cross", "CC Supabase public.vault_notes", "cc-knowledge-api.py / CC Brain page", "1,909 notes + 6,730-edge link graph + semantic search."),
-    ("Automations & crons", "Cross", "CC Supabase public.processes (type=cron)", "cc-sql / CC Process Library → Automations tab", "45, synced from automations.json by cc-automations-sync.py. Frozen until Part H."),
+    ("Automations & crons", "Cross", "CC Supabase public.crons (+ cron_events timeline)", "cc-sql / CC /m/automations-log (cards + chat)", "47 crons: rich registry from crons-manifest.json via cc-cron-sync.py (+ drift guard). public.processes is the older thin snapshot. 3 live / 42 frozen until Part H / 2 retired."),
     ("Pete's tasks", "CC", "CC Supabase public.tasks", "cc-sql / CC Tasks page (Stage-2)", "Priority engine, replacing Asana for Pete. ⚠ a CD-leak `tasks` shadows it."),
     ("Live work (Jane + legacy)", "Sygma", "Asana", "asana-api.py / Asana MCP", "Jane stays on Asana; Pete migrates to CC tasks."),
     ("Courses (catalogue)", "Sygma", "Sygma Portal public.courses (+ web-Hub /hub/courses)", "Portal (CC surfaces, never owns)", "From _course-map.yaml. Courses → the Sygma Platform, not the CC (Pete 22 Jun)."),
