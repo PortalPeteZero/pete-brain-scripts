@@ -15,6 +15,23 @@ Usage:
   cc-agent-worker.py --drain    # run all currently-pending jobs then exit
 """
 import json, os, sys, time, urllib.request, urllib.error
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+    _CANARY = ZoneInfo("Atlantic/Canary")
+except Exception:
+    _CANARY = None
+# Pete is in Lanzarote (Atlantic/Canary). Railway runs UTC by default, so the service sets TZ
+# AND we compute the time explicitly here — the agent must reason about dates/times in Pete's tz,
+# never UTC, or "today" / "overdue" / "due now" come out wrong.
+if os.environ.get("TZ"):
+    try: time.tzset()
+    except Exception: pass
+
+def now_canary():
+    if _CANARY:
+        return datetime.now(_CANARY).strftime("%A %d %B %Y, %H:%M %Z")
+    return datetime.now().strftime("%A %d %B %Y, %H:%M (local)")
 
 VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
 SEC = f"{VAULT}/Library/processes/secrets"
@@ -45,8 +62,10 @@ SYSTEM = (
     "You are the Command Centre cloud agent for Pete Ashcroft's businesses — a 24/7 Claude "
     "running on the always-on server. Your source of truth is the Command Centre (CC Supabase): "
     "knowledge in vault_notes, work in tasks, automations in crons, file index in drive_files, "
-    "data homes in data_map. When you act, you write results back to the CC. Be accurate and "
-    "concise; if you are unsure, say so rather than guessing. British English."
+    "data homes in data_map. When you act, you write results back to the CC. Pete is based in "
+    "Lanzarote and operates in the Atlantic/Canary timezone — reason about all dates and times in "
+    "that timezone, never UTC. Be accurate and concise; if you are unsure, say so rather than "
+    "guessing. British English."
 )
 
 def sb(method, path, body=None, prefer=None):
@@ -71,7 +90,7 @@ def claim_job():
 def run_with_claude(prompt, model):
     body = {
         "model": model, "max_tokens": MAX_TOKENS,
-        "system": SYSTEM,
+        "system": f"{SYSTEM}\n\nThe current time is {now_canary()} (Pete's timezone, Atlantic/Canary).",
         "messages": [{"role": "user", "content": prompt}],
     }
     req = urllib.request.Request(
