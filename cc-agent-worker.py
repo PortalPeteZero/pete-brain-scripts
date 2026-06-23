@@ -204,7 +204,8 @@ def t_gmail_send(a):
 
 def _rfc3339(s):
     if not s: return s
-    return s if (s.endswith("Z") or "+" in s[10:] or s[10:].count("-") > 0) else s + "Z"  # GCal needs a tz suffix
+    if "T" not in s: s = s + "T00:00:00"                      # bare date (YYYY-MM-DD) → start-of-day
+    return s if (s.endswith("Z") or "+" in s[11:] or "-" in s[11:]) else s + "Z"  # GCal needs full RFC3339
 
 def t_calendar_list(a):
     try:
