@@ -46,6 +46,14 @@ if _sa:
     (SECRETS / "google-seo-service-account.json").write_text(_sa)
     print("bootstrap: materialised google-seo-service-account.json")
 
+# 2d. the Garmin OAuth tokens — passed as GARMIN_TOKENS_JSON (the token lives in a SUBDIR that the
+#     flat SECRETFILE__ name mechanism can't express). Unblocks garmin on Railway.
+_gt = os.environ.get("GARMIN_TOKENS_JSON")
+if _gt:
+    (SECRETS / "garminconnect-tokens").mkdir(parents=True, exist_ok=True)
+    (SECRETS / "garminconnect-tokens" / "garmin_tokens.json").write_text(_gt)
+    print("bootstrap: materialised garminconnect-tokens/garmin_tokens.json")
+
 # target script: argv[1], else the per-service env var CRON_SCRIPT (lets one railway.json serve every service)
 target = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("CRON_SCRIPT")
 if not target:
