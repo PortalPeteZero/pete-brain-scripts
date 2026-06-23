@@ -223,8 +223,30 @@ def t_odoo_query(a):
     except (Exception, SystemExit) as e:                      # odoo_api sys.exit()s at import if config absent
         return f"ERROR odoo_query: {e}"
 
-TOOL_FN.update({"gmail_search": t_gmail_search, "gmail_send": t_gmail_send, "calendar_list": t_calendar_list, "odoo_query": t_odoo_query})
+def t_ga4_query(a):
+    try:
+        api = _helper("ga4-api.py", "ga4_api").GA4API(**_google_kwargs())
+        rows = api.run_report(a.get("property_id"), a.get("dimensions", []), a.get("metrics", ["sessions"]),
+                              days=int(a.get("days", 7)), limit=int(a.get("limit", 20)))
+        return json.dumps(rows, default=str)[:8000]
+    except Exception as e:
+        return f"ERROR ga4_query: {e}"
+
+def t_gsc_query(a):
+    try:
+        api = _helper("gsc-api.py", "gsc_api").GSCAPI(**_google_kwargs())
+        rows = api.query(a.get("site"), a.get("dimensions", ["query"]), date_range=int(a.get("date_range", 28)), limit=int(a.get("limit", 25)))
+        return json.dumps(rows, default=str)[:8000]
+    except Exception as e:
+        return f"ERROR gsc_query: {e}"
+
+TOOL_FN.update({"gmail_search": t_gmail_search, "gmail_send": t_gmail_send, "calendar_list": t_calendar_list,
+                "odoo_query": t_odoo_query, "ga4_query": t_ga4_query, "gsc_query": t_gsc_query})
 TOOLS += [
+    {"name": "ga4_query", "description": "Query Google Analytics 4 (runReport) for a property. property_id = numeric GA4 id; metrics e.g. ['sessions','conversions','totalUsers']; dimensions e.g. ['date']. days = lookback. READ — safe.",
+     "input_schema": {"type": "object", "properties": {"property_id": {"type": "string"}, "dimensions": {"type": "array"}, "metrics": {"type": "array"}, "days": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["property_id"]}},
+    {"name": "gsc_query", "description": "Query Google Search Console search-analytics for a site. site = the GSC property URL (e.g. 'sc-domain:sygma-solutions.com'); dimensions e.g. ['query'] / ['page']. READ — safe.",
+     "input_schema": {"type": "object", "properties": {"site": {"type": "string"}, "dimensions": {"type": "array"}, "date_range": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["site"]}},
     {"name": "gmail_search", "description": "Search Pete's Gmail (Gmail query syntax, e.g. 'is:unread', 'from:x newer_than:7d'). Returns thread snippets. READ — safe.",
      "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "max": {"type": "integer"}}, "required": ["query"]}},
     {"name": "gmail_send", "description": "Send an email as Pete. SAFETY: until AGENT_EMAIL_LIVE=1 this routes to Pete only (test). Client sends go live only once verified correct.",
