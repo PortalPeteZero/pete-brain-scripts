@@ -13,6 +13,16 @@ Each overview row stores payload.data (structured metrics + keyword positions) s
 the trend accumulates automatically. Sources: GSC, GA4, Ahrefs. Non-fatal per
 source. Run weekly (Mon AM, launchd). Idempotent (newest row per period wins).
 """
+# CRON-META
+# what: O'Connor's weekly SEO snapshot (search performance + keyword->page positions + trends)
+# why: weekly search visibility for the O'Connor's bar site
+# reads: GSC + GA4 + Ahrefs
+# writes: reports.snapshots keys oconnors-seo + oconnors-seo-trends (CC) -> /m/oconnors-seo
+# entity: one-system
+# report: oconnors-seo
+# schedule: 0 8 * * 1
+# timezone: Atlantic/Canary
+# CRON-META-END
 import importlib.util, json, os, urllib.request, urllib.parse, datetime as dt, sys
 
 SC = os.path.dirname(os.path.abspath(__file__))                      # the script's own dir — correct locally + on Railway (flat /app)
