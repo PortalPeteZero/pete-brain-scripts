@@ -55,4 +55,16 @@ if not script_path.exists():
     print(f"bootstrap: target {target} not found in repo"); sys.exit(2)
 print(f"bootstrap: VAULT={REPO} → running canonical {target}")
 sys.argv = [target] + sys.argv[2:]          # the canonical sees a clean argv
-runpy.run_path(str(script_path), run_name="__main__")
+try:
+    runpy.run_path(str(script_path), run_name="__main__")
+    rc = 0
+except SystemExit as e:
+    rc = e.code if isinstance(e.code, int) else (0 if not e.code else 1)
+except BaseException:
+    import traceback; traceback.print_exc(); rc = 1
+# Force-terminate the container. The script's work (DB writes, email sends) is finished by here; the
+# interpreter would otherwise HANG waiting on a lingering non-daemon thread / open API connection that
+# the gmail / odoo / drive clients leave behind — which kept Railway cron containers "running"
+# indefinitely after they'd actually completed. os._exit skips that wait. Flush first (it also skips that).
+sys.stdout.flush(); sys.stderr.flush()
+os._exit(rc)
