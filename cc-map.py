@@ -8,6 +8,9 @@ page, tier or permission is picked up automatically the next run. A coverage sel
 rendered module set against the DB and FAILS LOUDLY (exit 3, writes nothing) if anything is missing —
 so we always know if it ever drops something.
 
+Deterministic across environments (reads only the live tables — no vault files), so local + cloud
+produce the identical body and the idempotent hash never churns.
+
 Outputs:
   - public.cc_map (CC, single 'latest' row)          — the durable, always-on copy (Railway-friendly)
   - Properties/Pete Command Centre/cc-map.md (vault)  — local mirror, written ONLY when the vault is present
@@ -32,7 +35,6 @@ from pathlib import Path
 VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
 _SECRETS = (Path(VAULT) / "Library/processes/secrets") if os.environ.get("VAULT") \
     else (Path(__file__).resolve().parents[1] / "secrets")
-FEEDS = os.path.join(VAULT, "Library/processes/cc-data-feeds.md")
 OUT = os.path.join(VAULT, "Properties/Pete Command Centre/cc-map.md")
 
 
@@ -71,36 +73,8 @@ def upsert_map(base, key, row):
     urllib.request.urlopen(req, timeout=30)
 
 
-def norm(s):
-    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
-
-
 def mkey(m):
     return m.get("module_key") or m.get("slug") or str(m.get("id"))
-
-
-def parse_feeds():
-    """Best-effort map: normalised module name -> 'Fed by' summary from cc-data-feeds.md (absent → {})."""
-    out = {}
-    try:
-        txt = open(FEEDS, encoding="utf-8").read()
-    except Exception:
-        return out
-    for line in txt.splitlines():
-        if not line.startswith("|"):
-            continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) < 2:
-            continue
-        name, fedby = cells[0], cells[1]
-        if name.lower() in ("module", "") or set(name) <= set("-: "):
-            continue
-        k = norm(name)
-        if k and k not in out:
-            clean = re.sub(r"[*_`]", "", fedby)
-            clean = re.sub(r"\s+", " ", clean).strip()
-            out[k] = clean[:140]
-    return out
 
 
 def can_view(m, prof, groups, grants):
@@ -150,7 +124,6 @@ def main():
     except urllib.error.URLError as e:
         print(f"cc-map: cannot reach CC Supabase ({e}) — map NOT regenerated", file=sys.stderr)
         return 2
-    feeds = parse_feeds()
 
     by_id = {p["id"]: p for p in profiles}
     def email(pid): return (by_id.get(pid) or {}).get("email", pid or "?")
@@ -174,9 +147,9 @@ def main():
     # ---- Structure (grouped by area → subsection in nav `sort` order; sections appear dynamically) ----
     L.append("## Structure — what's in the CC")
     L.append("")
-    L.append("_By area → subsection, in nav order (`sort`). tier · slug · status, plus how it's fed "
-             "(from [[cc-data-feeds]]). Generated 100% from the live `modules` table — any new area/page "
-             "appears automatically; a coverage self-check fails the run if a module is ever missed._")
+    L.append("_By area → subsection, in nav order (`sort`). tier · slug · status. Generated 100% from the "
+             "live `modules` table — any new area/page appears automatically; a coverage self-check fails "
+             "the run if a module is ever missed._")
     cur_sec = cur_sub = object()
     for m in live:
         sec, sub = m.get("section"), m.get("subsection")
@@ -186,11 +159,9 @@ def main():
         if sub != cur_sub:
             cur_sub = sub
             L.append(f"\n**{sub or '(flat)'}**")
-        feed = feeds.get(norm(m.get("title"))) or feeds.get(norm(m.get("module_key"))) or ""
         grp = (" · groups: " + ", ".join(f"`{g}`" for g in m["groups"])) if m.get("groups") else ""
         pc = f" · code `{m['passcode']}`" if m.get("tier") == "passcode" and m.get("passcode") else ""
-        feedtxt = f" — feed: {feed}" if feed else ""
-        L.append(f"- **{m.get('title')}** (`{m.get('slug')}`) — {m.get('tier')}{pc}{grp}{feedtxt}")
+        L.append(f"- **{m.get('title')}** (`{m.get('slug')}`) — {m.get('tier')}{pc}{grp}")
         rendered.add(mkey(m))
     if hidden:
         L.append("\n### (hidden / disabled — not live tiles)")
@@ -202,8 +173,7 @@ def main():
     # ---- Coverage self-check — fail loudly if any module went unrendered ----
     all_keys = {mkey(m) for m in modules}
     missing = all_keys - rendered
-    coverage_ok = not missing
-    if not coverage_ok:
+    if missing:
         print(f"cc-map: ❌ COVERAGE FAILURE — {len(missing)} of {len(all_keys)} modules not rendered: "
               f"{sorted(missing)} — NOT publishing a partial map", file=sys.stderr)
         return 3
@@ -299,7 +269,7 @@ def main():
             "> tables. 100% coverage — every module rendered from `modules` in nav order, with a\n"
             "> coverage self-check. Durable copy lives in `public.cc_map`; the live `/m/map` page reads\n"
             "> the tables directly. To change anything, change the CC (Settings / SQL / a deploy) and\n"
-            "> regenerate — never edit this file. Master ops doc: [[command-centre]] · feeds: [[cc-data-feeds]].\n\n"
+            "> regenerate — never edit this file. Master ops doc: [[command-centre]].\n\n"
             f"**{len(modules)} modules · {len(live)} live · {area_count} areas · "
             f"{len(approved)} approved {'person' if len(approved)==1 else 'people'} · "
             f"generated {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M')}Z.**\n\n"
