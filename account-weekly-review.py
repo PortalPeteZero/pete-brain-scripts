@@ -36,13 +36,17 @@ TO = "pete.ashcroft@sygma-solutions.com"
 
 
 def send_email(subject, html):
-    k = json.load(open(RESEND_KEY_FILE))
-    key = k.get("api_key") or k.get("key") or k.get("resend_api_key") or list(k.values())[0]
-    body = {"from": "Command Centre <commandcentre@sygma-solutions.com>", "to": [TO], "subject": subject, "html": html}
-    req = urllib.request.Request("https://api.resend.com/emails", data=json.dumps(body).encode(),
-                                 headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.status
+    # Send via the SA-backed gmail-api (proven on Railway); Resend 403s from the cloud. Sibling helper
+    # resolves from __file__ (scripts/ on the Mac = one level up, flat /app on Railway = alongside).
+    import importlib.util
+    gpath = os.path.join(_HERE, "gmail-api.py")
+    if not os.path.exists(gpath):
+        gpath = os.path.join(os.path.dirname(_HERE), "gmail-api.py")
+    spec = importlib.util.spec_from_file_location("gmail_api", gpath)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    r = mod.GmailAPI().send(to=TO, subject=subject, body=html, html=True)
+    return r.get("id", "ok")
 
 
 def main():
@@ -73,7 +77,7 @@ def main():
     status = "not sent"
     if SEND:
         subj = "Clancy weekly review " + today.strftime("%d %b %Y")
-        status = f"sent HTTP {send_email(subj, html)}"
+        status = f"sent msg {send_email(subj, html)}"
     store.set_state(C, "last_weekly_review", datetime.datetime.now(datetime.timezone.utc).isoformat())
     print(f"account-weekly-review {C}: delivered_this_week={len(new_deliv)} overdue={len(overdue)} "
           f"waiting_clancy={len(waiting_clancy)} kpis={len(upcoming)} | email {status}")
