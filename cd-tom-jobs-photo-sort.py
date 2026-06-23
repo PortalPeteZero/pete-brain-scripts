@@ -2317,17 +2317,17 @@ def main():
     runner = Runner(dry_run=args.dry_run)
     runner.run()
 
-if __name__ == "__main__":
-    main()
-    _cc_pulse("run completed")
-
-
 # --- Automations Log heartbeat (added 11 Jun 2026; non-fatal) ---
 def _cc_pulse(summary: str):
     try:
         import sys as _s
-        _s.path.insert(0, "/Users/peterashcroft/Second Brain/Library/processes/scripts")
+        _s.path.insert(0, str(SCRIPTS_DIR))  # flat-repo sibling on Railway (/app); Library/.../scripts locally
         import cc_publish
-        cc_publish.pulse("cd-tom-jobs-photo-sort.py".replace(".py", ""), summary)
+        cc_publish.pulse("cd-tom-jobs-photo-sort", summary)
     except Exception:
         pass
+
+
+if __name__ == "__main__":
+    main()
+    _cc_pulse("run completed")
