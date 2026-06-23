@@ -71,7 +71,10 @@ def main():
     lines.append("See you in Cowork.")
     body = "\n".join(lines)
 
-    spec = importlib.util.spec_from_file_location("gmail_api", os.path.join(VAULT, "Library/processes/scripts/gmail-api.py"))
+    # sibling scripts are co-located with this one (VAULT/Library/processes/scripts on the Mac, flat
+    # /app on Railway) → resolve from __file__, NOT a VAULT-relative path (that's only for vault content).
+    scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location("gmail_api", os.path.join(scripts_dir, "gmail-api.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     g = mod.GmailAPI()
