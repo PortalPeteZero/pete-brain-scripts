@@ -39,9 +39,12 @@ def run(name, *args):
 
 
 def main():
-    rc_team = run("cd-team-briefing.py")
-    rc_pete = run("pete-personal-briefing.py")
-    print(f"cd-daily-briefing: team rc={rc_team} personal rc={rc_pete}")
+    # BRIEFING_WINDOW=week → Friday week-ahead (Mon–Sun); unset → daily (tomorrow). One launcher, two crons.
+    win = os.environ.get("BRIEFING_WINDOW", "").strip()
+    extra = ["--window", "week"] if win == "week" else []
+    rc_team = run("cd-team-briefing.py", *extra)
+    rc_pete = run("pete-personal-briefing.py", *extra)
+    print(f"cd-daily-briefing: window={win or 'day'} team rc={rc_team} personal rc={rc_pete}")
     return 1 if (rc_team or rc_pete) else 0
 
 
