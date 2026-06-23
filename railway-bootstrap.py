@@ -38,6 +38,14 @@ for k, v in os.environ.items():
         (SECRETS / name).write_text(v)
         print(f"bootstrap: materialised secret {name}")
 
+# 2b. the shared Google service-account key — passed as GOOGLE_SA_JSON (a CLEAN env-var name;
+#     Railway rejects the dots/hyphens in the real filename so SECRETFILE__ can't carry it).
+#     Unblocks every gmail-api.py / calendar-api.py cron (they resolve $VAULT/.../secrets/<this>).
+_sa = os.environ.get("GOOGLE_SA_JSON")
+if _sa:
+    (SECRETS / "google-seo-service-account.json").write_text(_sa)
+    print("bootstrap: materialised google-seo-service-account.json")
+
 # target script: argv[1], else the per-service env var CRON_SCRIPT (lets one railway.json serve every service)
 target = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("CRON_SCRIPT")
 if not target:

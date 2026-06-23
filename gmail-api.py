@@ -46,9 +46,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-KEY_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "secrets", "google-seo-service-account.json",
+KEY_PATH = (
+    os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
+    if os.environ.get("VAULT")                       # $VAULT-aware on Railway (bootstrap materialises the key)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
 )
 DEFAULT_USER = "pete.ashcroft@sygma-solutions.com"
 SCOPE = "https://mail.google.com/ https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing"
