@@ -14,6 +14,16 @@ auto-flip live→crawled, Rank Tracker for movement, GSC/GA4 for the target page
 
 Run standalone any time; the Monday cron runs it for the just-ended week.
 """
+# CRON-META
+# what: Sygma backlinks weekly effectiveness report
+# why: weekly visibility on Appear Online's off-site backlink work (Sygma)
+# reads: bl.work_items (CC)
+# writes: reports.snapshots key backlinks-weekly (CC) -> /m/sygma-backlinks
+# entity: sygma
+# report: sygma-backlinks
+# schedule: 45 7 * * 1
+# timezone: Atlantic/Canary
+# CRON-META-END
 import json, os, urllib.request, datetime
 from pathlib import Path
 
