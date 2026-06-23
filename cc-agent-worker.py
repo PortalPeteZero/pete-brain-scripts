@@ -176,6 +176,10 @@ PETE = "pete.ashcroft@sygma-solutions.com"
 # REPO/Library/processes/secrets/. The helpers' default KEY_PATH (dirname(__file__)/../secrets) only
 # resolves correctly in the vault layout, so pass the Railway path explicitly when it exists.
 _SA_RAILWAY = os.path.join(_SCRIPTS, "Library", "processes", "secrets", "google-seo-service-account.json")
+_sa_env = os.environ.get("GOOGLE_SA_JSON")                    # clean env-var name (Railway rejects dots/hyphens)
+if _sa_env and not os.path.exists(_SA_RAILWAY):              # materialise the SA key on the container at startup
+    os.makedirs(os.path.dirname(_SA_RAILWAY), exist_ok=True)
+    with open(_SA_RAILWAY, "w") as _f: _f.write(_sa_env)
 def _google_kwargs():
     return {"key_path": _SA_RAILWAY} if os.path.exists(_SA_RAILWAY) else {}
 
