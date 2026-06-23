@@ -2,3 +2,4 @@ urllib3
 openpyxl
 garminconnect==0.3.3
 curl_cffi==0.15.0
+pyyaml
