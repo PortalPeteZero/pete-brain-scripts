@@ -36,7 +36,7 @@ AUTOGEN_END = "<!-- AUTOGEN:END -->"
 
 # ---- load ads-api helper ----
 _spec = importlib.util.spec_from_file_location(
-    "ads_api", f"{ROOT}/Library/processes/scripts/ads-api.py"
+    "ads_api", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ads-api.py")
 )
 ads_api_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(ads_api_mod)
