@@ -90,11 +90,18 @@ def _rpc(service, method, args, kwargs=None):
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        sys.exit(f"http error {e.code}: {e.read().decode('utf-8', 'ignore')[:500]}")
+    import time as _time
+    body = None
+    for _attempt in range(5):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                body = json.loads(resp.read())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and _attempt < 4:   # transient Odoo rate-limit / overload → back off + retry
+                _time.sleep(2 ** _attempt + 1)
+                continue
+            sys.exit(f"http error {e.code}: {e.read().decode('utf-8', 'ignore')[:500]}")
     if "error" in body:
         err = body["error"]
         msg = err.get("data", {}).get("message") or err.get("message", "unknown")
