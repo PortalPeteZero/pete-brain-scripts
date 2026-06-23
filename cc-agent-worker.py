@@ -160,6 +160,76 @@ def t_cc_write(a):
 
 TOOL_FN = {"cc_read": t_cc_read, "cc_search": t_cc_search, "cc_write": t_cc_write}
 
+# ───────── external-world tools (Pete-authorised 23 Jun) — wrap the existing helper scripts ─────────
+import importlib.util as _ilu
+_SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+_HCACHE = {}
+def _helper(fname, modname):
+    if modname in _HCACHE: return _HCACHE[modname]
+    spec = _ilu.spec_from_file_location(modname, os.path.join(_SCRIPTS, fname))
+    m = _ilu.module_from_spec(spec); spec.loader.exec_module(m); _HCACHE[modname] = m; return m
+
+EMAIL_LIVE = os.environ.get("AGENT_EMAIL_LIVE", "0") == "1"   # safety: off → sends route to Pete only
+PETE = "pete.ashcroft@sygma-solutions.com"
+
+# On Railway the repo is flat (helpers at REPO root) and bootstrap materialises the SA key at
+# REPO/Library/processes/secrets/. The helpers' default KEY_PATH (dirname(__file__)/../secrets) only
+# resolves correctly in the vault layout, so pass the Railway path explicitly when it exists.
+_SA_RAILWAY = os.path.join(_SCRIPTS, "Library", "processes", "secrets", "google-seo-service-account.json")
+def _google_kwargs():
+    return {"key_path": _SA_RAILWAY} if os.path.exists(_SA_RAILWAY) else {}
+
+def t_gmail_search(a):
+    try:
+        g = _helper("gmail-api.py", "gmail_api").GmailAPI(**_google_kwargs())
+        ths = g.search_threads(a.get("query", ""), max_results=int(a.get("max", 10)))
+        return json.dumps([{"id": t.get("id"), "snippet": (t.get("snippet") or "")[:200]} for t in (ths or [])])[:8000]
+    except Exception as e:
+        return f"ERROR gmail_search: {e}"
+
+def t_gmail_send(a):
+    try:
+        g = _helper("gmail-api.py", "gmail_api").GmailAPI(**_google_kwargs())
+        to = a.get("to") or PETE; subj = a.get("subject", ""); body = a.get("body", "")
+        if not EMAIL_LIVE:                                   # route to Pete + tag until AGENT_EMAIL_LIVE=1
+            subj = f"[TEST→would-send to {to}] {subj}"; to = PETE
+        r = g.send(to=to, subject=subj, body=body, html=a.get("html"))
+        return f"sent (live={EMAIL_LIVE}) to {to}: {json.dumps(r)[:300]}"
+    except Exception as e:
+        return f"ERROR gmail_send: {e}"
+
+def _rfc3339(s):
+    if not s: return s
+    return s if (s.endswith("Z") or "+" in s[10:] or s[10:].count("-") > 0) else s + "Z"  # GCal needs a tz suffix
+
+def t_calendar_list(a):
+    try:
+        c = _helper("calendar-api.py", "calendar_api").CalendarAPI(**_google_kwargs())
+        evs = c.list_events(calendar_id=a.get("calendar", "primary"), time_min=_rfc3339(a.get("from")), time_max=_rfc3339(a.get("to")))
+        return json.dumps([{"summary": e.get("summary"), "start": e.get("start"), "end": e.get("end")} for e in (evs or [])][:50])[:8000]
+    except Exception as e:
+        return f"ERROR calendar_list: {e}"
+
+def t_odoo_query(a):
+    try:
+        o = _helper("odoo-api.py", "odoo_api")
+        rows = o._execute(a.get("model"), "search_read", [a.get("domain", [])], {"fields": a.get("fields"), "limit": int(a.get("limit", 50))})
+        return json.dumps(rows)[:8000]
+    except (Exception, SystemExit) as e:                      # odoo_api sys.exit()s at import if config absent
+        return f"ERROR odoo_query: {e}"
+
+TOOL_FN.update({"gmail_search": t_gmail_search, "gmail_send": t_gmail_send, "calendar_list": t_calendar_list, "odoo_query": t_odoo_query})
+TOOLS += [
+    {"name": "gmail_search", "description": "Search Pete's Gmail (Gmail query syntax, e.g. 'is:unread', 'from:x newer_than:7d'). Returns thread snippets. READ — safe.",
+     "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "max": {"type": "integer"}}, "required": ["query"]}},
+    {"name": "gmail_send", "description": "Send an email as Pete. SAFETY: until AGENT_EMAIL_LIVE=1 this routes to Pete only (test). Client sends go live only once verified correct.",
+     "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}, "html": {"type": "string"}}, "required": ["to", "subject", "body"]}},
+    {"name": "calendar_list", "description": "List Pete's Google Calendar events between two ISO datetimes. READ — safe.",
+     "input_schema": {"type": "object", "properties": {"calendar": {"type": "string"}, "from": {"type": "string"}, "to": {"type": "string"}}, "required": ["from", "to"]}},
+    {"name": "odoo_query", "description": "Read Canary Detect's Odoo (search_read). model e.g. 'calendar.event'/'crm.lead'/'account.move'; domain = Odoo domain list; fields = list. READ — safe.",
+     "input_schema": {"type": "object", "properties": {"model": {"type": "string"}, "domain": {"type": "array"}, "fields": {"type": "array"}, "limit": {"type": "integer"}}, "required": ["model"]}},
+]
+
 def _anthropic(model, system, messages):
     body = {"model": model, "max_tokens": MAX_TOKENS, "system": system, "messages": messages, "tools": TOOLS}
     payload = json.dumps(body).encode()
