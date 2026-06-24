@@ -73,11 +73,29 @@ def materialise_secrets():
     return n
 
 
+def materialise_config():
+    """Refresh the local caches of the operating docs (CLAUDE, MAP) from CC `config`, so a session
+    can read its FULL instructions even with the vault gone. The harness loads only the tiny
+    bootstrap CLAUDE.md; Step 0 reads these caches (CLAUDE.cache.md / MAP.cache.md)."""
+    out = Path.home() / ".config/pete-cc"
+    out.mkdir(parents=True, exist_ok=True)
+    fn = {"claude-md": "CLAUDE.cache.md", "map-md": "MAP.cache.md"}
+    n = 0
+    try:
+        for r in cc_get("config?select=key,value&key=in.(claude-md,map-md)"):
+            if r["key"] in fn and r.get("value"):
+                (out / fn[r["key"]]).write_text(r["value"]); n += 1
+    except Exception as e:
+        print(f"bootstrap: config fetch skipped ({e})", flush=True)
+    return n
+
+
 def main():
     how = clone_or_pull()
     n = materialise_secrets()
+    c = materialise_config()
     os.environ["VAULT"] = str(PBS)
-    print(f"bootstrap: /tmp/pbs ready ({how} {REPO}, {n} secrets materialised), VAULT={PBS}", flush=True)
+    print(f"bootstrap: /tmp/pbs ready ({how} {REPO}, {n} secrets + {c} config docs materialised), VAULT={PBS}", flush=True)
     if len(sys.argv) > 1:
         tool = PBS / sys.argv[1]
         if not tool.exists():
