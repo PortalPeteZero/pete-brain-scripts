@@ -102,34 +102,64 @@ def path_of(fmap, fid):
         seen.add(cur); nm, par = fmap[cur]; parts.append(nm); cur = par
     return "/".join(reversed(parts))
 
+def fetch_folder(fid):
+    """Resolve ONE parent folder not already known locally -- a folder created since the last full
+    index -- so a new file still gets its full correct path. Returns None for a drive root (a folder
+    with no parent), which stops the walk and keeps paths root-relative (identical convention to
+    drive-files-index.py, so the watcher never disagrees with the full scan)."""
+    try:
+        m = gapi(f"/files/{fid}", {"fields": "id,name,parents", "supportsAllDrives": "true"})
+        par = (m.get("parents") or [None])[0]
+        return (m.get("name"), par) if par else None
+    except Exception:
+        return None
+
 total_up = total_del = 0
 for drive, did in DRIVES:
     t = get_token(drive)
     if not t:
         set_token(drive, start_token(did)); print(f"{drive}: token initialised (baseline)", flush=True); continue
     fmap = load_folders(drive)
-    upserts = []; deletes = []
+    raw = []
     pt = t
     while pt:
-        params = {"pageToken": pt, "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,mimeType,size,modifiedTime,trashed))", "pageSize": 1000, "includeRemoved": "true", "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
+        params = {"pageToken": pt, "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,mimeType,size,modifiedTime,trashed,driveId))", "pageSize": 1000, "includeRemoved": "true", "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
         if did: params["driveId"] = did; params["corpora"] = "drive"
         r = gapi("/changes", params)
         for chg in r.get("changes", []):
             fid = chg.get("fileId")
             if not fid: continue  # drive-level change, no file
-            f = chg.get("file")
-            if chg.get("removed") or (f and f.get("trashed")):
-                deletes.append(fid)
-            elif f:
-                par = (f.get("parents") or [None])[0]
-                isf = f["mimeType"] == FOLDER
-                if isf: fmap[fid] = (f["name"], par)
-                pp = path_of(fmap, par)
-                upserts.append({"drive_file_id": fid, "name": f["name"], "path": (pp + "/" + f["name"]) if pp else f["name"], "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par})
+            raw.append((fid, bool(chg.get("removed")), chg.get("file")))
         if r.get("newStartPageToken"):
             set_token(drive, r["newStartPageToken"]); pt = None
         else:
             pt = r.get("nextPageToken")
+    # Pass 1 -- register EVERY changed folder into the map before resolving any path. Changes arrive
+    # in no guaranteed parent-first order, so a new file can be seen before its own new parent folder.
+    for fid, removed, f in raw:
+        if f and not removed and not f.get("trashed") and f.get("mimeType") == FOLDER:
+            fmap[fid] = (f["name"], (f.get("parents") or [None])[0])
+    # Pass 2 -- build upserts/deletes with full paths, fetching any parent still unknown (a new
+    # folder absent from this change batch) so brand-new files never land at a truncated/root path.
+    upserts = []; deletes = []
+    for fid, removed, f in raw:
+        if removed or (f and f.get("trashed")):
+            deletes.append(fid); continue
+        if not f: continue
+        # A shared-drive item can also surface in the My Drive (user-corpus) pass; its own per-drive
+        # pass already upserts it with the correct drive + full path, so skip it here. THIS is what
+        # stops shared-drive files being relabelled 'My Drive' (the original index-corruption bug),
+        # without the false-deletes that includeItemsFromAllDrives=false caused.
+        if did is None and f.get("driveId"): continue
+        par = (f.get("parents") or [None])[0]
+        cur = par; guard = 0
+        while cur and cur not in fmap and guard < 50:
+            got = fetch_folder(cur)
+            if not got: break
+            fmap[cur] = got; cur = got[1]; guard += 1
+        isf = f.get("mimeType") == FOLDER
+        pp = path_of(fmap, par)
+        upserts.append({"drive_file_id": fid, "name": f["name"], "path": (pp + "/" + f["name"]) if pp else f["name"], "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par})
     # de-dup: a file both changed+removed in window -> delete wins
     delset = set(deletes)
     upserts = [u for u in upserts if u["drive_file_id"] not in delset]

@@ -70,6 +70,25 @@ except SystemExit as e:
     rc = e.code if isinstance(e.code, int) else (0 if not e.code else 1)
 except BaseException:
     import traceback; traceback.print_exc(); rc = 1
+
+# Stamp the run back to the CC so the automations page shows real last-run time + status (not just the
+# static registry). Match on script_file -- the key<->script map isn't 1:1. Best-effort + wrapped so a
+# monitoring write can NEVER turn an otherwise-good cron run into a failure.
+try:
+    cu, ck = os.environ.get("CC_SUPABASE_URL"), os.environ.get("CC_SUPABASE_SERVICE_KEY")
+    if cu and ck:
+        import urllib.request, urllib.parse
+        _script = os.path.basename(target)
+        _body = json.dumps({"last_run_at": "now()", "last_status": "SUCCESS" if rc == 0 else "FAILED"}).encode()
+        _req = urllib.request.Request(
+            f"{cu.rstrip('/')}/rest/v1/crons?script_file=eq.{urllib.parse.quote(_script)}",
+            data=_body, method="PATCH",
+            headers={"apikey": ck, "Authorization": f"Bearer {ck}", "Content-Type": "application/json", "Prefer": "return=minimal"})
+        urllib.request.urlopen(_req, timeout=20)
+        print(f"bootstrap: stamped last_run_at for {_script} ({'SUCCESS' if rc == 0 else 'FAILED'})")
+except Exception as e:
+    print(f"bootstrap: last_run_at stamp skipped ({e})")
+
 # Force-terminate the container. The script's work (DB writes, email sends) is finished by here; the
 # interpreter would otherwise HANG waiting on a lingering non-daemon thread / open API connection that
 # the gmail / odoo / drive clients leave behind — which kept Railway cron containers "running"
