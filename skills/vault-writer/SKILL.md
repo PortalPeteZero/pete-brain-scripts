@@ -83,7 +83,7 @@ Then scan everything discussed this session and route each category to its cloud
 - **Customers / Suppliers** (new relationship, matter, contract, status) → the entity's **Drive** folder + a `vault_notes` record. For account-customers (e.g. Clancy) the CC `account_*` store is the live home.
 - **People / Businesses / operational areas** (roles, KPIs, SOPs, finance/insurance/vehicles) → the relevant **Drive** home + `vault_notes`. `vault-enricher.py` (called by triage/sync) still auto-pulls attachments — keep calling it.
 - **Personal / Family** → the **My Drive** / **Ashcroft Family** Drive home — write **direct to Drive** via Desktop Commander (no vault folder, and `vault-drive-sync` is retired). TitleCase folder names in the family Drive.
-- **Sygma owner-private** (salaries, payroll, pay-sensitive) → **Drive `Pete & Mic / Sygma Solutions Private/`** direct (never a shared Sygma drive). [[shared-drives#sygma-solutions-private]]. Monthly payroll: [[file-wages-email]].
+- **Sygma owner-private** (salaries, payroll, pay-sensitive) → **Drive `Sygma Private/`** direct (never a shared/operational Sygma drive). [[shared-drives#sygma-solutions-private]]. Monthly payroll: [[file-wages-email]].
 - **Decisions / competitive intel / lessons / processes / connectors** → CC `vault_notes` (ingest a `.md`). API-config docs are the surviving `Library/processes/` skeleton reference; new ones go there too + ingest.
 - **Gmail labels** → Gmail is source of truth; only update `[[gmail-label-scheme]]` for a NEW category/colour/mode/rule.
 - **CLAUDE.md** → only on an explicit Pete correction he asks to be saved; structured rules → `vault_notes`.
@@ -96,7 +96,7 @@ This step defers to the brain skill's Compress Step 4, which is the canonical au
 - Pull current Asana state for relevant projects -- verify vault reflects reality
 - Identify follow-up actions from the session (what's pending, what surfaced, what needs watching)
 - **Auto-create those tasks in Asana** with correct project, assignee, priority (custom field), due date (P1+2d / P2+7d / P3+30d / P4 none), and section (To Do / Backlog as appropriate). No "shall I send these?" gate.
-- Mark any completed tasks as done via `asana_update_task`
+- Mark any completed tasks as done in the CC task store: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'"` (Pete is off Asana — his tasks are `public.tasks`)
 - Check if any new Asana projects need vault folders -- create them if missing
 - Report what was created in Step 6 with task GIDs
 
@@ -106,8 +106,8 @@ If a follow-up is genuinely judgement-call (e.g. "should we even do this?"), sur
 
 Before sign-off, re-read **every prior `> [!todo] Pending Tasks` block in today's daily note** plus any pending entries in same-day session plans. Cross-reconcile open `[ ]` items against later session logs / commits / READMEs / decision docs from today. For each open task with positive evidence of having shipped:
 
-- If it has an `(Asana: <gid>)` reference, query Asana live (`asana_get_task`). If still open and the work has demonstrably shipped (commit hash matches a same-day session log, README "recent commits" line names it, decision doc records the rollout, etc.): **close the Asana task** with a comment naming the evidence, and **replace the daily-note `[ ]` line in-place** with `[x]` + ~~strikethrough~~ + a `**SHIPPED same-day as <evidence>**` marker.
-- If no Asana GID, grep today's daily note for the task's keywords. Same in-place strikethrough + evidence marker if matched.
+- If it has a `(CC: <task-id>)` reference, query the CC task store live (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT status FROM tasks WHERE id='<task-id>'"`). If still `todo` and the work has demonstrably shipped (commit hash matches a same-day session log, README "recent commits" line names it, decision doc records the rollout, etc.): **close the CC task** (`UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'`) and record the evidence in the task notes, and **replace the daily-note `[ ]` line in-place** with `[x]` + ~~strikethrough~~ + a `**SHIPPED same-day as <evidence>**` marker.
+- If no CC task-id, grep today's daily note for the task's keywords. Same in-place strikethrough + evidence marker if matched.
 - When uncertain, ask Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) instead of auto-modifying.
 
 **Close-on-ship (mechanical — the durable fix for "shipped it, never closed it"):** for every discrete thing this session actually shipped — a commit, a cron added to the registry, a file created, an email sent that names a task — run `VAULT=/tmp/pbs python3 /tmp/pbs/asana-reconcile.py --ship <gid|keyword>…`. It searches the **full open Asana list** (not just today's TODO block) for the matching task(s) and lists them; after eyeballing the match, re-run with `--apply-auto` to close them with an audit comment. This catches the common miss the same-day check is blind to: a task opened in an *earlier* session whose work lands today. Same discipline — lists first, you confirm, never closes on assumption.

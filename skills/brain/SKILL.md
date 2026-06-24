@@ -36,7 +36,7 @@ Primary skill for managing Pete's Second Brain: session resume/compress, daily r
 > [!important] Default verb: Resume. Bare `/brain` invocations run Resume.
 > Pete uses `/brain` only at session start as shorthand for "resume". When the user's message names a different verb (e.g. "compress", "morning", "task this", "triage"), route per the table below. When the user's message is a bare `/brain` (no verb), run Resume.
 >
-> Resume is a heavy operation -- it loads MAP + vault-routing + project READMEs + 3 daily notes + Asana state + Gmail Cowork-Inbox + writes to today's daily note. That's by design: Pete's first move every session is "give me everything I need to start working". The previous "show routing table and ask" behaviour was wrong; reverted 2026-05-06.
+> Resume is a heavy operation -- it loads MAP + vault-routing + project READMEs + 3 daily notes + `public.tasks` state + Gmail Cowork-Inbox + writes to today's daily note. That's by design: Pete's first move every session is "give me everything I need to start working". The previous "show routing table and ask" behaviour was wrong; reverted 2026-05-06.
 
 Match the user's intent to the right section:
 
@@ -103,25 +103,26 @@ Screenshots/     -- macOS Cmd-Shift-3/4/5 capture target
 
 > **Glob workaround (April 2026):** Single-level directory wildcards (`*/`) are broken in Cowork additional directories. When using the Glob tool to find files like `Projects/*/README.md`, set `path` to the parent directory (e.g., `Projects/`) and use recursive pattern `**/README.md`. Do NOT put subdirectory names inside the Glob pattern.
 
-## Asana Integration (Business Mode)
+## Task system — CC public.tasks (Pete is OFF Asana)
 
-Asana is the live work brain. All task management, project tracking, and team coordination happens in Asana. Read `Library/processes/asana-configuration.md` for all IDs, sync rules, and session lifecycle details.
+Pete's tasks live in the CC `public.tasks` table. All task CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`. (Asana is **Jane's only** now — never route Pete's tasks there.)
 
-### Loading Asana Tools
+### Task model
 
-In Cowork, Asana tools are deferred -- load via ToolSearch (`query: "asana" max_results: 60`). In Claude Code, tools are available directly.
+- **Priority** is manual P1–P4 (P1 highest). PD forces a date.
+- **`entity_slug`** ∈ Sygma / Canary Detect / Personal / One System / El Atico.
+- **`project_slug`** groups tasks (e.g. `Team-General`, `PA-Command-Centre`).
 
 ### Key Operations
 
-- **Create task**: `asana_create_task` with project GID, assignee GID, priority via custom_fields
-- **Complete task**: `asana_update_task` with `completed: true`
-- **List Pete's tasks**: `asana_get_my_tasks`
-- **Search tasks**: `asana_search_tasks` with workspace GID
-- **Get project tasks**: `asana_get_tasks` with project GID
+- **Create task**: `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`
+- **Complete task**: `UPDATE tasks SET status='done', completed_at=now() WHERE id=…`
+- **List Pete's open tasks**: `SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST`
+- **Reprioritise / reschedule**: `UPDATE tasks SET priority=…/due_on=… WHERE id=…`
 
 ### Auto-Create Vault Folders — RETIRED
 
-Asana working projects map to **Drive homes + the CC** now, not `Projects/{name}/` vault folders. **Do NOT auto-create vault folders** for Asana projects (the vault is retired). Project state lives in the CC + the entity's Drive folder; new customer/supplier/property records are created in the **CC** (Properties module / account store) or their **Drive** home, never as a vault folder.
+Working projects map to **Drive homes + the CC** now, not `Projects/{name}/` vault folders. **Do NOT auto-create vault folders** for projects (the vault is retired). Project state lives in the CC + the entity's Drive folder; new customer/supplier/property records are created in the **CC** (Properties module / account store) or their **Drive** home, never as a vault folder.
 
 ### Demand-driven project Gmail labels
 
@@ -133,7 +134,7 @@ All Calendar work via `/tmp/pbs/calendar-api.py`. Default timezone: Atlantic/Can
 
 ### Multi-system context loading
 
-When Pete touches a customer, supplier, or project, follow the canonical reading order in `[[vault-routing#per-section-rules]]` (10 steps: MAP -> README -> Gmail label -> Asana tasks -> Calendar events -> Google Chat space -> matter README -> source/extracts -> meetings -> Shared Drives). Steps 1-6 happen automatically at the start of every customer-touch; 7-10 on demand based on what Pete asks for.
+When Pete touches a customer, supplier, or project, follow the canonical reading order in `[[vault-routing#per-section-rules]]` (10 steps: MAP -> README -> Gmail label -> `public.tasks` -> Calendar events -> Google Chat space -> matter README -> source/extracts -> meetings -> Shared Drives). Steps 1-6 happen automatically at the start of every customer-touch; 7-10 on demand based on what Pete asks for.
 
 The full step-by-step protocol lives in vault-routing -- this skill defers there rather than maintaining a parallel copy.
 
@@ -182,39 +183,36 @@ Reconstruct full context so Pete picks up where he left off.
 
 0. **⚡ BOOT KERNEL — DO THIS FIRST; nothing below works without it.** Run `python3 ~/.config/pete-cc/pete-session-bootstrap.py`. It clones the tools to `/tmp/pbs`, materialises all secrets, and refreshes `~/.config/pete-cc/CLAUDE.cache.md` + `MAP.cache.md`. **Then verify `/tmp/pbs` exists — if it does NOT (clone failed), STOP and tell Pete; never proceed half-booted.** Then read your FULL operating instructions + MAP from `~/.config/pete-cc/CLAUDE.cache.md` + `~/.config/pete-cc/MAP.cache.md` (the harness injects only the tiny bootstrap `CLAUDE.md`). Every tool below runs as `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`.
 1. **Load core memory** -- the full `CLAUDE` + `MAP` came from the Step 0 caches (fallback: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM config WHERE key='claude-md'"` / `'map-md'`); pull routing from `vault_notes` (`/tmp/pbs/cc-knowledge-api.py "vault-routing"`). **Do NOT glob the vault's content folders** (`Projects/` other than `PA-Command-Centre`/`PA-General`, `Businesses/`, `Customers/`, `Suppliers/`, `Properties/`, `Personal/`, `Accreditations/`) — those are retired 24 Jun 2026 (now in Drive + vault_notes) (Business OS migration; see the banner at the top of this skill). Project / entity / customer / property context lives in the live homes now: query the **file-index** for "what exists / where is X" (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`/tmp/pbs/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
-2. **Load recent daily notes** -- the last 3 entries from the CC `daily_log` (`cc-sql.py "SELECT date, content FROM daily_log WHERE cron_name='session' ORDER BY date DESC LIMIT 3"`; if it's empty, the log is fresh — skip, no error). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against live Asana (something in narrative but missing from Asana, or something in Asana whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-gid live-state cross-check — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. The full Garmin data lives in the CC `garmin_daily` table (populated twice-daily by the `garmin-daily-pull` Railway cron — the rich `training` block: status, ACWR, training-effect, HR zones); query it via `cc-sql.py`. ([[garmin-api-configuration]].) The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/tmp/pbs/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
+2. **Load recent daily notes** -- the last 3 entries from the CC `daily_log` (`cc-sql.py "SELECT date, content FROM daily_log WHERE cron_name='session' ORDER BY date DESC LIMIT 3"`; if it's empty, the log is fresh — skip, no error). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against `public.tasks` (something in narrative but missing from `public.tasks`, or something in `public.tasks` whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-task live-state cross-check against `public.tasks` — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. The full Garmin data lives in the CC `garmin_daily` table (populated twice-daily by the `garmin-daily-pull` Railway cron — the rich `training` block: status, ACWR, training-effect, HR zones); query it via `cc-sql.py`. ([[garmin-api-configuration]].) The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/tmp/pbs/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
 2a. **Surface yesterday's PF journal lesson** -- Read `My Drive/Passion Fit/journal/{yesterday-YYYY-MM-DD}.md` **via Desktop Commander** (the journal moved to Drive; the old vault `Personal/passion-fit/journal/` is deleted — mount root `~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/My Drive/Passion Fit/journal/`). Grep for the `## One lesson for tomorrow` heading; extract the line(s) that follow (cut at next `## ` heading or end-of-file). Surface in the Resume briefing as its own line: `**Yesterday's lesson:** {extracted text}`. If the file is missing or the heading is absent, skip silently — no nag from Resume; the 6pm `pf-journal-reminder` cron is the only nagger. Same source-of-truth + same extraction logic as the morning briefing's "Lesson from yesterday" section (canonical process: [[pf-journal#Lesson-flow]]).
-3. **Pull Asana state** -- Read `Library/processes/asana-configuration.md` for IDs. Load Asana tools via ToolSearch. Call `asana_get_my_tasks` for Pete's assigned tasks. (Do NOT auto-create vault folders — retired; Asana projects map to the CC + Drive.)
-3a. **Detect manually-added tasks** -- Surface tasks added directly in the Asana app (mobile / web) since the last session, so Claude absorbs their context before settling on the day's focus.
+3. **Pull task state from public.tasks** -- list Pete's open tasks: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST"`. (Do NOT auto-create vault folders — retired; project/entity context lives in the CC + Drive.)
+3a. **Detect manually-added tasks** -- Surface tasks added to `public.tasks` since the last session, so Claude absorbs their context before settling on the day's focus.
 
 **Mechanic:**
 1. **Cutoff time**: use the most recent `daily_log` `date` (the last session) — its start-of-day in `Atlantic/Canary` is the cutoff. If that's today, fall back to yesterday. (If `daily_log` is empty, use yesterday.)
-2. **Query Asana**: `asana_search_tasks(workspace="1213947679900731", completed=false, created_at.after=<cutoff>, opt_fields="name,assignee,projects,memberships.section,custom_fields,due_on,notes,created_at,created_by")`. Returns up to 100 results.
-3. **Filter out Jane-assigned**: Pete's view excludes `assignee.gid == "1213949290735736"` (Jane handles her own queue).
-4. **Filter out Claude-created**: heuristic — a task is Claude-created if (a) `notes` contains a Gmail thread URL pattern (`mail.google.com/mail/u/0/#`) — that's an asana-gmail-sync orphan or triage task, OR (b) `notes` opens with the marker `[claude-created]` (a marker we are introducing for any task Claude creates outside the email-workflow path; rollout tracked via a separate Asana task — see [[Library/decisions/2026-05-06-project-consolidation#claude-marker-rollout]] for how Claude-created tasks get tagged in future). Anything else = manual.
-5. **Surface in briefing** under `**Manual tasks since last session**`: one line per task: `{name} | {project / section} | {priority} | {due_on or '–'}`. Tap-to-show notes excerpt on demand.
-6. **Don't auto-action**. List only. Pete decides what (if anything) needs talking through.
+2. **Query public.tasks**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug,notes,created_at FROM tasks WHERE status='todo' AND created_at > <cutoff> AND source <> 'claude' ORDER BY created_at"`. (The `source <> 'claude'` filter excludes tasks Claude created itself — those aren't "added while I was away".)
+3. **Surface in briefing** under `**Manual tasks since last session**`: one line per task: `{name} | {entity_slug / project_slug} | {priority} | {due_on or '–'}`. Tap-to-show notes excerpt on demand.
+4. **Don't auto-action**. List only. Pete decides what (if anything) needs talking through.
 
-When the most recent daily note covers today (rare edge case where Claude resumes mid-day after a previous Claude session ended already), use yesterday's start-of-day as the cutoff. The aim is "what showed up in Asana while I was away" — the noise of duplicate Claude-created tasks is the cost of getting that right.
+When the most recent daily note covers today (rare edge case where Claude resumes mid-day after a previous Claude session ended already), use yesterday's start-of-day as the cutoff. The aim is "what showed up in public.tasks while I was away".
 
 **Edge cases:**
-- New Asana custom-field-driven priority unset → display as `–`.
-- Task assigned to multiple people → still surface if Pete is one of them.
-- Task in an archived project (rare) → surface but flag the project.
+- Priority unset → display as `–`.
+- Task in an unfamiliar `project_slug` (rare) → surface but flag the project.
 3b. **Actions tray check (added 2026-06-06)** -- Query Gmail LIVE: `g.search_threads("label:Actions", max_results=50)`. For each thread, age = days since the LAST message on the thread. Surface in the briefing as its own line:
    - `**Actions tray**: {N} waiting ({M} aging >3d): {short-subject} {X}d · {short-subject} {Y}d — say "actions" to walk them with drafts ready.`
    - List every item older than **3 days**, oldest first; cap the inline list at 5 + `+K more aging`.
    - Tray empty → skip the line entirely.
-   - The tray is reply-shaped only (Action/Task split, locked 2026-06-06: **Actions = waiting on Pete to respond by email; everything else = Asana only**). Bills/work items are Asana-only tasks with `[no-sync-close]` — they never appear here. Source = live Gmail, never the daily note. Operating manual: [[email-workflow]].
+   - The tray is reply-shaped only (Action/Task split, locked 2026-06-06: **Actions = waiting on Pete to respond by email; everything else = a CC task**). Bills/work items are CC tasks with `[no-sync-close]` — they never appear here. Source = live Gmail, never the daily note. Operating manual: [[email-workflow]].
 4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home — not the legacy `Businesses/` vault folder.
 5. **Check session plans** -- Look for incomplete session plans:
-   - Grep `Daily/` and `Projects/PA-Command-Centre/` for `status: in-progress` (the skeleton homes for plans). Other projects' working files live in Drive now — check the project's Drive folder if one is referenced.
+   - Query `vault_notes` for plan notes still open: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, frontmatter->>'status' FROM vault_notes WHERE type ILIKE '%plan%' AND frontmatter->>'status' IN ('in-progress','ready') ORDER BY source_updated DESC"` (note: there is no `public.plans` table — plans are notes in `vault_notes`).
    - If found, mention them so Pete can pick up where he left off.
 6. **Cowork-Inbox check (iPhone -> Cowork bridge)** -- Pete can send requests from his iPhone Claude to Cowork by emailing himself with subject starting `For Claude Cowork`. Brain skill picks these up at session start.
    - Run `g.search_threads("subject:\"For Claude Cowork\" in:inbox newer_than:30d", max_results=20)` via the Gmail helper.
    - For each match, read the full body (`g.get_thread(tid)`).
    - Surface in the briefing: `"X incoming from your iPhone -- want to process now?"`. List one-line summaries.
-   - On confirmation, walk through each one: read body (standard shape: What / Where / Why / Done when / optional detail), propose a filing label based on content (existing labels like `Customers/SY-Clancy`, `General/CD-General`, `Suppliers/CD-MVP-Lanzarote`, etc.), execute the actual request (create Asana task, write vault file, run audit, send email -- whatever the body asks for), then archive the thread under the chosen label.
+   - On confirmation, walk through each one: read body (standard shape: What / Where / Why / Done when / optional detail), propose a filing label based on content (existing labels like `Customers/SY-Clancy`, `General/CD-General`, `Suppliers/CD-MVP-Lanzarote`, etc.), execute the actual request (create CC task, write vault file, run audit, send email -- whatever the body asks for), then archive the thread under the chosen label.
    - If the request needs more info, leave thread in inbox and reply asking Pete (don't process partial).
    - If the request is genuinely outside Cowork's scope (very rare -- Cowork has more access than iPhone), reply explaining + leave for Pete to handle.
 7. **Ask what to work on** -- If Pete hasn't already said:
@@ -225,11 +223,11 @@ When the most recent daily note covers today (rare edge case where Claude resume
 
    **Last session** (date): [Brief summary -- link [[projects]] mentioned]
    **Actions tray**: [N waiting (M aging >3d): item Xd · item Yd — say "actions" to walk them]
-   **Asana priorities**: [P1/P2 tasks from get_my_tasks]
-   **Manual tasks since last session**: [N added directly in Asana -- list one-liners with project/section + priority]
+   **Task priorities**: [P1/P2 tasks from public.tasks]
+   **Manual tasks since last session**: [N added to public.tasks -- list one-liners with entity/project + priority]
    **From your iPhone** (Cowork-Inbox): [N requests pending -- list one-liners]
    **In Progress**: [[Project-A]] -- [task], [[Project-B]] -- [task]
-   **Pending** (cross-checked, not narrative): [items from daily-note pending blocks that survive a per-gid live Asana check]
+   **Pending** (cross-checked, not narrative): [items from daily-note pending blocks that survive a live public.tasks check]
 
    What would you like to focus on today?
    ```
@@ -237,10 +235,10 @@ When the most recent daily note covers today (rare edge case where Claude resume
 
    **How to derive the Pending line** -- daily notes are a SECOND source. To build the Pending block:
    1. Collect candidate items from yesterday's daily note + today's earlier session logs: every `> [!todo] Pending Tasks` block, every "Live carry-overs" / "Pending into next chunk" / "Pending into next session" list.
-   2. For each candidate that names an Asana gid (`1213...` or `1214...`): `GET /tasks/{gid}` with `opt_fields=completed,due_on`. Drop the line if `completed:true`. Refresh the due-date if it differs from the candidate.
-   3. For each candidate that names a £/€ amount but no gid (e.g. "wk5 £1,518.60"): `GET /workspaces/{ws}/tasks/search?text=<amount>&completed=false&assignee.any=PETE`. Drop the line if 0 results.
-   4. For each candidate that names a person + topic but no gid (e.g. "Laura @ MVP — 15 missing Sygma invoices"): grep yesterday's daily note for the gid; verify the gid live.
-   5. Items that fail the live check are silently dropped from the briefing — they do NOT appear with strikethrough or "carried over" labels. Items that pass appear with their current gid and due-date.
+   2. For each candidate that names a task id (UUID): `cc-sql.py "SELECT status,due_on FROM tasks WHERE id='<uuid>'"`. Drop the line if `status='done'`. Refresh the due-date if it differs from the candidate.
+   3. For each candidate that names a £/€ amount but no id (e.g. "wk5 £1,518.60"): `cc-sql.py "SELECT 1 FROM tasks WHERE status='todo' AND name ILIKE '%<amount>%'"`. Drop the line if 0 rows.
+   4. For each candidate that names a person + topic but no id (e.g. "Laura @ MVP — 15 missing Sygma invoices"): `cc-sql.py "SELECT 1 FROM tasks WHERE status='todo' AND name ILIKE '%<keyword>%'"`; drop if 0 rows.
+   5. Items that fail the live check are silently dropped from the briefing — they do NOT appear with strikethrough or "carried over" labels. Items that pass appear with their current due-date.
    6. If the Pending block is empty after cross-check, skip the line entirely. Don't pad with stale narrative just to fill space.
 
    The Δ block being current does not exempt the Pending block. Same source-of-truth rule applies to both.
@@ -249,7 +247,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
 
 ### Guidelines
 - Keep it short -- like a quick standup, not a data dump
-- Prioritize: Asana P1/P2 tasks, deadlines this week, unfinished work
+- Prioritize: P1/P2 tasks (from public.tasks), deadlines this week, unfinished work
 - If memory files are empty (new vault): "This is your first session. What would you like to work on?"
 
 ---
@@ -258,7 +256,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
 
 Save everything valuable from the current session.
 
-> **Closing nudge**: when Pete signals he's wrapping up the day or pausing the session for a while -- phrases like "ok thats it", "im done for today", "lets stop here", "going to bed", "back tomorrow", "off out", or a long pause after a clearly-finished body of work -- proactively offer: *"Want me to compress before you go? It'll save the session log, update memory, create any follow-up Asana tasks, and reconcile today's TODOs."* Don't wait for an explicit `/brain compress`. Honour his answer either way.
+> **Closing nudge**: when Pete signals he's wrapping up the day or pausing the session for a while -- phrases like "ok thats it", "im done for today", "lets stop here", "going to bed", "back tomorrow", "off out", or a long pause after a clearly-finished body of work -- proactively offer: *"Want me to compress before you go? It'll save the session log, update memory, create any follow-up CC tasks, and reconcile today's TODOs."* Don't wait for an explicit `/brain compress`. Honour his answer either way.
 >
 > Don't nudge mid-session, don't nudge after every quiet moment, and don't nudge if Pete just asked a question and is waiting for an answer. The signal is: a clear stop signal + a meaningful body of work landed in the session.
 
@@ -294,22 +292,22 @@ Save everything valuable from the current session.
    [Condensed summary -- use [[wikilinks]] for every project, person, and vault note mentioned]
    ```
 3. **Update memory files (structured-home sweep)** -- Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its home in the cloud — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`) for knowledge + the `drive_files` index (`cc-sql.py`) for the entity's Drive folder — and update it with what changed + the rationale.** Knowledge / decisions / lessons → ingest a `.md` to `vault_notes`; files → the Drive folder; the session log → CC `daily_log`. The daily log is a pointer only; nothing of substance ends its life there. Operator prefs → CLAUDE.md Rules **only on an explicit Pete correction he asks to be saved**; structured rules → `vault_notes`. See the website-work lesson (in `vault_notes`).
-4. **Create Asana tasks** -- For any follow-up actions identified during the session, create tasks in Asana with correct project, assignee, and priority. Also mark any completed items as done in Asana.
+4. **Create CC tasks** -- For any follow-up actions identified during the session, `INSERT` into `public.tasks` with correct `entity_slug`, `project_slug`, and priority (`source='claude'`). Also mark any completed items done via `UPDATE tasks SET status='done', completed_at=now() WHERE id=…`.
 5. **Check session plans** -- Look for session plan files created this session:
    - If all steps complete, update `status: completed`
    - If steps incomplete, note pending items in the daily note
    - If an execution plan exists and ALL phases complete, set the project README `status: completed`
 6. **Onboarding-ritual completeness check** -- For any new project, customer, supplier, or property folder created this session, run the verification checklist from `[[vault-routing#new-project--new-property]]` (Step 5) or `[[vault-routing#new-customer--new-supplier]]` (Step 7). If any item is incomplete (e.g. README missing, frontmatter missing required field, MAP.md not updated, files/ subfolder missing), complete it before closing the session. The 2026-05-03 audit found 29+12 README-less folders accumulated over weeks because this completeness check didn't exist; do not let that recur.
 7. **Same-day reconciliation pass** -- Before writing the new session log's `Pending Tasks` block, re-read **every prior `> [!todo] Pending Tasks` block in today's daily note** plus any pending entries in same-day session plans. For each open `[ ]` task:
-   - If it has an `(Asana: <gid>)` reference, query Asana live (`asana_get_task`) and read the rest of today's daily note + any commits / READMEs / decision docs touched today for matching evidence (commit hash, README "recent commits" line, decision file, etc.). If shipped: **close the Asana task** with a comment naming the commit/evidence, and **replace the `[ ]` line in-place** with `[x]` + ~~strikethrough~~ + a `**SHIPPED same-day as <evidence>**` marker.
-   - If no Asana GID, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
+   - If it has a `(CC: <task-id>)` reference, query `public.tasks` live (`cc-sql.py "SELECT status FROM tasks WHERE id='<uuid>'"`) and read the rest of today's daily note + any commits / READMEs / decision docs touched today for matching evidence (commit hash, README "recent commits" line, decision file, etc.). If shipped: **close the task** (`UPDATE tasks SET status='done', completed_at=now() WHERE id=…`), and **replace the `[ ]` line in-place** with `[x]` + ~~strikethrough~~ + a `**SHIPPED same-day as <evidence>**` marker.
+   - If no task id, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
    - When uncertain, surface as a question to Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) rather than auto-modifying.
    
    **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create Asana 1234; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed Asana task sat open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (Asana 1214496261050040, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
    
    **How to apply:** Runs at end-of-session, before the final Report step. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence (commit hash, decision doc, README log line) -- never strikes a line on assumption alone. Same logic must run in `vault-writer` (separate but parallel cleanup checklist).
-7a. **Asana staleness sweep** (mirrors vault-writer Step 3b) -- Scan the whole workspace for stale work and surface a digest: open tasks untouched >21d, long-overdue >14d, bloated undated clusters (a section full of same-day-dumped tasks), completed-but-still-listed clutter. Group by project -> section with a one-line call per cluster (close / archive / delegate / move to own project / verify-then-close). **Surface-only -- never bulk-close, delete, or reassign without Pete's per-item confirmation** (Asana teams + tasks are sacred). The only unprompted closes are tasks this session demonstrably shipped (Step 7). If nothing crosses the thresholds, say so in one line -- don't manufacture noise.
-7b. **Asana <-> vault project parity** (mirrors vault-writer Step 3c) -- For every project touched this session, confirm the Asana project and its vault folder are in sync (Full Sync Check Rules in `[[asana-configuration]]`, scoped to those projects): vault folder + README + `files/` exist; each Asana section (sub-project) has a matching vault sub-folder direct under the parent with its own README + files/; names match; no orphans either way; work this session shipped is reflected in Asana and Asana-done tasks have their vault artefact updated. Fix the vault side; surface Asana-side drift to Pete. SY-Clancy exception preserved (vault content at `Customers/SY-Clancy/`, never `Projects/`). Don't sprawl -- default to the parent's `{prefix}-General` sub-project; ask before creating a new project / sub-project. The exhaustive all-projects sweep stays the `vault-check` skill's job.
+7a. **Task staleness sweep** (mirrors vault-writer Step 3b) -- Scan `public.tasks` for stale work and surface a digest: open tasks untouched >21d, long-overdue >14d (`due_on` past), bloated undated clusters (a `project_slug` full of same-day-dumped tasks), completed-but-still-listed clutter. Group by `entity_slug` -> `project_slug` with a one-line call per cluster (close / archive / delegate / verify-then-close). **Surface-only -- never bulk-close, delete, or reassign without Pete's per-item confirmation** (Pete's tasks are sacred). The only unprompted closes are tasks this session demonstrably shipped (Step 7). If nothing crosses the thresholds, say so in one line -- don't manufacture noise.
+7b. **Task <-> project-home parity** (mirrors vault-writer Step 3c) -- For every project touched this session, confirm the `public.tasks` `project_slug` grouping and the project's live home (the CC + its Drive folder, per the `drive_files` index) are in sync: the Drive home exists; work this session shipped is reflected in `public.tasks` (done tasks closed) and the corresponding Drive artefact updated; no orphan tasks pointing at a `project_slug` with no home. Surface drift to Pete. Don't sprawl -- default to the parent's `{prefix}-General` `project_slug`; ask before introducing a new `project_slug`. The exhaustive all-projects sweep stays the `vault-check` skill's job.
 8. **Report** -- Tell Pete what was saved and where. "You're safe to close. I'll remember everything next time."
 
 ### Guidelines
@@ -368,13 +366,13 @@ Read the appropriate template before generating the review.
 ### Morning Routine
 
 1. Read the most recent daily note — the latest `daily_log` row in the CC
-2. Pull Asana tasks: `asana_get_my_tasks` -- note P1/P2 priorities and overdue items
-3. Check Asana / the CC `tasks` engine for approaching deadlines
+2. Pull open tasks from `public.tasks`: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST"` -- note P1/P2 priorities and overdue items
+3. Check `public.tasks` for approaching deadlines (filter `due_on`)
 4. Business: pull business/department status from `vault_notes` (`cc-knowledge-api.py`) or the Drive home.
 5. Ask mode-appropriate questions:
    - Main focus, key meetings, blockers
 6. Record to the CC `daily_log` (append morning section) with frontmatter
-7. Create 1-3 Asana tasks based on energy and deadlines. Report what was created.
+7. Create 1-3 CC tasks (`INSERT` into `public.tasks`) based on energy and deadlines. Report what was created.
 
 ### Evening Routine
 
@@ -383,59 +381,61 @@ Read the appropriate template before generating the review.
 3. Ask mode-appropriate questions:
    - Accomplishments, decisions made, top priority for tomorrow
 4. Record to the CC `daily_log` (append evening section)
-5. Mark completed Asana tasks as done; route any new insights to the right file
+5. Mark completed tasks done in `public.tasks` (`UPDATE tasks SET status='done', completed_at=now() WHERE id=…`); route any new insights to the right file
 
 ### Weekly Review
 
 1. Read this week's daily notes — the `daily_log` rows in the CC
-2. Scan Asana / the CC `tasks` for movement
-3. Pull completed Asana tasks for the week -- celebrate wins
+2. Scan `public.tasks` for movement
+3. Pull completed tasks for the week (`SELECT name FROM tasks WHERE status='done' AND completed_at >= <week-start>`) -- celebrate wins
 4. Business: Check OKR progress, department health
 5. Ask mode-appropriate questions:
    - Biggest win, OKR progress, blockers, focus for next week
 6. Save to `Daily/YYYY-MM-DD Weekly Review.md`
-7. Plan top 3 priorities for next week; create Asana tasks automatically
+7. Plan top 3 priorities for next week; create CC tasks (`INSERT` into `public.tasks`) automatically
 8. Archive completed items if appropriate
 
 ---
 
 ## Task Management
 
-Asana is the only task system. All tasks live in Asana, managed via the local Asana MCP.
+Pete's tasks live in the CC `public.tasks` table. All CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`. (Asana is **Jane's only** — never route Pete's tasks there.)
 
-### Loading Asana Tools
+### Schema notes
 
-In Cowork, Asana tools are deferred -- load via ToolSearch (`query: "asana" max_results: 60`). In Claude Code, tools are available directly.
+- **Priority** is manual P1–P4 (P1 highest). PD forces a date.
+- **`entity_slug`** ∈ Sygma / Canary Detect / Personal / One System / El Atico.
+- **`project_slug`** groups tasks (e.g. `Team-General`, `PA-Command-Centre`).
+- **`source`** = `'claude'` for tasks Claude creates.
 
 ### Creating a Task
 
-Use `asana_create_task`:
-- `name`: Task title
-- `project_gid`: Project GID (singular string, not array)
-- `assignee`: User GID (Pete: 1213947679900718, Jane: 1213949290735736, Dave: 1213950274488858)
-- `custom_fields`: `{ "1213945150508559": "<priority_enum_gid>" }` for priority
-- `due_on`: YYYY-MM-DD (optional)
-- `notes`: Description (optional)
-
-Read `Library/processes/asana-configuration.md` for all GIDs.
+```sql
+INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes)
+VALUES (gen_random_uuid(), '<name>', '<P1–P4>', '<YYYY-MM-DD or NULL>',
+        '<entity_slug>', '<project_slug>', 'todo', 'claude', '<notes>');
+```
 
 ### Listing Tasks
 
-- **Pete's tasks**: `asana_get_my_tasks`
-- **Project tasks**: `asana_get_tasks` with `project` GID
-- **Search**: `asana_search_tasks` with `workspace` GID and filters
+Open tasks, highest priority / soonest due first:
+
+```sql
+SELECT name,priority,due_on,entity_slug,project_slug FROM tasks
+WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST;
+```
+
+Filter by entity or project with `AND entity_slug='…'` / `AND project_slug='…'`.
 
 ### Updating a Task
 
-Use `asana_update_task`:
-- Complete: `completed: true`
-- Reassign: `assignee: "<gid>"`
-- Reprioritize: `custom_fields: { "1213945150508559": "<new_priority_gid>" }`
-- Reschedule: `due_on: "YYYY-MM-DD"`
+- **Complete**: `UPDATE tasks SET status='done', completed_at=now() WHERE id=…`
+- **Reprioritise**: `UPDATE tasks SET priority=… WHERE id=…`
+- **Reschedule**: `UPDATE tasks SET due_on=… WHERE id=…`
 
 ### Guidelines
-- Always set project, assignee, and priority when creating tasks
-- At session end, create Asana tasks for follow-up actions
+- Always set `entity_slug`, `project_slug`, and priority when creating tasks
+- At session end, create CC tasks for follow-up actions
 - Present task lists as clean markdown tables
 - For bulk operations, confirm with Pete first
 
@@ -594,9 +594,9 @@ Business mode additions:
 - All-hands: `> [!info] Company Announcements` callout
 - Cross-team: `> [!todo] Department Dependencies` callout
 
-### Step 5: Create Asana Tasks from Action Items
+### Step 5: Create CC Tasks from Action Items
 
-Create an Asana task for each action item using `asana_create_task`. Tag with the relevant project. Set assignee and priority.
+`INSERT` a row into `public.tasks` for each action item assigned to Pete. Set `entity_slug`, `project_slug`, and priority (`source='claude'`). (Action items owned by Jane go to her Asana queue, not here.)
 
 ### Step 6: Link and Update
 
@@ -629,7 +629,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **MAP.md is your index.** Check before creating any file. Update after creating new files.
 - **Memory protocol**: Load context files at session start. Route new knowledge per `[[vault-routing]]`.
 - **Sweep verb**: `sweep` is a single deliberate verb, manual trigger only. No skill should auto-offer it. Email-workflow operating manual: `[[email-workflow]]`.
-- **Email-workflow verbs**: `triage`, `sync asana`, `delegate this`, `action this` (tray: Actions label + task), `task this` (Asana-only: no Actions label, `[no-sync-close]`), `actions` / `my actions` (tray walker), `de-tray this`, `file under`, `file all emails`, `add to calendar`. One-sentence rule: **Actions = waiting on Pete to respond by email; everything else = Asana only** (locked 2026-06-06). See `[[email-workflow]]` -- handled by `inbox-triage` and `asana-gmail-sync` skills.
+- **Email-workflow verbs**: `triage`, `sync asana`, `delegate this`, `action this` (tray: Actions label + task), `task this` (CC task: no Actions label, `[no-sync-close]`), `actions` / `my actions` (tray walker), `de-tray this`, `file under`, `file all emails`, `add to calendar`. One-sentence rule: **Actions = waiting on Pete to respond by email; everything else = a CC task** (locked 2026-06-06). See `[[email-workflow]]` -- handled by `inbox-triage` and `asana-gmail-sync` skills.
 - **Wikilinks everywhere**: Every mention of a project, person, or vault note MUST be a `[[wikilink]]`.
 - **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> `Library/lessons/{date}-{slug}.md` + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
 - **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[Library/lessons/README]]`.
@@ -642,7 +642,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **All working files go in Projects/**: `Projects/{name}/files/`. Code repos clone into a temp directory, never into the vault.
 - **Search before writing.** Check MAP.md and grep before creating files.
 - **Properties before property work.** Read the property README before any SEO/ads/analytics work.
-- **Asana is the only task system.** Create, update, and complete tasks via Asana MCP.
+- **CC `public.tasks` is Pete's task system.** Create, update, and complete tasks via `cc-sql.py`. (Asana is Jane's only.)
 
 ## Skill orchestration
 
@@ -674,7 +674,7 @@ Do NOT:
 - Read entire files when scanning many -- use `grep`
 - Update vault files on casual chat
 - Start real work without writing a session plan first
-- Create tasks anywhere other than Asana
+- Create tasks anywhere other than CC `public.tasks` (Pete's tasks)
 - Put project working files in Properties/ -- they go in Projects/
 - Put SEO/ads data in Projects/ -- operational data goes in Properties/{Name}/data/
 - Cram all project info into README.md -- use files/ for working content

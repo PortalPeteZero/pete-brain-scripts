@@ -5,6 +5,8 @@ description: Daily 07:15 Gmail↔Asana reconciliation: runs sync-asana.py wrappe
 
 # Daily Asana–Gmail sync (07:15)
 
+> [!note] Verify this cron's purpose post-cutover (Phase 5). Pete is off Asana — his tasks are now the CC task store (`public.tasks`). This cron reconciles Gmail labels against *Asana* task state; that premise may be moot now. Do not delete it without confirming; the orphan-creation / escalation task ops below have been converted to `public.tasks`.
+
 Reconciles Gmail workflow labels (Actions / Delegated) with Asana task state so Pete's tray and task list agree before the 07:30 briefing reads them. Operating manual: Library/processes/email-workflow.md. Skill reference: Library/skills/asana-gmail-sync/SKILL.md (Cron-mode section). One-sentence rule: Actions = waiting on Pete to respond by email; everything else = Asana only.
 
 ## Execution — READ THIS FIRST
@@ -22,7 +24,7 @@ Then poll: `sleep 35; tail -40 /tmp/daily-asana-gmail-sync.log` (repeat until th
 ## Steps
 
 1. **Run the wrapper** (above). It executes Steps 1/3/4/5/7/8 deterministically: strips Gmail labels from Asana-closed tasks, closes tasks whose threads lost their labels (with audit comments; [no-sync-close] marker + Team-Finances tasks exempt), checks delegations, finds orphan candidates, runs parity.
-2. **Step 6 orphans** (threads labelled Actions/Delegated with no task): auto-create per the asana-gmail-sync skill Step 6 — these are tray-class tasks (NO [no-sync-close] marker), assignee Pete (1213947679900718), default P2 + due today+7 (Atlantic/Canary), name = action verb + WHO + WHAT, notes = Mimestream link (https://links.mimestream.com/g/pete.ashcroft@sygma-solutions.com/t/{thread_id}) then Gmail link (https://mail.google.com/mail/u/0/#all/{thread_id}) + summary + routing trail. **Cron-mode routing: best-match only via the existing-label fallback chain (Projects label → that project; Customers/Suppliers → Team-General {prefix}-General section, SY-Clancy → its own project; Invoices → Team-Finances; Personal/PA-* → PA-General sections). NEVER create labels, buckets, sections, or projects. Ambiguous/no-label → PA-General (gid 1214124274861717) and flag in the daily-note block for interactive re-route.** Run vault-enricher per orphan: `python3 Library/processes/scripts/vault-enricher.py {thread_id} "{routed-vault-folder}"` (via DC).
+2. **Step 6 orphans** (threads labelled Actions/Delegated with no task): auto-create per the asana-gmail-sync skill Step 6 — these are tray-class tasks (NO [no-sync-close] marker), default P2 + due today+7 (Atlantic/Canary), name = action verb + WHO + WHAT, notes = Mimestream link (https://links.mimestream.com/g/pete.ashcroft@sygma-solutions.com/t/{thread_id}) then Gmail link (https://mail.google.com/mail/u/0/#all/{thread_id}) + summary + routing trail. Pete is off Asana — create these in the CC task store (`public.tasks`) via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'P2',(current_date+7),…,'todo','claude',…)`). **Cron-mode routing → set `project_slug` (the NAME) by best-match via the existing-label fallback chain (Projects label → that project_slug; Customers/Suppliers → `Team-General`, SY-Clancy → `SY-Clancy`; Invoices → `Team-Finances`; Personal/PA-* → `PA-General`). Entity follows the prefix (`SY-`/`Team-` → Sygma, `CD-` → Canary Detect, `PA-` → Personal). NEVER create labels, buckets, or projects. Ambiguous/no-label → `project_slug='PA-General'` (entity Personal) and flag in the daily-note block for interactive re-route.** Run vault-enricher per orphan: `python3 Library/processes/scripts/vault-enricher.py {thread_id} "{routed-vault-folder}"` (via DC).
 3. **Suggestions** (auto-filter / demand-driven label / parity drift / homeless threads from the report): do NOT act, do NOT ask. Collect them for the daily-note block.
 4. **Daily note**: READ Daily/{today-YYYY-MM-DD}.md FIRST (other crons write to it; create with standard daily frontmatter if missing), then append:
 
@@ -32,7 +34,7 @@ Then poll: `sleep 35; tail -40 /tmp/daily-asana-gmail-sync.log` (repeat until th
 ```
 
 If the run FAILED, the block reads `- 07:15 run | FAILED: {one-line reason}` instead.
-5. **Failure escalation**: before writing the block, check yesterday's daily note for a `FAILED` marker in its `## Asana sync (Automated)` block. If yesterday failed AND today failed → create a P2 Asana task "Investigate daily-asana-gmail-sync failures (2 consecutive)" in Team-General (project 1214564987703466, section SY-General 1214564987855498), assignee Pete, due today+7.
+5. **Failure escalation**: before writing the block, check yesterday's daily note for a `FAILED` marker in its `## Asana sync (Automated)` block. If yesterday failed AND today failed → create a P2 task "Investigate daily-asana-gmail-sync failures (2 consecutive)" in the CC task store (`public.tasks`, Pete is off Asana): `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Investigate daily-asana-gmail-sync failures (2 consecutive)','P2',(current_date+7),'Sygma','Team-General','todo','claude','Auto-raised after 2 consecutive sync failures')"` (project_slug NAME `Team-General`, due today+7).
 
 ## Hard rules
 

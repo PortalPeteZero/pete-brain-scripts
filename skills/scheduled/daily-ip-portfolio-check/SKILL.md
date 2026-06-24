@@ -23,7 +23,7 @@ Then poll `ps -p $PID` until exit, then read the log for output. Reference: [[Li
 
 > DECOMMISSIONED 2026-06-06 — CD-IP-Trademark-Portfolio archived; Hamilton campaign full-folded 26 May 2026. Cron disabled. IP register: Library/ip-trademark/ip-portfolio-register.md. If this fires anyway, do nothing and exit.
 
-Daily live check of OEPM (Spanish patent office) and EUIPO (EU IP office) trademark filings for Pete's portfolio + competitor Hamilton's portfolio. Scans Gmail for IP-related emails. Compares against previous report. Saves .md report. Creates Asana tasks for urgent items. Emails summary to Pete.
+Daily live check of OEPM (Spanish patent office) and EUIPO (EU IP office) trademark filings for Pete's portfolio + competitor Hamilton's portfolio. Scans Gmail for IP-related emails. Compares against previous report. Saves .md report. Creates CC tasks (`public.tasks`) for urgent items — Pete is off Asana. Emails summary to Pete.
 
 ## VAULT ACCESS
 
@@ -31,7 +31,7 @@ Vault is mounted as working folder. Read/Write/Edit/Glob tools, vault-relative p
 
 Key paths:
 - `Library/ip-trademark/reports/` (reports)
-- `Library/processes/asana-configuration.md` (Asana IDs)
+- CC task store `public.tasks` (Pete's tasks — write via `cc-sql.py`; Asana is retired for Pete)
 - `Projects/CD-IP-Trademark-Portfolio/README.md` (project state)
 - `Library/processes/scripts/oepm-bopi-check.py` (OEPM BOPI checker script)
 
@@ -42,7 +42,7 @@ Key paths:
 | Send email | `python3 Library/processes/scripts/gmail-api.py send "to" "subject" "body" --html` |
 | Draft email | `python3 Library/processes/scripts/gmail-api.py draft "to" "subject" "body"` |
 | Search Gmail | `python3 Library/processes/scripts/gmail-api.py search "QUERY"` returns thread JSON |
-| Asana | Local MCP (`mcp__asana__asana_*`), personal API token, never expires |
+| Tasks | CC task store `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (Pete is off Asana) |
 | EUIPO lookups | `WebFetch` against EUIPO REST API (`https://euipo.europa.eu/copla/trademark/data/{applicationNumber}`) |
 | OEPM lookups | `python3 Library/processes/scripts/oepm-bopi-check.py` via bash. BOPI buscadorAnotaciones is a server-rendered Struts app, works with curl + cookies. |
 
@@ -167,13 +167,16 @@ Hamilton: no changes detected.
 
 For urgent items (opposition deadlines within 14 days, imminent BOPI dates, Hamilton activity, IP office emails needing response, fee payments within 30 days):
 
-`asana_create_task` with:
-- `name`: "[IP] Description"
-- `projects`: [CD-IP-Trademark-Portfolio GID, read from asana-configuration.md]
-- `assignee`: Pete's GID
-- `custom_fields`: Priority P1 (urgent) or P2 (high) enum GID
-- `due_on`: deadline date
-- `notes`: description + recommended action
+Insert into the CC task store (`public.tasks`) — Pete is off Asana, his tasks are CC tasks. Run via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
+
+```sql
+INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes)
+VALUES (gen_random_uuid(), '[IP] <Description>', '<P1 (urgent) | P2 (high)>', '<deadline date>',
+        'Canary Detect', 'CD-IP-Trademark-Portfolio', 'todo', 'claude',
+        '<description + recommended action>');
+```
+
+(`project_slug` is the NAME `CD-IP-Trademark-Portfolio`, not a GID; entity `Canary Detect`.)
 
 ## DAILY NOTE UPDATE
 

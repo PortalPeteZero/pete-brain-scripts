@@ -18,7 +18,7 @@ Usage (CLI):
   python3 gmail-api.py rename-label LABEL_ID "{Category}/{prefix}-{slug}"
   python3 gmail-api.py create-label "{Category}/{prefix}-{slug}"
   python3 gmail-api.py delete-label LABEL_ID
-  python3 gmail-api.py search "from:clancy newer_than:30d"
+  python3 gmail-api.py search "<query>" [limit]   # e.g. search "from:clancy newer_than:30d" 20
   python3 gmail-api.py get-thread THREAD_ID
   python3 gmail-api.py download-attachment MSG_ID ATT_ID /path/to/save.pdf
   python3 gmail-api.py modify-thread THREAD_ID --add LABEL_ID --remove INBOX
@@ -29,8 +29,12 @@ Usage (CLI):
   python3 gmail-api.py audit-sent [DAYS] --apply LABEL_ID    # apply label to all flagged threads (manual verify first!)
 
 Usage (library):
-  from gmail_api import GmailAPI
-  g = GmailAPI()                       # defaults to pete.ashcroft@sygma-solutions.com
+  # The file is hyphenated (gmail-api.py), so `from gmail_api import GmailAPI`
+  # does NOT work. Load it by path with importlib instead:
+  import importlib.util
+  spec = importlib.util.spec_from_file_location('gmail_api', '/tmp/pbs/gmail-api.py')
+  gmail_api = importlib.util.module_from_spec(spec); spec.loader.exec_module(gmail_api)
+  g = gmail_api.GmailAPI()             # defaults to pete.ashcroft@sygma-solutions.com
   g.list_labels()
   g.rename_label(label_id, "{Category}/{prefix}-{slug}")
 """

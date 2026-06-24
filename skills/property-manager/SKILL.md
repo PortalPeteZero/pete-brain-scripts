@@ -201,7 +201,10 @@ Read the property folder to understand current state:
 
 ### 2b. Read any active projects
 
-Check `Projects/` for active project work related to this property (post 2026-05-06 restructure). Project structure is **parent + sub-projects direct under parent**. For website properties, look at the parent (e.g. `Projects/SY-Website/`, `Projects/CD-Website/`) AND walk the sub-projects. Actual SY-Website sub-folders: `seo/ articles/ improvements/ youtube/ ads/ backlinks/`. CD-Website: `seo/ articles/ migration/`. CD-LeakGuard: `crm/ tiered/ communities/`. CD-Other-Sites: `the-leaky-finders/ leakguard-lanzarote/ pipebusters-lanzarote/ leakbusters/`. The old standalone projects (CD-Canary-Detect-Website-SEO, SY-Solutions-Website-SEO, SY-Google-Ads, SY-Articles-and-Blogs, SY-Main-Site-Improvements, SY-YouTube, SY-Backlink-SEO, CD-Articles-and-Blogs, CD-Canary-Detect-Main-Site-Migration, CD-LeakGuard-CRM/Tiered/Communities, CD-Leakbusters-Migration) were folded into this pattern 2026-05-06 -- if you see those names referenced anywhere old, they map to a sub-project under a parent now.
+Check for active project work related to this property (per the parent + sub-projects pattern). Project structure is **parent + sub-projects direct under parent**. For website properties, look at the parent (e.g. `SY-Website`, `CD-Website`) AND walk the sub-projects. Actual SY-Website sub-folders: `seo/ articles/ improvements/ youtube/ ads/ backlinks/`. CD-Website: `seo/ articles/ migration/`. CD-LeakGuard: `crm/ tiered/ communities/`. CD-Other-Sites: `the-leaky-finders/ leakguard-lanzarote/ pipebusters-lanzarote/ leakbusters/`.
+
+> [!note] Historical / changelog context — NOT an active instruction
+> The following old standalone projects were folded into the parent + sub-project pattern on 2026-05-06: CD-Canary-Detect-Website-SEO, SY-Solutions-Website-SEO, SY-Google-Ads, SY-Articles-and-Blogs, SY-Main-Site-Improvements, SY-YouTube, SY-Backlink-SEO, CD-Articles-and-Blogs, CD-Canary-Detect-Main-Site-Migration, CD-LeakGuard-CRM/Tiered/Communities, CD-Leakbusters-Migration. This list is kept only so that if you encounter one of those names referenced in an old document, you know it now maps to a sub-project under a parent — do not act on these names as live project folders.
 
 ---
 
@@ -548,9 +551,18 @@ If during the session Pete mentions adding something new to the property -- a re
 
 But never nag about missing fields. Some properties deliberately don't have repos, databases, or domains. Accept what's there.
 
-### 7d. Create follow-up Asana tasks
+### 7d. Create follow-up CC tasks
 
-If the session produced actionable property updates (e.g., SEO fixes, content refreshes, design changes, new repos to set up), create Asana tasks for them using `asana_create_task` with the correct project GID, assignee, and priority. Read `Library/processes/asana-configuration.md` for all IDs.
+If the session produced actionable property updates (e.g., SEO fixes, content refreshes, design changes, new repos to set up), create tasks for them in the CC task store (`public.tasks`). Pete is off Asana — his tasks live in the CC. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
+
+```sql
+INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes)
+VALUES (gen_random_uuid(), '<task name>', '<P1|P2|P3|P4>', '<due-date or NULL>',
+        '<entity: Sygma | Canary Detect | One System>', '<project_slug, e.g. SY-Website>',
+        'todo', 'claude', '<notes>');
+```
+
+Use the property's `project_slug` NAME (e.g. `SY-Website`, `CD-Website`, `CD-Other-Sites`, `OS-OConnors-Website`), not a GID. The entity follows the prefix: `SY-`/`Team-` → Sygma, `CD-` → Canary Detect, `OS-` → One System.
 
 ---
 
@@ -632,7 +644,7 @@ These are specific lessons from incidents where this skill was followed incomple
 - **Stale service workers survive domain migrations.** When a domain moves hosts, any SW registered by the old host stays registered in visitors' browsers indefinitely. Deploy a poison-pill `public/sw.js` that self-destructs on install to clear them. This is the only reliable way.
 - **Update the plan after every step, immediately.** Tick checkboxes in the same tool-call batch as the underlying work where possible. Never batch plan updates. Never "I'll update later". The original LeakGuard migration plan ran to ~70% completion with zero ticked checkboxes -- a reconciliation plan had to be written from scratch because nobody could tell what was done.
 - **Connect to the repo instead of guessing.** Before writing any migration plan, audit, or analysis of a web property, clone the GitHub repo fresh and read the actual code. The repo is the source of truth -- not memory, not the property README, not a quick look at the live site. Fetching the live site with curl is a secondary check -- it is not a substitute for reading the source.
-- **Just fix it, don't task it.** When a fix is small, obvious, and within the current session's scope, do it directly. Don't ceremoniously create an Asana task for "Fix X" and move on -- that's just paperwork. Tasks are for work that has to wait.
+- **Just fix it, don't task it.** When a fix is small, obvious, and within the current session's scope, do it directly. Don't ceremoniously create a CC task for "Fix X" and move on -- that's just paperwork. Tasks are for work that has to wait.
 - **Never skip steps of this skill.** If a step feels tedious, that is a signal to do it, not to skip it. Every step here was added because a failure happened when it was skipped.
 
 ---

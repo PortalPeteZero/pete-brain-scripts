@@ -36,7 +36,7 @@ If `processed > 0`, append a one-line bullet per forwarded remittance: `- {sende
 
 If `failed > 0`, surface the error from the log so a human can investigate.
 
-No daily note appending, no Asana tasks, no vault writes. Silent unless there's something Pete needs to know.
+No daily note appending, no tasks, no vault writes. Silent unless there's something Pete needs to know.
 
 ## Helper paths
 

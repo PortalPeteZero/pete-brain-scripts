@@ -115,7 +115,7 @@ Append to `Daily/YYYY-MM-DD.md`:
 
 # Constraints / behaviour
 
-- **No Asana task.** Fire-and-forget reminder.
+- **No task.** Fire-and-forget reminder.
 - **No retries.** If a send fails, log the error in the daily note and move on.
 - **No CC/BCC.** Each trainer gets a clean 1:1 email.
 - **Subject must include {month_str}** so months don't merge into one Gmail thread.

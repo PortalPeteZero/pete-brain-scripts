@@ -79,16 +79,27 @@ def cmd_stats():
     _, cr = rest("vault_notes?select=id")
     print("total notes:", cr.split("/")[-1] if cr else "?")
 
+SUBCOMMANDS = ("search", "semantic", "get", "backlinks", "outlinks", "stats")
+
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="Query the CC knowledge DB")
+    ap = argparse.ArgumentParser(
+        description="Query the CC knowledge DB. "
+                    "With no recognised subcommand, the args are treated as a search query "
+                    "(e.g. `cc-knowledge-api.py voice-principles` == `... search voice-principles`).")
     sub = ap.add_subparsers(dest="cmd")
-    s = sub.add_parser("search"); s.add_argument("q"); s.add_argument("--limit", type=int, default=10)
-    sm = sub.add_parser("semantic"); sm.add_argument("q"); sm.add_argument("--limit", type=int, default=10)
-    g = sub.add_parser("get"); g.add_argument("target")
-    b = sub.add_parser("backlinks"); b.add_argument("target")
-    o = sub.add_parser("outlinks"); o.add_argument("target")
-    sub.add_parser("stats")
-    a = ap.parse_args()
+    s = sub.add_parser("search", help="ranked full-text search"); s.add_argument("q"); s.add_argument("--limit", type=int, default=10)
+    sm = sub.add_parser("semantic", help="semantic / vector search"); sm.add_argument("q"); sm.add_argument("--limit", type=int, default=10)
+    g = sub.add_parser("get", help="full note body for a <slug> or vault path"); g.add_argument("target")
+    b = sub.add_parser("backlinks", help="notes linking TO <slug>"); b.add_argument("target")
+    o = sub.add_parser("outlinks", help="notes <slug> links to"); o.add_argument("target")
+    sub.add_parser("stats", help="row counts by type")
+    # Forgiving default: if the first arg isn't a known subcommand (and isn't a help flag),
+    # treat the whole argv tail as a `search` query instead of erroring. Keeps every
+    # explicit subcommand working exactly as before.
+    argv = sys.argv[1:]
+    if argv and argv[0] not in SUBCOMMANDS and argv[0] not in ("-h", "--help"):
+        argv = ["search"] + argv
+    a = ap.parse_args(argv)
     if a.cmd == "search": cmd_search(a.q, a.limit)
     elif a.cmd == "semantic": cmd_semantic(a.q, a.limit)
     elif a.cmd == "get": cmd_get(a.target)

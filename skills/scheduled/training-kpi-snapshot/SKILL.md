@@ -29,7 +29,7 @@ Run the Sygma training KPI snapshot refresh.
    - The "Completed-month average" line and headline number are present.
    - The monthly breakdown table has all 12 months.
 4. Append a short entry to today's `Daily/YYYY-MM-DD.md` under a `## Training KPI snapshot (Automated)` heading with the headline figure (completed-month average courses + delegates, year-to-date totals, top customer).
-5. Do NOT create Asana tasks or send any email -- this is a silent vault-only refresh.
+5. Do NOT create tasks or send any email -- this is a silent vault-only refresh.
 
 If anything fails (Drive download, parse, write), include the error in the Daily entry under `## Training KPI snapshot (Automated)` so it's visible at the next session start.
 

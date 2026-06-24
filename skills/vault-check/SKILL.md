@@ -211,7 +211,7 @@ Scan the **most recent 14 `daily_log` entries** in the CC. For each:
 
 1. Find every `> [!todo] Pending Tasks` block (a daily note may have several -- one per session log).
 2. For each open `[ ]` line:
-   - **If `(Asana: <gid>)` is referenced**: query Asana live (`asana_get_task`). If the Asana task is `completed: true` but the daily-note line still says `[ ]`, flag this as **closed-task / open-line drift**.
+   - **If `(CC: <task-id>)` is referenced**: query the CC task store live (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT status FROM tasks WHERE id='<task-id>'"`). If the CC task is `status='done'` but the daily-note line still says `[ ]`, flag this as **closed-task / open-line drift**. (Pete is off Asana — his tasks are `public.tasks`.)
    - **Regardless of Asana state**: grep the rest of the same-day daily note for matching evidence (commit hashes, "ba02060"-style 7-char SHA refs, README "recent commits" lines, decision-doc creation, "shipped as", "landed", "closed by"). If a later session log on the same date shows the task's underlying work shipped, flag this as **same-day shipped / line-not-struck drift**.
 3. **Report-only.** vault-check reports drift; it does NOT auto-strike or auto-close. (Auto-strike + auto-close belong in brain Compress Step 7 + vault-writer Step 3a, which run every session as prevention.)
 

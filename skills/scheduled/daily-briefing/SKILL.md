@@ -21,7 +21,7 @@ Then poll `ps -p $PID` until exit, then read the log for output. Reference: [[Li
 
 # Daily Morning Briefing
 
-Automated daily briefing sent to Pete at 6:01 AM Atlantic/Canary time. Combines vault context, Calendar, Gmail, Asana, GA4, recent activity, and active projects into a styled HTML email sent via the Gmail API helper.
+Automated daily briefing sent to Pete at 6:01 AM Atlantic/Canary time. Combines vault context, Calendar, Gmail, CC tasks (`public.tasks` — Pete is off Asana), GA4, recent activity, and active projects into a styled HTML email sent via the Gmail API helper.
 
 ## VAULT ACCESS
 
@@ -29,7 +29,7 @@ The vault is mounted as the working folder. All paths are vault-relative. Use Re
 
 Key sources:
 - `Daily/` (yesterday's note for recap)
-- `Library/processes/asana-configuration.md` (Asana IDs and priority enums)
+- CC task store `public.tasks` (Pete's tasks — read via `cc-sql.py`; Asana is retired for Pete)
 - `Projects/**/README.md` (project status; Glob with `path: Projects/`, pattern `**/README.md`)
 - `Properties/**/README.md` (property reference data including GA4 IDs)
 
@@ -40,7 +40,7 @@ Key sources:
 | Send email | Gmail API helper: `python3 Library/processes/scripts/gmail-api.py send "to" "subject" "body" --html` |
 | Search Gmail | `python3 Library/processes/scripts/gmail-api.py search "QUERY"` returns thread JSON |
 | Calendar events | `python3 Library/processes/scripts/calendar-api.py events primary YYYY-MM-DD YYYY-MM-DD` |
-| Asana tasks | Local Asana MCP (`mcp__asana__asana_get_my_tasks` / `asana_get_tasks` etc.) |
+| Tasks | CC task store `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (Pete is off Asana — the `daily-briefing.py` cron already reads `public.tasks`) |
 | GA4 metrics | Direct GA4 Data API via service account at `Library/processes/secrets/google-seo-service-account.json` (config in `Library/processes/google-api-credentials.md`) |
 
 Migrated 2026-04-24 from Zapier Gmail + Gmail MCP + Calendar MCP to direct helpers. Both Gmail and Calendar use the same service account DWD path; always available, no on-demand enabling.
@@ -68,12 +68,12 @@ Render as the FIRST operational section, headed **"ACTIONS TRAY (N — M aging)"
 
 - One line per item, **oldest last-message first**: `{n}. {who} — {what, from the subject/linked task name}` with age flag ` ⚠ {X}d` for anything whose last message is older than 3 days.
 - Item count cap 10; overflow line `+{K} more in tray`.
-- Multi-thread tasks (same Asana task linked to several threads) = ONE line.
+- Multi-thread tasks (same CC task linked to several threads) = ONE line.
 - Tray empty → render the section as the single line "Tray clear." (Pete should still see it's clear.)
 - Close the section with: *Say "actions" in Cowork to walk these with drafts ready.*
 
-### 4. Priority Tasks (Asana)
-`asana_get_my_tasks`. Render in two parts:
+### 4. Priority Tasks (CC `public.tasks`)
+Query the CC task store (Pete is off Asana): `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name, priority, project_slug, due_on FROM tasks WHERE status='todo' ORDER BY due_on"`. Render in two parts:
 - **DUE TODAY** — itemised: title, priority, project (all priorities, not just P1/P2).
 - **Overdue counts** — one line: `Overdue: {n} P1 / {n} P2 / {n} P3` (no itemisation; the tray + due-today carry the focus).
 If nothing due today: "No tasks due today." then the overdue line.

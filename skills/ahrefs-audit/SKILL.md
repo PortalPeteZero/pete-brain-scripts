@@ -4,7 +4,7 @@ description: >-
   Combined Ahrefs + Surfer SEO page audit and optimisation plan. Pulls data from both APIs,
   cross-references keyword intelligence with NLP content analysis, and builds a balanced
   optimisation plan where neither tool's score is gospel. Handles both new pages (full setup)
-  and re-runs on existing pages (skips what's already done, reports outstanding Asana tasks).
+  and re-runs on existing pages (skips what's already done, reports outstanding CC tasks — Pete is off Asana).
   Use this skill whenever Pete says "audit this page", "ahrefs audit", "research this keyword",
   "set up a new page for SEO", "run the ahrefs report", "what's the competition for [keyword]",
   "gap analysis", "analyse this page", "SEO audit", "why isn't this ranking", "optimise this
@@ -43,7 +43,7 @@ Surfer's NLP recommendations often lean towards keyword stuffing -- hitting a te
 | Ahrefs API v3 | Direct API via bash curl. Config: [[ahrefs-api-configuration]] | Keywords, SERP, competitors, backlinks, positions, Rank Tracker writes |
 | Surfer SEO API | Direct API via bash curl. Config: [[surfer-api-configuration]] | Content editors, NLP terms, content scoring, competitor audits |
 | GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `/tmp/pbs/Library/processes/secrets/google-seo-service-account.json` | searchAnalytics/query for impressions, clicks, CTR, position -- true user behaviour |
-| Asana MCP | `mcp__asana__asana_*` (load via ToolSearch) | Section creation, standing tasks |
+| CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Standing tasks (Pete is off Asana — his tasks are CC tasks) |
 | Vault (file tools) | Read/Write/Edit | Plan files, property READMEs, MAP.md |
 
 **Auth quick reference** (full details in config files):
@@ -106,7 +106,7 @@ From the SEO sub-project README, get: standing instructions, SEO Page Tracker, A
 | Pipebusters Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/pipebusters-lanzarote/` | 9613446 | Yes |
 | Leakbusters Lanzarote Website | CD-Other-Sites | `Projects/CD-Other-Sites/leakbusters/` | 9613448 | 1312143 |
 
-In Asana, SEO work for main sites lives under the parent project's `seo` section (created in the Asana restructure). For CD-Other-Sites, each secondary site has its own section, and SEO work for that site is filed in that section. New tasks: place via `asana_add_task_to_section`.
+In the CC task store (`public.tasks`), SEO work is tracked by `project_slug` (Pete is off Asana — his tasks are CC tasks). Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. New tasks: INSERT with the right `project_slug` NAME (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
 
 ### 0b. Page and Keyword
 
@@ -118,7 +118,7 @@ Before doing any research:
 
 1. **Vault plan file**: Look in `Projects/{Parent}/seo/files/` (e.g. `Projects/SY-Website/seo/files/`) for an existing `*-seo-plan.md` matching this page. For CD-Other-Sites, look in the per-site sub-project: `Projects/CD-Other-Sites/{site-slug}/files/`.
 2. **SEO Page Tracker**: Check the property README for an existing row
-3. **Asana section**: Use `asana_get_sections` on the SEO project to check for an existing section. If found, pull tasks and report outstanding ones.
+3. **CC tasks**: Query the CC task store (`public.tasks`) for existing open tasks on this page (Pete is off Asana — his tasks are CC tasks). Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' AND name ILIKE '%<Page Name>%'"`. If found, report outstanding ones.
 
 If a plan file exists with Ahrefs research already done (from a previous run), ask Pete if he wants to skip to Phase 2 (Surfer) or re-run everything fresh.
 
@@ -371,18 +371,18 @@ Present the complete plan to Pete. Include the balanced view from Phase 3c so he
 
 ---
 
-## Phase 5 -- Asana Setup
+## Phase 5 -- CC Task Setup
 
-Read `Library/processes/asana-configuration.md` for project GIDs.
+Pete is off Asana — his tasks live in the CC task store (`public.tasks`). Use the page's `project_slug` NAME (`SY-Website`, `CD-Website`, or `CD-Other-Sites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 
-### 5a. Create Section (if needed)
+### 5a. Check for Existing Tasks
 
-Check for existing section with `asana_get_sections`. If not found, create one matching the page name.
+Query the CC task store for open tasks already covering this page: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name FROM tasks WHERE status='todo' AND project_slug='<project_slug>' AND name ILIKE '%<Page Name>%'"`. There is no "section" concept — tasks are grouped by `project_slug` and identified by the page name in the task name.
 
-### 5b. Standing Tasks (if section is new)
+### 5b. Standing Tasks (if none exist yet for this page)
 
-1. **"Set up Ahrefs Rank Tracker tags -- [Page Name]"** -- P2, assigned to Pete
-2. **"Surfer baseline audit -- [Page Name]"** -- mark as complete (we just did it via API)
+1. **"Set up Ahrefs Rank Tracker tags -- [Page Name]"** -- P2. Insert: `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Set up Ahrefs Rank Tracker tags -- [Page Name]','P2',NULL,'<entity>','<project_slug>','todo','claude','<notes>')`.
+2. **"Surfer baseline audit -- [Page Name]"** -- create it already done (we just did it via API): same INSERT but with `'done'` status and `completed_at=now()` (add the `completed_at` column to the INSERT).
 3. Don't create the fortnightly review task yet -- that happens after implementation
 
 ---

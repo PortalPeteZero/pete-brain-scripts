@@ -235,15 +235,24 @@ Route the review results to the right places:
 | Session progress | `Daily/YYYY-MM-DD.md` |
 | Commit details | Note in property README if significant changes were made |
 
-If the review uncovered something that should be tracked as a task (e.g. "needs a bigger refactor later"), create an Asana task via `asana_create_task` with the correct project GID, assignee, and priority.
+If the review uncovered something that should be tracked as a task (e.g. "needs a bigger refactor later"), create a task in the CC task store (`public.tasks`) — Pete is off Asana. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`: `INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes) VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4>', NULL, '<entity>', '<project_slug NAME>', 'todo', 'claude', '<notes>');`
 
 ### 4d. Suggest vault-writer
 
 At the end, offer: "Want me to run the vault-writer skill to make sure everything from this review is properly captured?"
 
-### 4e. Create follow-up Asana tasks
+### 4e. Create follow-up CC tasks
 
-If the review identified issues that require follow-up work (e.g. major refactor, performance optimization, dependency updates), create Asana tasks using `asana_create_task` with the correct project GID, assignee, and priority. Read `Library/processes/asana-configuration.md` for all IDs.
+If the review identified issues that require follow-up work (e.g. major refactor, performance optimization, dependency updates), create tasks in the CC task store (`public.tasks`) — Pete is off Asana, his tasks live in the CC. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
+
+```sql
+INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes)
+VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4>', '<due-date or NULL>',
+        '<entity: Sygma | Canary Detect | One System>', '<project_slug NAME, not a GID>',
+        'todo', 'claude', '<notes>');
+```
+
+Use the project_slug NAME (e.g. `SY-Website`, `PA-Command-Centre`); entity follows the prefix (`SY-`/`Team-` → Sygma, `CD-` → Canary Detect, `OS-` → One System, `PA-` → Personal).
 
 ## Important Notes
 
