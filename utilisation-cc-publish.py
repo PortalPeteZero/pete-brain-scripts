@@ -133,31 +133,10 @@ def publish_to_portal(data):
         print(f"  Portal diary_utilisation write failed: {e}")
 
 
-def publish_to_cc_utilisation(data):
-    """H5: write the utilisation feed to CC public.utilisation so /m/sygma-training/utilisation reads the
-    table instead of the git-pushed data/utilisation.json (which can't be pushed from a Railway container)."""
-    import urllib.request
-    url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
-    if not (url and key):
-        vault = os.environ.get("VAULT") or "/Users/peterashcroft/Second Brain"
-        kp = Path(vault) / "Library/processes/secrets/command-centre-supabase-keys.json"
-        if not kp.exists():
-            print("  CC keys missing -- skip public.utilisation"); return
-        k = json.load(open(kp)); url, key = k["url"], k["service_role_key"]
-    row = [{"generated": data.get("generated") or datetime.date.today().isoformat(), "payload": data}]
-    req = urllib.request.Request(url.rstrip("/") + "/rest/v1/utilisation", data=json.dumps(row).encode(), method="POST",
-        headers={"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json", "Prefer": "return=minimal"})
-    try:
-        urllib.request.urlopen(req, timeout=30); print("  CC: public.utilisation snapshot written")
-    except Exception as e:
-        print(f"  CC public.utilisation write failed: {e}")
-
-
 def main():
     args = sys.argv[1:]
     data = parse(download_xlsx())
-    publish_to_portal(data)   # diary utilisation -> Portal hub.diary_utilisation (separate from go-live)
-    publish_to_cc_utilisation(data)   # H5: CC public.utilisation -> /m/sygma-training/utilisation
+    publish_to_portal(data)   # diary utilisation -> Portal hub.diary_utilisation (the HOME; CC does NOT surface it — Pete 23 Jun)
     if "--print" in args:
         print(json.dumps(data, indent=2)); return
     if "--out" in args:

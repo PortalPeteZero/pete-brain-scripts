@@ -170,6 +170,7 @@ def _helper(fname, modname):
     m = _ilu.module_from_spec(spec); spec.loader.exec_module(m); _HCACHE[modname] = m; return m
 
 EMAIL_LIVE = os.environ.get("AGENT_EMAIL_LIVE", "0") == "1"   # safety: off → sends route to Pete only
+# Tool surface (23 Jun): cc_read/search/write · gmail_search/send(gated) · calendar_list · odoo_query · ga4_query · gsc_query
 PETE = "pete.ashcroft@sygma-solutions.com"
 
 # On Railway the repo is flat (helpers at REPO root) and bootstrap materialises the SA key at
