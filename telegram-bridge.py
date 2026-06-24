@@ -26,7 +26,7 @@ Pure stdlib — no pip deps (matches cc-agent).
 import os, sys, json, time, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 
 def _cc():

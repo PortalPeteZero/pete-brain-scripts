@@ -17,7 +17,7 @@ Usage: python3 cc-knowledge-sync.py [--full]   (--full re-scans everything, igno
 import json, os, sys, subprocess, datetime, time, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = f"{VAULT}/Library/processes/secrets"
 STATE = os.path.join(HERE, "_logs", "knowledge-sync-state.json")
 # the vault content trees that become vault_notes (the operating skeleton + knowledge)

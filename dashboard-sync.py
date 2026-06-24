@@ -39,7 +39,7 @@ import subprocess
 import sys
 from pathlib import Path
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = Path(VAULT)
 DASHBOARD = Path.home() / "code/command-centre"  # repointed 2026-06-11 (was code/pete-health-dashboard, archived)

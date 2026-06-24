@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 
 import os  # noqa: E402
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 TOKEN_FILE = f"{VAULT}/Library/processes/supabase-access-token.md"
 _EVAL_DD = os.environ.get("EVAL_DATA_DIR")
 DATA = Path(_EVAL_DD) if _EVAL_DD else (Path.home() / "code/sygma-training-eval-dashboard/data")

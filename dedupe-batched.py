@@ -15,7 +15,7 @@ Rule per md5 group (>1 identical file):
 import json, time, base64, urllib.request, urllib.parse, urllib.error, tempfile, os, subprocess, collections, sys
 from concurrent.futures import ThreadPoolExecutor
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 V = VAULT
 KEY = V + "/Library/processes/secrets/google-seo-service-account.json"

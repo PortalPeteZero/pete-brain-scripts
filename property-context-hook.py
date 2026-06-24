@@ -20,7 +20,7 @@ Wire in settings.json under hooks.UserPromptSubmit (see property-context-hook.RE
 """
 import sys, json, re, os, time, ssl, urllib.request
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 FEED = os.path.join(VAULT, "Library/processes/property-state.json")

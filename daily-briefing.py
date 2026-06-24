@@ -31,7 +31,7 @@ from zoneinfo import ZoneInfo
 HERE = os.path.dirname(os.path.abspath(__file__))
 TZ = ZoneInfo("Atlantic/Canary")
 PETE = "pete.ashcroft@sygma-solutions.com"
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 GA4_PROPS = [("Sygma Solutions", "354127076"), ("Canary Detect", "537126447")]
 
 # palette

@@ -18,7 +18,7 @@ Always exits 0 (it's a reporter, never a gate).
 import json, os, sys, re
 from datetime import datetime, timezone, date
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 FEED = os.path.join(VAULT, "Library/processes/property-state.json")

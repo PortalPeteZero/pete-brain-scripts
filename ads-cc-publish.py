@@ -28,7 +28,7 @@ import os, sys, json, subprocess, datetime, importlib.util, time
 from pathlib import Path
 from collections import defaultdict
 
-VAULT = "/Users/peterashcroft/Second Brain"
+VAULT = "/tmp/pbs"
 SCRIPTS = Path(__file__).resolve().parent
 HOME = Path(os.path.expanduser("~"))
 CC_REPO = HOME / "code/command-centre"

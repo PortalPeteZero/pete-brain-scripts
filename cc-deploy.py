@@ -12,7 +12,7 @@ Exit 0 = READY + map regenerated · 2 = deploy didn't reach READY · 1 = map reg
 """
 import json, os, sys, time, subprocess, urllib.request, urllib.error
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 VT = open(os.path.join(VAULT, "Library/processes/secrets/vercel-token")).read().strip()

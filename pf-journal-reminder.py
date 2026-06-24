@@ -26,7 +26,7 @@ import importlib.util
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 PETE = "pete.ashcroft@sygma-solutions.com"
 
 

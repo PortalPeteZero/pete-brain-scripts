@@ -1,6 +1,6 @@
 import json,urllib.request,urllib.error,os,re,datetime
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC=f"{VAULT}/Library/processes/secrets"
 k=json.load(open(f"{SEC}/command-centre-supabase-keys.json")); URL=k["url"]; SR=k["service_role_key"]
 MEM="/Users/peterashcroft/.claude/projects/-Users-peterashcroft-Second-Brain/memory"

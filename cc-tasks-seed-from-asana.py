@@ -9,7 +9,7 @@ Usage:  python3 cc-tasks-seed-from-asana.py [--dry]
 """
 import json, sys, subprocess, urllib.request, urllib.error
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 KEYS = json.load(open(f"{VAULT}/Library/processes/secrets/command-centre-supabase-keys.json"))

@@ -7,7 +7,7 @@ Default = dry-run report. Pass --execute to trash empties + .DS_Store (recoverab
 import json, time, base64, urllib.request, urllib.parse, urllib.error, tempfile, os, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 V = VAULT
 KEY = V + "/Library/processes/secrets/google-seo-service-account.json"

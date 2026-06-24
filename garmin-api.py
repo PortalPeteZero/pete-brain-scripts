@@ -12,7 +12,7 @@ impersonation, post-March-2026 bypass) and exposes:
 Auth:
   * Bootstrap once with `garmin-bootstrap-login.py` (see config doc).
   * OAuth tokens stored at:
-      /Users/peterashcroft/Second Brain/Library/processes/secrets/garminconnect-tokens/
+      /tmp/pbs/Library/processes/secrets/garminconnect-tokens/
   * Tokens valid ~1 year. No password / MFA needed for subsequent runs.
 
 CLI usage:
@@ -48,7 +48,7 @@ from pathlib import Path
 
 import garminconnect  # type: ignore
 
-VAULT = Path(os.environ.get("VAULT", "/Users/peterashcroft/Second Brain"))
+VAULT = Path(os.environ.get("VAULT", "/tmp/pbs"))
 SECRETS = VAULT / "Library/processes/secrets"
 TOKENS_DIR = SECRETS / "garminconnect-tokens"
 EMAIL_FILE = SECRETS / "garmin-email"

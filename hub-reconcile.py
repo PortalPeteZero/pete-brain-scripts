@@ -31,7 +31,7 @@ import importlib.util, json, os, sys, time, urllib.parse, urllib.request, urllib
 from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VAULT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))  # .../Second Brain
+VAULT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))  # .../Command Centre
 STATE_PATH = os.path.join(HERE, "..", "hub-reconcile-state.json")
 HUB_INDEX = os.path.join(HERE, "..", "hub-content-index.md")
 

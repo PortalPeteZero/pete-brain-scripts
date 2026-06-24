@@ -21,7 +21,7 @@ Exit codes:
 Reads:
   - Asana PAT from Library/processes/secrets/asana-pat
   - Gmail via gmail-api.py helper
-  - VAULT_ROOT env var (default /Users/peterashcroft/Second Brain)
+  - VAULT_ROOT env var (default /tmp/pbs)
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ import urllib.request
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # --- Configuration -----------------------------------------------------------
 

@@ -710,7 +710,7 @@ document.querySelectorAll('.tab').forEach(t => {{
 '''
 
 import os
-VAULT_ROOT = os.environ.get("VAULT_ROOT", "/Users/peterashcroft/Second Brain")
+VAULT_ROOT = os.environ.get("VAULT_ROOT", "/tmp/pbs")
 OUT = os.path.join(VAULT_ROOT, "Businesses/canary-detect/finance/cost-base-reports/2026-cost-base-YTD.html")
 with open(OUT, 'w') as f:
     f.write(html)

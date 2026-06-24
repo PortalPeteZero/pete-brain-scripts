@@ -11,7 +11,7 @@ Usage:  python3 cc-automations-sync.py [--dry]
 """
 import json, sys, urllib.request, urllib.error
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 SRC = f"{VAULT}/Library/processes/automations-dashboard/automations.json"

@@ -27,7 +27,7 @@ import os
 import re
 import sys
 
-ROOT = "/Users/peterashcroft/Second Brain"
+ROOT = "/tmp/pbs"
 DOC_PATH = f"{ROOT}/Properties/Sygma Solutions Website/data/google-ads-account.md"
 JSON_PATH = f"{ROOT}/Properties/Sygma Solutions Website/data/google-ads-account.json"
 

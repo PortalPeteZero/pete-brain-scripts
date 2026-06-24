@@ -34,7 +34,7 @@ import datetime
 ACC = f"{VAULT}/Library/processes/scripts/account"
 sys.path.insert(0, ACC)
 import account_store as store
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 CUST_DIR = {"clancy": "Customers/SY-Clancy"}

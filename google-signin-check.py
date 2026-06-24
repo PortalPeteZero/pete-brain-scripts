@@ -25,7 +25,7 @@ select sd.full_name, sd.work_email,
          where lower(u.email)=lower(sd.work_email) and i.provider='google') as has_google
 from hub.staff_directory sd
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 where sd.work_email ilike '%@sygma-solutions.com'
   and lower(coalesce(sd.employment_status,'')) <> 'leaver'
 order by sd.full_name;

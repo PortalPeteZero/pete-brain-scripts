@@ -41,7 +41,7 @@ from collections import defaultdict
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-VAULT_ROOT = SCRIPT_DIR.parent.parent.parent  # .../Second Brain
+VAULT_ROOT = SCRIPT_DIR.parent.parent.parent  # .../Command Centre
 OUTPUT_DIR = VAULT_ROOT / "Businesses/canary-detect/finance/monthly-turnover-reports"
 
 

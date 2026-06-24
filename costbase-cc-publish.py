@@ -16,7 +16,7 @@ Run as a step of the monthly Soldo audit (alongside costbase-hub-load.py).
 """
 import os, sys, json, glob, subprocess, datetime, time
 from pathlib import Path
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 AUDIT_DIR = f"{VAULT}/Businesses/sygma-solutions/finance/audit-data"

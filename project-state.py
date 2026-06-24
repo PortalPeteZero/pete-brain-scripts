@@ -18,7 +18,7 @@ Usage: python3 project-state.py [--apply] [--only "OS-OConnors-Website"]
 """
 import os, re, sys, json, glob, shutil, urllib.request
 from datetime import datetime, timezone
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 PROJECTS = os.path.join(VAULT, "Projects")

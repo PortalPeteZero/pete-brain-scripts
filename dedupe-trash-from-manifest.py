@@ -12,7 +12,7 @@ in Drive trash for 30 days.
 import json, time, base64, urllib.request, urllib.parse, urllib.error, tempfile, os, subprocess, sys, re
 from concurrent.futures import ThreadPoolExecutor
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 V = VAULT
 KEY = V + "/Library/processes/secrets/google-seo-service-account.json"

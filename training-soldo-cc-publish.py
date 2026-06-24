@@ -12,7 +12,7 @@ private. The underlying crons + the standalone eval dashboard keep running uncha
 """
 import os, glob, re, json, datetime, importlib.util
 from pathlib import Path
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 SCRIPT_DIR = Path(__file__).resolve().parent

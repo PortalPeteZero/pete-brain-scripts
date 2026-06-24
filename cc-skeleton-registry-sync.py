@@ -13,7 +13,7 @@ website-careful step). Env-first CC keys so it also runs on Railway.
 """
 import os, re, json, glob, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 CC = json.load(open(os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")))
 URL, KEY = CC["url"].rstrip("/"), CC["service_role_key"]
 

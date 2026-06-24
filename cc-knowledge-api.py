@@ -12,7 +12,7 @@ Usage:
   cc-knowledge-api.py stats                                        # row counts by type
 """
 import json, urllib.request, urllib.parse, urllib.error, sys, argparse
-SEC = "/Users/peterashcroft/Second Brain/Library/processes/secrets"
+SEC = "/tmp/pbs/Library/processes/secrets"
 _k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = _k["url"], _k["service_role_key"]
 H = {"apikey": SR, "Authorization": f"Bearer {SR}", "Content-Type": "application/json"}

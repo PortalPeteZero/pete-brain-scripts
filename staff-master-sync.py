@@ -1,5 +1,5 @@
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 #!/usr/bin/env python3
 """
 staff-master-sync.py -- Sygma Staff Master nightly sync (registered cron, 05:30 UK).

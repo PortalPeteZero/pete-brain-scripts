@@ -22,7 +22,7 @@ import urllib.request
 
 import yaml
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 YAML_PATH = f"{VAULT}/Businesses/sygma-solutions/training/courses/_course-map.yaml"

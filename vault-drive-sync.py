@@ -1,4 +1,4 @@
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 #!/usr/bin/env python3
 # drive-cloudstorage-allowed -- This script implements the rsync-style filesystem
 # sync that is the intentional exception to the helper-first rule. drive-api.py

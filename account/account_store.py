@@ -16,7 +16,7 @@ import urllib.request
 import urllib.error
 
 # env-first (Railway sets CC_SUPABASE_*); fall back to the secrets file on the Mac. $VAULT-aware.
-_VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+_VAULT = os.environ.get("VAULT", "/tmp/pbs")
 _URL = os.environ.get("CC_SUPABASE_URL")
 _KEY = os.environ.get("CC_SUPABASE_SERVICE_KEY")
 if not (_URL and _KEY):

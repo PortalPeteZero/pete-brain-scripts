@@ -27,7 +27,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import account_store as store
 
-_VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+_VAULT = os.environ.get("VAULT", "/tmp/pbs")
 C = "clancy"
 # bootstrap runs the script bare on Railway (no args) → send by default; --dry/--no-send suppress.
 SEND = not any(a in sys.argv for a in ("--dry", "--dry-run", "--no-send"))

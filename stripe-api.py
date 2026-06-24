@@ -20,7 +20,7 @@ Output: pretty JSON. HTTP errors are returned as {"error": {...}} (Stripe's erro
 """
 import sys, json, urllib.request, urllib.parse, urllib.error
 
-SECRETS = "/Users/peterashcroft/Second Brain/Library/processes/secrets/stripe-camello-blanco.json"
+SECRETS = "/tmp/pbs/Library/processes/secrets/stripe-camello-blanco.json"
 BASE = "https://api.stripe.com"
 
 

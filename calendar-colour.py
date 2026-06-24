@@ -21,7 +21,7 @@ Usage:
 import argparse, datetime, importlib.util, re, sys, json
 from pathlib import Path
 
-SCRIPTS = Path("/Users/peterashcroft/Second Brain/Library/processes/scripts")
+SCRIPTS = Path("/tmp/pbs/Library/processes/scripts")
 spec = importlib.util.spec_from_file_location("c", SCRIPTS / "calendar-api.py")
 c = importlib.util.module_from_spec(spec); spec.loader.exec_module(c)
 

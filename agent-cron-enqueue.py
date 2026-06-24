@@ -26,7 +26,7 @@ Local test: agent-cron-enqueue.py <cron-key>   (reads CC keys from the secrets f
 import os, sys, json, urllib.request, urllib.error
 from pathlib import Path
 
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 
 def _cc():

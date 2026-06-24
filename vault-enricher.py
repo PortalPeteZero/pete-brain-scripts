@@ -137,9 +137,9 @@ class VaultEnricher:
     def __init__(self, gmail_helper, vault_root=None):
         # vault_root resolution: explicit arg > VAULT_ROOT env > host default.
         # Lets the script run both on Pete's Mac (host path) and in the Cowork sandbox
-        # (mounted at /sessions/{name}/mnt/Second Brain) without code edits.
+        # (mounted at /sessions/{name}/mnt/Command Centre) without code edits.
         if vault_root is None:
-            vault_root = os.environ.get("VAULT_ROOT", "/Users/peterashcroft/Second Brain")
+            vault_root = os.environ.get("VAULT_ROOT", "/tmp/pbs")
         self.g = gmail_helper
         self.vault_root = Path(vault_root)
         self._labels_cache = None  # populated on first lookup

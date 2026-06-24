@@ -27,7 +27,7 @@ import urllib.parse
 from datetime import date, datetime, timedelta, timezone
 
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 _HERE = os.path.dirname(os.path.abspath(__file__))   # sibling helpers resolve here (flat /app on Railway)
 ADS_CUSTOMER = "1739090181"          # Sygma Training, All Courses
 GA4_PROPERTY = "354127076"           # Sygma Solutions GA4
@@ -464,7 +464,7 @@ def main(argv):
     # --- Command Centre publish (P5, 2026-06-11): snapshot to reports.snapshots; the email above is unchanged. Non-fatal.
     try:
         import importlib.util as _il, datetime as _dt
-        _spec = _il.spec_from_file_location("cc_publish", "/Users/peterashcroft/Second Brain/Library/processes/scripts/cc_publish.py")
+        _spec = _il.spec_from_file_location("cc_publish", "/tmp/pbs/Library/processes/scripts/cc_publish.py")
         _cc = _il.module_from_spec(_spec); _spec.loader.exec_module(_cc)
         _cc.publish("sygma-google-daily", _dt.date.today().isoformat(), {"subject": subject, "html": html})
         print("  CC: snapshot published")

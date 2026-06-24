@@ -37,7 +37,7 @@ gap is [[Library/lessons/2026-05-04-same-day-reconciliation-gap]] (this generali
 """
 import sys, os, json, re, time, datetime, subprocess, urllib.request, urllib.parse
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 PAT = open(f"{VAULT}/Library/processes/secrets/asana-pat").read().strip()

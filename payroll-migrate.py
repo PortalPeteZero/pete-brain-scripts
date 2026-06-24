@@ -17,7 +17,7 @@ Usage:  python3 payroll-migrate.py            # migrate + reconcile
 import json, os, re, sys, urllib.request, urllib.error
 from importlib.machinery import SourceFileLoader
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 SHEET = "1ic1J58k7PApPxnRg48QbaJP61LvdtNAPPOEPUoLv2os"

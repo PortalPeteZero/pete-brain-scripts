@@ -116,7 +116,7 @@ def publish_to_portal(data):
     url = os.environ.get("PORTAL_SUPABASE_URL")
     key = os.environ.get("PORTAL_SUPABASE_SERVICE_KEY")
     if not (url and key):
-        vault = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+        vault = os.environ.get("VAULT", "/tmp/pbs")
         kp = Path(vault) / "Library/processes/secrets/sygma-portal-supabase-keys.json"
         if not kp.exists():
             print("  Portal keys missing — skip diary_utilisation"); return

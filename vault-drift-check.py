@@ -1,4 +1,4 @@
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 #!/usr/bin/env python3
 """
 vault-drift-check.py
@@ -49,8 +49,8 @@ from datetime import datetime
 from importlib.machinery import SourceFileLoader
 
 # VAULT path auto-detect -- the script may run in three contexts:
-#   1. Host (LaunchAgent / Desktop Commander)            -> /Users/peterashcroft/Second Brain
-#   2. Cowork sandbox bash                               -> /sessions/{session}/mnt/Second Brain
+#   1. Host (LaunchAgent / Desktop Commander)            -> /tmp/pbs
+#   2. Cowork sandbox bash                               -> /sessions/{session}/mnt/Command Centre
 #   3. Imported by another script that already has VAULT -> override via env VAULT_PATH
 #
 # Preferred invocation from a Cowork session is Desktop Commander (start_process)
@@ -76,7 +76,7 @@ def _detect_vault():
     host = Path(VAULT)
     if _safe_exists(host):
         return host
-    # Sandbox path -- /sessions/{session}/mnt/Second Brain (any session id).
+    # Sandbox path -- /sessions/{session}/mnt/Command Centre (any session id).
     # Stale sessions can be present but unreadable -- skip rather than abort.
     sandbox_root = Path("/sessions")
     if _safe_exists(sandbox_root):
@@ -85,12 +85,12 @@ def _detect_vault():
         except (PermissionError, OSError):
             entries = []
         for session_dir in entries:
-            candidate = session_dir / "mnt" / "Second Brain"
+            candidate = session_dir / "mnt" / "Command Centre"
             if _safe_exists(candidate):
                 return candidate
     raise SystemExit(
         "vault-drift-check: cannot locate vault. Tried VAULT_PATH env, "
-        "/Users/peterashcroft/Second Brain, and /sessions/.../mnt/Second Brain. "
+        "/tmp/pbs, and /sessions/.../mnt/Command Centre. "
         "Set VAULT_PATH explicitly if running outside the standard contexts."
     )
 

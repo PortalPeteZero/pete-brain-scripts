@@ -21,7 +21,7 @@ import datetime
 sys.path.insert(0, f"{VAULT}/Library/processes/scripts/account")
 import account_store as store
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 
 def main():

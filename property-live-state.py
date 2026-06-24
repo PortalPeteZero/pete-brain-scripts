@@ -21,7 +21,7 @@ Credentials: secrets/github-pat + secrets/vercel-token if present, else the docu
 import os, re, sys, json, ssl, shutil, urllib.request, urllib.error
 from datetime import datetime, timezone
 
-VAULT = "/Users/peterashcroft/Second Brain"
+VAULT = "/tmp/pbs"
 PROPS = os.path.join(VAULT, "Properties")
 SECRETS = os.path.join(VAULT, "Library/processes/secrets")
 BACKUP = "/tmp/property-live-state-backup"

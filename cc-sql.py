@@ -8,7 +8,7 @@ Usage:
 """
 import sys, json, urllib.request, urllib.error
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 TOK = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
 REF = "zhexcaflgahdcbzvbyfq"

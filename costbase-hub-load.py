@@ -19,7 +19,7 @@ import re
 import sys
 import glob
 import urllib.request
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 AUDIT_DIR = f"{VAULT}/Businesses/sygma-solutions/finance/audit-data"

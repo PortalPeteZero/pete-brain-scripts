@@ -10,7 +10,7 @@ Usage:  python3 cc-data-map-sync.py [--dry]
 """
 import json, sys, os, urllib.request, urllib.error
 
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")  # Railway bootstrap sets VAULT=repo
+VAULT = os.environ.get("VAULT", "/tmp/pbs")  # Railway bootstrap sets VAULT=repo
 KEYS = json.load(open(f"{VAULT}/Library/processes/secrets/command-centre-supabase-keys.json"))
 URL, SVC = KEYS["url"], KEYS["service_role_key"]
 DRY = "--dry" in sys.argv

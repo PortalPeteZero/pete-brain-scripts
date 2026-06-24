@@ -40,7 +40,7 @@ from typing import Any
 import yaml  # PyYAML required: `pip install pyyaml`
 
 import os  # noqa: E402
-VAULT = Path(os.environ.get("VAULT", "/Users/peterashcroft/Second Brain"))
+VAULT = Path(os.environ.get("VAULT", "/tmp/pbs"))
 def _cfg_yaml(name):  # vault path locally; on Railway the bootstrap materialises it into secrets/
     p = VAULT / "Library/processes" / name
     return p if p.exists() else (VAULT / "Library/processes/secrets" / name)

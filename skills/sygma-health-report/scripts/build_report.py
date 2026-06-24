@@ -26,7 +26,7 @@ import os, urllib.request, urllib.error, urllib.parse, json, time, importlib.uti
 from datetime import date, timedelta
 
 # VAULT path: env override (for Cowork sandbox) > host default (Pete's Mac)
-VAULT = os.environ.get("VAULT_ROOT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT_ROOT", "/tmp/pbs")
 SCRIPTS = f"{VAULT}/Library/processes/scripts"
 
 # ----------------------------- CONFIG ---------------------------------------

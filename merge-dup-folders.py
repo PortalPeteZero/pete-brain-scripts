@@ -9,7 +9,7 @@ Everything trashed is recoverable 30 days; moves are reversible.
 """
 import json, time, base64, urllib.request, urllib.parse, urllib.error, tempfile, os, subprocess
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 V = VAULT
 KEY = V + "/Library/processes/secrets/google-seo-service-account.json"

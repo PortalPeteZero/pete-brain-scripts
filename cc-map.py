@@ -32,7 +32,7 @@ env-first CC keys on the cloud, the vault keys file locally.
 import json, os, re, sys, hashlib, datetime, urllib.request, urllib.error
 from pathlib import Path
 
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 _SECRETS = (Path(VAULT) / "Library/processes/secrets") if os.environ.get("VAULT") \
     else (Path(__file__).resolve().parents[1] / "secrets")
 OUT = os.path.join(VAULT, "Properties/Pete Command Centre/cc-map.md")

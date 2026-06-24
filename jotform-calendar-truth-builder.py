@@ -60,7 +60,7 @@ from datetime import datetime, timedelta, date
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-VAULT = Path("/Users/peterashcroft/Second Brain")
+VAULT = Path("/tmp/pbs")
 DATA_OUT = VAULT / "Properties/Sygma Solutions Website/data/training-evaluations/calendar-truth-cache.json"
 COURSE_MAP = VAULT / "Businesses/sygma-solutions/training/courses/_course-map.yaml"
 SCRIPTS = VAULT / "Library/processes/scripts"

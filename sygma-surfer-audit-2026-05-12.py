@@ -11,7 +11,7 @@ with nohup + log redirect, not workspace bash (45s timeout).
 """
 import urllib.request, urllib.error, json, time, datetime, sys, os
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 SURFER_KEY = "vfv0b3tbStnuc_Utup9AXCsdI32sNT_8"
 H = {"API-KEY": SURFER_KEY, "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}

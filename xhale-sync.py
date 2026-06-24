@@ -52,7 +52,7 @@ from pathlib import Path
 # Config
 # ============================================================
 
-VAULT = Path(os.environ.get("VAULT", "/Users/peterashcroft/Second Brain"))
+VAULT = Path(os.environ.get("VAULT", "/tmp/pbs"))
 SCRIPTS = Path(__file__).resolve().parent  # flat-repo siblings on Railway (/app); Library/.../scripts locally
 SECRETS = VAULT / "Library/processes/secrets"
 WORK = VAULT / "Library/processes/xhale-sync"

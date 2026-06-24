@@ -9,7 +9,7 @@ whose live A doesn't come back as the expected Vercel pair rather than writing a
 """
 import re, sys, os, subprocess
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 APPLY = "--apply" in sys.argv
 VAULT = VAULT

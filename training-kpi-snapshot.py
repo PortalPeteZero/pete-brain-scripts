@@ -444,7 +444,7 @@ def publish_kpi_to_portal(payload):
     url = os.environ.get("PORTAL_SUPABASE_URL")
     key = os.environ.get("PORTAL_SUPABASE_SERVICE_KEY")
     if not (url and key):
-        vault = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+        vault = os.environ.get("VAULT", "/tmp/pbs")
         kp = os.path.join(vault, "Library/processes/secrets/sygma-portal-supabase-keys.json")
         if not os.path.exists(kp):
             print("  Portal keys missing -- skip training_kpis"); return

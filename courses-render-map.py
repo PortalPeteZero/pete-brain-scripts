@@ -31,10 +31,10 @@ from datetime import datetime
 # Cowork sandbox path. The script is run from Desktop Commander on Pete's Mac
 # so the real path is what's used in production.
 import os as _os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 _CANDIDATE_VAULTS = [
     VAULT,
-    *[f"/sessions/{d}/mnt/Second Brain" for d in (_os.listdir("/sessions") if _os.path.isdir("/sessions") else [])],
+    *[f"/sessions/{d}/mnt/Command Centre" for d in (_os.listdir("/sessions") if _os.path.isdir("/sessions") else [])],
 ]
 VAULT = next((p for p in _CANDIDATE_VAULTS if _os.path.isdir(p)), _CANDIDATE_VAULTS[0])
 COURSES_DIR = f"{VAULT}/Businesses/sygma-solutions/training/courses"

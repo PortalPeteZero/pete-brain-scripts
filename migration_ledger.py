@@ -58,9 +58,9 @@ from typing import Iterator, Optional
 
 
 # Default ledger location — derived from this script's own location so it works
-# both on Pete's Mac (~/Second Brain/...) and inside any Cowork sandbox mount.
+# both on Pete's Mac (~/Command Centre/...) and inside any Cowork sandbox mount.
 _HERE = os.path.dirname(os.path.abspath(__file__))                       # .../Library/processes/scripts
-_VAULT_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))     # .../Second Brain
+_VAULT_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))     # .../Command Centre
 DEFAULT_LEDGER_PATH = os.path.join(
     _VAULT_ROOT, "Projects", "SY-Sygma-Hub-Build", "files", "migration-ledger.jsonl"
 )

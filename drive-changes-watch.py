@@ -24,7 +24,7 @@ local state files — so it runs headless on Railway. $VAULT/env-aware for the S
 """
 import json, time, base64, urllib.request, urllib.parse, urllib.error, tempfile, os, subprocess
 
-V = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+V = os.environ.get("VAULT", "/tmp/pbs")
 KEY = V + "/Library/processes/secrets/google-seo-service-account.json"
 IMP = "pete.ashcroft@sygma-solutions.com"; SCOPE = "https://www.googleapis.com/auth/drive"; BASE = "https://www.googleapis.com/drive/v3"
 FOLDER = "application/vnd.google-apps.folder"

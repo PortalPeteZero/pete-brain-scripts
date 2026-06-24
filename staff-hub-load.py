@@ -33,7 +33,7 @@ import os
 import re
 import sys
 import urllib.request
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 CACHE_JSON = f"{VAULT}/Library/sy-hr/Staff Master.json"

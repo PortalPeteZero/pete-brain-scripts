@@ -16,7 +16,7 @@ One file per day (re-runs overwrite the day's snapshot). Keeps the last ~120 dai
 # reads of synced caches, not for placing an owner-private backup file. See [[external-service-routing]].
 import json, os, sys, datetime, urllib.request, urllib.error
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 TOKEN = open(os.path.join(VAULT, "Library/processes/secrets/supabase-token")).read().strip()

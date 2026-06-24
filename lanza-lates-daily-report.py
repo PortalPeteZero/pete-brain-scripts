@@ -63,7 +63,7 @@ import urllib.error
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
 
-VAULT = "/Users/peterashcroft/Second Brain"
+VAULT = "/tmp/pbs"
 GA4_PROPERTY = "539604544"
 GSC_SITE = "https://www.lanzarotelates.com/"
 SC_SITE_ID = "373"

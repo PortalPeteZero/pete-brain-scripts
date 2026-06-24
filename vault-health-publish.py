@@ -13,7 +13,7 @@ The underlying crons keep emailing/alerting on FAIL exactly as before — this i
 """
 import os, glob, re, html, datetime, importlib.util, urllib.request
 from pathlib import Path
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 SCRIPT_DIR = Path(__file__).resolve().parent

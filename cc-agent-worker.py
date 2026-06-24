@@ -33,7 +33,7 @@ def now_canary():
         return datetime.now(_CANARY).strftime("%A %d %B %Y, %H:%M %Z")
     return datetime.now().strftime("%A %d %B %Y, %H:%M (local)")
 
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = f"{VAULT}/Library/processes/secrets"
 
 def _secret_file(name):

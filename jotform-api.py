@@ -46,7 +46,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-VAULT = Path("/Users/peterashcroft/Second Brain")
+VAULT = Path("/tmp/pbs")
 KEY_PATH = VAULT / "Library/processes/secrets/jotform-api-key"
 BASE_URL = "https://api.jotform.com"
 TIMEOUT_SEC = 30

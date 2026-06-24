@@ -15,7 +15,7 @@ Usage: python3 capability-registry.py [--apply]
 """
 import os, re, sys, glob, shutil
 from datetime import datetime, timezone
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 PROC = os.path.join(VAULT, "Library/processes")

@@ -4,7 +4,7 @@ CD Weekly Finance Report -- PROBE script.
 
 Run this LOCALLY from your Mac Terminal (sandbox can't reach Odoo Online):
 
-  cd "~/Second Brain"
+  cd "~/Command Centre"
   python3 Library/processes/scripts/cd-weekly-finance-probe.py
 
 It will:
@@ -42,7 +42,7 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_FILE = SCRIPT_DIR.parent / "odoo-api-configuration.md"
-VAULT_ROOT = SCRIPT_DIR.parent.parent.parent  # .../Second Brain
+VAULT_ROOT = SCRIPT_DIR.parent.parent.parent  # .../Command Centre
 SAMPLE_DIR = VAULT_ROOT / "Businesses/canary-detect/finance/probes"
 ARCHIVE_DIR = VAULT_ROOT / "Businesses/canary-detect/finance/probes/_archive"
 TZ = ZoneInfo("Atlantic/Canary")

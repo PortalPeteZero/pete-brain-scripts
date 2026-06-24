@@ -17,7 +17,7 @@ Usage:
   python3 garmin-daily-pull.py --range 2026-05-01 2026-05-23  # date range
 
 Output:
-  /Users/peterashcroft/Second Brain/Personal/health/garmin/YYYY-MM-DD.md
+  /tmp/pbs/Personal/health/garmin/YYYY-MM-DD.md
 
 Idempotency: re-running for an existing date overwrites the file. Safe.
 
@@ -40,7 +40,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-VAULT = Path(os.environ.get("VAULT", "/Users/peterashcroft/Second Brain"))
+VAULT = Path(os.environ.get("VAULT", "/tmp/pbs"))
 # Business OS (H1, 2026-06-22): data homes moved to Google Drive (synced mount). VAULT kept only for the helper-script path below.
 DRIVE = Path("/Users/peterashcroft/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com")
 OUT_DIR = DRIVE / "My Drive/Health/garmin"             # md narrative, per-day

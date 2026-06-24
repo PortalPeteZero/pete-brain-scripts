@@ -9,7 +9,7 @@ Re-run any time (e.g. after new notes) — it only touches null-embedding rows.
 """
 import json, urllib.request, urllib.error, time
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = f"{VAULT}/Library/processes/secrets"; REF = "zhexcaflgahdcbzvbyfq"
 VKEY = open(f"{SEC}/voyage-api-key").read().strip()
 k = json.load(open(f"{SEC}/command-centre-supabase-keys.json")); URL = k["url"]; SR = k["service_role_key"]

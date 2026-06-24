@@ -57,7 +57,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 CID = "t6BAYDr2rKbL67IrwmAuEzmzkwXwLLZb"
 SECRET = "K9p39IxDpoCBgooFGjPuOF9c835rYNcg"
 INTERNAL = "4GZN8W6UCE0SL1O25KNV"  # X-Soldo-Internal-Token == fingerprint token
-PRIV_KEY_PATH = "/Users/peterashcroft/Second Brain/Library/processes/secrets/soldo-rsa.private"
+PRIV_KEY_PATH = "/tmp/pbs/Library/processes/secrets/soldo-rsa.private"
 BASE = "https://api.soldo.com"
 
 # Fingerprint orders per endpoint (from developer.soldo.com/reference/fingerprint-order)

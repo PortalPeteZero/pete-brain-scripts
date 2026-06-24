@@ -7,7 +7,7 @@ Usage: python3 cc-module-inventory.py
 """
 import json, subprocess
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 SQL = f"{VAULT}/Library/processes/scripts/cc-sql.py"
 def q(sql):

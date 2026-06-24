@@ -11,7 +11,7 @@ Added 2026-06-11 (Command Centre audit item: alert hook for DOWN properties).
 """
 import json, pathlib, subprocess, sys, urllib.request
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 sys.path.insert(0, f"{VAULT}/Library/processes/scripts")
 
 FEED = pathlib.Path(f"{VAULT}/Library/processes/property-state.json")

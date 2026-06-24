@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import os  # noqa: E402
-VAULT = Path(os.environ.get("VAULT", "/Users/peterashcroft/Second Brain"))
+VAULT = Path(os.environ.get("VAULT", "/tmp/pbs"))
 _EVAL_DD = os.environ.get("EVAL_DATA_DIR")
 VAULT_DATA = Path(_EVAL_DD) if _EVAL_DD else (VAULT / "Properties/Sygma Solutions Website/data/training-evaluations")
 NORMALISED = VAULT_DATA / "all-normalised.json"

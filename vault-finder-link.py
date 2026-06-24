@@ -18,12 +18,12 @@ Usage (library):
 Returns the file:/// URL string, or None if no matching vault folder is found.
 
 VAULT_ROOT env var overrides the default scan path (useful when running outside Pete's Mac).
-The emitted URL always uses /Users/peterashcroft/Second Brain/... (the host path) so links work
+The emitted URL always uses /tmp/pbs/... (the host path) so links work
 when opened on Pete's Mac, even if the script is running in a sandbox with a different mount path.
 """
 
 import os, sys, urllib.parse, re
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # Path used in emitted file:// URLs (Pete's Mac home — always)
 HOST_VAULT_ROOT = VAULT

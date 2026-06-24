@@ -11,7 +11,7 @@ MCP, no SDK dependency — stdlib only). Exposes:
 
 Auth:
   * PAT stored at:
-      /Users/peterashcroft/Second Brain/Library/processes/secrets/asana-pat
+      /tmp/pbs/Library/processes/secrets/asana-pat
   * The PAT never expires. No OAuth dance needed.
 
 CLI usage:
@@ -44,7 +44,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VAULT = Path("/Users/peterashcroft/Second Brain")
+VAULT = Path("/tmp/pbs")
 SECRETS = VAULT / "Library/processes/secrets"
 PAT_FILE = SECRETS / "asana-pat"
 

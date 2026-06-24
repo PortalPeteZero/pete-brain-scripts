@@ -38,7 +38,7 @@ Usage (CLI):
 Usage (library):
   import importlib.util
   spec = importlib.util.spec_from_file_location("ads_api",
-      "/Users/peterashcroft/Second Brain/Library/processes/scripts/ads-api.py")
+      "/tmp/pbs/Library/processes/scripts/ads-api.py")
   mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
   ads = mod.GoogleAdsAPI()
   rows = ads.query("SELECT campaign.id FROM campaign", customer_id="1739090181")

@@ -9,7 +9,7 @@ deploy that isn't SUCCESS, a missing schedule, a missing consumes/produces.
 import json, urllib.request
 from pathlib import Path
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 SECRETS = Path(f"{VAULT}/Library/processes/secrets")
 PROJECT = "b2d89898-cc67-43a7-b900-af2c2c8e4a66"

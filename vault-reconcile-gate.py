@@ -10,7 +10,7 @@ The vault must NOT be deleted until this reports 0 content orphans. The operatin
 Usage: python3 vault-reconcile-gate.py [--list]   (--list prints every orphan)
 """
 import os, sys, json, subprocess
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 VAULT = VAULT
 SQL = f"{VAULT}/Library/processes/scripts/cc-sql.py"
 LIST = "--list" in sys.argv

@@ -42,7 +42,7 @@ import os, tempfile  # noqa: E402
 # timezone: Atlantic/Canary
 # CRON-META-END
 
-VAULT = Path(os.environ.get("VAULT", "/Users/peterashcroft/Second Brain"))
+VAULT = Path(os.environ.get("VAULT", "/tmp/pbs"))
 KEY_FILE = VAULT / "Library/processes/secrets/jotform-api-key"
 # Headless (Railway): no vault / dashboard-repo — run the WHOLE pipeline through ONE ephemeral data dir
 # (sync → aggregate → eval-hub-load all read/write it; only the final Portal table is persistent).

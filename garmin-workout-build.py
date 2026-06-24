@@ -1,5 +1,5 @@
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 #!/usr/bin/env python3
 """Garmin Connect workout builder — turn a simple step spec into a structured
 workout, upload it to Garmin Connect, and optionally schedule it on a date.

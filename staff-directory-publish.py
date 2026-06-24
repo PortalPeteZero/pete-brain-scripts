@@ -14,7 +14,7 @@ Run standalone to refresh, or call publish_staff_directory() from staff-master-s
 """
 import os, glob, datetime
 from pathlib import Path
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 PEOPLE_DIR = f"{VAULT}/Businesses/sygma-solutions/people"

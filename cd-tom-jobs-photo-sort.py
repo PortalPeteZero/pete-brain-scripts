@@ -2136,7 +2136,7 @@ class Runner:
             pass
         # Append to vault Daily note
         try:
-            vault_daily = Path.home() / "Second Brain" / "Daily" / f"{today_canary().isoformat()}.md"
+            vault_daily = Path.home() / "Command Centre" / "Daily" / f"{today_canary().isoformat()}.md"
             if vault_daily.exists():
                 with vault_daily.open("a", encoding="utf-8") as f:
                     f.write("\n## CD Tom Jobs Photo Sort (Automated)\n")

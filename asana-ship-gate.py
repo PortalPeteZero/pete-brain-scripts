@@ -23,7 +23,7 @@ Registered as a Stop hook in .claude/settings.json. System design:
 """
 import sys, os, json, re, subprocess, urllib.request, datetime
 import os
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 GID_RE = re.compile(r"\b(121\d{13})\b")

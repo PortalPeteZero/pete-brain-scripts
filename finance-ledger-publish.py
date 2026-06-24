@@ -13,7 +13,7 @@ Usage:  python3 finance-ledger-publish.py [path/to/finance-ledger.md]
 """
 import os, re, sys, datetime
 from importlib.machinery import SourceFileLoader
-VAULT = os.environ.get("VAULT", "/Users/peterashcroft/Second Brain")
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 VAULT = VAULT
 DEFAULT = os.path.join(VAULT, "Personal/family/Finance/finance-ledger.md")
