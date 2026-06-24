@@ -74,9 +74,9 @@ The skill runs phase-by-phase, sets a task per phase, fixes issues as it goes, a
 
 Concretely, for every long-running step in this skill:
 - Inventory walks (Phase 1) → write a Python script to `/tmp/`, run via `mcp__Desktop_Commander__start_process`, capture results to a temp JSON / txt for parsing.
-- Drift check (Phase 2) → `mcp__Desktop_Commander__start_process` with `VAULT=/tmp/pbs python3 /tmp/pbs/vault-drift-check.py`.
-- Skill / cron / Hub audits (Phases 3-5) → file tools (Read/Grep) for individual files; Desktop Commander for any helper scripts.
-- Sync coherence (Phase 7) → `mcp__Desktop_Commander__start_process` to invoke `vault-drive-sync.py`.
+- ~~Drift check (Phase 2)~~ + ~~Sync coherence (Phase 7)~~ → **RETIRED — skip** (`vault-drift-check` / `vault-drive-sync` are gone; see those phases).
+- Skill / cron / Hub audits (Phases 3-5) → file tools (Read/Grep) for individual files; tools pulled to `/tmp/pbs`.
+- Cloud-homes health (replaces Phase 2/7) → `VAULT=/tmp/pbs python3 /tmp/pbs/vault-reconcile-gate.py` + confirm `vault_notes` / `drive_files` / `crons` are current.
 
 Workspace bash is fine for genuinely-fast one-shots (`wc -l`, `ls`, etc) but if a command might take >30s, use DC.
 
