@@ -18,7 +18,7 @@ Usage:
   python3 pete-session-bootstrap.py cc-sql.py "SELECT 1"   # ...then exec a canonical tool
 Manual run of any pulled tool afterwards:  VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py [args]
 """
-import os, sys, json, base64, subprocess, urllib.request
+import os, sys, json, base64, subprocess, shutil, urllib.request
 from pathlib import Path
 
 PBS = Path(os.environ.get("PBS_DIR", "/tmp/pbs"))
@@ -50,8 +50,17 @@ def clone_or_pull():
         subprocess.run(["git", "-C", str(PBS), "pull", "-q", "--ff-only"], check=False)
         return "pulled"
     url = f"https://{pat}@github.com/{REPO}.git" if pat else f"https://github.com/{REPO}.git"
-    subprocess.run(["git", "clone", "-q", "--depth", "1", url, str(PBS)], check=True)
-    return "cloned"
+    # GitHub throws transient SSL_ERROR_SYSCALL on clones — retry with backoff (boot-critical).
+    import time
+    last = ""
+    for attempt in range(4):
+        r = subprocess.run(["git", "clone", "-q", "--depth", "1", url, str(PBS)], capture_output=True, text=True)
+        if r.returncode == 0:
+            return "cloned"
+        last = (r.stderr or "")[:200]
+        shutil.rmtree(PBS, ignore_errors=True)
+        time.sleep(2 * (attempt + 1))
+    sys.exit(f"bootstrap: clone failed after 4 attempts — {last}")
 
 
 def materialise_secrets():
