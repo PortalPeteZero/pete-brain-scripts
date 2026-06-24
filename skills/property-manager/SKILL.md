@@ -7,8 +7,11 @@ description: "Use this skill whenever Pete wants to work on any website, app, or
 
 # Property Manager — Universal Workflow Skill
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> Anywhere a step reads/writes `Properties/`, `Projects/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Daily/`, do the **cloud equivalent**: property card / SEO tracker → **CC Properties module**, property data → the property's **Drive** folder · customer/supplier/business → the entity's **Drive** folder + a `vault_notes` record · decisions/notes/plans → **`vault_notes`** (ingest a `.md`) · session log → CC `daily_log`. Find files via `drive_files` (`cc-sql.py`), knowledge via `vault_notes` (`cc-knowledge-api.py`). Code repos still clone to `/tmp/<repo>`; tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 > [!important] Business OS migration — content lives in Drive + the knowledge DB, not the vault tree
-> A property's working files (`Projects/{name}/files/`) and reference data (`Properties/{Name}/data/`) are migrating to **Google Drive** (find via `drive_files`: `Library/processes/scripts/cc-sql.py`) and the property cards into the **CC Properties module** (Part E). The vault `Properties/` + `Projects/` content folders are **retired 24 Jun 2026 (now in Drive + vault_notes)**. Route new content per the new-world matrix in [[vault-routing]]; `[[wikilinks]]` resolve against `vault_notes` (no rewriting). Code repos still clone to a temp dir (never the vault). Full picture: `MAP.md`.
+> A property's working files (`Projects/{name}/files/`) and reference data (`Properties/{Name}/data/`) are migrating to **Google Drive** (find via `drive_files`: `/tmp/pbs/cc-sql.py`) and the property cards into the **CC Properties module** (Part E). The vault `Properties/` + `Projects/` content folders are **retired 24 Jun 2026 (now in Drive + vault_notes)**. Route new content per the new-world matrix in [[vault-routing]]; `[[wikilinks]]` resolve against `vault_notes` (no rewriting). Code repos still clone to a temp dir (never the vault). Full picture: `MAP.md`.
 
 Single workflow for connecting to any of Pete's digital properties, understanding architecture, making changes safely, and keeping the vault up to date.
 
@@ -487,9 +490,9 @@ curl -sL https://<domain>/<path> | grep -E "<expected-live-content>"   # confirm
 
 ```bash
 # status + title + console errors + desktop/mobile/dark screenshots + JSON (exit 1 if HTTP>=400 or a page error fired)
-python3 Library/processes/scripts/browser-api.py audit https://<domain>/<path> --out /tmp/verify
+VAULT=/tmp/pbs python3 /tmp/pbs/browser-api.py audit https://<domain>/<path> --out /tmp/verify
 # prove the changed copy is actually live (exit 1 if any string missing / any "absent" string still present)
-python3 Library/processes/scripts/browser-api.py check https://<domain>/<path> --expect "<new copy>" --absent "<old copy>"
+VAULT=/tmp/pbs python3 /tmp/pbs/browser-api.py check https://<domain>/<path> --expect "<new copy>" --absent "<old copy>"
 ```
 
 Complements curl + Preview, does not replace them. Config + all verbs: [[browser-api-configuration]].
@@ -623,7 +626,7 @@ Only after every box is ticked is the step done. "I believe it worked" is not ac
 These are specific lessons from incidents where this skill was followed incompletely or where a check was skipped. Each bullet addresses a real past failure. Do not skip any.
 
 - **Always `git status` and `git log --oneline -5` FIRST.** Edits from previous sessions can be sitting uncommitted on disk. This caught us when `CustomerLogin.tsx` had been edited in a previous session and never committed -- every test run afterwards used the broken version.
-- **Read the console before guessing at root cause.** If a user reports a login or network error, ask for a DevTools console screenshot before writing any fix. The console shows the actual bundle being served, the actual URLs being called, and the actual errors. All other debugging without this is guesswork. For a live/public page you can capture it headlessly yourself: `python3 Library/processes/scripts/browser-api.py console <url>` (console + page errors + failed requests). See [[browser-api-configuration]].
+- **Read the console before guessing at root cause.** If a user reports a login or network error, ask for a DevTools console screenshot before writing any fix. The console shows the actual bundle being served, the actual URLs being called, and the actual errors. All other debugging without this is guesswork. For a live/public page you can capture it headlessly yourself: `VAULT=/tmp/pbs python3 /tmp/pbs/browser-api.py console <url>` (console + page errors + failed requests). See [[browser-api-configuration]].
 - **Pre-cutover audits must be technical, not just structural.** Before declaring any site migration "ready for cutover", run a full Ahrefs / Lighthouse / schema validator pass on the staging environment. Validating only redirect coverage and sitemap is not enough. Schema.org validation, OG tag completeness, meta description length, alt text, internal-link redirect chains, and structured data eligibility for rich results must all be checked BEFORE going live.
 - **Never use `replace_all` on redirect destinations.** `replace_all` can corrupt entries where the old destination is also a source URL, creating self-referential redirect loops. Grep first, inspect each match individually, edit one at a time.
 - **Stale service workers survive domain migrations.** When a domain moves hosts, any SW registered by the old host stays registered in visitors' browsers indefinitely. Deploy a poison-pill `public/sw.js` that self-destructs on install to clear them. This is the only reliable way.

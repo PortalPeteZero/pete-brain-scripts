@@ -19,6 +19,9 @@ description: >-
 
 # AhrefAudit
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> The Ahrefs/Surfer/GSC API engine is unchanged. But anywhere a step reads/writes `Properties/{Name}/README.md`, the SEO Page Tracker, `Projects/{Parent}/seo/files/*-seo-plan.md`, or `Daily/`, do the **cloud equivalent**: property card / tracker → **CC Properties module**; SEO plans + review history → **`vault_notes`** (ingest a `.md`); session log → CC `daily_log`. The Ahrefs/Surfer project IDs in the tables stay valid. Tools + the GSC key run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 Combined audit using Ahrefs (strategic intelligence), Surfer (content intelligence), and Google Search Console (impression/click truth) to produce a balanced optimisation plan. Neither tool's score is the target. Pete controls the editorial direction.
 
 This skill applies to `property_type: marketing-site` properties primarily (vocabulary at [[vault-routing#property-type-vocabulary]]). The reusable per-page SEO workflow lives at [[page-seo-workflow]] (referenced from each property's README) — follow that for new pages so they fit the existing pattern.
@@ -39,7 +42,7 @@ Surfer's NLP recommendations often lean towards keyword stuffing -- hitting a te
 |-----------|-----|----------|
 | Ahrefs API v3 | Direct API via bash curl. Config: [[ahrefs-api-configuration]] | Keywords, SERP, competitors, backlinks, positions, Rank Tracker writes |
 | Surfer SEO API | Direct API via bash curl. Config: [[surfer-api-configuration]] | Content editors, NLP terms, content scoring, competitor audits |
-| GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `Library/processes/secrets/google-seo-service-account.json` | searchAnalytics/query for impressions, clicks, CTR, position -- true user behaviour |
+| GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `/tmp/pbs/Library/processes/secrets/google-seo-service-account.json` | searchAnalytics/query for impressions, clicks, CTR, position -- true user behaviour |
 | Asana MCP | `mcp__asana__asana_*` (load via ToolSearch) | Section creation, standing tasks |
 | Vault (file tools) | Read/Write/Edit | Plan files, property READMEs, MAP.md |
 
@@ -62,7 +65,7 @@ from google.oauth2 import service_account
 import google.auth.transport.requests, requests, json
 
 creds = service_account.Credentials.from_service_account_file(
-    "Library/processes/secrets/google-seo-service-account.json",
+    "/tmp/pbs/Library/processes/secrets/google-seo-service-account.json",
     scopes=["https://www.googleapis.com/auth/webmasters.readonly"])
 creds.refresh(google.auth.transport.requests.Request())
 

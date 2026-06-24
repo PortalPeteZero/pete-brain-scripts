@@ -15,6 +15,9 @@ description: >
 
 # Finance filing — the reconciling finance verb
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> Anywhere a step reads/writes `Businesses/{name}/finance/`, `Personal/`, `Personal/family/Finance/`, or `Daily/`, do the **cloud equivalent** — the entity's **Drive** finance home (Sygma op → `Sygma Hub`; Sygma owner-private → `Sygma Private`; CD → `CD Private/finance`; personal/family → `Ashcroft Family/Finance` + `My Drive/Finance`) + a `vault_notes` record; the Ashcroft ledger → `Ashcroft Family/Finance/finance-ledger.md` (Drive); session log → CC `daily_log`. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 > [!important] Business OS migration — finance homes are Drive now
 > The three entity finance homes are **Google Drive**: Personal/family → **Ashcroft Family/Finance** (+ Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll) → **Sygma Private**; Canary Detect → **CD Private/finance**. The old `Personal/finance/`, `Businesses/{name}/finance/`, `Personal/family/Finance/` vault paths are **retired 24 Jun 2026 (now in Drive + vault_notes)**. The entity-split rules + owner-private carve-out are unchanged — only the destination folders moved to Drive. `[[wikilinks]]` resolve against `vault_notes`. See [[vault-routing#finance-routing-by-entity--sygma--canary-detect--personal]].
 
@@ -58,7 +61,7 @@ Open the entity's home (the relevant README + its `finance-ledger.md` + recent f
 - **Enrich**: run `vault-enricher.py` on the thread → attachments to the home's `source/`, body facts to `extracts/` (the same helper triage/sync use).
 - **Label** the Gmail thread with the entity label *after reading* — business finance → `Businesses/{SY,CD,EA}-Finance`; household → `Personal/PA-Finance` (both already exist; never create a duplicate). Don't auto-create a holding filter (filters are persistent config → Pete-gated).
 - **Task** (only if there's a real action — a deadline, a reply owed, a payment): raise an Asana task with the correct project/section/priority (P1=+2d / P2=+7d / P3=+30d)/due, Mimestream + Gmail links in notes. A reply-to-Pete-by-email shaped ask → the Actions tray verb instead (per [[email-workflow]]). Pure filing with no action → **no task**.
-- **Ledger**: append a dated line to the entity's `finance-ledger.md` under the right load-bearing header (`## Deadlines` / `## Latest decision` / `## Recent filings`), then run `python3 Library/processes/scripts/finance-ledger-publish.py <path-to-ledger>` so the entity's Command Centre surface refreshes **with no deploy**. The Ashcroft Finance ledger is `Personal/family/Finance/finance-ledger.md` → the "Latest from the ledger" panel on `/m/ashcroft-finance`. Static reference (advisers, the doc-map) stays in the home's README + the module.
+- **Ledger**: append a dated line to the entity's `finance-ledger.md` under the right load-bearing header (`## Deadlines` / `## Latest decision` / `## Recent filings`), then run `VAULT=/tmp/pbs python3 /tmp/pbs/finance-ledger-publish.py <path-to-ledger>` so the entity's Command Centre surface refreshes **with no deploy**. The Ashcroft Finance ledger is `Personal/family/Finance/finance-ledger.md` → the "Latest from the ledger" panel on `/m/ashcroft-finance`. Static reference (advisers, the doc-map) stays in the home's README + the module.
 
 ### 7. Report
 One plain-English line: **entity → home → change-type → (label / task / ledger)**. e.g. *"Personal — updated Personal/family/Finance/cross-border-tax-restructure (edit: added Mike's NI verdict); labelled Personal/PA-Finance; ledger updated; no task."*

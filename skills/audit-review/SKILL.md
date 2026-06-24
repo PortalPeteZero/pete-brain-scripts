@@ -18,6 +18,9 @@ description: >-
 
 # AuditReview
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> The Ahrefs/Surfer/GSC API engine is unchanged. But anywhere a step reads/writes `Properties/{Name}/README.md`, the SEO Page Tracker, `Projects/{Parent}/seo/files/*-seo-plan.md`, or `Daily/`, do the **cloud equivalent**: property card / tracker → **CC Properties module**; SEO plans + review history → **`vault_notes`** (ingest a `.md`); session log → CC `daily_log`. The Ahrefs/Surfer project IDs in the tables stay valid. Tools + the GSC key run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 Fortnightly check that closes the loop on page SEO work. Compares where we are now against where we started, decides what to do next.
 
 This skill covers the **Fortnightly Review** section and **Phase 9** (Surfer Re-Audit) of the [[page-seo-workflow]]. Applies primarily to `property_type: marketing-site` properties (vocabulary at [[vault-routing#property-type-vocabulary]]). Read the property README before the run to confirm type + pull any rank-tracker keyword tags / Ahrefs project ID.
@@ -30,7 +33,7 @@ Version history: [[CHANGELOG]].
 |-----------|-----|----------|
 | Ahrefs API v3 | Direct API via bash curl. Config: [[ahrefs-api-configuration]] | Rank Tracker positions, keyword data, traffic changes |
 | Surfer SEO API | Direct API via bash curl. Config: [[surfer-api-configuration]] | Re-audit scores, NLP term comparison, content scoring |
-| GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `Library/processes/secrets/google-seo-service-account.json` | Primary source for impression/click/CTR movement and true average position per query |
+| GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `/tmp/pbs/Library/processes/secrets/google-seo-service-account.json` | Primary source for impression/click/CTR movement and true average position per query |
 | Asana MCP | `mcp__asana__asana_*` (load via ToolSearch) | Complete review tasks, create follow-up tasks |
 | Vault (file tools) | Read/Write/Edit | SEO Page Tracker, plan files, daily log |
 
@@ -53,7 +56,7 @@ from google.oauth2 import service_account
 import google.auth.transport.requests, requests, json
 
 creds = service_account.Credentials.from_service_account_file(
-    "Library/processes/secrets/google-seo-service-account.json",
+    "/tmp/pbs/Library/processes/secrets/google-seo-service-account.json",
     scopes=["https://www.googleapis.com/auth/webmasters.readonly"])
 creds.refresh(google.auth.transport.requests.Request())
 

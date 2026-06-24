@@ -17,7 +17,7 @@ If a similarly named skill appears (e.g. `obsidian:assistant` from a remote plug
 Primary skill for managing Pete's Second Brain: session resume/compress, daily routines, tasks, memory, resources, output styles, meeting intelligence.
 
 > [!important] Business OS migration — the vault is the operating skeleton, not the content store
-> Files live in **Google Drive** (query the `drive_files` index via `Library/processes/scripts/cc-sql.py`, never the vault tree); knowledge — lessons, decisions, notes, memories — lives in the **CC Supabase `vault_notes`** (query via `cc-knowledge-api.py`, surfaced in the CC Brain page). Wherever a step below says read/write a vault content folder (`Projects/` other than PA-*, `Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, `Library/lessons|decisions|audits|competitors|market|meetings|ip-trademark|archive|templates`), those are **retired 24 Jun 2026 (now in Drive + vault_notes)** — the real home is Drive / the knowledge DB per `MAP.md`. **`[[wikilinks]]` still work**: they resolve against `vault_notes` by name now, not by file path (decision #12 — link by stable ID, not path), so links don't need rewriting. The minimal boot kernel (~/.config/pete-cc): `CLAUDE.md`, `MAP.md`, `Library/processes`, `Library/skills`, `Daily/`, `Projects/PA-Command-Centre` + `Projects/PA-General`. Migration state: [[Projects/PA-Command-Centre/files/business-os-master-plan-2026-06-20|master plan]].
+> Files live in **Google Drive** (query the `drive_files` index via `/tmp/pbs/cc-sql.py`, never the vault tree); knowledge — lessons, decisions, notes, memories — lives in the **CC Supabase `vault_notes`** (query via `cc-knowledge-api.py`, surfaced in the CC Brain page). Wherever a step below says read/write a vault content folder (`Projects/` other than PA-*, `Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, `Library/lessons|decisions|audits|competitors|market|meetings|ip-trademark|archive|templates`), those are **retired 24 Jun 2026 (now in Drive + vault_notes)** — the real home is Drive / the knowledge DB per `MAP.md`. **`[[wikilinks]]` still work**: they resolve against `vault_notes` by name now, not by file path (decision #12 — link by stable ID, not path), so links don't need rewriting. The minimal boot kernel (~/.config/pete-cc): `CLAUDE.md`, `MAP.md`, `Library/processes`, `Library/skills`, `Daily/`, `Projects/PA-Command-Centre` + `Projects/PA-General`. Migration state: [[Projects/PA-Command-Centre/files/business-os-master-plan-2026-06-20|master plan]].
 
 > **Routing rules, per-section structure, onboarding rituals, lifecycle rules, multi-system reading-order protocol**: `[[vault-routing]]` (loaded by Resume workflow when invoked). Do not duplicate routing here.
 >
@@ -78,7 +78,7 @@ For full reference, read `references/obsidian-formatting.md`.
 
 ## Vault Structure
 
-> [!note] Business OS: this describes the LEGACY vault layout. Content now lives in Drive + the knowledge DB (see the banner at the top + `MAP.md`). Kept for reference during migration.
+> [!note] Business OS: this describes the LEGACY vault layout (retired 24 Jun 2026). Content now lives in Drive + the knowledge DB (see the banner at the top + `MAP.md`). Kept only as a taxonomy reference.
 
 10 top-level sections (Invoices/ and Delegated/ folded 2026-05-06). Full subfolder breakdown + per-section rules: `[[vault-routing#vault-structure]]`.
 
@@ -119,47 +119,9 @@ In Cowork, Asana tools are deferred -- load via ToolSearch (`query: "asana" max_
 - **Search tasks**: `asana_search_tasks` with workspace GID
 - **Get project tasks**: `asana_get_tasks` with project GID
 
-### Auto-Create Vault Folders
+### Auto-Create Vault Folders — RETIRED
 
-> [!warning] Business OS: legacy — do NOT auto-create vault project folders. Asana working projects map to Drive homes + the CC now, not `Projects/{name}/` vault folders (this conflicts with Resume Step 1's "don't glob Projects/"). Rescope at H/E. Kept below for reference only.
-
-At session start, after pulling Asana state, check every Asana working project has a complete vault folder. **Complete means three things, not just the folder**: (1) the folder itself, (2) `README.md` with proper frontmatter, (3) `files/` subfolder. If any piece is missing, complete it.
-
-The 2026-05-03 audit found 29 of 40 active project folders had folder + `files/` but NO `README.md`. The auto-create step had been silently incomplete. Don't repeat. Each completion check must verify all three artefacts exist, not just the folder.
-
-**Stub README template** for auto-create. Fill in from the Asana project (name, notes, team prefix, gid). Description sourced from Asana project notes, MAP.md if a description already lives there, or "{project-name} project" as last resort.
-
-```markdown
----
-type: project
-status: active
-prefix: {CD|SY|OS|EA|AT|PA}
-slug: {kebab-case slug after prefix}
-asana_gid: "{16-digit gid}"
-asana_team_gid: "{team gid}"
-created: {today YYYY-MM-DD}
-updated: {today YYYY-MM-DD}
-tags: [project, {team-name}, {category}]
-category: {seo|migration|build|marketing|ops|regulatory|general}
----
-
-# {Project-Name}
-
-{One-line description from Asana notes / MAP.md / fallback}
-
-> [!info] Auto-created stub
-> Created on session start by the brain skill auto-create step. Expand as the project's state changes.
-
-## Files
-
-Working content lives in `files/` alongside this README.
-```
-
-**Same pattern for missing customer/supplier READMEs**: if `Customers/{slug}/` or `Suppliers/{slug}/` exists with no README, populate from `Library/templates/customer-readme-template.md` (or supplier equivalent), not just leave empty. Empty supplier folders happened to SY-Rausch and SY-SurveyEquipment-UK on 2026-05-01; don't repeat.
-
-**Properties (manual creation today; rule applies if automated):** Properties are currently created by hand, not by an Asana-driven flow. If a session ever creates a property folder programmatically (e.g. a future "register property" workflow), the same completeness rule applies: folder + `README.md` + `data/` in one operation, with `property_type:` frontmatter (`marketing-site|saas-app|internal-tool|external-data-source`) per the vocabulary in `[[vault-routing#property-type-vocabulary]]`. Never leave a property folder without a README.
-
-**Verification before declaring auto-create complete**: re-list every active Asana project and confirm a vault README exists for each. If any missing, list them as "auto-create still pending" in the resume briefing.
+Asana working projects map to **Drive homes + the CC** now, not `Projects/{name}/` vault folders. **Do NOT auto-create vault folders** for Asana projects (the vault is retired). Project state lives in the CC + the entity's Drive folder; new customer/supplier/property records are created in the **CC** (Properties module / account store) or their **Drive** home, never as a vault folder.
 
 ### Demand-driven project Gmail labels
 
@@ -167,7 +129,7 @@ Project Gmail labels are NOT created blanket. They are created when (a) `triage`
 
 ### Calendar integration
 
-All Calendar work via `Library/processes/scripts/calendar-api.py`. Default timezone: Atlantic/Canary. Default calendar: Pete's primary. Named-person override (e.g. "put this in Tom's calendar"). Detection scope: flights, hotels, cars, meetings only. Full reference: `[[calendar-api-configuration]]` and `[[email-workflow]]`.
+All Calendar work via `/tmp/pbs/calendar-api.py`. Default timezone: Atlantic/Canary. Default calendar: Pete's primary. Named-person override (e.g. "put this in Tom's calendar"). Detection scope: flights, hotels, cars, meetings only. Full reference: `[[calendar-api-configuration]]` and `[[email-workflow]]`.
 
 ### Multi-system context loading
 
@@ -218,10 +180,10 @@ Reconstruct full context so Pete picks up where he left off.
 
 ### Steps
 
-1. **Load core memory** -- Read: `CLAUDE.md`, `MAP.md`, `[[vault-routing]]`. **Do NOT glob the vault's content folders** (`Projects/` other than `PA-Command-Centre`/`PA-General`, `Businesses/`, `Customers/`, `Suppliers/`, `Properties/`, `Personal/`, `Accreditations/`) — those are retired 24 Jun 2026 (now in Drive + vault_notes) (Business OS migration; see the banner at the top of this skill). Project / entity / customer / property context lives in the live homes now: query the **file-index** for "what exists / where is X" (`python3 Library/processes/scripts/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`Library/processes/scripts/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
-2. **Load recent daily notes** -- Last 3 from `Daily/` (sorted by filename date). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against live Asana (something in narrative but missing from Asana, or something in Asana whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-gid live-state cross-check — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. Per-day files are **Garmin-native** (latest = today: the sleep you woke from this morning + today's readiness + today's activity, plus the rich `training` block — status, ACWR, training-effect, HR zones); full files at `Personal/health/garmin/` (see [[garmin-api-configuration]]). The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/Users/peterashcroft/Second Brain/Library/processes/scripts/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
+1. **Load core memory** -- Read: `CLAUDE.md`, `MAP.md`, `[[vault-routing]]`. **Do NOT glob the vault's content folders** (`Projects/` other than `PA-Command-Centre`/`PA-General`, `Businesses/`, `Customers/`, `Suppliers/`, `Properties/`, `Personal/`, `Accreditations/`) — those are retired 24 Jun 2026 (now in Drive + vault_notes) (Business OS migration; see the banner at the top of this skill). Project / entity / customer / property context lives in the live homes now: query the **file-index** for "what exists / where is X" (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`/tmp/pbs/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
+2. **Load recent daily notes** -- Last 3 from `Daily/` (sorted by filename date). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against live Asana (something in narrative but missing from Asana, or something in Asana whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-gid live-state cross-check — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. Per-day files are **Garmin-native** (latest = today: the sleep you woke from this morning + today's readiness + today's activity, plus the rich `training` block — status, ACWR, training-effect, HR zones); full files at `Personal/health/garmin/` (see [[garmin-api-configuration]]). The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/tmp/pbs/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
 2a. **Surface yesterday's PF journal lesson** -- Read `My Drive/Passion Fit/journal/{yesterday-YYYY-MM-DD}.md` **via Desktop Commander** (the journal moved to Drive; the old vault `Personal/passion-fit/journal/` is deleted — mount root `~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/My Drive/Passion Fit/journal/`). Grep for the `## One lesson for tomorrow` heading; extract the line(s) that follow (cut at next `## ` heading or end-of-file). Surface in the Resume briefing as its own line: `**Yesterday's lesson:** {extracted text}`. If the file is missing or the heading is absent, skip silently — no nag from Resume; the 6pm `pf-journal-reminder` cron is the only nagger. Same source-of-truth + same extraction logic as the morning briefing's "Lesson from yesterday" section (canonical process: [[pf-journal#Lesson-flow]]).
-3. **Pull Asana state** -- Read `Library/processes/asana-configuration.md` for IDs. Load Asana tools via ToolSearch. Call `asana_get_my_tasks` for Pete's assigned tasks. Check for new Asana projects without vault folders -- create them automatically.
+3. **Pull Asana state** -- Read `Library/processes/asana-configuration.md` for IDs. Load Asana tools via ToolSearch. Call `asana_get_my_tasks` for Pete's assigned tasks. (Do NOT auto-create vault folders — retired; Asana projects map to the CC + Drive.)
 3a. **Detect manually-added tasks** -- Surface tasks added directly in the Asana app (mobile / web) since the last session, so Claude absorbs their context before settling on the day's focus.
 
 **Mechanic:**
@@ -281,7 +243,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
    6. If the Pending block is empty after cross-check, skip the line entirely. Don't pad with stale narrative just to fill space.
 
    The Δ block being current does not exempt the Pending block. Same source-of-truth rule applies to both.
-9. **File-index freshness (replaces the old MAP-drift pre-flight)** -- MAP.md no longer mirrors the file tree (it points at the live index), so there is no per-session MAP drift to reconcile. The `drive_files` index is kept current automatically by the **`drive-changes-watch`** capture cron (every 15 min) — anything Pete or staff add/move in Drive is already captured. No action needed at resume. Belt-and-braces: if the capture cron is ever found stopped (`launchctl list | grep drive-changes`), flag it; a manual catch-up run is `python3 Library/processes/scripts/drive-changes-watch.py`.
+9. **File-index freshness (replaces the old MAP-drift pre-flight)** -- MAP.md no longer mirrors the file tree (it points at the live index), so there is no per-session MAP drift to reconcile. The `drive_files` index is kept current automatically by the **`drive-changes-watch`** capture cron (every 15 min) — anything Pete or staff add/move in Drive is already captured. No action needed at resume. Belt-and-braces: check its status in the CC Automations registry (`/m/automations-log`) or `public.crons`; a manual catch-up run is `VAULT=/tmp/pbs python3 /tmp/pbs/drive-changes-watch.py`.
 10. **Update daily note** -- Create/append to `Daily/YYYY-MM-DD.md` with a "Current Session" section.
 
 ### Guidelines
@@ -330,7 +292,7 @@ Save everything valuable from the current session.
    ### Raw Session Summary
    [Condensed summary -- use [[wikilinks]] for every project, person, and vault note mentioned]
    ```
-3. **Update memory files (structured-home sweep)** -- **[Business OS: the "home" is the Drive entity folder + the CC `vault_notes` record now — NOT the legacy vault content folders described below; follow the top-of-skill banner. Save-side rescope pending (H/E).]** Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its existing home in the indexed vault -- is there a project on this? a property? a customer / supplier / business area? any folder or sub-folder on the topic? -- and update it with what changed + the rationale.** The daily note + session log are pointers only; nothing of substance ends its life in a daily log, a lesson, or CLAUDE.md when it has a real home in the structured vault. Operator prefs -> `CLAUDE.md` Rules section as a **pointer only** (structured rules go to `Library/lessons/`). New files added to MAP.md. See [[Library/lessons/2026-05-20-website-work-saved-to-structured-vault]].
+3. **Update memory files (structured-home sweep)** -- Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its home in the cloud — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`) for knowledge + the `drive_files` index (`cc-sql.py`) for the entity's Drive folder — and update it with what changed + the rationale.** Knowledge / decisions / lessons → ingest a `.md` to `vault_notes`; files → the Drive folder; the session log → CC `daily_log`. The daily log is a pointer only; nothing of substance ends its life there. Operator prefs → CLAUDE.md Rules **only on an explicit Pete correction he asks to be saved**; structured rules → `vault_notes`. See the website-work lesson (in `vault_notes`).
 4. **Create Asana tasks** -- For any follow-up actions identified during the session, create tasks in Asana with correct project, assignee, and priority. Also mark any completed items as done in Asana.
 5. **Check session plans** -- Look for session plan files created this session:
    - If all steps complete, update `status: completed`
@@ -404,13 +366,13 @@ Read the appropriate template before generating the review.
 
 ### Morning Routine
 
-1. Read most recent daily note from `Daily/`
+1. Read the most recent daily note — the latest `daily_log` row in the CC
 2. Pull Asana tasks: `asana_get_my_tasks` -- note P1/P2 priorities and overdue items
-3. Check `Projects/` for approaching deadlines
-4. Business: Check `Businesses/` for business/department status.
+3. Check Asana / the CC `tasks` engine for approaching deadlines
+4. Business: pull business/department status from `vault_notes` (`cc-knowledge-api.py`) or the Drive home.
 5. Ask mode-appropriate questions:
    - Main focus, key meetings, blockers
-6. Save to `Daily/YYYY-MM-DD.md` (append morning section) with frontmatter
+6. Record to the CC `daily_log` (append morning section) with frontmatter
 7. Create 1-3 Asana tasks based on energy and deadlines. Report what was created.
 
 ### Evening Routine
@@ -419,13 +381,13 @@ Read the appropriate template before generating the review.
 2. Compare task progress vs morning intentions
 3. Ask mode-appropriate questions:
    - Accomplishments, decisions made, top priority for tomorrow
-4. Save to `Daily/YYYY-MM-DD.md` (append evening section)
+4. Record to the CC `daily_log` (append evening section)
 5. Mark completed Asana tasks as done; route any new insights to the right file
 
 ### Weekly Review
 
-1. Read all daily notes for the current week
-2. Scan `Projects/` for movement
+1. Read this week's daily notes — the `daily_log` rows in the CC
+2. Scan Asana / the CC `tasks` for movement
 3. Pull completed Asana tasks for the week -- celebrate wins
 4. Business: Check OKR progress, department health
 5. Ask mode-appropriate questions:
@@ -532,22 +494,13 @@ User voice from the primary context file is applied ON TOP of the active style.
 
 ### Saving Resources
 
-When Pete shares reusable content, route per `[[vault-routing#master-routing-matrix]]`:
-- Processes / SOPs -> `Library/processes/`
-- Competitor intel -> `Library/competitors/`
-- Market research -> `Library/market/`
-- Templates -> `Library/templates/`
-- Decisions -> `Library/decisions/`
-- IP/trademark -> `Library/ip-trademark/`
-
-Add `tags:` in frontmatter. Report what was saved and where.
+When Pete shares reusable content, route per `[[vault-routing#master-routing-matrix]]`. Processes / SOPs / API-config docs stay in `Library/processes/` (the surviving skeleton); everything else — competitor intel, market research, templates, decisions, IP/trademark — is **knowledge → ingest a `.md` to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null embedding → `cc-knowledge-embed-backfill.py`). Add `tags:`; report what was saved and where.
 
 ### Finding Resources
 
-1. Check `MAP.md` for known resources
-2. List files: `ls Library/`
-3. Search by keyword: `grep -rl "keyword" Library/`
-4. Read and present the matching resource
+1. **Knowledge** → `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py "<query>"` (full-text + semantic over `vault_notes`).
+2. **Files** → the `drive_files` index: `cc-sql.py "SELECT drive,path FROM drive_files WHERE name ILIKE '%X%'"`.
+3. Read and present the matching resource.
 
 ---
 
@@ -575,14 +528,7 @@ USE WHEN Pete:
 
 ### Step 1: Identify Meeting Type and Save Location
 
-Meeting-type → folder routing lives in `[[vault-routing#per-section-rules]]` (Library > Meetings). Brief summary:
-- Team standup → `Library/meetings/team-standups/`
-- Client call → `Library/meetings/client-calls/` (authoritative archive -- never duplicated to customer folders; wikilink from matter)
-- One-on-one → `Library/meetings/one-on-ones/`
-- Board review → `Library/meetings/board-reviews/`
-- All-hands → `Library/meetings/all-hands/`
-- Cross-team → `Library/meetings/cross-team/`
-- General → `Library/meetings/general/`
+Meeting notes are **knowledge → `vault_notes`**: write the note (`type: meeting`, a `meeting_type` tag — standup / client-call / one-on-one / board-review / all-hands / cross-team / general — + entity tags) and ingest it (`cc-knowledge-ingest.py` → null embedding → `cc-knowledge-embed-backfill.py`). Client-call notes wikilink to the customer's CC record. (The old `Library/meetings/*` folders are retired.)
 
 Filename: `YYYY-MM-DD Meeting Title.md`.
 
@@ -688,7 +634,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[Library/lessons/README]]`.
 - **Outbound text drafting**: read `[[voice-principles]]` before drafting any outbound text on Pete's behalf (customer email, supplier email, internal email, blog, article, ad copy).
 - **Finance / invoicing / Soldo / Dext / Odoo / Xero / payroll / VAT**: read `[[finance-workflow]]` first.
-- **Helper scripts**: 41 of them at `Library/processes/scripts/`. Catalogue at `[[scripts-index]]` -- don't reinvent.
+- **Helper scripts**: in GitHub `pete-brain-scripts`, pulled to `/tmp/pbs` by the boot kernel — run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`. Don't reinvent; check the CC Helpers registry (`/m/process-library`).
 - **Connectors and APIs**: registry at `[[connections]]` -- don't guess what's connected or how it auths.
 - **Sygma Hub mirror**: `Library/sy-*/` folders are local mirrors of designated Sygma Hub Drive folders. When Pete asks about Sygma policies / training reference / company info / HR / sales pipeline, check `Library/sy-*/` first. See `[[hub-content-index]]`.
 - **Daily notes**: `Daily/YYYY-MM-DD.md` is the most-read memory file -- keep it current.

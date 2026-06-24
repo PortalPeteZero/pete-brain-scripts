@@ -20,6 +20,9 @@ description: >
 
 # asana-gmail-sync
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> The Gmail ↔ Asana engine is unchanged. But any **parity / folder-match** check against `Customers/`, `Suppliers/`, `Projects/` vault folders is retired — there are no vault folders; match against the entity's **Drive** folder (`drive_files` via `cc-sql.py`) + its `vault_notes` record instead. `vault-enricher.py` still runs (keep calling it). Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 > [!important] Business OS migration — filing targets are Drive + the knowledge DB now
 > Gmail-label ↔ Asana reconciliation is unchanged. Where this skill files thread context to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record (the vault content folders are retired 24 Jun 2026 (now in Drive + vault_notes)). Route per the new-world matrix in [[vault-routing]]. **`vault-enricher.py`** (called on filed/task-linked threads) still targets the vault file — flagged for Drive/DB redesign in the [[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]; keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
 
@@ -42,8 +45,8 @@ Also: **offered at the end of every `triage` session** (opt-in y/n after the Act
 
 ## Dependencies
 
-- Gmail API helper: `Library/processes/scripts/gmail-api.py` (always available)
-- Calendar API helper: `Library/processes/scripts/calendar-api.py` (always available)
+- Gmail API helper: `/tmp/pbs/gmail-api.py` (always available)
+- Calendar API helper: `/tmp/pbs/calendar-api.py` (always available)
 - Asana MCP: `mcp__asana__*` tools. Load via `ToolSearch({ query: "asana", max_results: 60 })` if deferred.
 - State file: `Library/processes/email-workflow-state.md` (declined suggestions, sender→label observations, routing observations).
 - Vault folder access: Read/Write/Edit/Glob for parity checks against Customers/, Suppliers/, Projects/.
@@ -58,15 +61,15 @@ Also: **offered at the end of every `triage` session** (opt-in y/n after the Act
 
 ## Execution: ALWAYS call the deterministic wrapper first
 
-> [!important] The skill's first action MUST be to run `Library/processes/scripts/sync-asana.py`.
+> [!important] The skill's first action MUST be to run `/tmp/pbs/sync-asana.py`.
 > The wrapper is the deterministic implementation of Steps 1, 3, 4, 5, 7, 8 in Python. It does not depend on prose interpretation — every run executes exactly the same 8-step algorithm. Steps that need LLM judgement (Step 6 orphan routing + task naming) are surfaced as candidates in the wrapper's output for the LLM to action.
 >
 > Procedural rule for this skill: **don't manually re-derive the steps in bash.** Always run the wrapper. It exists precisely so the 8-step algorithm can't drift between runs.
 
 ```bash
-python3 Library/processes/scripts/sync-asana.py            # run + apply changes
-python3 Library/processes/scripts/sync-asana.py --dry-run  # report only, no mutations
-python3 Library/processes/scripts/sync-asana.py --json     # raw JSON (for LLM chaining)
+VAULT=/tmp/pbs python3 /tmp/pbs/sync-asana.py            # run + apply changes
+VAULT=/tmp/pbs python3 /tmp/pbs/sync-asana.py --dry-run  # report only, no mutations
+VAULT=/tmp/pbs python3 /tmp/pbs/sync-asana.py --json     # raw JSON (for LLM chaining)
 ```
 
 **Exit codes:**
@@ -197,7 +200,7 @@ For each orphan, **auto-create the task with smart routing** (no asking):
 - **Task notes**: include all three of these (Mimestream first):
   1. **Mimestream link**: `https://links.mimestream.com/g/pete.ashcroft@sygma-solutions.com/t/{thread_id}` — opens the thread directly in Pete's Mimestream desktop client.
   2. **Gmail web link**: `https://mail.google.com/mail/u/0/#all/{thread_id}` — fallback when not on the Mac.
-  3. **Finder link to the matching vault folder** (when the task is in a project/customer/supplier): generated via `Library/processes/scripts/vault-finder-link.py {project-name} [section-name]`. Returns a `file:///Users/peterashcroft/Second%20Brain/...` URL that opens the folder in macOS Finder. Omit if no matching vault folder exists (don't emit a broken link).
+  3. **Finder link to the matching vault folder** (when the task is in a project/customer/supplier): generated via `/tmp/pbs/vault-finder-link.py {project-name} [section-name]`. Returns a `file:///Users/peterashcroft/Second%20Brain/...` URL that opens the folder in macOS Finder. Omit if no matching vault folder exists (don't emit a broken link).
 
   Then: brief summary + how it was routed (which fallback step matched) + "priority defaulted to P2 — edit in Asana if needed".
 
@@ -206,7 +209,7 @@ For each orphan, **auto-create the task with smart routing** (no asking):
 - **MUST run vault-enricher on the source thread → routed vault folder.** The call is part of the orphan auto-create operation, not an after-thought:
 
   ```bash
-  python3 Library/processes/scripts/vault-enricher.py {thread_id} "{routed-vault-folder}"
+  VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{routed-vault-folder}"
   ```
 
   The routed-vault-folder is whatever the fallback chain resolved (Customers/SY-X, Suppliers/CD-Y, Projects/CD-Website, Team-General/{prefix}-General, etc.) — converted to the vault folder path. Skip rules in the enricher handle PA-General and operational labels automatically.

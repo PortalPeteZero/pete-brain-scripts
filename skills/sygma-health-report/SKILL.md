@@ -52,14 +52,13 @@ Default deep-dive pages (the "recently worked on" cluster): **EUSR CAT1, Cat & G
 **In Claude Code (default):** run the generator directly. It pulls four sources live and writes the report in ~10–15 seconds.
 
 ```bash
-# Path resolves from $VAULT_ROOT (default /Users/peterashcroft/Second Brain on Pete's Mac;
-# export VAULT_ROOT=/sessions/{session-name}/mnt/Second\ Brain when running in a Cowork sandbox).
-python3 "${VAULT_ROOT:-/Users/peterashcroft/Second Brain}/Library/skills/sygma-health-report/scripts/build_report.py"
+# The generator is pulled from GitHub by the boot kernel; run it from /tmp/pbs:
+VAULT=/tmp/pbs python3 "/tmp/pbs/skills/sygma-health-report/scripts/build_report.py"
 ```
 
 A 120000 ms timeout is plenty (it's ~10–15s now). The script:
 1. Pulls four sources live (helper-first: GSC/GA4/Ads via the `*-api.py` helpers; Ahrefs via direct API).
-2. Writes the full Markdown report to `Properties/Sygma Solutions Website/data/health-report-{today}.md`.
+2. Writes the full Markdown report to `/tmp/health-report-{today}.md` (then published to the CC — step 5).
 3. Prints a HEADLINE block to stdout (DR, top-10 count, and per-page head-term position + 7-day delta + ranking URL).
 
 **In Cowork:** it now runs in ~10–15s — under the workspace bash ~45s cap — so a direct run is usually fine. If a run ever approaches the cap, fall back to Desktop Commander `start_process` with `nohup` + a log file and poll the log. Read the saved `.md` when it completes.
@@ -70,10 +69,10 @@ A 120000 ms timeout is plenty (it's ~10–15s now). The script:
 
 Pete maintains a small set of state-of-play docs that record what's already been investigated, fixed, or locked. **Every finding I'm about to surface must be cross-checked against these. If a finding sits inside any of them, it has already been handled — do NOT flag it as if it were new.** Skipping this step has burned the same trap (HSG47 explainer paid-spend residue, sitelink already killed 19 May) five times. The build_report.py output now includes a `--- MANDATORY READS ---` block in the stdout headline; the saved `.md` has matching "Recent ad-account changes" and "Locked no-work pages" sections at the top. Use them.
 
-1. **`Properties/Sygma Solutions Website/data/google-ads-account.md`** — the live ads account state + a `## Recent changes ledger` listing every structural change (date + summary). Anything in the ledger from the last 30 days is fresh; do not propose work to undo it. The report surfaces this as the "Recent ad-account changes" section.
-2. **`Properties/Sygma Solutions Website/seo-non-issues.md`** — six numbered traps with the "looks-like-a-bug-but-isn't" explanation. Read before flagging anything that matches a numbered trap pattern (lovable.app referral, old-WP-URL clicks in GSC, tail-keyword rank, hreflang on a single-language site, the 24 May synchronised cluster drop, hsg47-explained CTR).
-3. **`Library/decisions/2026-05-07-hsg47-explained-no-work.md`** — locked decision: no CTR / Surfer / title work on `/knowledge-hub/hsg47-explained`. The report surfaces this as the "Locked no-work pages" section.
-4. **Last 3 `Daily/YYYY-MM-DD.md` notes** — what was actually done in the last few sessions (e.g. the 19-25 May HSG47 ad group restructure + sitelink kill, the 31 May P1/P2/P3 onsite plan).
+1. **`google-ads-account`** (Sygma ads state + `## Recent changes ledger`) — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py "google-ads-account"`) or the Sygma property record in the CC. Anything in the ledger from the last 30 days is fresh; don't propose undoing it. Surfaced as "Recent ad-account changes".
+2. **`seo-non-issues`** (six "looks-like-a-bug-but-isn't" traps) — query `vault_notes`. Read before flagging a matching pattern (lovable.app referral, old-WP-URL clicks in GSC, tail-keyword rank, hreflang on a single-language site, the 24 May cluster drop, hsg47-explained CTR).
+3. **The hsg47-explained no-work decision** — query `vault_notes` (`"hsg47-explained no work"`): no CTR / Surfer / title work on `/knowledge-hub/hsg47-explained`. Surfaced as "Locked no-work pages".
+4. **The last few `daily_log` entries** in the CC — what was actually done recently (the HSG47 ad-group restructure + sitelink kill, the P1/P2/P3 onsite plan).
 
 If a finding I'm about to flag matches any of (1)-(4), I say so explicitly: *"x already actioned on {date}; the y you're seeing is decaying residue / locked / non-issue per ledger entry"*. The aim is the report cannot lead me into restating an already-fixed issue as if it were live.
 
@@ -89,9 +88,9 @@ Read the generated `.md` and present it to Pete with interpretation, not just th
    ```bash
    python3 - <<'PY'
    import sys, datetime, pathlib, html as H
-   sys.path.insert(0, "/Users/peterashcroft/Second Brain/Library/processes/scripts")
+   sys.path.insert(0, "/tmp/pbs")
    import cc_publish
-   md_path = sorted(pathlib.Path("/Users/peterashcroft/Second Brain/Properties/Sygma Solutions Website/data").glob("*health-report*.md"))[-1]  # the file this run just saved
+   md_path = sorted(pathlib.Path("/tmp").glob("*health-report*.md"))[-1]  # the file this run just saved
    body = "<pre style='font:13px/1.55 ui-monospace,Menlo,monospace;white-space:pre-wrap;padding:18px'>" + H.escape(md_path.read_text()) + "</pre>"
    period = datetime.date.today().isoformat()
    ok = cc_publish.publish("sygma-health", period, {"subject": f"Sygma health report — {period}", "html": body})

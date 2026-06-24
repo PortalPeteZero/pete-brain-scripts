@@ -128,9 +128,9 @@ Specific known overrides:
    ```bash
    python3 - <<'PY'
    import sys, datetime
-   sys.path.insert(0, "/Users/peterashcroft/Second Brain/Library/processes/scripts")
+   sys.path.insert(0, "/tmp/pbs")
    import cc_publish
-   html = open("/Users/peterashcroft/Second Brain/Businesses/canary-detect/finance/cost-base-reports/2026-cost-base-YTD.html").read()
+   html = open("/tmp/2026-cost-base-YTD.html").read()
    period = datetime.date.today().isoformat()
    ok = cc_publish.publish("cd-cost-base", period, {"subject": f"CD cost base YTD — {period}", "html": html})
    print("published" if ok else "PUBLISH FAILED")
@@ -157,7 +157,7 @@ Update `BASELINE_START` and `BASELINE_END` constants at the top of `build_data.p
 
 ### Odoo (camello-blanco-sl.odoo.com)
 
-Single-company instance. All CD bookkeeping. Helper: `Library/processes/scripts/odoo-api.py`. JSON-RPC. Auth via API key in `Library/processes/odoo-api-configuration.md`.
+Single-company instance. All CD bookkeeping. Helper: `/tmp/pbs/odoo-api.py`. JSON-RPC. Auth via API key in `Library/processes/odoo-api-configuration.md`.
 
 Key accounts:
 - 640000 Sueldos y Salarios
@@ -185,7 +185,7 @@ Key accounts:
 
 ### Xero (Sygma Solutions Limited)
 
-For Sygma → CD intercompany invoices. Helper: `Library/processes/scripts/xero-api.py`. OAuth 2.0 refresh-token flow. Tokens at `Library/processes/secrets/xero-tokens.json`. Org ID: `2cb5c90b-1f4e-4d5c-a820-39c8a01b81c8`.
+For Sygma → CD intercompany invoices. Helper: `/tmp/pbs/xero-api.py`. OAuth 2.0 refresh-token flow. Tokens at `/tmp/pbs/Library/processes/secrets/xero-tokens.json`. Org ID: `2cb5c90b-1f4e-4d5c-a820-39c8a01b81c8`.
 
 Query pattern:
 ```python
@@ -246,12 +246,9 @@ Structure:
 
 Styling: CSS variables for navy + orange palette. Tabular numerals throughout. Hover states on data rows. Mobile-responsive (collapses to single column under 640px).
 
-### Vercel mirror
+### Live home (NOT Vercel)
 
-URL: **https://cd-cost-base.vercel.app**
-Project: `sygma1/cd-cost-base`
-Deploy command: see step 5 of "How to run" above.
-**Public, no login**. Pete accepts the privacy trade-off (cash worker / Juan lines visible).
+The report lives ONLY in the Command Centre — **commandcentre.info/m/cd-finance** (Cost base tab, Private, owner-gated). The old `cd-cost-base.vercel.app` was **deleted 11 Jun 2026 — do NOT recreate it** (it was public; the cost base has cash-worker lines). Publish via step 5; render to `/tmp`, never a vault folder.
 
 ---
 

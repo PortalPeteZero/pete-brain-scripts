@@ -20,8 +20,13 @@ description: >
 
 # Vault Check
 
-> [!important] Business OS migration — this skill needs a rescope (H/E)
-> Content now lives in **Google Drive** (`drive_files` index via `cc-sql.py`) + the **CC `vault_notes`** (`cc-knowledge-api.py`); the vault is just the operating skeleton. Two old audit targets are retired: **`vault-drift-check` is being retired** (the self-maintaining `drive_files` capture cron + the derived MAP replace it) and **`vault-drive-sync` is disabled for good**. Until this skill is rescoped, audit the **skeleton** (CLAUDE.md, MAP, `Library/processes`, `Library/skills`, `Daily`) + the **live homes**, not the legacy content folders. `[[wikilinks]]` resolve against `vault_notes`. See [[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|the Part D ledger]].
+> [!important] RESCOPED 24 Jun 2026 — read before running. The vault is **retired**; most phases below audited the now-gone vault tree.
+> **DO NOT run any phase that walks the content folders, or runs `vault-drift-check.py` / `vault-drive-sync.py` — both are RETIRED/disabled and the content folders are gone.** What this skill now usefully audits (thin-client scope):
+> 1. **Skeleton integrity** — the tiny `CLAUDE.md` bootstrap + `~/.config/pete-cc/` (kernel, caches, hooks) + `Library/processes` config docs + `Library/skills`.
+> 2. **Skills** — each SKILL.md is cloud-aligned (no retired-folder writes; tool paths are `/tmp/pbs`; no inline secrets) and its `.skill` archive matches source.
+> 3. **Scheduled tasks / crons** — the live Railway estate (`public.crons` / `/m/automations-log`) matches intent.
+> 4. **Cloud-homes consistency** — `vault_notes` 0 un-embedded; `drive_files` fresh; secrets complete in the CC table; reconcile gate passes (`VAULT=/tmp/pbs python3 /tmp/pbs/vault-reconcile-gate.py`).
+> The behavioural contract (no shortcuts / fix everything) applies to **this scoped audit**, NOT the retired vault tree. Ignore anything below that contradicts this. Knowledge → `vault_notes` (`cc-knowledge-api.py`); files → `drive_files` (`cc-sql.py`); `[[wikilinks]]` resolve against `vault_notes`.
 
 Thorough vault audit. Reads every md file, audits every skill + scheduled task, verifies Sygma Hub linking, checks every `Library/processes/` doc, verifies CLAUDE.md + MAP.md semantic consistency, runs `vault-drift-check.py` + `vault-drive-sync` drift report.
 
@@ -69,7 +74,7 @@ The skill runs phase-by-phase, sets a task per phase, fixes issues as it goes, a
 
 Concretely, for every long-running step in this skill:
 - Inventory walks (Phase 1) → write a Python script to `/tmp/`, run via `mcp__Desktop_Commander__start_process`, capture results to a temp JSON / txt for parsing.
-- Drift check (Phase 2) → `mcp__Desktop_Commander__start_process` with `python3 Library/processes/scripts/vault-drift-check.py`.
+- Drift check (Phase 2) → `mcp__Desktop_Commander__start_process` with `VAULT=/tmp/pbs python3 /tmp/pbs/vault-drift-check.py`.
 - Skill / cron / Hub audits (Phases 3-5) → file tools (Read/Grep) for individual files; Desktop Commander for any helper scripts.
 - Sync coherence (Phase 7) → `mcp__Desktop_Commander__start_process` to invoke `vault-drive-sync.py`.
 
@@ -107,35 +112,9 @@ Expectation: typically 800-1500 md files. Read them in batches by directory. For
 
 Read every file. Don't sample, don't skim. The skill description's contract demands it.
 
-### Phase 2 -- vault-drift-check (workhorse)
+### Phase 2 -- RETIRED (skip)
 
-Run the drift-check script -- it covers a lot of fast checks already. This is the foundation; later phases dig deeper.
-
-```bash
-cd /Users/peterashcroft/Second\ Brain
-python3 Library/processes/scripts/vault-drift-check.py 2>&1 | tee /tmp/drift-check-output.txt
-```
-
-Drift-check has three modes:
-
-- `python3 vault-drift-check.py` -- full check (every section below)
-- `python3 vault-drift-check.py --quick` -- top-level READMEs, MAP drift, inbox lingerers (skips Drive parity + orphan scripts)
-- `python3 vault-drift-check.py --map-only` -- just MAP.md drift (sub-second; what brain Resume Session step 8 runs)
-
-Phase 2 runs the FULL mode. Drift-check covers (do NOT replicate in later phases):
-
-- Top-level greeter READMEs (10 sections post 2026-05-06: Projects, Properties, Customers, Suppliers, Accreditations, Businesses, Personal, Library, Daily, Screenshots — Invoices/ and Delegated/ folded into Projects/)
-- MAP.md drift (folders / files in vault but not in MAP)
-- Project / customer / supplier / property README presence + frontmatter
-- Scheduled-task lockstep (canonical SKILL.md vs vault mirror -- catches the IP-portfolio trap)
-- Orphan helper scripts (script in `Library/processes/scripts/` not referenced from any `*.md`)
-- Skill archive freshness (SKILL.md newer than .skill archive = needs rebuild)
-- Vault↔Drive parity (**Personal/family only** -- owner-private is no longer a parity pair as of 2026-06-03; it's Drive-direct, vault holds only a pointer, so do NOT count-compare it) -- **count + cumulative size comparison** (NOT path-level diff). Both vault and Drive use **TitleCase With Spaces** for sub-folder names so name-level alignment exists, but rsync flattening during pulls can create different relative paths -- counts remain the safer parity signal. Tolerance: ±5 files for macOS metadata churn.
-- Personal/inbox/ lingerers (files older than 7 days needing triage)
-
-If drift-check reports issues, fix them in the same phase before moving on. Re-run drift-check after fixes; verify 0 issues.
-
-**If parity flags count mismatch**: run `python3 vault-drive-sync.py` manually before continuing -- the LaunchAgent fires hourly but a session might catch a transient gap.
+`vault-drift-check.py` is **retired** (the self-maintaining `drive_files` capture cron + the derived MAP replaced it) and there are no content folders to drift-check. **Skip this phase.** The equivalent cloud health check (do this instead): `vault_notes` has 0 un-embedded notes, `drive_files` is fresh, all local secrets are in the CC table, and the reconcile gate passes — `VAULT=/tmp/pbs python3 /tmp/pbs/vault-reconcile-gate.py`. The scheduled-task lockstep + skill-archive freshness checks move to Phase 3.
 
 ### Phase 3 -- Skill audit (vault SKILL.md ↔ .skill archive ↔ install location)
 
@@ -180,10 +159,10 @@ Pete spent 2026-04-29 to 2026-05-01 building the Sygma Hub Drive structure + syn
 2. **For each registered mapping, the vault folder exists**. e.g. `Library/sy-policies/`, `Library/sy-templates/`, `Library/sy-equipment-manuals/`, `Library/sy-internal-tools/`, `Library/sy-hr/`, `Library/sy-sales-and-pipeline/`, `Library/sy-company-information/`, `Library/sy-brand-assets/`, `Library/sy-health-and-safety-posters/`, `Library/sy-topic-reference-material/`, `Library/sy-jim-google-api-setup-2026-05-01/`. Future-proof via the registry -- whatever it says, walk that.
 3. **Hub Drive folder still exists at root** -- via `drive-api.py drives` should show `Sygma Hub` (Drive ID `0APzpyHHfvUyIUk9PVA`).
 4. **`Library/processes/hub-content-index.md`** exists, lists all 12 Hub top-levels (synced + live-only).
-5. **Run `python3 Library/processes/scripts/hub-sync.py status`** -- every mapping should show [EXISTS] with a recent last-pulled timestamp. If any [MISSING] or stale (>30 days), flag.
+5. **Run `VAULT=/tmp/pbs python3 /tmp/pbs/hub-sync.py status`** -- every mapping should show [EXISTS] with a recent last-pulled timestamp. If any [MISSING] or stale (>30 days), flag.
 6. **Spot-check a sample** -- pick 3 mappings, list the vault sy-folder contents and the Drive folder contents at top level, confirm reasonable overlap. The local mirror is read-only (per CLAUDE.md rule); should match Drive within last sync window.
 
-Fix-on-find: missing sy-folder or stale state -- run `python3 Library/processes/scripts/hub-sync.py pull <mapping>` immediately.
+Fix-on-find: missing sy-folder or stale state -- run `VAULT=/tmp/pbs python3 /tmp/pbs/hub-sync.py pull <mapping>` immediately.
 
 ### Phase 6 -- Processes / connections / APIs
 
@@ -194,8 +173,8 @@ For each `Library/processes/*.md`:
 1. Read the file (no skim).
 2. Confirm frontmatter has `type: process` (or another conventional type) and `status:`.
 3. If it documents an API or connector, verify:
-   - The credentials exist in `Library/processes/secrets/` if the doc says so.
-   - The helper script (`Library/processes/scripts/{name}.py`) exists if referenced.
+   - The credentials exist in `/tmp/pbs/Library/processes/secrets/` if the doc says so.
+   - The helper script (`/tmp/pbs/{name}.py`) exists if referenced.
    - The MCP connector ID matches `Library/processes/connections.md` (the canonical registry).
 4. If it documents a workflow with steps, confirm the referenced scripts / API calls / Asana GIDs are still valid.
 5. **Watch for drift**: a process doc that says "we do X via Y" when actually we no longer do X, or use Z not Y. Cross-check against current behaviour where verifiable.
@@ -210,40 +189,25 @@ Particular attention:
 - `hub-sync-registry.md` + `hub-content-index.md` -- already covered in Phase 5; cross-check passes here too
 - `voice-principles.md`, `finance-workflow.md`, `scripts-index.md`, `vault-routing.md` -- read end-to-end
 
-### Phase 7 -- Sync coherence (vault ↔ Drive)
+### Phase 7 -- RETIRED (skip)
 
-1. **vault-drive-sync state** -- `Library/processes/vault-drive-sync-state.json` (or empty if cron hasn't run yet). Last run timestamp, per-path stats. If >24h old, flag (LaunchAgent might be unloaded; investigate `launchctl list | grep vault-drive`).
-2. **Run a dry-run** -- `python3 Library/processes/scripts/vault-drive-sync.py --dry-run` -- show what WOULD change. If anything material, run live: `python3 Library/processes/scripts/vault-drive-sync.py`.
-3. **vault-drive parity** (already in drift-check Phase 2):
-   - `Personal/family/` ↔ `Pete & Mic / Ashcroft Family/` -- expect counts within ±5 (tolerance for metadata churn)
-   - `Businesses/sygma-solutions/owner-private/` ↔ `Pete & Mic / Sygma Solutions Private/` -- same
-   - **If Phase 2 flagged count mismatch >5**: run vault-drive-sync.py manually now to converge before continuing audit. Then re-run drift-check `--quick` to confirm.
-   - Vault and Drive both use **TitleCase With Spaces** sub-folder names (Family Members/Austin/, HMRC Personal/, Vehicles/, etc.) since the 2026-05-03 night cleanup. Path-level diffs are still possible because of rsync's flattening behaviour during pulls -- count comparison remains the practical signal.
-   - **Case-collision check**: `vault-drive-sync.py` includes `_detect_case_duplicates()` that refuses to run if it finds case-only-different folder names on either side. If Phase 7 manual sync run is blocked by this, the audit must merge the lowercase folder back into the TitleCase one and delete the lowercase before continuing.
-4. **Personal/inbox/ has anything?** If yes, triage now -- move items to proper vault locations OR confirm they're awaiting Pete's attention.
-5. **My Drive root** -- list it. Anything that should have been pulled but wasn't? Anything personal sitting there that should be in vault?
+`vault-drive-sync` is **disabled for good** — there is no vault↔Drive sync to audit (files live in Drive directly; the vault is retired). **Skip this phase.** Drive freshness is now the `drive-changes-watch` Railway cron's job (verify it in `/m/automations-log` if needed).
 
 ### Phase 8 -- CLAUDE.md + MAP.md semantic check
 
 Don't just verify paths exist (drift-check does that). Read the FILES end-to-end and check:
 
-1. **CLAUDE.md**:
-   - All Key Reference Files pointers resolve to real files.
-   - The vault structure diagram lists exactly the same top-level sections that exist on disk (count + names).
-   - Every Rule has a clear "what to do / not do" -- no vague rules that have lost context.
-   - Every wikilink resolves.
-   - Sweep for stale references to retired conventions / folders / skills.
-   - File size <40 KB; if creeping over, flag for slim-down per the Library/lessons/ pattern.
-2. **MAP.md**:
-   - All 10 top-level sections have a `## {Section}` heading (post 2026-05-06: Projects, Properties, Customers, Suppliers, Accreditations, Businesses, Personal, Library, Daily, Screenshots — Invoices/ and Delegated/ folded into Projects/Team-Finances/ + Projects/Team-General/Delegated/).
-   - Each section's listed sub-items match what's on disk (Phase 1 inventory cross-check).
-   - No entries pointing to deleted / moved files.
-   - Every wikilink resolves.
-   - Last `updated:` field is recent.
+1. **CLAUDE.md** (local = the tiny bootstrap; full = CC `config` row `claude-md`):
+   - The tiny local bootstrap points at the kernel + the CC; the full CLAUDE in `config` is current (describes the cloud homes, not the vault tree).
+   - Every Rule has a clear "what to do / not do"; sweep for stale references to retired vault folders / conventions.
+   - Every wikilink resolves (against `vault_notes`).
+2. **MAP** (CC `config` row `map-md` + `/m/map`):
+   - Describes the cloud homes (Drive / `vault_notes` / GitHub / CC / Railway), not a vault tree.
+   - No entries pointing to deleted vault folders; `updated:` recent.
 
 ### Phase 9 -- Daily-note pending-tasks drift sweep
 
-Scan the **most recent 14 daily notes** (`Daily/YYYY-MM-DD.md`, sorted by filename desc, top 14). For each:
+Scan the **most recent 14 `daily_log` entries** in the CC. For each:
 
 1. Find every `> [!todo] Pending Tasks` block (a daily note may have several -- one per session log).
 2. For each open `[ ]` line:
@@ -292,9 +256,9 @@ Concise, factual, no preamble. Numbers, paths, GIDs. The report is a working doc
 
 ## Pointers
 
-- Drift-check helper: `Library/processes/scripts/vault-drift-check.py`
+- Drift-check helper: `/tmp/pbs/vault-drift-check.py`
 - Sync helper: [[vault-drive-sync]]
-- Hub sync helper: `Library/processes/scripts/hub-sync.py` + [[hub-sync-registry]]
+- Hub sync helper: `/tmp/pbs/hub-sync.py` + [[hub-sync-registry]]
 - Vault routing rules: [[vault-routing]]
 - Pre-skill-install audit example: [[Library/audits/2026-05-03-pre-skill-install-audit]]
 - Full vault audit example: [[Library/audits/2026-05-03-full-vault-audit]]

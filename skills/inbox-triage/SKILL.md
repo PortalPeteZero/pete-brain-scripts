@@ -19,6 +19,9 @@ description: >
 
 # inbox-triage
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> Anywhere a step reads/writes `Customers/`, `Suppliers/`, `Projects/`, `Personal/`, `Library/decisions`, or creates a new vault folder, do the **cloud equivalent**: entity content → the entity's **Drive** folder + a `vault_notes` record (account-customers → CC `account_*`); decisions/notes → **`vault_notes`** (ingest a `.md`). `vault-enricher.py` still runs (keep calling it). New customer/supplier onboarding creates a **Drive** folder + CC record, not a vault folder. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 > [!important] Business OS migration — filing targets are Drive + the knowledge DB now
 > When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors retired 24 Jun 2026). Route per the new-world matrix in [[vault-routing]]. Gmail labels + Asana behaviour are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB ([[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
 
@@ -42,9 +45,9 @@ User says any of:
 
 ## Dependencies
 
-- Gmail API helper: `Library/processes/scripts/gmail-api.py` (always available via service account DWD)
-- **Triage action classifier helper: `Library/processes/scripts/triage-action-classify.py`** (runs the History pre-pass, emits a draft `Ask` per thread)
-- Calendar API helper: `Library/processes/scripts/calendar-api.py`
+- Gmail API helper: `/tmp/pbs/gmail-api.py` (always available via service account DWD)
+- **Triage action classifier helper: `/tmp/pbs/triage-action-classify.py`** (runs the History pre-pass, emits a draft `Ask` per thread)
+- Calendar API helper: `/tmp/pbs/calendar-api.py`
 - Asana MCP: `mcp__asana__*` tools. Load via `ToolSearch({ query: "asana", max_results: 60 })` if deferred.
 - Read/Write/Edit tools for vault operations
 - State file: `Library/processes/email-workflow-state.md`
@@ -128,7 +131,7 @@ Pete can override at any time: "give me everything in one go" -- collapse to sin
 For every thread, BEFORE choosing an Action verb, run the history classifier:
 
 ```bash
-python3 Library/processes/scripts/triage-action-classify.py /tmp/inbox-bodies.json > /tmp/triage-ask.json
+VAULT=/tmp/pbs python3 /tmp/pbs/triage-action-classify.py /tmp/inbox-bodies.json > /tmp/triage-ask.json
 ```
 
 Or call the equivalent function library-side. The output is a JSON file with one entry per thread:
@@ -288,7 +291,7 @@ Required ops-table columns: `#`, `Ask`, `From / Subject`, `Action`, `Task`, `Vau
 
 ### Step 6.0: Validate the ops table BEFORE presenting any stage's diff
 
-Run every stage's ops table through the validator. The validator is in `Library/processes/scripts/triage-validator.py`; or inline the same checks. v1.8 adds the `Ask` checks:
+Run every stage's ops table through the validator. The validator is in `/tmp/pbs/triage-validator.py`; or inline the same checks. v1.8 adds the `Ask` checks:
 
 ```python
 def validate_ops(ops):
@@ -373,7 +376,7 @@ Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primi
 The helper exists and is documented — what was missing in practice was the actual call during runs. Pete had to manually remind: "I don't see a lot of pulling context and files into the vault from either of these skills when they run." That's now closed by elevating the enricher call to a verb side-effect.
 
 ```bash
-python3 Library/processes/scripts/vault-enricher.py {thread_id} "{target-vault-folder}"
+VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{target-vault-folder}"
 ```
 
 - **target-vault-folder** = the filing label converted to a vault path (e.g. `Suppliers/SY-AppearOnline`, `Projects/Team-General/SY-General`)
@@ -393,7 +396,7 @@ Every Asana task created by triage must include both:
    - Same `{thread_id}` in both forms.
 
 2. **Finder link to the matching vault folder** if the task is tied to a project, customer, or supplier:
-   - Generated via `Library/processes/scripts/vault-finder-link.py {project-name} [section-name]`
+   - Generated via `/tmp/pbs/vault-finder-link.py {project-name} [section-name]`
    - Returns a `file:///Users/peterashcroft/Second%20Brain/Projects/{project}/[section]/` URL that opens the folder in macOS Finder
    - SY-Clancy is the exception: maps to `Customers/SY-Clancy/`, not `Projects/SY-Clancy/`
    - If no matching vault folder exists, omit the Finder link rather than emit a broken one
@@ -616,6 +619,6 @@ Pete can invoke specific actions without full triage:
 - Label scheme: `[[gmail-label-scheme]]`
 - Sister skill: `asana-gmail-sync` (reconciliation engine; END-OF-TRIAGE OFFERS this, does not auto-chain)
 - State file: `Library/processes/email-workflow-state.md`
-- History classifier helper: `Library/processes/scripts/triage-action-classify.py`
-- Validator helper: `Library/processes/scripts/triage-validator.py`
+- History classifier helper: `/tmp/pbs/triage-action-classify.py`
+- Validator helper: `/tmp/pbs/triage-validator.py`
 - Build history (archived): `[[email-workflow-plan-2026-04-24]]`

@@ -13,6 +13,9 @@ description: >
 
 # Simplify — Multi-Agent Code Review & Fix
 
+> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
+> The code-review engine (clone to `/tmp`, review, fix, push) is unchanged. But anywhere a step reads `Properties/{name}/README.md` or writes a session plan / review findings to `Projects/`, `Properties/{name}/data/`, or `Daily/`, do the **cloud equivalent**: property/repo/stack → resolve from the **CC Properties module** / `drive_files`; review findings + session plan → **`vault_notes`** (ingest a `.md`); session log → CC `daily_log`. (The "run vault-writer" offer routes to the cloud now.) Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+
 Three parallel review agents (reuse opportunities, quality issues, efficiency improvements) review code, aggregate findings, then apply fixes. Style rules for outbound communications live in [[voice-principles]] only — commit messages, PR descriptions, README writes, and audit reports are internal artefacts and not subject to those rules.
 
 Version history: [[CHANGELOG]].
