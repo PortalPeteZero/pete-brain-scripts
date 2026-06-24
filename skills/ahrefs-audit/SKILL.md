@@ -46,13 +46,12 @@ Surfer's NLP recommendations often lean towards keyword stuffing -- hitting a te
 **Auth quick reference** (full details in config files):
 
 ```bash
-# Ahrefs
-curl -s -H "Authorization: Bearer lGssv7YX4gEWyDhKaBhDLcmLfs14q-yqlZTzsMQa" \
-  "https://api.ahrefs.com/v3/[endpoint]"
+# Tokens live in the CC secrets table — NEVER inline them. Fetch at runtime:
+AHREFS=$(VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM secrets WHERE name='ahrefs-token'" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['value'])")
+curl -s -H "Authorization: Bearer $AHREFS" "https://api.ahrefs.com/v3/[endpoint]"
 
-# Surfer
-curl -s -H "API-KEY: vfv0b3tbStnuc_Utup9AXCsdI32sNT_8" \
-  "https://app.surferseo.com/api/v1/[endpoint]"
+SURFER=$(VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM secrets WHERE name='surfer-token'" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['value'])")
+curl -s -H "API-KEY: $SURFER" "https://app.surferseo.com/api/v1/[endpoint]"
 ```
 
 **GSC API quick reference** (service account JWT -- see [[google-api-credentials]] for full setup):
