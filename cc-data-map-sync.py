@@ -33,6 +33,7 @@ MAP = [
     ("Finance — family/personal", "Personal", "Drive: Ashcroft Family/Finance", "Drive mount", "Joint Pete + Michaela, family-private."),
     ("Health / Garmin", "Personal", "Drive: My Drive/Health/garmin", "garmin-daily-pull.py", "Sleep/HRV/readiness/activities; the one re-pointed cron."),
     ("Passion Fit (journal/training)", "Personal", "Drive: My Drive/Passion Fit", "Drive mount (Desktop Commander)", "Personal PF — stays in Personal, NOT One System."),
+    ("Screenshots & captures", "Personal", "Drive: My Drive/Screenshots", "Drive mount (~/Library/CloudStorage/GoogleDrive-…/My Drive/Screenshots) + drive_files index", "macOS Cmd-Shift screenshot save location (`defaults read com.apple.screencapture location`). Where Pete drops booking/account/site captures for Claude to read. Newest first by filename `Screenshot YYYY-MM-DD at HH.MM.SS.png`."),
     ("Daily notes", "CC", "CC Supabase vault_notes (type=daily) + vault Daily/ skeleton", "CC Daily Notes page (/m/daily)", "Session logs; the most-read memory."),
     ("Plans", "CC", "CC Supabase vault_notes (plan-family types)", "CC Plans page (/m/plans)", "≈182 plans; a typed `plans` table is Stage-2."),
     ("Code / scripts", "Cross", "GitHub (PortalPeteZero / SygmaSol) + Library/processes/scripts skeleton", "git / the skeleton", "Version-controlled; helpers run on Railway at Part H."),
