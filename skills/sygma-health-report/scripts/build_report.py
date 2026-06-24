@@ -1,0 +1,463 @@
+#!/usr/bin/env python3
+"""
+Sygma Solutions website health report — combined multi-source pull.
+
+Sources (all live):
+  - Ahrefs      : Domain Rating + Rank Tracker positions + 7-day per-keyword trajectory
+  - GSC         : site top pages/queries + per-page query detail (28d)
+  - GA4         : sessions/users/conversions + traffic-source split + per-page views (28d)
+  - Google Ads  : ad-group + landing-page performance + 7-day spend (30d / 7d)
+
+Output:
+  - Markdown report -> Properties/Sygma Solutions Website/data/health-report-{YYYY-MM-DD}.md
+  - Headline summary -> stdout (for the triggering session to read + narrate)
+
+Run:
+  python3 Library/skills/sygma-health-report/scripts/build_report.py
+
+The four "deep-dive" cluster pages are defined in PAGES below; edit that list to
+re-point the report at different pages. Everything else is derived live.
+Tokens: Ahrefs read from ahrefs-api-configuration.md; helper APIs from the standard
+vault locations. Helper-first per [[external-service-routing]].
+Surfer dropped 2026-06-08 (Pete's call — audit quota perpetually exceeded, data not
+needed here). See [[surfer-api-configuration]] § Quota & limits.
+"""
+import os, urllib.request, urllib.error, urllib.parse, json, time, importlib.util, re, sys
+from datetime import date, timedelta
+
+# VAULT path: env override (for Cowork sandbox) > host default (Pete's Mac)
+VAULT = os.environ.get("VAULT_ROOT", "/Users/peterashcroft/Second Brain")
+SCRIPTS = f"{VAULT}/Library/processes/scripts"
+
+# ----------------------------- CONFIG ---------------------------------------
+SITE_DOMAIN    = "sygma-solutions.com"
+GSC_PROP       = "sc-domain:sygma-solutions.com"
+GA4_PROP       = "354127076"
+AHREFS_PROJECT = "9613452"
+
+# Deep-dive cluster pages (the "recently worked on" set). Each tracks a curated
+# set of commercial terms day-by-day regardless of which URL they currently rank to.
+PAGES = [
+    {"path": "/courses/eusr-cat1", "kw": "eusr cat 1", "label": "EUSR CAT1",
+     "terms": ["eusr cat and genny training", "eusr cat 1 training", "eusr cat 1",
+               "eusr category 1", "locate utility services training"]},
+    {"path": "/courses/cat-and-genny-training", "kw": "cat and genny training", "label": "Cat & Genny",
+     "terms": ["cat and genny training", "cat and genny training near me", "cat and genny training online",
+               "cat scanner training", "cat and genny training courses"]},
+    {"path": "/courses/cable-avoidance-training", "kw": "cable avoidance training", "label": "Cable Avoidance",
+     "terms": ["cable avoidance training", "cable avoidance course", "online cable avoidance training",
+               "cable avoidance tool training", "cable avoidance courses uk"]},
+    {"path": "/courses/hsg47-training", "kw": "hsg47 training", "label": "HSG47",
+     "terms": ["hsg47 training", "hsg47 training near me", "hsg47 training course",
+               "hsg 47 training", "hsg47"]},
+]
+
+# Authoritative state docs the report cross-references so it doesn't re-flag fixed issues.
+ADS_LEDGER_PATH = f"{VAULT}/Properties/Sygma Solutions Website/data/google-ads-account.md"
+NON_ISSUES_PATH = f"{VAULT}/Properties/Sygma Solutions Website/seo-non-issues.md"
+
+# URLs with locked "no-work" decisions. Flagging anything against these URLs requires reading the linked decision first.
+NO_WORK_URLS = {
+    "/knowledge-hub/hsg47-explained":
+        "Locked 2026-05-07 — informational page, no CTR / Surfer / title work. "
+        "See Library/decisions/2026-05-07-hsg47-explained-no-work.md.",
+}
+
+# Residue threshold — landing pages with no paid click in this window are pre-fix residue ageing out of the 30d rolling window.
+RESIDUE_DAYS = 14
+
+# ----------------------------- tokens / helpers -----------------------------
+def _ahrefs_token():
+    try:
+        t = open(f"{VAULT}/Library/processes/ahrefs-api-configuration.md").read()
+        m = re.search(r"\*\*Token:\*\*\s*`([^`]+)`", t)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "lGssv7YX4gEWyDhKaBhDLcmLfs14q-yqlZTzsMQa"
+
+AHREFS_TOKEN = _ahrefs_token()
+
+def _load(modname, path):
+    spec = importlib.util.spec_from_file_location(modname, path)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+gsc = _load("gscapi", f"{SCRIPTS}/gsc-api.py").GSCAPI()
+ga4 = _load("ga4api", f"{SCRIPTS}/ga4-api.py").GA4API()
+ads = _load("adsapi", f"{SCRIPTS}/ads-api.py").GoogleAdsAPI()
+
+def ah(path, params):
+    url = f"https://api.ahrefs.com/v3/{path}?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {AHREFS_TOKEN}"})
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=60).read().decode())
+    except Exception as e:
+        return {"_err": str(e)}
+
+def slug(u):
+    s = (u or "").split(SITE_DOMAIN)[-1].split("?")[0]
+    return s or "/"
+
+def gbp(micros):
+    return int(micros or 0) / 1e6
+
+# ----------------------------- state-doc readers ----------------------------
+def read_ads_ledger(days=30):
+    """Parse 'Recent changes ledger' section of google-ads-account.md.
+    Returns list of {date, headline} for entries within the last `days` days, newest first."""
+    if not os.path.exists(ADS_LEDGER_PATH):
+        return []
+    try:
+        txt = open(ADS_LEDGER_PATH).read()
+    except Exception:
+        return []
+    m = re.search(r"^## Recent changes ledger\s*\n(.*?)(?=\n## )", txt, re.S | re.M)
+    if not m:
+        return []
+    body = m.group(1)
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+    entries = []
+    for raw in body.split("\n- **"):
+        raw = raw.strip()
+        if not raw or not re.match(r"\d{4}-\d{2}-\d{2}", raw):
+            continue
+        em = re.match(r"(\d{4}-\d{2}-\d{2})([^*]*)\*\*\s*--\s*(.+)", raw, re.S)
+        if not em:
+            continue
+        d, paren, summary = em.group(1), em.group(2).strip(), em.group(3).strip()
+        if d < cutoff:
+            continue
+        first_line = summary.split("\n")[0].lstrip("*").strip()
+        first_sent = re.split(r"(?<=[.!?])\s", first_line)[0]
+        if len(first_sent) > 220:
+            first_sent = first_sent[:217] + "…"
+        head = f"{paren} — {first_sent}" if paren else first_sent
+        entries.append({"date": d, "headline": head.strip(" —")})
+    return entries
+
+def pull_last_paid_click_per_url():
+    """Per landing-page URL, return the most recent date with clicks > 0 in the last 30 days.
+    Used to flag rolling-window residue (URLs ageing out post-fix)."""
+    try:
+        rows = ads.query(
+            "SELECT landing_page_view.unexpanded_final_url, segments.date, metrics.clicks "
+            "FROM landing_page_view WHERE segments.date DURING LAST_30_DAYS AND metrics.clicks > 0 "
+            "ORDER BY segments.date DESC"
+        )
+    except Exception:
+        return {}
+    latest = {}
+    for r in rows or []:
+        url = r.get("landingPageView", {}).get("unexpandedFinalUrl", "")
+        d = r.get("segments", {}).get("date") or ""
+        if not url or not d:
+            continue
+        if url not in latest or d > latest[url]:
+            latest[url] = d
+    return latest
+
+# ----------------------------- data pulls -----------------------------------
+def pull_ahrefs():
+    dr = ah("site-explorer/domain-rating", {"target": SITE_DOMAIN, "date": date.today().isoformat()})
+    dr_val = dr.get("domain_rating", {}).get("domain_rating") if isinstance(dr, dict) and "domain_rating" in dr else None
+    days = [(date.today() - timedelta(days=i)).isoformat() for i in range(7)]
+    perday = {}
+    for d in days:
+        r = ah("rank-tracker/overview", {"project_id": AHREFS_PROJECT, "device": "desktop", "date": d,
+                                         "select": "keyword,position,url,volume", "limit": "1000"})
+        ov = r.get("overviews") if isinstance(r, dict) else None
+        perday[d] = {}
+        for row in (ov or []):
+            perday[d][row.get("keyword", "").lower()] = (row.get("position"), row.get("url") or "", row.get("volume") or 0)
+    latest = perday[days[0]]
+    buckets = {"1-3": 0, "4-10": 0, "11-20": 0, "21-50": 0, "51+": 0, "unranked": 0}
+    for kw, (pos, u, v) in latest.items():
+        if pos is None:
+            buckets["unranked"] += 1
+        elif pos <= 3: buckets["1-3"] += 1
+        elif pos <= 10: buckets["4-10"] += 1
+        elif pos <= 20: buckets["11-20"] += 1
+        elif pos <= 50: buckets["21-50"] += 1
+        else: buckets["51+"] += 1
+    return {"dr": dr_val, "days_desc": days, "days_asc": sorted(days), "perday": perday,
+            "buckets": buckets, "tracked": len(latest)}
+
+def pull_gsc():
+    out = {"page_queries": {}}
+    try: out["top_pages"] = gsc.top_pages(GSC_PROP, days=28, limit=12)
+    except Exception as e: out["top_pages"] = []
+    try: out["top_queries"] = gsc.top_queries(GSC_PROP, days=28, limit=15)
+    except Exception as e: out["top_queries"] = []
+    for p in PAGES:
+        try:
+            out["page_queries"][p["path"]] = gsc.page_queries(GSC_PROP, f"https://{SITE_DOMAIN}{p['path']}", days=28)[:8]
+        except Exception:
+            out["page_queries"][p["path"]] = []
+    return out
+
+def pull_ga4():
+    out = {}
+    try: out["summary"] = ga4.summary(GA4_PROP, days=28).get("totals", {})
+    except Exception: out["summary"] = {}
+    try: out["sources"] = ga4.top_sources(GA4_PROP, days=28)[:7]
+    except Exception: out["sources"] = []
+    try: out["conversions"] = [c for c in ga4.conversions(GA4_PROP, days=28) if float(c.get("conversions", 0) or 0) > 0]
+    except Exception: out["conversions"] = []
+    try:
+        tp = ga4.top_pages(GA4_PROP, days=28, limit=120)
+        agg = {}
+        for r in tp:
+            path = r.get("pagePath", "")
+            agg[path] = agg.get(path, 0) + int(r.get("screenPageViews", 0) or 0)
+        out["page_views"] = {p["path"]: agg.get(p["path"], 0) for p in PAGES}
+    except Exception:
+        out["page_views"] = {p["path"]: 0 for p in PAGES}
+    return out
+
+def pull_ads():
+    def q(gaql):
+        try: return ads.query(gaql)
+        except Exception: return []
+    return {
+        "ad_groups": q("SELECT ad_group.name, metrics.cost_micros, metrics.clicks, metrics.impressions, "
+                       "metrics.conversions FROM ad_group WHERE segments.date DURING LAST_30_DAYS "
+                       "AND ad_group.status='ENABLED' ORDER BY metrics.cost_micros DESC"),
+        "landing": q("SELECT landing_page_view.unexpanded_final_url, metrics.cost_micros, metrics.clicks, "
+                     "metrics.conversions FROM landing_page_view WHERE segments.date DURING LAST_30_DAYS "
+                     "ORDER BY metrics.cost_micros DESC LIMIT 12"),
+        "by_day": q("SELECT segments.date, metrics.cost_micros, metrics.clicks, metrics.conversions "
+                    "FROM campaign WHERE segments.date DURING LAST_7_DAYS ORDER BY segments.date DESC"),
+        "last_paid_click": pull_last_paid_click_per_url(),
+        "ledger": read_ads_ledger(days=30),
+    }
+
+# ----------------------------- markdown build -------------------------------
+def arrow(delta):
+    if delta is None: return ""
+    if delta < 0: return f" ↑{abs(delta)}"   # position got smaller = improved
+    if delta > 0: return f" ↓{delta}"
+    return " →"
+
+def build_md(A, G, GA, ADS):
+    today = date.today().isoformat()
+    L = []
+    L.append(f"---\ntype: report\nsubtype: sygma-health\ndate: {today}\nproperty: \"[[Properties/Sygma Solutions Website]]\"\n"
+             f"tags: [report, seo, sygma, multi-source]\n---\n")
+    L.append(f"# Sygma Solutions — Website Health Report")
+    L.append(f"*Generated {today} · sources: Ahrefs · GSC · GA4 · Google Ads*\n")
+
+    # ---- site overview ----
+    sm = GA.get("summary", {})
+    dur = float(sm.get("averageSessionDuration", 0) or 0)
+    L.append("## Site overview\n")
+    L.append("| Source | Reading |")
+    L.append("|---|---|")
+    b = A.get("buckets", {})
+    L.append(f"| **Ahrefs** | DR **{A.get('dr')}** · Rank Tracker {A.get('tracked')} kw: "
+             f"{b.get('1-3',0)} top-3, {b.get('1-3',0)+b.get('4-10',0)} top-10, "
+             f"{b.get('1-3',0)+b.get('4-10',0)+b.get('11-20',0)} top-20, {b.get('unranked',0)} unranked |")
+    L.append(f"| **GA4** (28d) | {sm.get('sessions','?')} sessions · {sm.get('activeUsers','?')} users · "
+             f"{sm.get('screenPageViews','?')} views · bounce {round(float(sm.get('bounceRate',0) or 0)*100,1)}% · "
+             f"avg {int(dur//60)}m{int(dur%60)}s |")
+    convstr = " · ".join(f"{int(float(c.get('conversions',0)))} {c.get('eventName')}" for c in GA.get("conversions", [])[:6])
+    L.append(f"| **GA4 conversions** | {convstr or '—'} |")
+    total_spend = sum(gbp(r.get('metrics',{}).get('costMicros')) for r in ADS.get('ad_groups',[]))
+    total_conv = sum(float(r.get('metrics',{}).get('conversions',0) or 0) for r in ADS.get('ad_groups',[]))
+    L.append(f"| **Google Ads** (30d) | £{total_spend:,.0f} spend · {total_conv:.1f} conversions across "
+             f"{len([r for r in ADS.get('ad_groups',[]) if gbp(r.get('metrics',{}).get('costMicros'))>0])} live ad groups |")
+    L.append("")
+
+    # GA4 sources
+    if GA.get("sources"):
+        L.append("**Traffic sources (28d):** " + " · ".join(
+            f"{r.get('sessionDefaultChannelGroup','?')}/{r.get('sessionSource','?')} {r.get('sessions','?')}"
+            for r in GA["sources"][:5]) + "\n")
+
+    # ---- recent ledger entries (state-of-play, must read before flagging anything) ----
+    ledger = ADS.get("ledger", [])
+    if ledger:
+        L.append("## Recent ad-account changes (last 30d)\n")
+        L.append("Pulled from the live ads ledger at "
+                 "[[Properties/Sygma Solutions Website/data/google-ads-account#Recent changes ledger]]. "
+                 "**Read these BEFORE flagging anything below — if a finding sits inside this window, "
+                 "it has already been investigated or actioned.**\n")
+        for e in ledger[:12]:
+            L.append(f"- **{e['date']}** — {e['headline']}")
+        L.append("")
+
+    # ---- locked no-work URLs (decision-locked, do not propose work) ----
+    if NO_WORK_URLS:
+        L.append("## Locked no-work pages\n")
+        L.append("These URLs have **locked decisions against active work**. State data factually if asked; never propose CTR rescues, title rewrites, Surfer iteration, or new tasks.\n")
+        for url, note in NO_WORK_URLS.items():
+            L.append(f"- `{url}` — {note}")
+        L.append("")
+
+    # ---- per-page scorecard ----
+    L.append("## Cluster scorecard\n")
+    L.append("| Page | Head term — pos (Ahrefs) | GA4 views 28d | Ads 30d (spend / conv) |")
+    L.append("|---|---|---|---|")
+    land = {slug(r.get('landingPageView',{}).get('unexpandedFinalUrl','')): r.get('metrics',{}) for r in ADS.get('landing',[])}
+    latest = A["perday"][A["days_desc"][0]]
+    for p in PAGES:
+        head = latest.get(p["kw"].lower())
+        if head and head[0] is not None:
+            headpos = f"{head[0]} → {slug(head[1])}"
+        else:
+            headpos = "not captured"
+        views = GA.get("page_views", {}).get(p["path"], 0)
+        lm = land.get(p["path"], {})
+        adcell = f"£{gbp(lm.get('costMicros')):.0f} / {float(lm.get('conversions',0) or 0):.1f}" if lm else "£0 / 0"
+        L.append(f"| **{p['label']}** | {headpos} | {views} | {adcell} |")
+    L.append("")
+
+    # ---- 7-day trajectories ----
+    L.append("## 7-day rank trajectory (Ahrefs, desktop)\n")
+    days_asc = A["days_asc"]
+    hdr_days = " | ".join(d[5:] for d in days_asc)
+    for p in PAGES:
+        L.append(f"### {p['label']}  ({p['path']})\n")
+        L.append(f"| Keyword | {hdr_days} | Δ7d |")
+        L.append("|" + "---|" * (len(days_asc) + 2))
+        for kw in p["terms"]:
+            cells = []
+            first = last = None
+            for d in days_asc:
+                v = A["perday"][d].get(kw.lower())
+                pos = v[0] if v else None
+                if pos is not None:
+                    if first is None: first = pos
+                    last = pos
+                cells.append(str(pos) if pos is not None else "–")
+            delta = (last - first) if (first is not None and last is not None) else None
+            L.append(f"| {kw} | " + " | ".join(cells) + f" | {('—' if delta is None else ('+' if delta>0 else '')+str(delta))}{arrow(delta)} |")
+        # which URL the head term ranks to (cannibalisation check)
+        head = latest.get(p["kw"].lower())
+        if head and head[1]:
+            L.append(f"\n*Head term \"{p['kw']}\" currently ranks via* `{slug(head[1])}`")
+        L.append("")
+
+    # ---- GSC detail ----
+    L.append("## GSC — top pages (28d)\n")
+    L.append("| Clicks | Impr | CTR% | Pos | Page |")
+    L.append("|---|---|---|---|---|")
+    for r in G.get("top_pages", [])[:10]:
+        L.append(f"| {r['clicks']} | {r['impressions']} | {r['ctr']} | {r['position']} | {slug(r['page'])} |")
+    L.append("\n## GSC — top queries (28d)\n")
+    L.append("| Clicks | Impr | CTR% | Pos | Query |")
+    L.append("|---|---|---|---|---|")
+    for r in G.get("top_queries", [])[:12]:
+        L.append(f"| {r['clicks']} | {r['impressions']} | {r['ctr']} | {r['position']} | {r['query']} |")
+    L.append("")
+
+    # ---- Ads detail ----
+    L.append("## Google Ads (30d)\n")
+    L.append("**Ad groups (spending):**\n")
+    L.append("| Spend | Clicks | Impr | Conv | Ad group |")
+    L.append("|---|---|---|---|---|")
+    for r in ADS.get("ad_groups", []):
+        m = r.get("metrics", {})
+        if gbp(m.get("costMicros")) <= 0: continue
+        L.append(f"| £{gbp(m.get('costMicros')):.2f} | {m.get('clicks',0)} | {m.get('impressions',0)} | "
+                 f"{float(m.get('conversions',0) or 0):.1f} | {r.get('adGroup',{}).get('name','?')} |")
+    L.append("\n**Landing pages:**\n")
+    L.append("| Spend | Clicks | Conv | Page | Note |")
+    L.append("|---|---|---|---|---|")
+    last_clicks = ADS.get("last_paid_click", {})
+    residue_cutoff = (date.today() - timedelta(days=RESIDUE_DAYS)).isoformat()
+    for r in ADS.get("landing", [])[:10]:
+        m = r.get("metrics", {})
+        url = r.get("landingPageView", {}).get("unexpandedFinalUrl", "")
+        spath = slug(url)
+        notes = []
+        if spath in NO_WORK_URLS:
+            notes.append("**locked no-work page** — do not propose work, see Locked no-work pages above")
+        last = last_clicks.get(url)
+        clicks_now = int(m.get("clicks", 0) or 0)
+        if last and last < residue_cutoff:
+            days_ago = (date.today() - date.fromisoformat(last)).days
+            notes.append(f"decaying residue — last paid click {last} ({days_ago}d ago), 0 paid clicks in last {RESIDUE_DAYS}d (spend is pre-fix history ageing out of 30d window)")
+        elif not last and clicks_now == 0:
+            notes.append("no paid clicks in 30d")
+        L.append(f"| £{gbp(m.get('costMicros')):.2f} | {clicks_now} | {float(m.get('conversions',0) or 0):.1f} | "
+                 f"{spath} | {'; '.join(notes) if notes else ''} |")
+    L.append("")
+
+    L.append("## Notes\n")
+    L.append("- Position arrows: ↑ = improved (smaller number), ↓ = dropped. Δ7d compares oldest vs newest capture in window.")
+    L.append("- GSC position/CTR are 28-day blended averages across all queries a page appears for — read alongside the live Ahrefs head-term position.")
+    L.append("- Ahrefs site-metrics organic counts lag post-migration; GSC is the organic source of truth.")
+    L.append("- Landing-page \"Note\" column: \"decaying residue\" = URL has no paid clicks in the last "
+             f"{RESIDUE_DAYS} days and is ageing out of the 30-day rolling window; the spend is pre-fix history, not live waste. \"locked no-work page\" = decision-locked, do not propose work.")
+    L.append("- Before flagging any finding: cross-check it against the Recent ad-account changes section + [[Properties/Sygma Solutions Website/seo-non-issues]]. If it appears in either, it has been investigated.")
+    return "\n".join(L)
+
+# ----------------------------- main -----------------------------------------
+def main():
+    print("[1/4] Ahrefs (DR + 7-day rank tracker)…", flush=True); A = pull_ahrefs()
+    print("[2/4] GSC (site + per-page)…", flush=True);             G = pull_gsc()
+    print("[3/4] GA4 (traffic + conversions)…", flush=True);       GA = pull_ga4()
+    print("[4/4] Google Ads (30d)…", flush=True);                  ADS = pull_ads()
+
+    md = build_md(A, G, GA, ADS)
+    today = date.today().isoformat()
+    out_path = f"{VAULT}/Properties/Sygma Solutions Website/data/health-report-{today}.md"
+    with open(out_path, "w") as f:
+        f.write(md)
+
+    # headline summary to stdout
+    print("\n===== HEADLINE =====")
+    print(f"DR {A.get('dr')} | tracked {A.get('tracked')} kw | "
+          f"top-10 {A['buckets']['1-3']+A['buckets']['4-10']}")
+
+    print("\n--- MANDATORY READS BEFORE NARRATING ---")
+    print("Cross-check every finding against these before flagging:")
+    print("  - Properties/Sygma Solutions Website/data/google-ads-account.md (Recent changes ledger)")
+    print("  - Properties/Sygma Solutions Website/seo-non-issues.md")
+    print("  - Library/decisions/2026-05-07-hsg47-explained-no-work.md")
+    print("  - Last 3 Daily/YYYY-MM-DD.md notes")
+
+    ledger = ADS.get("ledger", [])
+    if ledger:
+        print(f"\n--- Recent ad-account changes (last 30d, top 10) ---")
+        for e in ledger[:10]:
+            print(f"  {e['date']}: {e['headline'][:150]}")
+
+    if NO_WORK_URLS:
+        print(f"\n--- Locked no-work pages (do NOT propose work) ---")
+        for url, note in NO_WORK_URLS.items():
+            print(f"  {url} — {note.split('.')[0]}")
+
+    last_clicks = ADS.get("last_paid_click", {})
+    residue_cutoff = (date.today() - timedelta(days=RESIDUE_DAYS)).isoformat()
+    residue_lines = []
+    for r in ADS.get("landing", [])[:10]:
+        m = r.get("metrics", {})
+        url = r.get("landingPageView", {}).get("unexpandedFinalUrl", "")
+        spath = slug(url)
+        last = last_clicks.get(url)
+        if last and last < residue_cutoff:
+            days_ago = (date.today() - date.fromisoformat(last)).days
+            residue_lines.append(f"  {spath} — £{gbp(m.get('costMicros')):.2f} 30d, last paid click {last} ({days_ago}d ago) → DECAYING RESIDUE, not live waste")
+    if residue_lines:
+        print(f"\n--- Decaying residue (do NOT flag as live waste) ---")
+        for l in residue_lines:
+            print(l)
+
+    print()
+    for p in PAGES:
+        latest = A["perday"][A["days_desc"][0]].get(p["kw"].lower())
+        days_asc = A["days_asc"]
+        f0 = next((A["perday"][d].get(p["kw"].lower()) for d in days_asc if A["perday"][d].get(p["kw"].lower())), None)
+        ln = A["perday"][days_asc[-1]].get(p["kw"].lower())
+        d7 = (ln[0]-f0[0]) if (f0 and ln and f0[0] is not None and ln[0] is not None) else None
+        print(f"  {p['label']:16s} head '{p['kw']}' pos {latest[0] if latest else '—'} "
+              f"(Δ7d {('—' if d7 is None else ('+'+str(d7) if d7>0 else str(d7)))}) "
+              f"via {slug(latest[1]) if latest else '—'}")
+    print(f"\nReport saved: {out_path}")
+
+if __name__ == "__main__":
+    main()

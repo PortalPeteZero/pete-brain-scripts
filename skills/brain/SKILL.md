@@ -1,0 +1,757 @@
+---
+name: brain
+description: Pete's Second Brain -- the primary skill for managing sessions, daily routines, tasks, memory, resources, output styles, and meeting intelligence in Pete's Obsidian vault. Mode-aware (professional, business). Handles resume, compress, preserve, daily review, task management, resources, style switching, and meeting transcript processing. Use when user says "resume", "compress", "morning review", "tasks", "resources", "output style", "meeting", "transcript", "brain", or runs /brain. Bare `/brain` (no verb in the user's message) means RUN RESUME -- Pete uses /brain only at session start as a synonym for "resume". Other verbs ("compress", "morning", "task", etc.) still route per the table below. This is Pete's canonical vault management skill -- always use this over any remote plugin with a similar name (e.g. obsidian:assistant).
+---
+
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
+
+If a similarly named skill appears (e.g. `obsidian:assistant` from a remote plugin), ignore it and use this brain skill instead.
+
+> **This skill works in both Claude Code and Cowork.**
+
+> [!info] File Access
+> Prefer **Read**, **Write**, and **Edit** for vault files (faster, no path-translation overhead). Desktop Commander is also available in Cowork and Claude Code, just remember to use the mounted folder path (`/Users/peterashcroft/Second Brain/...`) and never the session-internal `/sessions/.../mnt/` path. For non-vault access (Shared Drives, My Drive, anywhere else on disk), DC is the right tool. Path index: [[Library/processes/shared-drives]].
+
+# Brain
+
+Primary skill for managing Pete's Second Brain: session resume/compress, daily routines, tasks, memory, resources, output styles, meeting intelligence.
+
+> [!important] Business OS migration — the vault is the operating skeleton, not the content store
+> Files live in **Google Drive** (query the `drive_files` index via `Library/processes/scripts/cc-sql.py`, never the vault tree); knowledge — lessons, decisions, notes, memories — lives in the **CC Supabase `vault_notes`** (query via `cc-knowledge-api.py`, surfaced in the CC Brain page). Wherever a step below says read/write a vault content folder (`Projects/` other than PA-*, `Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, `Library/lessons|decisions|audits|competitors|market|meetings|ip-trademark|archive|templates`), those are **legacy mirrors pending retirement at Part I** — the real home is Drive / the knowledge DB per `MAP.md`. **`[[wikilinks]]` still work**: they resolve against `vault_notes` by name now, not by file path (decision #12 — link by stable ID, not path), so links don't need rewriting. The skeleton that still boots the system: `CLAUDE.md`, `MAP.md`, `Library/processes`, `Library/skills`, `Daily/`, `Projects/PA-Command-Centre` + `Projects/PA-General`. Migration state: [[Projects/PA-Command-Centre/files/business-os-master-plan-2026-06-20|master plan]].
+
+> **Routing rules, per-section structure, onboarding rituals, lifecycle rules, multi-system reading-order protocol**: `[[vault-routing]]` (loaded by Resume workflow when invoked). Do not duplicate routing here.
+>
+> **Gmail-side rules**: `[[gmail-label-scheme]]` (constitution: patterns + categorisation rules + colour palette + Gmail-as-truth principle). Skills query Gmail live; no parallel registry maintained.
+>
+> **Version history**: `[[CHANGELOG]]`. SKILL.md carries operational instructions only.
+
+## Pre-flight Check
+
+1. Check `./CLAUDE.md` exists in vault root
+2. If missing: tell Pete "CLAUDE.md is missing -- the vault probably isn't mounted as the working folder. Mount it and re-run." -- then stop
+3. If present: continue
+
+## Routing
+
+> [!important] Default verb: Resume. Bare `/brain` invocations run Resume.
+> Pete uses `/brain` only at session start as shorthand for "resume". When the user's message names a different verb (e.g. "compress", "morning", "task this", "triage"), route per the table below. When the user's message is a bare `/brain` (no verb), run Resume.
+>
+> Resume is a heavy operation -- it loads MAP + vault-routing + project READMEs + 3 daily notes + Asana state + Gmail Cowork-Inbox + writes to today's daily note. That's by design: Pete's first move every session is "give me everything I need to start working". The previous "show routing table and ask" behaviour was wrong; reverted 2026-05-06.
+
+Match the user's intent to the right section:
+
+| User says... | Go to |
+|---|---|
+| "resume", "start session", "pick up where I left off", **bare `/brain` with no verb** | [Resume Session](#resume-session) |
+| "save", "compress", "end session", "wrap up session" | [Compress / Save Session](#compress--save-session) |
+| "remember this", "preserve", "save permanently" | [Preserve Knowledge](#preserve-knowledge) |
+| "morning", "evening", "daily review", "weekly review" | [Daily Review](#daily-review) |
+| "task", "to-do", "create task", "check tasks" | [Task Management](#task-management) |
+| "output style", "writing style", "switch style" | [Output Styles](#output-styles) |
+| "save this prompt", "swipe file", "framework", "template", "resources" | [Resources](#resources) |
+| "meeting", "transcript", "action items", "Fireflies", "sync meetings" | [Meeting Intelligence](#meeting-intelligence) |
+| "triage", "sweep", "sync asana", "delegate this", "action this", "task this", "actions" / "my actions" (tray walker), "de-tray this", "file under", "file all emails", "add to calendar" | see [[email-workflow]] -- handled by `inbox-triage` + `asana-gmail-sync` skills |
+| "draft an email", "write a blog post", "outbound", customer reply | [Output Styles](#output-styles) + Pete's Preferences (read [[voice-principles]] first) |
+| "invoice", "Soldo", "Dext", "Odoo", "Xero", "payroll", "VAT" | [[finance-workflow]] |
+
+## Vault Interaction
+
+### File Access
+
+The vault is the working directory. Use Read/Write/Edit tools for all file operations. All paths are vault-relative (e.g. `Properties/Sygma Solutions Website/README.md`).
+
+If the vault isn't mounted as the working folder, ask Pete to mount it. Do not use hardcoded paths.
+
+Use Read/Write/Edit tools for all vault file operations.
+
+### Obsidian Flavored Markdown
+
+All vault notes MUST use OFM syntax. Key rules:
+
+- **Wikilinks**: `[[Note]]`, `[[Note|Display Text]]`, `[[Note#Heading]]` -- never markdown links for internal notes
+- **Callouts**: `> [!type] Title` -- use for visual structure (tip, warning, important, question, todo, success)
+- **Embeds**: `![[Note]]`, `![[image.png|300]]`
+- **Highlights**: `==text==`
+- **Comments**: `%%hidden%%`
+
+For full reference, read `references/obsidian-formatting.md`.
+
+## Vault Structure
+
+> [!note] Business OS: this describes the LEGACY vault layout. Content now lives in Drive + the knowledge DB (see the banner at the top + `MAP.md`). Kept for reference during migration.
+
+10 top-level sections (Invoices/ and Delegated/ folded 2026-05-06). Full subfolder breakdown + per-section rules: `[[vault-routing#vault-structure]]`.
+
+```
+Projects/        -- Time-bound work (flat mirror of Asana). Includes Team-Finances/ (was Invoices/) and Team-General/Delegated/ (was Delegated/).
+Properties/      -- Persistent digital assets (websites, apps)
+Customers/       -- Named customer relationships. SY-Clancy is the one customer with a matching standalone Asana project; vault content stays here, NOT under Projects/.
+Suppliers/       -- Paid external relationships
+Accreditations/  -- Training accreditation bodies (reference-only as of 2026-05-06; tasks now route to Team-General/SY-General)
+Businesses/      -- Trading entities only (Sygma, Canary Detect, One System, El Atico)
+Personal/        -- Pete's non-business world (finance, scouts, los-claveles, passion-fit, freemasonry, family, general). Three sync tiers per [[shared-drives#pete--mic]]
+Library/         -- Permanent knowledge (competitors, market, decisions, processes, meetings, skills, lessons, audits)
+Daily/           -- Session logs (YYYY-MM-DD.md)
+Screenshots/     -- macOS Cmd-Shift-3/4/5 capture target
+```
+
+**Project / sub-project pattern (post 2026-05-06 restructure):**
+- A **project** is a top-level Asana project + a top-level vault folder + its own README.
+- A **sub-project** is an Asana section under a parent + a vault subfolder direct under the parent (NOT inside `files/`) + its own README + its own `files/`.
+- Example: `Projects/SY-Website/` is the parent (with parent README + `files/`), and `Projects/SY-Website/seo/` is a sub-project (with its own README + `files/`).
+- When new work surfaces, default to the parent's `{prefix}-General` sub-project. Don't create a new project or sub-project for 1-2 tasks. Ask before creating either.
+
+> **Glob workaround (April 2026):** Single-level directory wildcards (`*/`) are broken in Cowork additional directories. When using the Glob tool to find files like `Projects/*/README.md`, set `path` to the parent directory (e.g., `Projects/`) and use recursive pattern `**/README.md`. Do NOT put subdirectory names inside the Glob pattern.
+
+## Asana Integration (Business Mode)
+
+Asana is the live work brain. All task management, project tracking, and team coordination happens in Asana. Read `Library/processes/asana-configuration.md` for all IDs, sync rules, and session lifecycle details.
+
+### Loading Asana Tools
+
+In Cowork, Asana tools are deferred -- load via ToolSearch (`query: "asana" max_results: 60`). In Claude Code, tools are available directly.
+
+### Key Operations
+
+- **Create task**: `asana_create_task` with project GID, assignee GID, priority via custom_fields
+- **Complete task**: `asana_update_task` with `completed: true`
+- **List Pete's tasks**: `asana_get_my_tasks`
+- **Search tasks**: `asana_search_tasks` with workspace GID
+- **Get project tasks**: `asana_get_tasks` with project GID
+
+### Auto-Create Vault Folders
+
+> [!warning] Business OS: legacy — do NOT auto-create vault project folders. Asana working projects map to Drive homes + the CC now, not `Projects/{name}/` vault folders (this conflicts with Resume Step 1's "don't glob Projects/"). Rescope at H/E. Kept below for reference only.
+
+At session start, after pulling Asana state, check every Asana working project has a complete vault folder. **Complete means three things, not just the folder**: (1) the folder itself, (2) `README.md` with proper frontmatter, (3) `files/` subfolder. If any piece is missing, complete it.
+
+The 2026-05-03 audit found 29 of 40 active project folders had folder + `files/` but NO `README.md`. The auto-create step had been silently incomplete. Don't repeat. Each completion check must verify all three artefacts exist, not just the folder.
+
+**Stub README template** for auto-create. Fill in from the Asana project (name, notes, team prefix, gid). Description sourced from Asana project notes, MAP.md if a description already lives there, or "{project-name} project" as last resort.
+
+```markdown
+---
+type: project
+status: active
+prefix: {CD|SY|OS|EA|AT|PA}
+slug: {kebab-case slug after prefix}
+asana_gid: "{16-digit gid}"
+asana_team_gid: "{team gid}"
+created: {today YYYY-MM-DD}
+updated: {today YYYY-MM-DD}
+tags: [project, {team-name}, {category}]
+category: {seo|migration|build|marketing|ops|regulatory|general}
+---
+
+# {Project-Name}
+
+{One-line description from Asana notes / MAP.md / fallback}
+
+> [!info] Auto-created stub
+> Created on session start by the brain skill auto-create step. Expand as the project's state changes.
+
+## Files
+
+Working content lives in `files/` alongside this README.
+```
+
+**Same pattern for missing customer/supplier READMEs**: if `Customers/{slug}/` or `Suppliers/{slug}/` exists with no README, populate from `Library/templates/customer-readme-template.md` (or supplier equivalent), not just leave empty. Empty supplier folders happened to SY-Rausch and SY-SurveyEquipment-UK on 2026-05-01; don't repeat.
+
+**Properties (manual creation today; rule applies if automated):** Properties are currently created by hand, not by an Asana-driven flow. If a session ever creates a property folder programmatically (e.g. a future "register property" workflow), the same completeness rule applies: folder + `README.md` + `data/` in one operation, with `property_type:` frontmatter (`marketing-site|saas-app|internal-tool|external-data-source`) per the vocabulary in `[[vault-routing#property-type-vocabulary]]`. Never leave a property folder without a README.
+
+**Verification before declaring auto-create complete**: re-list every active Asana project and confirm a vault README exists for each. If any missing, list them as "auto-create still pending" in the resume briefing.
+
+### Demand-driven project Gmail labels
+
+Project Gmail labels are NOT created blanket. They are created when (a) `triage` surfaces an email matching an existing `Projects/{prefix}-{slug}/` folder, or (b) Pete asks explicitly. Parity rule: label-folder pair always created together (label + auto-filter + README `gmail_label`/`gmail_url` frontmatter + `## Email` callout, all in one operation). Full rule: `[[vault-routing#demand-driven-project-gmail-labels]]`.
+
+### Calendar integration
+
+All Calendar work via `Library/processes/scripts/calendar-api.py`. Default timezone: Atlantic/Canary. Default calendar: Pete's primary. Named-person override (e.g. "put this in Tom's calendar"). Detection scope: flights, hotels, cars, meetings only. Full reference: `[[calendar-api-configuration]]` and `[[email-workflow]]`.
+
+### Multi-system context loading
+
+When Pete touches a customer, supplier, or project, follow the canonical reading order in `[[vault-routing#per-section-rules]]` (10 steps: MAP -> README -> Gmail label -> Asana tasks -> Calendar events -> Google Chat space -> matter README -> source/extracts -> meetings -> Shared Drives). Steps 1-6 happen automatically at the start of every customer-touch; 7-10 on demand based on what Pete asks for.
+
+The full step-by-step protocol lives in vault-routing -- this skill defers there rather than maintaining a parallel copy.
+
+---
+
+## Session Plan Requirement
+
+Every session that involves real work (not casual chat) MUST have a session plan written to the vault BEFORE any real work starts.
+
+**Where the plan lives:**
+- Project work: `Projects/{name}/files/session-plan-YYYY-MM-DD.md`
+- General work: `Daily/session-plan-YYYY-MM-DD.md`
+
+**Template:**
+```yaml
+---
+type: session-plan
+date: YYYY-MM-DD
+project: "[[Project-Name]]"
+status: in-progress
+---
+
+## Goal
+[What this session aims to achieve]
+
+## Steps
+- [ ] Step 1
+- [ ] Step 2
+
+## Progress
+[Updated as work happens]
+
+## Files Created/Modified
+- [path] -- [what changed]
+```
+
+At session end, update `status: completed` or `partial`. The plan stays in `files/` as permanent history.
+
+---
+
+## Resume Session
+
+Reconstruct full context so Pete picks up where he left off.
+
+### Steps
+
+1. **Load core memory** -- Read: `CLAUDE.md`, `MAP.md`, `[[vault-routing]]`. **Do NOT glob the vault's content folders** (`Projects/` other than `PA-Command-Centre`/`PA-General`, `Businesses/`, `Customers/`, `Suppliers/`, `Properties/`, `Personal/`, `Accreditations/`) — those are legacy mirrors pending retirement (Business OS migration; see the banner at the top of this skill). Project / entity / customer / property context lives in the live homes now: query the **file-index** for "what exists / where is X" (`python3 Library/processes/scripts/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`Library/processes/scripts/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
+2. **Load recent daily notes** -- Last 3 from `Daily/` (sorted by filename date). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against live Asana (something in narrative but missing from Asana, or something in Asana whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-gid live-state cross-check — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. Per-day files are **Garmin-native** (latest = today: the sleep you woke from this morning + today's readiness + today's activity, plus the rich `training` block — status, ACWR, training-effect, HR zones); full files at `Personal/health/garmin/` (see [[garmin-api-configuration]]). The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/Users/peterashcroft/Second Brain/Library/processes/scripts/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
+2a. **Surface yesterday's PF journal lesson** -- Read `My Drive/Passion Fit/journal/{yesterday-YYYY-MM-DD}.md` **via Desktop Commander** (the journal moved to Drive; the old vault `Personal/passion-fit/journal/` is deleted — mount root `~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/My Drive/Passion Fit/journal/`). Grep for the `## One lesson for tomorrow` heading; extract the line(s) that follow (cut at next `## ` heading or end-of-file). Surface in the Resume briefing as its own line: `**Yesterday's lesson:** {extracted text}`. If the file is missing or the heading is absent, skip silently — no nag from Resume; the 6pm `pf-journal-reminder` cron is the only nagger. Same source-of-truth + same extraction logic as the morning briefing's "Lesson from yesterday" section (canonical process: [[pf-journal#Lesson-flow]]).
+3. **Pull Asana state** -- Read `Library/processes/asana-configuration.md` for IDs. Load Asana tools via ToolSearch. Call `asana_get_my_tasks` for Pete's assigned tasks. Check for new Asana projects without vault folders -- create them automatically.
+3a. **Detect manually-added tasks** -- Surface tasks added directly in the Asana app (mobile / web) since the last session, so Claude absorbs their context before settling on the day's focus.
+
+**Mechanic:**
+1. **Cutoff time**: read the most recent file under `Daily/` (filename `YYYY-MM-DD.md`); use that date's start-of-day in `Atlantic/Canary` (Pete's local) as the cutoff. If the most recent daily note is today, fall back to yesterday.
+2. **Query Asana**: `asana_search_tasks(workspace="1213947679900731", completed=false, created_at.after=<cutoff>, opt_fields="name,assignee,projects,memberships.section,custom_fields,due_on,notes,created_at,created_by")`. Returns up to 100 results.
+3. **Filter out Jane-assigned**: Pete's view excludes `assignee.gid == "1213949290735736"` (Jane handles her own queue).
+4. **Filter out Claude-created**: heuristic — a task is Claude-created if (a) `notes` contains a Gmail thread URL pattern (`mail.google.com/mail/u/0/#`) — that's an asana-gmail-sync orphan or triage task, OR (b) `notes` opens with the marker `[claude-created]` (a marker we are introducing for any task Claude creates outside the email-workflow path; rollout tracked via a separate Asana task — see [[Library/decisions/2026-05-06-project-consolidation#claude-marker-rollout]] for how Claude-created tasks get tagged in future). Anything else = manual.
+5. **Surface in briefing** under `**Manual tasks since last session**`: one line per task: `{name} | {project / section} | {priority} | {due_on or '–'}`. Tap-to-show notes excerpt on demand.
+6. **Don't auto-action**. List only. Pete decides what (if anything) needs talking through.
+
+When the most recent daily note covers today (rare edge case where Claude resumes mid-day after a previous Claude session ended already), use yesterday's start-of-day as the cutoff. The aim is "what showed up in Asana while I was away" — the noise of duplicate Claude-created tasks is the cost of getting that right.
+
+**Edge cases:**
+- New Asana custom-field-driven priority unset → display as `–`.
+- Task assigned to multiple people → still surface if Pete is one of them.
+- Task in an archived project (rare) → surface but flag the project.
+3b. **Actions tray check (added 2026-06-06)** -- Query Gmail LIVE: `g.search_threads("label:Actions", max_results=50)`. For each thread, age = days since the LAST message on the thread. Surface in the briefing as its own line:
+   - `**Actions tray**: {N} waiting ({M} aging >3d): {short-subject} {X}d · {short-subject} {Y}d — say "actions" to walk them with drafts ready.`
+   - List every item older than **3 days**, oldest first; cap the inline list at 5 + `+K more aging`.
+   - Tray empty → skip the line entirely.
+   - The tray is reply-shaped only (Action/Task split, locked 2026-06-06: **Actions = waiting on Pete to respond by email; everything else = Asana only**). Bills/work items are Asana-only tasks with `[no-sync-close]` — they never appear here. Source = live Gmail, never the daily note. Operating manual: [[email-workflow]].
+4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home — not the legacy `Businesses/` vault folder.
+5. **Check session plans** -- Look for incomplete session plans:
+   - Grep `Daily/` and `Projects/PA-Command-Centre/` for `status: in-progress` (the skeleton homes for plans). Other projects' working files live in Drive now — check the project's Drive folder if one is referenced.
+   - If found, mention them so Pete can pick up where he left off.
+6. **Cowork-Inbox check (iPhone -> Cowork bridge)** -- Pete can send requests from his iPhone Claude to Cowork by emailing himself with subject starting `For Claude Cowork`. Brain skill picks these up at session start.
+   - Run `g.search_threads("subject:\"For Claude Cowork\" in:inbox newer_than:30d", max_results=20)` via the Gmail helper.
+   - For each match, read the full body (`g.get_thread(tid)`).
+   - Surface in the briefing: `"X incoming from your iPhone -- want to process now?"`. List one-line summaries.
+   - On confirmation, walk through each one: read body (standard shape: What / Where / Why / Done when / optional detail), propose a filing label based on content (existing labels like `Customers/SY-Clancy`, `General/CD-General`, `Suppliers/CD-MVP-Lanzarote`, etc.), execute the actual request (create Asana task, write vault file, run audit, send email -- whatever the body asks for), then archive the thread under the chosen label.
+   - If the request needs more info, leave thread in inbox and reply asking Pete (don't process partial).
+   - If the request is genuinely outside Cowork's scope (very rare -- Cowork has more access than iPhone), reply explaining + leave for Pete to handle.
+7. **Ask what to work on** -- If Pete hasn't already said:
+   > "What are we working on today? If it's a specific project or property, let me know and I'll load the context."
+8. **Present briefing** -- Concise standup format:
+   ```
+   Welcome back, Pete.
+
+   **Last session** (date): [Brief summary -- link [[projects]] mentioned]
+   **Actions tray**: [N waiting (M aging >3d): item Xd · item Yd — say "actions" to walk them]
+   **Asana priorities**: [P1/P2 tasks from get_my_tasks]
+   **Manual tasks since last session**: [N added directly in Asana -- list one-liners with project/section + priority]
+   **From your iPhone** (Cowork-Inbox): [N requests pending -- list one-liners]
+   **In Progress**: [[Project-A]] -- [task], [[Project-B]] -- [task]
+   **Pending** (cross-checked, not narrative): [items from daily-note pending blocks that survive a per-gid live Asana check]
+
+   What would you like to focus on today?
+   ```
+   Skip any line whose count is zero (don't print "Manual tasks since last session: 0").
+
+   **How to derive the Pending line** -- daily notes are a SECOND source. To build the Pending block:
+   1. Collect candidate items from yesterday's daily note + today's earlier session logs: every `> [!todo] Pending Tasks` block, every "Live carry-overs" / "Pending into next chunk" / "Pending into next session" list.
+   2. For each candidate that names an Asana gid (`1213...` or `1214...`): `GET /tasks/{gid}` with `opt_fields=completed,due_on`. Drop the line if `completed:true`. Refresh the due-date if it differs from the candidate.
+   3. For each candidate that names a £/€ amount but no gid (e.g. "wk5 £1,518.60"): `GET /workspaces/{ws}/tasks/search?text=<amount>&completed=false&assignee.any=PETE`. Drop the line if 0 results.
+   4. For each candidate that names a person + topic but no gid (e.g. "Laura @ MVP — 15 missing Sygma invoices"): grep yesterday's daily note for the gid; verify the gid live.
+   5. Items that fail the live check are silently dropped from the briefing — they do NOT appear with strikethrough or "carried over" labels. Items that pass appear with their current gid and due-date.
+   6. If the Pending block is empty after cross-check, skip the line entirely. Don't pad with stale narrative just to fill space.
+
+   The Δ block being current does not exempt the Pending block. Same source-of-truth rule applies to both.
+9. **File-index freshness (replaces the old MAP-drift pre-flight)** -- MAP.md no longer mirrors the file tree (it points at the live index), so there is no per-session MAP drift to reconcile. The `drive_files` index is kept current automatically by the **`drive-changes-watch`** capture cron (every 15 min) — anything Pete or staff add/move in Drive is already captured. No action needed at resume. Belt-and-braces: if the capture cron is ever found stopped (`launchctl list | grep drive-changes`), flag it; a manual catch-up run is `python3 Library/processes/scripts/drive-changes-watch.py`.
+10. **Update daily note** -- Create/append to `Daily/YYYY-MM-DD.md` with a "Current Session" section.
+
+### Guidelines
+- Keep it short -- like a quick standup, not a data dump
+- Prioritize: Asana P1/P2 tasks, deadlines this week, unfinished work
+- If memory files are empty (new vault): "This is your first session. What would you like to work on?"
+
+---
+
+## Compress / Save Session
+
+Save everything valuable from the current session.
+
+> **Closing nudge**: when Pete signals he's wrapping up the day or pausing the session for a while -- phrases like "ok thats it", "im done for today", "lets stop here", "going to bed", "back tomorrow", "off out", or a long pause after a clearly-finished body of work -- proactively offer: *"Want me to compress before you go? It'll save the session log, update memory, create any follow-up Asana tasks, and reconcile today's TODOs."* Don't wait for an explicit `/brain compress`. Honour his answer either way.
+>
+> Don't nudge mid-session, don't nudge after every quiet moment, and don't nudge if Pete just asked a question and is waiting for an answer. The signal is: a clear stop signal + a meaningful body of work landed in the session.
+
+### Steps
+
+1. **Save everything** -- Don't ask what to preserve. Automatically save all learnings, decisions, solutions, files modified, pending tasks, and errors.
+2. **Create session log** -- Append to `Daily/YYYY-MM-DD.md`:
+   ```markdown
+   ## Session Log: HH:MM -- [Topic Summary]
+
+   ### Quick Reference
+   **Topics:** [comma-separated -- use [[wikilinks]] for projects and people]
+   **Projects:** [[Project-Name]], [[Project-Name]]
+   **Outcome:** [what was accomplished]
+   **Duration:** [approximate]
+
+   > [!important] Decisions Made
+   > - [[Project-Name]] -- [Decision -- reasoning]
+
+   > [!tip] Key Learnings
+   > - [Learning -- link [[related notes]] when applicable]
+
+   > [!info] Solutions & Fixes
+   > - [[Project-Name]] -- [Problem -> Solution]
+
+   ### Files Modified
+   - [file path -- what changed]
+
+   > [!todo] Pending Tasks
+   > - [ ] [[Project-Name]] -- [Task]
+
+   ### Raw Session Summary
+   [Condensed summary -- use [[wikilinks]] for every project, person, and vault note mentioned]
+   ```
+3. **Update memory files (structured-home sweep)** -- **[Business OS: the "home" is the Drive entity folder + the CC `vault_notes` record now — NOT the legacy vault content folders described below; follow the top-of-skill banner. Save-side rescope pending (H/E).]** Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its existing home in the indexed vault -- is there a project on this? a property? a customer / supplier / business area? any folder or sub-folder on the topic? -- and update it with what changed + the rationale.** The daily note + session log are pointers only; nothing of substance ends its life in a daily log, a lesson, or CLAUDE.md when it has a real home in the structured vault. Operator prefs -> `CLAUDE.md` Rules section as a **pointer only** (structured rules go to `Library/lessons/`). New files added to MAP.md. See [[Library/lessons/2026-05-20-website-work-saved-to-structured-vault]].
+4. **Create Asana tasks** -- For any follow-up actions identified during the session, create tasks in Asana with correct project, assignee, and priority. Also mark any completed items as done in Asana.
+5. **Check session plans** -- Look for session plan files created this session:
+   - If all steps complete, update `status: completed`
+   - If steps incomplete, note pending items in the daily note
+   - If an execution plan exists and ALL phases complete, set the project README `status: completed`
+6. **Onboarding-ritual completeness check** -- For any new project, customer, supplier, or property folder created this session, run the verification checklist from `[[vault-routing#new-project--new-property]]` (Step 5) or `[[vault-routing#new-customer--new-supplier]]` (Step 7). If any item is incomplete (e.g. README missing, frontmatter missing required field, MAP.md not updated, files/ subfolder missing), complete it before closing the session. The 2026-05-03 audit found 29+12 README-less folders accumulated over weeks because this completeness check didn't exist; do not let that recur.
+7. **Same-day reconciliation pass** -- Before writing the new session log's `Pending Tasks` block, re-read **every prior `> [!todo] Pending Tasks` block in today's daily note** plus any pending entries in same-day session plans. For each open `[ ]` task:
+   - If it has an `(Asana: <gid>)` reference, query Asana live (`asana_get_task`) and read the rest of today's daily note + any commits / READMEs / decision docs touched today for matching evidence (commit hash, README "recent commits" line, decision file, etc.). If shipped: **close the Asana task** with a comment naming the commit/evidence, and **replace the `[ ]` line in-place** with `[x]` + ~~strikethrough~~ + a `**SHIPPED same-day as <evidence>**` marker.
+   - If no Asana GID, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
+   - When uncertain, surface as a question to Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) rather than auto-modifying.
+   
+   **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create Asana 1234; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed Asana task sat open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (Asana 1214496261050040, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
+   
+   **How to apply:** Runs at end-of-session, before the final Report step. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence (commit hash, decision doc, README log line) -- never strikes a line on assumption alone. Same logic must run in `vault-writer` (separate but parallel cleanup checklist).
+7a. **Asana staleness sweep** (mirrors vault-writer Step 3b) -- Scan the whole workspace for stale work and surface a digest: open tasks untouched >21d, long-overdue >14d, bloated undated clusters (a section full of same-day-dumped tasks), completed-but-still-listed clutter. Group by project -> section with a one-line call per cluster (close / archive / delegate / move to own project / verify-then-close). **Surface-only -- never bulk-close, delete, or reassign without Pete's per-item confirmation** (Asana teams + tasks are sacred). The only unprompted closes are tasks this session demonstrably shipped (Step 7). If nothing crosses the thresholds, say so in one line -- don't manufacture noise.
+7b. **Asana <-> vault project parity** (mirrors vault-writer Step 3c) -- For every project touched this session, confirm the Asana project and its vault folder are in sync (Full Sync Check Rules in `[[asana-configuration]]`, scoped to those projects): vault folder + README + `files/` exist; each Asana section (sub-project) has a matching vault sub-folder direct under the parent with its own README + files/; names match; no orphans either way; work this session shipped is reflected in Asana and Asana-done tasks have their vault artefact updated. Fix the vault side; surface Asana-side drift to Pete. SY-Clancy exception preserved (vault content at `Customers/SY-Clancy/`, never `Projects/`). Don't sprawl -- default to the parent's `{prefix}-General` sub-project; ask before creating a new project / sub-project. The exhaustive all-projects sweep stays the `vault-check` skill's job.
+8. **Report** -- Tell Pete what was saved and where. "You're safe to close. I'll remember everything next time."
+
+### Guidelines
+- If the session was short/trivial, create a minimal log (Quick Reference only)
+- Be thorough with the Raw Session Summary -- future sessions depend on it
+
+---
+
+## Preserve Knowledge
+
+Save durable knowledge that persists indefinitely.
+
+### Steps
+
+1. **Save immediately** -- Don't ask what to remember. Just save it to the right file.
+2. **Search before writing** -- Check `MAP.md` and use grep to see if content on this topic already exists. Update existing files rather than creating duplicates.
+3. **Route to the right file** -- consult `[[vault-routing#master-routing-matrix]]` for the canonical map. The routing matrix is owned there; this skill does not duplicate it.
+4. **Update MAP.md** -- If any new files were created, add entries.
+5. **Report** -- After saving, tell Pete what was saved and where.
+
+### Teaching Loop
+
+When Pete corrects you, save the correction. Don't ask. **Where you save it depends on shape:**
+
+- **One-liner sticky rule** (no Why, no How, just a fact or preference) -> append to `CLAUDE.md` under the Rules section.
+- **Anything with structure** (rule + Why + How to apply, or a recurring pattern with reasoning) -> write as `Library/lessons/{YYYY-MM-DD}-{slug}.md` using the lesson template, and add a single-line pointer in CLAUDE.md (`- **Short title.** One-line summary. See [[Library/lessons/{slug}]].`).
+
+**CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `Library/lessons/` as a standalone file with no pointer in CLAUDE.md. The `[[Library/lessons/README]]` index is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes. The 2026-05-03 audit trimmed CLAUDE.md from 43KB to 33KB precisely because non-correction pointers had drifted in; do not re-introduce that drift.
+
+Default to lessons/ when in doubt. Routing corrections inline into CLAUDE.md is what bloated it past 40KB before the 2026-05-03 audit; lessons exist precisely to absorb structured corrections so CLAUDE.md stays a navigable index of corrections only.
+
+Confirm what was saved and where after the fact.
+
+---
+
+## Daily Review
+
+Morning check-in, evening reflection, and weekly review routines.
+
+### Routing
+
+1. Check time: before noon --> suggest morning; after 5pm --> suggest evening
+2. If user explicitly requests a type, use that
+3. If unclear, ask
+
+### Templates
+
+| Review | Template |
+|--------|----------|
+| Morning | `references/template-morning-business.md` |
+| Evening | `references/template-evening.md` |
+| Weekly | `references/template-weekly-business.md` |
+
+Read the appropriate template before generating the review.
+
+### Morning Routine
+
+1. Read most recent daily note from `Daily/`
+2. Pull Asana tasks: `asana_get_my_tasks` -- note P1/P2 priorities and overdue items
+3. Check `Projects/` for approaching deadlines
+4. Business: Check `Businesses/` for business/department status.
+5. Ask mode-appropriate questions:
+   - Main focus, key meetings, blockers
+6. Save to `Daily/YYYY-MM-DD.md` (append morning section) with frontmatter
+7. Create 1-3 Asana tasks based on energy and deadlines. Report what was created.
+
+### Evening Routine
+
+1. Read today's daily note (morning section if it exists)
+2. Compare task progress vs morning intentions
+3. Ask mode-appropriate questions:
+   - Accomplishments, decisions made, top priority for tomorrow
+4. Save to `Daily/YYYY-MM-DD.md` (append evening section)
+5. Mark completed Asana tasks as done; route any new insights to the right file
+
+### Weekly Review
+
+1. Read all daily notes for the current week
+2. Scan `Projects/` for movement
+3. Pull completed Asana tasks for the week -- celebrate wins
+4. Business: Check OKR progress, department health
+5. Ask mode-appropriate questions:
+   - Biggest win, OKR progress, blockers, focus for next week
+6. Save to `Daily/YYYY-MM-DD Weekly Review.md`
+7. Plan top 3 priorities for next week; create Asana tasks automatically
+8. Archive completed items if appropriate
+
+---
+
+## Task Management
+
+Asana is the only task system. All tasks live in Asana, managed via the local Asana MCP.
+
+### Loading Asana Tools
+
+In Cowork, Asana tools are deferred -- load via ToolSearch (`query: "asana" max_results: 60`). In Claude Code, tools are available directly.
+
+### Creating a Task
+
+Use `asana_create_task`:
+- `name`: Task title
+- `project_gid`: Project GID (singular string, not array)
+- `assignee`: User GID (Pete: 1213947679900718, Jane: 1213949290735736, Dave: 1213950274488858)
+- `custom_fields`: `{ "1213945150508559": "<priority_enum_gid>" }` for priority
+- `due_on`: YYYY-MM-DD (optional)
+- `notes`: Description (optional)
+
+Read `Library/processes/asana-configuration.md` for all GIDs.
+
+### Listing Tasks
+
+- **Pete's tasks**: `asana_get_my_tasks`
+- **Project tasks**: `asana_get_tasks` with `project` GID
+- **Search**: `asana_search_tasks` with `workspace` GID and filters
+
+### Updating a Task
+
+Use `asana_update_task`:
+- Complete: `completed: true`
+- Reassign: `assignee: "<gid>"`
+- Reprioritize: `custom_fields: { "1213945150508559": "<new_priority_gid>" }`
+- Reschedule: `due_on: "YYYY-MM-DD"`
+
+### Guidelines
+- Always set project, assignee, and priority when creating tasks
+- At session end, create Asana tasks for follow-up actions
+- Present task lists as clean markdown tables
+- For bulk operations, confirm with Pete first
+
+---
+
+## Output Styles
+
+Output styles define how the assistant communicates. Styles are bundled as reference files within this skill (`references/style-*.md`). Users can override or add custom styles in `.claude/output-styles/`.
+
+### Available Styles
+
+**All modes:**
+
+| Style | Reference File | Use When |
+|-------|---------------|----------|
+| Conversation | `references/style-conversation.md` | Default -- chat, brainstorming, Q&A |
+| YouTube Script | `references/style-youtube-script.md` | Video scripts |
+| Blog Post | `references/style-blog-post.md` | Long-form articles |
+| Quick Reply | `references/style-quick-reply.md` | DMs, short messages |
+| Email | `references/style-email.md` | Professional emails |
+| Meeting Summary | `references/style-meeting-summary.md` | Meeting transcripts |
+
+**Business mode only:**
+
+| Style | Reference File | Use When |
+|-------|---------------|----------|
+| SOP | `references/style-sop.md` | Standard operating procedures |
+| Report | `references/style-report.md` | Business reports for stakeholders |
+
+### Loading a Style
+
+1. **Check vault first**: If `.claude/output-styles/{style-name}.md` exists, use that (user override)
+2. **Fall back to reference**: Otherwise, read `references/style-{style-name}.md` from this skill's references
+3. **Default**: Always use `conversation` style unless told otherwise
+
+### Switching
+
+- **Explicit**: "write a YouTube script" --> load `youtube-script` style
+- **Context clues**: Working on meeting transcript --> auto-switch to `meeting-summary`
+- **"Go back to normal"** --> revert to `conversation`
+
+### Creating Custom Styles
+
+1. Ask about content type, tone, format, and rules
+2. Create at `.claude/output-styles/[style-name].md` with sections: Identity, Tone, Format, Rules, Examples
+3. Test with a sample, iterate until happy
+
+### Personalization
+
+User voice from the primary context file is applied ON TOP of the active style.
+
+---
+
+## Resources
+
+`Library/` is Pete's organisation library -- processes, market intel, competitors, decisions, ip-trademark, templates, reference material, archived projects.
+
+### Saving Resources
+
+When Pete shares reusable content, route per `[[vault-routing#master-routing-matrix]]`:
+- Processes / SOPs -> `Library/processes/`
+- Competitor intel -> `Library/competitors/`
+- Market research -> `Library/market/`
+- Templates -> `Library/templates/`
+- Decisions -> `Library/decisions/`
+- IP/trademark -> `Library/ip-trademark/`
+
+Add `tags:` in frontmatter. Report what was saved and where.
+
+### Finding Resources
+
+1. Check `MAP.md` for known resources
+2. List files: `ls Library/`
+3. Search by keyword: `grep -rl "keyword" Library/`
+4. Read and present the matching resource
+
+---
+
+## Web Content Extraction
+
+When Pete shares a URL for context:
+
+```bash
+defuddle parse <url> --md
+```
+
+Defuddle strips clutter and returns clean markdown. If not installed, fall back to standard web fetch.
+
+---
+
+## Meeting Intelligence
+
+Process meeting transcripts, extract decisions and action items, sync from Fireflies, and file meeting notes.
+
+USE WHEN Pete:
+- Pastes a transcript or drops a transcript file
+- Asks to summarize a meeting or extract action items
+- Asks about past meetings
+- Mentions Fireflies, asks to sync or pull transcripts
+
+### Step 1: Identify Meeting Type and Save Location
+
+Meeting-type → folder routing lives in `[[vault-routing#per-section-rules]]` (Library > Meetings). Brief summary:
+- Team standup → `Library/meetings/team-standups/`
+- Client call → `Library/meetings/client-calls/` (authoritative archive -- never duplicated to customer folders; wikilink from matter)
+- One-on-one → `Library/meetings/one-on-ones/`
+- Board review → `Library/meetings/board-reviews/`
+- All-hands → `Library/meetings/all-hands/`
+- Cross-team → `Library/meetings/cross-team/`
+- General → `Library/meetings/general/`
+
+Filename: `YYYY-MM-DD Meeting Title.md`.
+
+### Step 2: Load Output Style
+
+Read `.claude/output-styles/meeting-summary.md`. If missing, use `references/template-meeting-note.md`.
+
+### Step 3: Extract from Transcript
+
+1. Key decisions
+2. Action items -- who, what, when
+3. Discussion summary
+4. Open questions
+5. Follow-up items
+
+### Step 4: Create the Meeting Note
+
+Frontmatter:
+
+```yaml
+---
+type: meeting
+subtype: team-standup | client-call | one-on-one | board-review | all-hands | cross-team | general
+date: YYYY-MM-DD
+time: HH:MM
+participants: [[[Person A]], [[Person B]]]
+duration: X minutes
+source: manual | fireflies
+status: processed
+---
+```
+
+Body uses Obsidian callouts:
+
+```markdown
+## Participants
+- [[Person A]]
+- [[Person B]]
+
+## Summary
+[2-3 sentence overview]
+
+> [!important] Key Decisions
+> - [Decision 1]
+
+> [!todo] Action Items
+> - [ ] [[Person A]] -- [Task] (by [date])
+
+## Discussion Notes
+### [Topic 1]
+[Summary]
+
+> [!question] Open Questions
+> - [Unresolved item]
+
+> [!info] Follow-up
+> - Next meeting: [date/time]
+```
+
+Business mode additions:
+- Board reviews: `> [!warning] Governance Items` callout
+- All-hands: `> [!info] Company Announcements` callout
+- Cross-team: `> [!todo] Department Dependencies` callout
+
+### Step 5: Create Asana Tasks from Action Items
+
+Create an Asana task for each action item using `asana_create_task`. Tag with the relevant project. Set assignee and priority.
+
+### Step 6: Link and Update
+
+- Add `project:` and `department:` to frontmatter where applicable
+- Use [[wikilinks]] for all project and person references
+- Update MAP.md for the new meeting note
+
+### Fireflies Sync
+
+**MCP Server (Business Plan):** Check `.claude/settings.json` for fireflies config. Use `fireflies_list_transcripts` and `fireflies_get_transcript`.
+
+**Manual Export (Free Plan):** Have Pete export from app.fireflies.ai, paste or drop file.
+
+---
+
+## Scheduled tasks brain is aware of
+
+Crons modify vault files before sessions start — **always Read a daily note before appending**. Don't shadow-run any cron from a session.
+
+**No cron list is embedded here — embedded copies drift (locked 2026-06-06; the old table here was stale on schedule AND contents).** The sources of truth:
+
+- `[[scheduled-tasks]]` — narrative registry, entry per task with vault-touch lists. **Read its header rules before editing any entry** — it carries the dashboard 3-step.
+- `Library/processes/automations-dashboard/automations.json` → live view at https://pete-automations.vercel.app
+- `mcp__scheduled-tasks__list_scheduled_tasks` — live Cowork cron state
+
+Any cron change (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[Library/lessons/2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
+
+## General Guidelines
+
+- **MAP.md is your index.** Check before creating any file. Update after creating new files.
+- **Memory protocol**: Load context files at session start. Route new knowledge per `[[vault-routing]]`.
+- **Sweep verb**: `sweep` is a single deliberate verb, manual trigger only. No skill should auto-offer it. Email-workflow operating manual: `[[email-workflow]]`.
+- **Email-workflow verbs**: `triage`, `sync asana`, `delegate this`, `action this` (tray: Actions label + task), `task this` (Asana-only: no Actions label, `[no-sync-close]`), `actions` / `my actions` (tray walker), `de-tray this`, `file under`, `file all emails`, `add to calendar`. One-sentence rule: **Actions = waiting on Pete to respond by email; everything else = Asana only** (locked 2026-06-06). See `[[email-workflow]]` -- handled by `inbox-triage` and `asana-gmail-sync` skills.
+- **Wikilinks everywhere**: Every mention of a project, person, or vault note MUST be a `[[wikilink]]`.
+- **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> `Library/lessons/{date}-{slug}.md` + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
+- **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[Library/lessons/README]]`.
+- **Outbound text drafting**: read `[[voice-principles]]` before drafting any outbound text on Pete's behalf (customer email, supplier email, internal email, blog, article, ad copy).
+- **Finance / invoicing / Soldo / Dext / Odoo / Xero / payroll / VAT**: read `[[finance-workflow]]` first.
+- **Helper scripts**: 41 of them at `Library/processes/scripts/`. Catalogue at `[[scripts-index]]` -- don't reinvent.
+- **Connectors and APIs**: registry at `[[connections]]` -- don't guess what's connected or how it auths.
+- **Sygma Hub mirror**: `Library/sy-*/` folders are local mirrors of designated Sygma Hub Drive folders. When Pete asks about Sygma policies / training reference / company info / HR / sales pipeline, check `Library/sy-*/` first. See `[[hub-content-index]]`.
+- **Daily notes**: `Daily/YYYY-MM-DD.md` is the most-read memory file -- keep it current.
+- **All working files go in Projects/**: `Projects/{name}/files/`. Code repos clone into a temp directory, never into the vault.
+- **Search before writing.** Check MAP.md and grep before creating files.
+- **Properties before property work.** Read the property README before any SEO/ads/analytics work.
+- **Asana is the only task system.** Create, update, and complete tasks via Asana MCP.
+
+## Skill orchestration
+
+Brain owns workflow orchestration. Hand off to specialised skills when their verbs hit:
+
+| Verb / phrase | Skill |
+|---|---|
+| `triage` | `inbox-triage` |
+| `sync asana`, `sweep` (verb), orphan reconciliation | `asana-gmail-sync` |
+| `audit this page`, `ahrefs audit`, "research this keyword" | `ahrefs-audit` |
+| `fortnightly review`, "check the positions", "has it moved" | `audit-review` |
+| `connect to my site`, "look at my app", "set up a new project" | `property-manager` |
+| `simplify`, "review my code" | `simplify` |
+| End-of-session vault cleanup | `vault-writer` (defers to brain Compress for Asana sync) |
+| Distinctive frontend design | `frontend-design` |
+
+## Auto-Save Rule
+
+**Never ask permission to save.** When meaningful info comes up, save it to the right vault file immediately. Report what was saved and where.
+
+## Anti-Patterns
+
+Do NOT:
+- Ask "should I save this?" -- just save it
+- Write project names or people as plain text -- use `[[wikilinks]]`
+- Use `[markdown](links)` for internal vault notes -- use `[[wikilinks]]`
+- Put a `# Title` heading that duplicates the filename
+- Create orphan notes
+- Read entire files when scanning many -- use `grep`
+- Update vault files on casual chat
+- Start real work without writing a session plan first
+- Create tasks anywhere other than Asana
+- Put project working files in Properties/ -- they go in Projects/
+- Put SEO/ads data in Projects/ -- operational data goes in Properties/{Name}/data/
+- Cram all project info into README.md -- use files/ for working content
+- Store business-specific SOPs in Library/processes/ -- use Businesses/{name}/sops/
+- Create SITE-HISTORY.md or PROJECT_REFERENCE.md files
+- Duplicate routing rules into this skill -- they live in [[vault-routing]] only
+
+## Pete's Preferences for Written Content
+
+- Human, natural tone (not corporate, not AI-sounding)
+- British English spelling
+- No unnecessary jargon
+- **Outbound text** (email, article, blog, ad copy, customer reply, anything sent to a recipient): read `[[voice-principles]]` first. The dash rule, voice patterns, and AI-tells live there. Internal vault content (md files, plans, daily notes, audits) is not subject to those rules.
+
+## Related lessons (auto-surfaced by deployment matrix)
+
+Lessons in scope for this skill per [[Library/audits/2026-05-16-lesson-deployment-matrix]]:
+
+- [[Library/lessons/2026-05-06-vault-bookkeeping-with-artefacts]]
+- [[Library/lessons/2026-05-24-mirror-source-system-dating-not-a-cleverer-model]] — for any data Pete also reads in a source app (Garmin, bank, console), match that app's own dating/labels; don't invent a smarter scheme that contradicts their screen.
+- [[Library/lessons/2026-05-24-gcal-updated-timestamp-race-after-create]] — calendar/sync race-condition pattern; Resume reads gcal-twice-daily-sync output.
+- [[Library/lessons/2026-05-25-calendar-sync-window-mismatch-births-past-event-dupes]] — Resume reads gcal cron line; understand window-mismatch failure mode.
+- [[Library/lessons/2026-05-25-garmin-daily-pull-must-rebase-before-push]] — Resume Step 2 reads Garmin pull line; PUSH FAILED warning is part of that line.
+- [[Library/lessons/2026-05-19-ip-takedown-attribution-vs-speed-trade-off]] — IP enforcement methodology; fires when brain handles IP-portfolio / takedown tasks.
+- [[Library/lessons/2026-05-26-enforcement-campaigns-surface-counter-attack-vectors-at-planning]] — surface counter-attack + personal-liability vectors at planning; fires on any IP / regulatory / public-callout campaign brain orchestrates.
+- [[Library/lessons/2026-05-27-pptx-image-pass-build-from-pristine-backup-and-match-logo-to-bg]] — deck/document image-placement work; build from pristine backup, match each logo to its slide background.
+
