@@ -15,7 +15,7 @@ whole reason Garmin moved to Railway. No Drive/vault/dashboard writes.
 # what: Garmin → CC garmin_daily (headless). Pulls yesterday+today, upserts the CC table.
 # why: keeps the CC's Garmin data current from the cloud, Mac-independent — Pete: just needs to update the CC properly (no email/briefing/Drive narrative)
 # reads: Garmin Connect API (stored OAuth tokens, GARMIN_TOKENS_JSON); reuses garmin-daily-pull.pull_day
-# writes: CC public.garmin_daily (one row per date, idempotent on date)
+# writes: CC public.garmin_daily (one row per date, idempotent on date) incl. the snapshot column (the live Health-dashboard feed)
 # entity: canary-detect
 # schedule: 0 7,22 * * *
 # timezone: Atlantic/Canary
@@ -47,7 +47,13 @@ def main():
     for d in dates:
         try:
             day = gdp.pull_day(g, d)
-            gdp._upsert_garmin_daily(day)
+            # Build the full dashboard snapshot (sleep/hrv/readiness/body-battery/daily/
+            # training/activities) and store it in garmin_daily.snapshot — the live feed
+            # the CC Health dashboard reads. Headless-safe: journal/signoff degrade to
+            # null here (Drive/session-local, absent on Railway); the metrics are what
+            # the dashboard needs and they all come from Garmin.
+            snapshot = gdp.build_json_snapshot(day, g)
+            gdp._upsert_garmin_daily(day, snapshot)
             has = (day.get("sleep") or {}).get("score") is not None or len(day.get("activities") or []) > 0
             print(f"garmin-daily-cc: {d} → garmin_daily upserted ({'data' if has else 'no-data'})")
             ok += 1

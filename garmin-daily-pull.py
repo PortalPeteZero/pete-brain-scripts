@@ -991,10 +991,12 @@ def write_all_lessons(dry: bool = False) -> int:
     return len(rows)
 
 
-def _upsert_garmin_daily(day: dict):
+def _upsert_garmin_daily(day: dict, snapshot: dict | None = None):
     """Write the day's headline metrics to the CC `garmin_daily` table (queryable; feeds the morning
-    briefing's recovery section + a future Health dashboard). Non-fatal — never breaks the md/json write.
-    This is the Business-OS re-target: structured Garmin data → a CC table, not just Drive markdown."""
+    briefing's recovery section). The full processed `snapshot` (same dict written to the data/garmin
+    JSON) is stored in the `snapshot` column — that is the LIVE feed the CC Health dashboard reads, so
+    the dashboard reflects each pull without a code deploy (no longer depends on the git-mirror).
+    Non-fatal — never breaks the md/json write. Business-OS re-target: structured Garmin data → a CC table."""
     try:
         import urllib.request
         url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
@@ -1013,6 +1015,7 @@ def _upsert_garmin_daily(day: dict):
             "stress_avg": stats.get("averageStressLevel"),
             "body_battery_high": b.get("charged"),
             "payload": {k: day.get(k) for k in ("sleep", "hrv", "body_battery", "training_readiness", "stats", "stress", "activities")},
+            "snapshot": snapshot,
             "updated_at": datetime.now(TZ).isoformat(),
         }
         req = urllib.request.Request(
@@ -1063,8 +1066,9 @@ def write_day(g: "garmin_mod.GarminAPI", iso_date: str, dry: bool = False) -> tu
             pass
     json_path.write_text(json.dumps(snapshot, indent=2, default=str))
 
-    # CC garmin_daily table (Business OS — structured, queryable; feeds the morning briefing). Non-fatal.
-    _upsert_garmin_daily(day)
+    # CC garmin_daily table (Business OS — structured, queryable; feeds the morning briefing + the
+    # live Health dashboard via the `snapshot` column). Non-fatal.
+    _upsert_garmin_daily(day, snapshot)
 
     # JSON (dashboard repo clone, if it exists). Non-fatal if missing.
     if DASHBOARD_REPO_DATA.parent.exists():
@@ -1215,6 +1219,10 @@ def main():
                     help="Skip the Garmin fetch; regenerate weekly + lessons JSON and push (PF processes publish on completion)")
     ap.add_argument("--sleep-between", type=float, default=0.5,
                     help="Seconds to sleep between days when batching (default 0.5)")
+    ap.add_argument("--no-push", action="store_true",
+                    help="Write files + CC garmin_daily (incl. live snapshot) but skip the git commit/push "
+                         "to the dashboard repo. The CC dashboard reads the snapshot live, so a push isn't "
+                         "needed to surface the data.")
     ap.add_argument("--set-signoff", nargs=2, metavar=("DATE", "HHMM"),
                     help="Set Pete-confirmed sign-off (HH:MM) for a day; the brain calls this on correction. No Garmin pull.")
     args = ap.parse_args()
@@ -1297,8 +1305,10 @@ def main():
         print(f"  Lessons index: {lessons_written} lesson(s){' [DRY-RUN]' if args.dry else ''}")
 
     # Push the day's JSON to the dashboard repo clone so Vercel auto-deploys.
+    # (Legacy path; the CC dashboard now reads the snapshot live from garmin_daily,
+    # so --no-push skips this and the data still surfaces.)
     push_status = None
-    if not args.dry:
+    if not args.dry and not args.no_push:
         push_status = push_dashboard()
 
     # Loud push-failure tag for the daily-note line so silent breakage stops
