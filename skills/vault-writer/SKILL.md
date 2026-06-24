@@ -163,11 +163,11 @@ For every project **touched this session**, confirm Asana reflects what shipped 
 - Flag anything that needs Pete's attention next session
 - Pete may request changes, additions, or notes at this point -- handle them before continuing
 
-### Step 7: Daily note
+### Step 7: Daily log (CC)
 
-- Create or append session entry to `Daily/YYYY-MM-DD.md`
+- Append this session's entry to the CC `daily_log` (`date`=today, `cron_name`=`'session'`, `content`=summary) via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (dollar-quote the content). This is the cloud last-session that brain Resume reads — don't skip it.
 - Include: what was worked on, what was saved, decisions made, what's pending
-- Use `[[wikilinks]]` for all project and person references
+- Use `[[wikilinks]]` for project and person references
 - Include any late additions from Pete's feedback in Step 6
 
 ### Step 8: Propagate to the cloud
