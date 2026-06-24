@@ -20,7 +20,7 @@ description: >
 # inbox-triage
 
 > [!important] Business OS migration — filing targets are Drive + the knowledge DB now
-> When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors pending retirement at Part I). Route per the new-world matrix in [[vault-routing]]. Gmail labels + Asana behaviour are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB ([[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
+> When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors retired 24 Jun 2026). Route per the new-world matrix in [[vault-routing]]. Gmail labels + Asana behaviour are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB ([[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
 
 Interactive email triage walker. The verb `triage` runs this skill.
 

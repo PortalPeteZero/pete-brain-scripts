@@ -16,7 +16,7 @@ description: >
 # Finance filing — the reconciling finance verb
 
 > [!important] Business OS migration — finance homes are Drive now
-> The three entity finance homes are **Google Drive**: Personal/family → **Ashcroft Family/Finance** (+ Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll) → **Sygma Private**; Canary Detect → **CD Private/finance**. The old `Personal/finance/`, `Businesses/{name}/finance/`, `Personal/family/Finance/` vault paths are **legacy mirrors pending retirement at Part I**. The entity-split rules + owner-private carve-out are unchanged — only the destination folders moved to Drive. `[[wikilinks]]` resolve against `vault_notes`. See [[vault-routing#finance-routing-by-entity--sygma--canary-detect--personal]].
+> The three entity finance homes are **Google Drive**: Personal/family → **Ashcroft Family/Finance** (+ Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll) → **Sygma Private**; Canary Detect → **CD Private/finance**. The old `Personal/finance/`, `Businesses/{name}/finance/`, `Personal/family/Finance/` vault paths are **retired 24 Jun 2026 (now in Drive + vault_notes)**. The entity-split rules + owner-private carve-out are unchanged — only the destination folders moved to Drive. `[[wikilinks]]` resolve against `vault_notes`. See [[vault-routing#finance-routing-by-entity--sygma--canary-detect--personal]].
 
 The way to get **any** finance content into the right place: separated by entity, captured into the vault, reconciled against what's already there — Claude **understands each item before it files it**, never just dumps it somewhere.
 

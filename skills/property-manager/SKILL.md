@@ -8,7 +8,7 @@ description: "Use this skill whenever Pete wants to work on any website, app, or
 # Property Manager — Universal Workflow Skill
 
 > [!important] Business OS migration — content lives in Drive + the knowledge DB, not the vault tree
-> A property's working files (`Projects/{name}/files/`) and reference data (`Properties/{Name}/data/`) are migrating to **Google Drive** (find via `drive_files`: `Library/processes/scripts/cc-sql.py`) and the property cards into the **CC Properties module** (Part E). The vault `Properties/` + `Projects/` content folders are **legacy mirrors pending retirement at Part I**. Route new content per the new-world matrix in [[vault-routing]]; `[[wikilinks]]` resolve against `vault_notes` (no rewriting). Code repos still clone to a temp dir (never the vault). Full picture: `MAP.md`.
+> A property's working files (`Projects/{name}/files/`) and reference data (`Properties/{Name}/data/`) are migrating to **Google Drive** (find via `drive_files`: `Library/processes/scripts/cc-sql.py`) and the property cards into the **CC Properties module** (Part E). The vault `Properties/` + `Projects/` content folders are **retired 24 Jun 2026 (now in Drive + vault_notes)**. Route new content per the new-world matrix in [[vault-routing]]; `[[wikilinks]]` resolve against `vault_notes` (no rewriting). Code repos still clone to a temp dir (never the vault). Full picture: `MAP.md`.
 
 Single workflow for connecting to any of Pete's digital properties, understanding architecture, making changes safely, and keeping the vault up to date.
 

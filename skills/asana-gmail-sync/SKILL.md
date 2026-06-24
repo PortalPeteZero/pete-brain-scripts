@@ -21,7 +21,7 @@ description: >
 # asana-gmail-sync
 
 > [!important] Business OS migration — filing targets are Drive + the knowledge DB now
-> Gmail-label ↔ Asana reconciliation is unchanged. Where this skill files thread context to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record (the vault content folders are legacy mirrors pending retirement at Part I). Route per the new-world matrix in [[vault-routing]]. **`vault-enricher.py`** (called on filed/task-linked threads) still targets the vault file — flagged for Drive/DB redesign in the [[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]; keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
+> Gmail-label ↔ Asana reconciliation is unchanged. Where this skill files thread context to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record (the vault content folders are retired 24 Jun 2026 (now in Drive + vault_notes)). Route per the new-world matrix in [[vault-routing]]. **`vault-enricher.py`** (called on filed/task-linked threads) still targets the vault file — flagged for Drive/DB redesign in the [[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]; keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
 
 Reconciliation engine for the email workflow. Bidirectional sync between Gmail labels (`Actions`, `Delegated`) and Asana task state. The verb `sync asana` runs this skill.
 

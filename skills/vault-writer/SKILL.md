@@ -20,7 +20,7 @@ description: >
 # Vault Writer
 
 > [!important] Business OS migration — content lives in Drive + the knowledge DB, not the vault tree
-> Files → **Google Drive** (find via the `drive_files` index: `Library/processes/scripts/cc-sql.py`); knowledge / lessons / decisions / notes → **CC `vault_notes`** (`cc-knowledge-api.py`, surfaced in the CC Brain page). The vault content folders (`Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, most of `Library/`) are **legacy mirrors pending retirement at Part I** — route new content per the new-world matrix in [[vault-routing]]. `[[wikilinks]]` still resolve (by name, against `vault_notes`), so don't rewrite links. Full picture: `MAP.md`. State: [[Projects/PA-Command-Centre/files/business-os-master-plan-2026-06-20|master plan]].
+> Files → **Google Drive** (find via the `drive_files` index: `Library/processes/scripts/cc-sql.py`); knowledge / lessons / decisions / notes → **CC `vault_notes`** (`cc-knowledge-api.py`, surfaced in the CC Brain page). The vault content folders (`Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, most of `Library/`) are **retired 24 Jun 2026 (now in Drive + vault_notes)** — route new content per the new-world matrix in [[vault-routing]]. `[[wikilinks]]` still resolve (by name, against `vault_notes`), so don't rewrite links. Full picture: `MAP.md`. State: [[Projects/PA-Command-Centre/files/business-os-master-plan-2026-06-20|master plan]].
 
 End-of-session cleanup checklist and vault writing standards. Routing rules live in [[vault-routing]] — single source of truth for where things go. Brain owns workflow orchestration; vault-writer ensures end-of-session capture follows those rules.
 
