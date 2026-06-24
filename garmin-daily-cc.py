@@ -39,6 +39,31 @@ _spec.loader.exec_module(gdp)
 TZ = ZoneInfo("Atlantic/Canary")
 
 
+def _preserve_local_fields(date_iso, snap):
+    """The headless Railway pull can't read Pete's Drive journal or his local Claude
+    sign-off, so build_json_snapshot returns journal=None / signoff(detected=None)
+    here. Don't clobber a richer snapshot already stored for this date (written by the
+    local full pull or the one-off backfill). Non-fatal: on any error, snapshot unchanged."""
+    import json as _j, urllib.request as _u, os as _o
+    try:
+        url = _o.environ.get("CC_SUPABASE_URL"); key = _o.environ.get("CC_SUPABASE_SERVICE_KEY")
+        if not (url and key):
+            kp = Path(_o.environ.get("VAULT", ".")) / "Library/processes/secrets/command-centre-supabase-keys.json"
+            kd = _j.loads(kp.read_text()); url, key = kd["url"], kd["service_role_key"]
+        req = _u.Request(url.rstrip("/") + f"/rest/v1/garmin_daily?date=eq.{date_iso}&select=snapshot",
+                         headers={"apikey": key, "Authorization": "Bearer " + key})
+        rows = _j.loads(_u.urlopen(req, timeout=20).read())
+        prev = (rows[0].get("snapshot") if rows else None) or {}
+        if not snap.get("journal") and prev.get("journal"):
+            snap["journal"] = prev["journal"]
+        ps = prev.get("signoff") or {}; ns = snap.get("signoff") or {}
+        if (ps.get("detected") or ps.get("confirmed")) and not (ns.get("detected") or ns.get("confirmed")):
+            snap["signoff"] = ps
+    except Exception as e:
+        print(f"  (preserve journal/signoff skipped for {date_iso}: {e})", file=sys.stderr)
+    return snap
+
+
 def main():
     g = gdp.garmin_mod.GarminAPI()
     today = _dt.datetime.now(TZ).date()
@@ -53,6 +78,7 @@ def main():
             # null here (Drive/session-local, absent on Railway); the metrics are what
             # the dashboard needs and they all come from Garmin.
             snapshot = gdp.build_json_snapshot(day, g)
+            snapshot = _preserve_local_fields(d, snapshot)
             gdp._upsert_garmin_daily(day, snapshot)
             has = (day.get("sleep") or {}).get("score") is not None or len(day.get("activities") or []) > 0
             print(f"garmin-daily-cc: {d} → garmin_daily upserted ({'data' if has else 'no-data'})")
