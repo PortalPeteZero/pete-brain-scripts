@@ -78,7 +78,9 @@ if DRY:
     print("--- " + CHASE_SUBJECT); print(chase_body("Sample")); print("---")
     sys.exit(0)
 
-spec = importlib.util.spec_from_file_location("gmail_api", str(VAULT / "Library/processes/scripts/gmail-api.py"))
+_gp = VAULT / "gmail-api.py"
+if not _gp.exists(): _gp = VAULT / "Library/processes/scripts/gmail-api.py"
+spec = importlib.util.spec_from_file_location("gmail_api", str(_gp))
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
 g = mod.GmailAPI()
 

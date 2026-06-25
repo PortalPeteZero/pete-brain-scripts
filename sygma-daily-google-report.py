@@ -464,7 +464,9 @@ def main(argv):
     # --- Command Centre publish (P5, 2026-06-11): snapshot to reports.snapshots; the email above is unchanged. Non-fatal.
     try:
         import importlib.util as _il, datetime as _dt
-        _spec = _il.spec_from_file_location("cc_publish", "/tmp/pbs/Library/processes/scripts/cc_publish.py")
+        _cpp = f"{VAULT}/cc_publish.py"
+        if not os.path.exists(_cpp): _cpp = f"{VAULT}/Library/processes/scripts/cc_publish.py"
+        _spec = _il.spec_from_file_location("cc_publish", _cpp)
         _cc = _il.module_from_spec(_spec); _spec.loader.exec_module(_cc)
         _cc.publish("sygma-google-daily", _dt.date.today().isoformat(), {"subject": subject, "html": html})
         print("  CC: snapshot published")

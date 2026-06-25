@@ -81,7 +81,9 @@ def kebab(name: str) -> str:
     return s.strip("-")
 
 def load_helper(module_name):
-    spec = importlib.util.spec_from_file_location(module_name, f"{VAULT}/Library/processes/scripts/{module_name}.py")
+    _p = f"{VAULT}/{module_name}.py"
+    if not os.path.exists(_p): _p = f"{VAULT}/Library/processes/scripts/{module_name}.py"
+    spec = importlib.util.spec_from_file_location(module_name, _p)
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
 
 # === Header alias map ===

@@ -25,7 +25,9 @@ TOKEN = open(os.path.join(VAULT, "Library/processes/secrets/supabase-token")).re
 REF = "zhexcaflgahdcbzvbyfq"
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
       "Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
-sheets = SourceFileLoader("sheets_api", os.path.join(VAULT, "Library/processes/scripts/sheets-api.py")).load_module()
+_shp = os.path.join(VAULT, "sheets-api.py")
+if not os.path.exists(_shp): _shp = os.path.join(VAULT, "Library/processes/scripts/sheets-api.py")
+sheets = SourceFileLoader("sheets_api", _shp).load_module()
 
 MONTHS = {"Apr 26": "2026-04", "May 26": "2026-05", "Jun 26": "2026-06", "Jul 26": "2026-07",
           "Aug 26": "2026-08", "Sep 26": "2026-09", "Oct 26": "2026-10", "Nov 26": "2026-11",
