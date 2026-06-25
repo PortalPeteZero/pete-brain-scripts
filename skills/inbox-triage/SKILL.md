@@ -6,13 +6,13 @@ description: >
   action-need from a fixed vocabulary BEFORE choosing a verb, and walks Pete
   through the inbox in STAGED BATCHES of 5-10 rows grouped by category
   (auto-filter candidates → customers/suppliers/projects → internal → personal).
-  Always opens with a Mode A vs Mode B reminder PLUS the Action/Task verb
-  reference (Action this = tray, reply-shaped only; Task this = CC task only,
-  no Actions label). After the stages, offers the Actions walker (one tray item
+  Always opens with a Mode A vs Mode B reminder PLUS the verb
+  reference (Reply = tray, reply-shaped only; Task = CC task only,
+  no Replies label). After the stages, offers the Replies walker (one tray item
   at a time with a suggested response or defer) then `sync` opt-in (no
-  auto-chain). Also triggers standalone on "actions", "my actions", "deal with
-  my actions" (walker only). Sweep is on-command ONLY -- triage NEVER calls or
-  offers sweep.
+  auto-chain). Also triggers standalone on "replies" / "my replies" (legacy
+  "actions" / "my actions" still work) — walker only. Sweep is on-command ONLY --
+  triage NEVER calls or offers sweep.
 ---
 
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
@@ -20,7 +20,7 @@ description: >
 # inbox-triage
 
 > [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> **Tasks → the CC, not Asana (Pete off Asana 24 Jun):** `Task this`/`Delegate to` create a row in **`public.tasks`** (via `cc-sql.py`), NOT an Asana task. **`Action this` is label-only — no task** (a task only in the overlap case, carrying `[no-sync-close]`). Asana = Jane's only. Anywhere a step reads/writes `Customers/`, `Suppliers/`, `Projects/`, `Personal/`, `Library/decisions`, or creates a new vault folder, do the **cloud equivalent**: entity content → the entity's **Drive** folder + a `vault_notes` record (account-customers → CC `account_*`); decisions/notes → **`vault_notes`** (ingest a `.md`). `vault-enricher.py` still runs (keep calling it). New customer/supplier onboarding creates a **Drive** folder + CC record, not a vault folder. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+> **Tasks → the CC, not Asana (Pete off Asana 24 Jun):** `Task`/`Hand to` create a row in **`public.tasks`** (via `cc-sql.py`), NOT an Asana task. **`Reply` is label-only — no task** (a task only in the overlap case, carrying `[no-sync-close]`). Asana = Jane's only. Anywhere a step reads/writes `Customers/`, `Suppliers/`, `Projects/`, `Personal/`, `Library/decisions`, or creates a new vault folder, do the **cloud equivalent**: entity content → the entity's **Drive** folder + a `vault_notes` record (account-customers → CC `account_*`); decisions/notes → **`vault_notes`** (ingest a `.md`). `vault-enricher.py` still runs (keep calling it). New customer/supplier onboarding creates a **Drive** folder + CC record, not a vault folder. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
 
 > [!important] Business OS migration — filing targets are Drive + the knowledge DB now
 > When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors retired 24 Jun 2026). Route per the new-world matrix in [[vault-routing]]. Gmail labels + Asana behaviour are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB ([[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
@@ -41,7 +41,7 @@ User says any of:
 - "let's go through my emails"
 - "triage my inbox"
 
-**Walker-only invocation**: "actions", "my actions", "let's do my actions", "deal with my actions" → skip the triage stages entirely and run ONLY Step 8a (the Actions walker) against the current tray.
+**Walker-only invocation**: "replies", "my replies", "deal with my replies" (legacy "actions" / "my actions" still work) → skip the triage stages entirely and run ONLY Step 8a (the Replies walker) against the current tray.
 
 ## Dependencies
 
@@ -75,23 +75,23 @@ User says any of:
   They are NOT the same as triage verbs (what we do to existing threads now).
 
   ───────────────────────────────────────────────────────────────────────────
-  Verb reference — the Action / Task split (locked 2026-06-06):
+  Verb reference — the triage verbs:
 
-   Action this Pn:  Actions label + filing label + archive.  NO task.
-                    → ONLY for things waiting on Pete's response by email
-                      (reply / RSVP / sign-and-return). Hits the tray.
-                      The Actions label IS the record — no CC task is made.
-                      Pn is urgency only (oldest-first in the walker).
-                      Overlap (reply needs work done first): Pete may add a
-                      Task this too — that task carries [no-sync-close].
+   THREE outcomes when something needs doing:
+     Reply         → Replies label + filing label + archive. NO task.
+                     The label IS the record (reply / RSVP / sign-and-return).
+                     Oldest-first in the Replies walker — Reply carries no Pn.
+     Reply + Task  → a Reply AND a prep Task: "do the work, then reply"
+                     (e.g. build the quote, then reply). The task is tagged
+                     `reply`, carries [no-sync-close] + the Mimestream link.
+     Task Pn       → filing label + a CC task ([no-sync-close]). NO Replies
+                     label. Bills, cert batches, work — done off-email.
 
-   Task this Pn:    filing label + CC task + archive. NO Actions label.
-                    Task notes carry [no-sync-close].
-                    → bills, cert batches, work items — the doing happens
-                      in the CC / bank / portal / world, not by replying.
+   Hand to {who}   → Delegated label + a chase task.
+   File / Keep / Clear / Skip → file away / keep in inbox / archive-as-noise / defer.
 
-   One-sentence rule: Actions = waiting on Pete to respond by email; a task
-                      is created only when work is required, never from the label.
+   One-sentence rule: Replies = waiting on Pete to respond by email; a task is
+                      created only when work is required, never from the label.
 ═════════════════════════════════════════════════════════════════════════════
 ```
 
@@ -102,7 +102,7 @@ User says any of:
 `gmail-api.py search "in:inbox" 100` -- the limit is a POSITIONAL argument (not `--max-results`); paginate further if needed.
 
 Filter out:
-- Threads already labelled with the `Actions` or `Delegated` label (already in-flight workflow, accessible via the Actions sidebar view; shown separately if Pete asks).
+- Threads already labelled with the `Replies` or `Delegated` label (already in-flight workflow, accessible via the Replies sidebar view; shown separately if Pete asks).
 - Threads older than 30 days (avoid drowning in ancient backlog).
 
 ### Step 2: Group by category (NOT by sender clusters first)
@@ -158,12 +158,12 @@ Or call the equivalent function library-side. The output is a JSON file with one
 
 | Ask | Meaning | Permitted Action verbs |
 |---|---|---|
-| `none` | Nothing in the body asks Pete to do anything (already-handled / informational / auto-confirmed / Pete already replied) | File / Keep in inbox / Silent archive |
-| `reply` | Thread asks or expects a reply from Pete | **must be Action this or Delegate to** |
-| `decision` | Requires Pete to approve / reject / pay / sign off | **Action this / Task this / Delegate to** — Action if the decision is executed by replying to the email itself; Task if it's executed elsewhere (bank, portal, build) |
-| `review` | Doc / quote / invoice / report needs Pete's eyeball before next step | **Action this / Task this / Delegate to** — same action-shape test as decision |
-| `rsvp` | Meeting / event needs accept / decline | **must be Action this or Delegate to** |
-| `info-only` | Informational FYI -- file under home but no action expected | File / Silent archive |
+| `none` | Nothing in the body asks Pete to do anything (already-handled / informational / auto-confirmed / Pete already replied) | File / Keep in inbox / Clear |
+| `reply` | Thread asks or expects a reply from Pete | **must be Reply or Hand to** |
+| `decision` | Requires Pete to approve / reject / pay / sign off | **Reply / Task / Hand to** — Reply if the decision is executed by replying to the email itself; Task if it's executed elsewhere (bank, portal, build); Reply + Task if a reply is gated on work first |
+| `review` | Doc / quote / invoice / report needs Pete's eyeball before next step | **Reply / Task / Hand to** — same action-shape test as decision |
+| `rsvp` | Meeting / event needs accept / decline | **must be Reply or Hand to** |
+| `info-only` | Informational FYI -- file home but no action expected | File / Clear |
 
 `info-only` and `none` are similar but distinct: `none` = the body had something but it's already handled; `info-only` = the body is purely FYI (newsletter, status report).
 
@@ -172,7 +172,7 @@ Or call the equivalent function library-side. The output is a JSON file with one
 1. **Latest message FROM Pete (sent direction)** → default `Ask = none` (ball is on the other side; Pete's already moved). Override only if Pete's reply set up an explicit follow-up he owes ("I'll send the doc tomorrow").
 2. **Pete already replied AFTER the latest external message** → `Ask = none`.
 3. **Auto-confirm subjects** -- `payment received`, `your receipt`, `welcome`, `your statement is ready`, `is up`, `deployed`, `confirmation` etc → `Ask = info-only` regardless of body.
-4. **Cold sales / marketing patterns** -- domains never seen before, generic outreach signal phrases ("we help companies like yours", "growth specialist", unsolicited demos) → `Ask = info-only` (silent archive default).
+4. **Cold sales / marketing patterns** -- domains never seen before, generic outreach signal phrases ("we help companies like yours", "growth specialist", unsolicited demos) → `Ask = info-only` (clear default).
 5. **Calendar invites or RSVP requests** -- `.ics`, "menu choice", "please confirm attendance", "you've been invited" → `Ask = rsvp`.
 6. **Direct question to Pete** ending in "?" + thread is external → `Ask = reply`.
 7. **Forwards from internal staff** with phrases like "needs paying", "needs reviewing", "needs your eye" → `Ask = decision` or `review` per content.
@@ -190,28 +190,31 @@ Once `Ask` is set, the Action verb is constrained:
 
 | Ask | Permitted verbs | Default proposal |
 |---|---|---|
-| `none` | File / Keep in inbox / Silent archive | File under home label |
-| `info-only` | File / Silent archive | File under home label (or Silent archive for pure marketing) |
-| `reply` | **Action this Pn or Delegate to {person}** | Action this P2 (tray) in Team-General/{prefix}-General section (or AT-General/PA-General if explicitly Family/Personal) |
-| `decision` | **Action this / Task this / Delegate to** | Pay/process/build → Task this P2 (CC only); executed-by-replying → Action this P2 (tray). P1 if deadline tight |
-| `review` | **Action this / Task this / Delegate to** | Portal/code/finance review → Task this P3 (CC only); review-then-reply-to-sender → Action this P3 (tray). P2 if recipient waiting |
-| `rsvp` | **Action this Pn** + calendar event proposal | Action this P3 (tray) in PA-General + calendar |
+| `none` | File / Keep in inbox / Clear | File home label |
+| `info-only` | File / Clear | File home label (or Clear for pure marketing) |
+| `reply` | **Reply or Hand to {person}** | Reply (tray) in Team-General/{prefix}-General section (or AT-General/PA-General if explicitly Family/Personal) |
+| `decision` | **Reply / Task / Hand to** | Pay/process/build → Task P2 (CC only); executed-by-replying → Reply (tray). P1 if deadline tight |
+| `review` | **Reply / Task / Hand to** | Portal/code/finance review → Task P3 (CC only); review-then-reply-to-sender → Reply (tray). P2 if recipient waiting |
+| `rsvp` | **Reply** + calendar event proposal | Reply (tray) in PA-General + calendar |
 
-**Seven allowed Action verbs (Action/Task split locked 2026-06-06):**
+**The combo (Reply + Task):** when a `reply`/`decision`/`review` needs work done *before* Pete can reply (e.g. build the quote, check with the accountant, then reply), propose **Reply + Task** — a `Reply` with a Task cell holding the prep work. The `Replies` label tracks the reply; the `reply`-tagged task tracks the work; they're independent. This is the third outcome — don't force it into "either reply or task."
+
+**The triage verbs:**
 
 | Verb | Maps to | When to use |
 |---|---|---|
-| `File under X` | add label X + remove INBOX | Default for triage when `Ask=none/info-only`. Thread is filed under its home and out of inbox. |
-| `Keep in inbox + label X` | add label X, leave INBOX | Exceptional. Thread should stay visible until Pete actions it (e.g. an alert he's actively chasing). Always include the reason. |
-| `Silent archive` | remove INBOX, no label | Transient noise -- auto-acks, expired promos, one-off junk. |
+| `File X` | add label X + remove INBOX | Default for triage when `Ask=none/info-only`. Thread is filed under its home and out of inbox. |
+| `Keep X` | add label X, leave INBOX | Exceptional. Thread should stay visible until Pete actions it (e.g. an alert he's actively chasing). Always include the reason. |
+| `Clear` | remove INBOX, no label | Transient noise -- auto-acks, expired promos, one-off junk. |
 | `Skip` (or `-`) | no Gmail call | Defer to next round / Pete handles manually. |
-| `Action this Pn in {project}` | add filing label + add `Actions` + remove INBOX (one atomic call). **NO task** — the Actions label IS the record. | **Tray items only**: Pete owes a response via the email (reply / RSVP / sign-and-return). `Pn` is urgency only (no task row to carry it — oldest-first in the walker). *Overlap only* (reply gated on work first): Pete may add a `Task this` alongside; that task carries `[no-sync-close]`. |
-| `Task this Pn in {project}` | add filing label + remove INBOX (NO Actions label), plus a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) whose notes carry `[no-sync-close]` | **CC-only items**: bills, cert batches, work items — the doing happens outside the email. Sync never couples these to label state. |
-| `Delegate to {person}` | add `Delegated`, plus a CC task — `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + draft chaser | Separate flow. Tasks carry the `project_slug` NAME (e.g. `'Team-General'`), never a GID. |
+| `Reply in {project}` | add filing label + add `Replies` + remove INBOX (one atomic call). **NO task** — the Replies label IS the record. | **Tray items only**: Pete owes a response via the email (reply / RSVP / sign-and-return). No `Pn` — the Replies walker is oldest-first. |
+| `Reply in {project}` **+ a Task cell** (the combo) | the `Reply` primitive above **AND** a CC task for the prep work: `INSERT INTO tasks (…, tags, notes)` into `public.tasks` with `tags` containing `'reply'`, the **Mimestream + Gmail link** in notes (mandatory), and `[no-sync-close]` | **The overlap** — a reply gated on doing work first (e.g. *build the quote, then reply*). The `Replies` label tracks the reply; the `reply`-tagged task tracks the work. They're independent: closing the task does NOT clear the reply, and clearing the reply does NOT close the task. |
+| `Task Pn in {project}` | add filing label + remove INBOX (NO Replies label), plus a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) whose notes carry `[no-sync-close]` | **CC-only items**: bills, cert batches, work items — the doing happens outside the email. Sync never couples these to label state. |
+| `Hand to {person}` | add `Delegated`, plus a CC task — `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + draft chaser | Separate flow. Tasks carry the `project_slug` NAME (e.g. `'Team-General'`), never a GID. |
 
 Bare `Label: X` is **forbidden** in proposals.
 
-**Transition guard (bed-in period):** if Pete types `task this` on a row whose Ask is clearly reply-shaped (reply/rsvp), honour the verb but flag once: "looks reply-shaped — Action instead?". Never silently substitute one verb for the other.
+**Transition guard (bed-in period):** if Pete types `task` on a row whose Ask is clearly reply-shaped (reply/rsvp), honour the verb but flag once: "looks reply-shaped — Action instead?". Never silently substitute one verb for the other.
 
 **Task routing (which project/section):** follow the task-routing decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project/bucket first, else `{prefix}-General`, bucket/project escalation only by proposal.
 
@@ -220,7 +223,7 @@ Label-routing logic (which X to pick once verb is chosen):
 - Sender domain matches an existing `Projects/{prefix}-{slug}/` vault folder BUT no Gmail label exists → demand-driven label rule
 - Sender domain matches a `Personal/{area}/` vault folder (scouts, los-claveles, passion-fit, freemasonry, finance, family) BUT no Gmail label exists → demand-driven label rule applies same way (propose `Personal/PA-{area}` or `Personal/AT-{family-area}` Gmail label creation in same operation as filing)
 - Sender is a utility (Stripe, GitHub, Supabase, Vercel) → propose appropriate filing label
-- Sender is unknown → propose `Silent archive` or surface for discovery
+- Sender is unknown → propose `Clear` or surface for discovery
 
 **Personal area sender-pattern hints** (from 2026-05-03 email scan; use to nudge routing):
 - BSO Southern Europe / scout association / Florida Jamborette / scouts.org.uk → `Personal/PA-Scouts` label, vault enrichment to `Personal/scouts/`
@@ -268,8 +271,8 @@ Then per-thread:
 
 | #  | Ask        | From / Subject (≤60ch)                  | Action                    | Task | Vault | Calendar |
 |----|------------|-----------------------------------------|---------------------------|------|-------|----------|
-| 1  | info-only  | Stripe -- April receipt                 | File under Receipts       | -    | -     | -        |
-| 2  | info-only  | Medium digest                           | File under Newsletters    | -    | -     | -        |
+| 1  | info-only  | Stripe -- April receipt                 | File Receipts       | -    | -     | -        |
+| 2  | info-only  | Medium digest                           | File Newsletters    | -    | -     | -        |
 | ... up to 10 rows per sub-batch
 
 Reply: go / except #N: <new verb> / cancel
@@ -285,13 +288,13 @@ Reply: go / except #N: <new verb> / cancel
 
 Required ops-table columns: `#`, `Ask`, `From / Subject`, `Action`, `Task`, `Vault`, `Calendar`. Use `-` for empty cells.
 
-**Rendering rule (bed-in period):** task-bearing verbs always render with their destination tag — `Action this P2 (tray)` / `Task this P3 (CC only)` — so the tray/no-tray difference is loud in every table.
+**Rendering rule (bed-in period):** task-bearing verbs always render with their destination tag — `Reply (tray)` / `Task P3 (CC only)` — so the tray/no-tray difference is loud in every table.
 
 **Hard rule: Ask cell must be present and from the vocabulary.** Empty `Ask` = malformed row.
 
-**Hard rule: Task cell placement.** A Task entry may appear only on an `Action this` or `Task this` verb (Task entry on any other verb = malformed). A `Task this` verb REQUIRES a Task entry. An `Action this` verb does NOT — it's label-only by default; a Task entry on it is allowed but optional (the overlap case). `Delegate to` requires a Delegate entry.
+**Hard rule: Task cell placement.** A Task entry may appear only on a `Reply` (combo) or `Task` verb (Task entry on any other verb = malformed). A `Task` verb REQUIRES a Task entry. A `Reply` verb does NOT — it's label-only by default; a Task entry on it is allowed but optional (the combo). `Hand to` requires a Delegate entry.
 
-**Hard rule: Ask ⇔ verb match.** `reply` / `rsvp` require `Action this` or `Delegate to`. `decision` / `review` require `Action this`, `Task this`, or `Delegate to`. Validator refuses to execute on mismatch.
+**Hard rule: Ask ⇔ verb match.** `reply` / `rsvp` require `Reply` or `Hand to`. `decision` / `review` require `Reply`, `Task`, or `Hand to`. Validator refuses to execute on mismatch.
 
 ### Step 6.0: Validate the ops table BEFORE presenting any stage's diff
 
@@ -301,8 +304,8 @@ Run every stage's ops table through the validator. The validator is in `/tmp/pbs
 def validate_ops(ops):
     errors = []
     valid_asks = {"none", "info-only", "reply", "decision", "review", "rsvp"}
-    valid_verb_starts = ('File under ', 'Keep in inbox + label ', 'Silent archive', 'Skip', '-',
-                        'Action this ', 'Task this ', 'Delegate to ')
+    valid_verb_starts = ('File ', 'Keep ', 'Clear', 'Skip', '-',
+                        'Reply', 'Task ', 'Hand to ')  # 'Reply' has no trailing space (matches bare "Reply")
 
     for op in ops:
         verb = op.get('action', '').strip()
@@ -312,7 +315,7 @@ def validate_ops(ops):
 
         # 1. Seven-verb rule
         if not any(verb == s.strip() or verb.startswith(s) for s in valid_verb_starts):
-            errors.append(f"Row {op['row']}: Action '{verb}' is not one of the seven allowed verbs")
+            errors.append(f"Row {op['row']}: Action '{verb}' is not one of the allowed verbs")
 
         # 2. Ask vocabulary
         if not ask:
@@ -320,22 +323,22 @@ def validate_ops(ops):
         elif ask not in valid_asks:
             errors.append(f"Row {op['row']}: Ask '{ask}' not in vocabulary {valid_asks}")
 
-        # 3. Ask ⇔ verb match (Action/Task split 2026-06-06)
+        # 3. Ask ⇔ verb match
         is_action_ask = ask in {"reply", "decision", "review", "rsvp"}
-        task_bearing = verb.startswith(("Action this ", "Task this ", "Delegate to "))
+        task_bearing = verb.startswith(("Reply", "Task ", "Hand to "))
         if is_action_ask and not task_bearing:
             errors.append(f"Row {op['row']}: Ask='{ask}' implies action but verb is '{verb}' -- malformed")
-        if ask in {"reply", "rsvp"} and verb.startswith("Task this "):
-            errors.append(f"Row {op['row']}: Ask='{ask}' is reply-shaped — verb must be 'Action this' or 'Delegate to' (transition guard: honour Pete's explicit override after flagging once)")
+        if ask in {"reply", "rsvp"} and verb.startswith("Task "):
+            errors.append(f"Row {op['row']}: Ask='{ask}' is reply-shaped — verb must be 'Reply' or 'Hand to' (transition guard: honour Pete's explicit override after flagging once)")
         if task_bearing and ask not in {"reply", "decision", "review", "rsvp"}:
             errors.append(f"Row {op['row']}: verb is '{verb}' but Ask='{ask}' doesn't imply action -- malformed")
 
         # 4. Task cell placement (2026-06-25 decoupling)
-        #    A task cell is PERMITTED on Action this / Task this; REQUIRED only on Task this.
-        #    Action this is label-only by default (a task is optional — the overlap case).
+        #    A task cell is PERMITTED on Reply / Task; REQUIRED only on Task.
+        #    Reply is label-only by default (a task is optional — the overlap case).
         has_task_cell = bool(task and task != '-')
-        is_task_permitted = verb.startswith(('Action this ', 'Task this '))
-        is_task_required = verb.startswith('Task this ')
+        is_task_permitted = verb.startswith(('Reply', 'Task '))
+        is_task_required = verb.startswith('Task ')
         if has_task_cell and not is_task_permitted:
             errors.append(f"Row {op['row']}: Task cell present but Action is '{verb}' -- malformed")
         if is_task_required and not has_task_cell:
@@ -368,17 +371,17 @@ Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primi
 
 | Action verb in row              | Gmail primitive                                       | Other side-effects                                     |
 |---------------------------------|-------------------------------------------------------|--------------------------------------------------------|
-| `File under X`                  | `modify_thread(id, add=[X], remove=["INBOX"])`        | **MUST run vault-enricher** (see below)                |
-| `Keep in inbox + label X`       | `modify_thread(id, add=[X])`                          | **MUST run vault-enricher** if X is a filing label     |
-| `Silent archive`                | `modify_thread(id, remove=["INBOX"])`                 | -                                                      |
+| `File X`                  | `modify_thread(id, add=[X], remove=["INBOX"])`        | **MUST run vault-enricher** (see below)                |
+| `Keep X`       | `modify_thread(id, add=[X])`                          | **MUST run vault-enricher** if X is a filing label     |
+| `Clear`                | `modify_thread(id, remove=["INBOX"])`                 | -                                                      |
 | `Skip` / `-`                    | (no Gmail call)                                       | -                                                      |
-| `Action this Pn in {project}`   | `modify_thread(id, add=[X, Actions_label], remove=["INBOX"])` (atomic) | **NO task** — the Actions label IS the record. **MUST run vault-enricher** on the thread → matching vault folder. *Overlap only* (Pete explicitly adds a task): `INSERT INTO tasks (…)` into `public.tasks` with Mimestream + Gmail + Finder links **and `[no-sync-close]` in notes** (so the label and task stay independent). |
-| `Task this Pn in {project}`     | `modify_thread(id, add=[X], remove=["INBOX"])` — **NO Actions label** | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with Mimestream + Gmail + Finder links + **`[no-sync-close]` marker line appended to notes** + **MUST run vault-enricher** on the thread → matching vault folder |
-| `Delegate to {person}`          | `modify_thread(id, add=[Delegated_label])`            | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + Mimestream + Gmail + Finder links in notes + draft chaser + **MUST run vault-enricher** on the thread → matching vault folder |
+| `Reply in {project}`   | `modify_thread(id, add=[X, Replies_label], remove=["INBOX"])` (atomic) | **NO task** — the Replies label IS the record. **MUST run vault-enricher** on the thread → matching vault folder. *Combo only* (the Reply+Task prep task): `INSERT INTO tasks (…, tags, notes)` with `tags` containing `'reply'`, the **Mimestream + Gmail + Finder links (Mimestream mandatory)**, and `[no-sync-close]` (so the label and task stay independent). |
+| `Task Pn in {project}`     | `modify_thread(id, add=[X], remove=["INBOX"])` — **NO Replies label** | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with Mimestream + Gmail + Finder links + **`[no-sync-close]` marker line appended to notes** + **MUST run vault-enricher** on the thread → matching vault folder |
+| `Hand to {person}`          | `modify_thread(id, add=[Delegated_label])`            | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + Mimestream + Gmail + Finder links in notes + draft chaser + **MUST run vault-enricher** on the thread → matching vault folder |
 
 ### CC task creation (replaces Asana — Pete off Asana 24 Jun)
 
-`Task this` and `Delegate to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`), NOT an Asana task. **`Action this` does NOT create a task** — it's label-only (the Actions label is the record); it creates a task only in the overlap case where Pete explicitly adds one (a reply gated on work first), and that task carries `[no-sync-close]`. Asana is Jane's only — do NOT connect to it for Pete's work. The `project_slug` column carries the project NAME (e.g. `'Team-General'`, `'SY-General'`), never a GID.
+`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`), NOT an Asana task. **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). Asana is Jane's only — do NOT connect to it for Pete's work. The `project_slug` column carries the project NAME (e.g. `'Team-General'`, `'SY-General'`), never a GID.
 
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', '2026-07-01', 'SY-Clancy', 'Team-General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
@@ -387,7 +390,8 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, du
 - `priority` = the Pn from the verb (`'P1'`/`'P2'`/`'P3'`/`'P4'`).
 - `due_on` = derived from priority per the default-due-date schedule below.
 - `entity_slug` = the customer/supplier/project slug the thread filed under (e.g. `'SY-Clancy'`); `project_slug` = the routing project NAME.
-- For `Task this`, append the `[no-sync-close]` marker line to `notes`.
+- For `Task`, append the `[no-sync-close]` marker line to `notes`.
+- For a **Reply + Task** combo, the task ALSO sets `tags` to include `'reply'` (additive — don't clobber existing tags) **and** carries `[no-sync-close]`; the Mimestream + Gmail link in `notes` is **mandatory** (it ties the to-do to the email you owe a reply to).
 
 ### Vault enrichment is non-negotiable
 
@@ -408,7 +412,7 @@ After the enricher returns, report the count of attachments pulled + extract pat
 
 ### Links required in task notes
 
-Every CC task created by triage must include both:
+Every CC task created by triage must include both (and for a **Reply + Task** combo the Mimestream link is **non-negotiable** — it's what links the to-do back to the email Pete owes a reply to, and keeps the sync's task↔thread tie intact):
 
 1. **Linked Gmail thread** — Mimestream link AND Gmail web URL (Mimestream first):
    - `https://links.mimestream.com/g/pete.ashcroft@sygma-solutions.com/t/{thread_id}`
@@ -429,12 +433,12 @@ Vault and Calendar columns drive their own side-effects (see Step 5).
 
 After Stage N executes, present Stage N+1's reminder + filter proposals + ops table. Repeat until all stages done.
 
-### Step 8a: Actions walker — offer to deal with the tray (added 2026-06-06)
+### Step 8a: Replies walker — offer to deal with the tray (added 2026-06-06)
 
 After the last stage executes, BEFORE the sync offer, ask:
 
 ```
-Shall we look at your Actions? (N in the tray, oldest is {X}d)  (y/n)
+Shall we look at your Replies? (N in the tray, oldest is {X}d)  (y/n)
 ```
 
 On **y**, walk the tray **one item at a time**:
@@ -443,13 +447,13 @@ On **y**, walk the tray **one item at a time**:
 - **Order: oldest last-message first** (most overdue at the top).
 - For each item present: the thread(s) summary, the linked task **if one exists** (priority + due) — most items are label-only — and a **suggested response** — a ready-to-iterate draft in Pete's voice. **Read [[voice-principles]] BEFORE drafting the first suggestion, and run the em-dash / en-dash / double-dash grep on every draft before presenting it.**
 - Outcomes per item (Pete picks):
-  - **send** — iterate the draft if needed, send via gmail-api, then immediately strip the Actions label (+ close the linked task if one exists + audit comment "closed via Actions walker — reply sent {date}"). No waiting for next sync.
+  - **send** — iterate the draft if needed, send via gmail-api, then immediately strip the Replies label (+ close the linked task if one exists + audit comment "closed via Replies walker — reply sent {date}"). No waiting for next sync.
   - **defer** — untouched, move to next item.
-  - **already done** — strip Actions label (+ close the linked task if one exists + audit comment).
-  - **de-tray** (this is really work, not a reply) — if a task is already linked, append `[no-sync-close]` to its notes then strip Actions; if it's label-only, create a `Task this` task FIRST, then strip Actions. CC-only from here.
+  - **already done** — strip Replies label (+ close the linked task if one exists + audit comment).
+  - **de-tray** (this is really work, not a reply) — if a task is already linked, append `[no-sync-close]` to its notes then strip the Replies label; if it's label-only, make it a `Task` FIRST, then strip the Replies label. CC-only from here.
 - End with a one-line tray summary: `Tray: started N, sent X, closed Y, de-trayed Z, deferred W.`
 
-The walker is also invocable standalone at any time via the verb "actions" (see When to invoke).
+The walker is also invocable standalone at any time via the verb "replies" (or legacy "actions") (see When to invoke).
 
 ### Step 8b: End of triage -- OFFER sync, do NOT auto-chain
 
@@ -479,12 +483,12 @@ Stages run: 4 of 4
 - Stage 4 (personal + one-off):  2 filed, 1 calendar event
 
 Total: 22 threads → 0 inbox.
-Actions added: 2 (label only — no task; tray now reflects them).
-CC tasks created: 3 (all CC-only via Task this — 1 P1, 2 P2).
+Replies added: 2 (label only — no task; tray now reflects them).
+CC tasks created: 3 (all CC-only via Task — 1 P1, 2 P2).
 Calendar events: 1.
 New supplier folders: 1 (SY-NewSupplier with vault README + Mode A filter).
 Vault pulls: 3 attachments.
-Actions walker: ran — sent 2, deferred 1, de-trayed 0. Tray now 4.
+Replies walker: ran — sent 2, deferred 1, de-trayed 0. Tray now 4.
 
 Run `sync`? (y/n)
 ```
@@ -593,13 +597,13 @@ Vault decision per entity type (default proposal, Pete can override):
 | Project | demand-driven | YES | YES (own `project_slug` NAME) |
 | Invoice batch | YES | YES | YES |
 | Accreditation body | YES | YES | YES |
-| Workflow tag (Actions, Delegated) | YES | NO (Delegated navigational) | YES if applicable |
+| Workflow tag (Replies, Delegated) | YES | NO (Delegated navigational) | YES if applicable |
 | Personal hobby/cluster | optional | optional | NO |
 | One-off cluster (e.g. Travel) | maybe | NO | NO |
 
 ## Rules
 
-1. **SWEEP IS SACRED -- on-command ONLY.** Triage MUST NOT call `sweep`, MUST NOT offer `sweep`, MUST NOT chain to anything that calls `sweep`. The point of `Keep in inbox + label X` is the thread STAYS in inbox until Pete acts. An auto-sweep defeats the verb. Sweep happens when Pete types `sweep` -- never otherwise. End-of-triage offers `sync` (which doesn't sweep), opt-in only.
+1. **SWEEP IS SACRED -- on-command ONLY.** Triage MUST NOT call `sweep`, MUST NOT offer `sweep`, MUST NOT chain to anything that calls `sweep`. The point of `Keep X` is the thread STAYS in inbox until Pete acts. An auto-sweep defeats the verb. Sweep happens when Pete types `sweep` -- never otherwise. End-of-triage offers `sync` (which doesn't sweep), opt-in only.
 2. **Mandatory History pre-pass + Ask classification.** Step 4 must run for every thread before Step 5 builds the table. Without `Ask` populated from the fixed vocabulary, the row is malformed and Step 6.0 refuses.
 3. **Mode A/B reminder block at the top of every triage.** Print verbatim before any other work. Drift caused mid-round confusion.
 4. **Staged batches, 10-row hard cap.** Stages run in fixed order (1 noise → 2 relationships → 3 internal → 4 personal). Each stage gets its own go/cancel. No more 25-row tables.
@@ -622,11 +626,11 @@ Pete can invoke specific actions without full triage:
 
 - "label {thread} as X" -- just label, keep in inbox
 - "file {thread} under X" -- label + archive
-- "action this Pn in {project}" -- apply `Actions` Gmail label + filing label + archive thread (atomic). **NO task** — the Actions label is the record; Pn is urgency only. Tray items only: Pete owes a response via the email. *Overlap only* (reply gated on work first): add a `Task this` alongside (that task carries `[no-sync-close]`).
-- "task this Pn in {project}" -- create a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) at priority Pn (`[no-sync-close]` in notes) + filing label + archive thread. **No Actions label** — CC-only work item. Same due-date defaults/overrides. (`project_slug` carries the NAME, e.g. `'Team-General'`; SY-General / CD-General / EA-General are routing names, not GIDs.)
-- "actions" / "my actions" -- run the Step 8a walker standalone against the current tray.
-- "de-tray this" -- convert a reply-item into CC-only work: if a task is linked, append `[no-sync-close]` to it then strip Actions; if it's label-only, create a `Task this` task first, then strip Actions. Reverse ("tray this") = remove marker (or the task) + re-apply Actions.
-- "delegate this to {person}" -- `Delegated` Gmail label + CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`, `project_slug='Team-General'`) + draft chaser
+- "reply in {project}" -- apply `Replies` Gmail label + filing label + archive thread (atomic). **NO task** — the Replies label is the record; Pn is urgency only. Tray items only: Pete owes a response via the email. *Overlap only* (reply gated on work first): add a `Task` alongside (that task carries `[no-sync-close]`).
+- "task Pn in {project}" -- create a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) at priority Pn (`[no-sync-close]` in notes) + filing label + archive thread. **No Replies label** — CC-only work item. Same due-date defaults/overrides. (`project_slug` carries the NAME, e.g. `'Team-General'`; SY-General / CD-General / EA-General are routing names, not GIDs.)
+- "replies" / "my replies" (or legacy "actions") -- run the Step 8a walker standalone against the current tray.
+- "de-tray this" -- convert a reply-item into CC-only work: if a task is linked, append `[no-sync-close]` to it then strip the Replies label; if it's label-only, make it a `Task` first, then strip the Replies label. Reverse ("tray this") = remove marker (or the task) + re-apply Replies.
+- "hand to {person}" -- `Delegated` Gmail label + CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`, `project_slug='Team-General'`) + draft chaser
 - "add to calendar" -- detect from email + create event on confirmation (Atlantic/Canary tz default)
 - "pull the attachments into {customer}" -- download + wikilink into matter README
 - **"sweep"** (single deliberate verb -- accidental-trigger guard) -- archive every inbox thread with at least one user-applied label. No protect list. **NEVER auto-invoked by any skill, including triage.**
