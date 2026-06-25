@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Vault enricher v1.1 -- shared content-extraction helper for inbox-triage and asana-gmail-sync.
+Vault enricher v1.1 -- shared content-extraction helper for inbox-triage and email-task-sync.
 
 [BUSINESS OS — REDESIGN PENDING (2026-06-22, Part D).] Still enriches the legacy
 VAULT customer/supplier file. Target must move to the Drive home + the CC
-`vault_notes` record (H/E). Still called by inbox-triage + asana-gmail-sync —
+`vault_notes` record (H/E). Still called by inbox-triage + email-task-sync —
 keep working off the (still-present) vault files until redesigned. Ledger:
 Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22.md
 

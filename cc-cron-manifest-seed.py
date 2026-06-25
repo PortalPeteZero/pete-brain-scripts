@@ -27,7 +27,7 @@ CLAUDE_CODE = {"sygma-ads-fortnightly-report","lanza-lates-sc-marker-monitor","s
     "lanza-lates-daily-owner-report"}
 COWORK = {"calendar-colour-coder","cd-daily-briefing-sunday","cd-daily-briefing-weekdays","cd-monthly-finance-email",
     "cd-tom-jobs-calendar-sync-evening","cd-tom-jobs-calendar-sync-noon","cd-week-ahead-sunday","cd-weekly-finance-email",
-    "consolidate-lessons-monthly","consolidate-memory-monthly","daily-asana-gmail-sync","daily-briefing",
+    "consolidate-lessons-monthly","consolidate-memory-monthly","daily-briefing",
     "helper-script-registry-refresh","hub-reconcile","jotform-training-eval-sync","lanzarote-competitor-monitor",
     "monthly-nights-away-reminder","pf-journal-reminder","remittance-to-xero","staff-master-sync",
     "sygma-ads-account-snapshot","team-sygma-joke","training-kpi-snapshot","utilisation-tracker-refresh",
@@ -68,8 +68,7 @@ ENRICH = {
   "garmin-daily-pull": {"why":"Pete's recovery/sleep/HRV data underpins the morning briefing's training framing and the PF journal. Pulled 4×/day so the 07:30 briefing reads fresh numbers.","produces":"Drive: My Drive/Health/garmin/{date}.md · daily-note Garmin line","cron":"0 7,10,17,22 * * *","feeds":["daily-briefing"]},
   "drive-changes-watch": {"why":"Keeps the 150k-file drive_files index current — the index the whole Business OS uses to answer 'where is X' instead of walking the vault tree. The one capture cron kept alive through the migration.","produces":"CC Supabase drive_files (the file index)","cron":"*/15 * * * *","doc_link":"business-os-master-plan-2026-06-20"},
   "data-map-cron": {"why":"Keeps the data-map (where every kind of Pete's data lives) current in the CC so Claude and the Ask page always know the homes. First cron proven on Railway (22 Jun).","produces":"CC Supabase data_map (the 21 data-homes)","cron":"0 5 * * *","doc_link":"railway-infra-2026-06-22"},
-  "daily-briefing": {"why":"Pete's single morning operating email — PF lesson, Actions tray, due tasks, calendar, Garmin, GA4 — so the day starts from one place.","produces":"Email to Pete · daily-note ## Daily Briefing block","cron":"30 7 * * *","depends_on":["garmin-daily-pull","daily-asana-gmail-sync"]},
-  "daily-asana-gmail-sync": {"why":"Keeps the Gmail Actions tray reconciled with the CC task table (public.tasks) so the briefing's tray section is true — closes done tasks, creates tray orphans, audits delegations. Runs email-task-sync.py; Asana is Jane's only.","produces":"public.tasks mutations + daily-note sync block","cron":"15 7 * * *","feeds":["daily-briefing"]},
+  "daily-briefing": {"why":"Pete's single morning operating email — PF lesson, Replies tray, due tasks, calendar, Garmin, GA4 — so the day starts from one place.","produces":"Email to Pete · daily-note ## Daily Briefing block","cron":"30 7 * * *","depends_on":["garmin-daily-pull"]},
   "hub-reconcile": {"why":"Keeps the Sygma Hub Drive tidy and Claude-aware — refreshes folder indexes, sorts the daily change delta against locked conventions, nudges convention offenders.","produces":"hub-content-index.md · Hub folder READMEs · email digest (only on human changes)","cron":"30 17 * * *"},
   "cd-daily-briefing-weekdays": {"why":"The CD field team needs tomorrow's jobs (customer/address/brief from Odoo) the evening before. Pete gets his personal calendar too.","produces":"2 emails (team + Pete) · daily-note block","cron":"15 18 * * 1-5","depends_on":["cd-tom-jobs-calendar-sync-evening"]},
   "cd-daily-briefing-sunday": {"why":"Sunday-evening version covering Monday's CD jobs.","produces":"2 emails (team + Pete) · daily-note block","cron":"15 18 * * 0"},

@@ -192,10 +192,10 @@ class GmailAPI:
 
         Returns a list of dicts: {message_id, thread_id, subject, to, date, suggested_label}.
         `suggested_label` is None unless the recipient domain or address pattern obviously
-        matches an existing customer/supplier folder — Claude / sync-asana proposes, Pete confirms.
+        matches an existing customer/supplier folder — Claude / email-task-sync proposes, Pete confirms.
 
         Use case: defence-in-depth check that outbound mail is properly tagged. Run as part
-        of `sync asana` reconciliation, or ad-hoc via `python3 gmail-api.py audit-sent [days]`.
+        of `sync` reconciliation, or ad-hoc via `python3 gmail-api.py audit-sent [days]`.
         """
         # Build map of email-domain -> label_id where the label is an organisational tag.
         labels = self.list_labels()

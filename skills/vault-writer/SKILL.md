@@ -220,7 +220,7 @@ Several scheduled tasks modify the vault. Always re-read a vault file before edi
 
 Any cron change this skill's session touches (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[Library/lessons/2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
 
-The scheduled-task SKILL.md prompts themselves live OUTSIDE the vault at `~/Documents/Claude/Scheduled/{taskId}/SKILL.md` (Cowork's canonical path). DO NOT delete that folder. Vault sidecar at `Library/skills/scheduled/` is a recovery-only mirror.
+All crons now run on **Railway** (Business OS migration). The source of truth is the live `crons` table in the CC + the `# CRON-META` blocks inside each `.py` in `pete-brain-scripts`. The old Cowork scheduled-task model is retired — `~/Documents/Claude/Scheduled/` is empty, and `skills/scheduled/` holds legacy recovery mirrors pending cleanup (see [[cron-scheduled-task-audit-scope-2026-06-25]]).
 
 ---
 
