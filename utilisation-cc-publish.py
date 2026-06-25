@@ -62,13 +62,18 @@ def parse(path):
             if a.lower() in ("month", "trainer"):
                 continue
             dt = _num(row[1] if len(row) > 1 else None)
-            if dt is None:
+            bk = _num(row[2] if len(row) > 2 else None)
+            av = _num(row[3] if len(row) > 3 else None)
+            # Keep the row if it carries ANY metric. Future months leave Days
+            # Trained blank (nothing delivered yet) but still hold real forward
+            # bookings/available — gating on Days Trained alone dropped them.
+            if dt is None and bk is None and av is None:
                 continue
             out["summary"].append({
                 "month": a, "section": section,
                 "days_trained": dt,
-                "bookings": _num(row[2] if len(row) > 2 else None),
-                "available": _num(row[3] if len(row) > 3 else None),
+                "bookings": bk,
+                "available": av,
                 "holidays": _num(row[4] if len(row) > 4 else None),
                 "days_lost": _num(row[5] if len(row) > 5 else None),
             })
@@ -82,15 +87,25 @@ def parse(path):
             if not a or a.lower() in ("trainer",) or a.startswith("Sygma Trainer"):
                 continue
             dt = _num(row[1] if len(row) > 1 else None)
-            if dt is None:
+            bk = _num(row[2] if len(row) > 2 else None)
+            av = _num(row[3] if len(row) > 3 else None)
+            # Keep the row if it carries ANY metric. Future months leave Days
+            # Trained blank but still hold real forward bookings/available, so
+            # gating on Days Trained alone wrongly dropped the whole month.
+            if dt is None and bk is None and av is None:
                 continue
             rec = {"trainer": a, "days_trained": dt,
-                   "bookings": _num(row[2] if len(row) > 2 else None),
-                   "available": _num(row[3] if len(row) > 3 else None),
+                   "bookings": bk,
+                   "available": av,
                    "holidays": _num(row[4] if len(row) > 4 else None),
                    "days_lost": _num(row[5] if len(row) > 5 else None)}
-            avail = rec["available"] or 0
-            rec["utilisation_pct"] = round(100 * dt / avail, 1) if avail else None
+            # Utilisation = booked days / available (the system-wide definition:
+            # the management chat post + xlsx use bookings; for completed months
+            # Days Trained == Bookings so this is unchanged, and for upcoming
+            # months it reads as forward-booked utilisation).
+            basis = bk if bk is not None else dt
+            avail = av or 0
+            rec["utilisation_pct"] = round(100 * basis / avail, 1) if (avail and basis is not None) else None
             if a.lower() == "totals":
                 totals = rec
             else:
