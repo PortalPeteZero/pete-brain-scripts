@@ -359,7 +359,7 @@ After validation passes, render the verb→primitive table TO THE CHAT (so Pete 
 - Row number + thread id (truncated)
 - Resolved Ask + Action verb
 - Exact Gmail call about to fire
-- Asana call (if any)
+- CC task call (if any)
 - Vault writes (if any)
 - Calendar events (if any)
 

@@ -178,7 +178,7 @@ def render(today, lesson, tray, due, overdue, events, garmin, ga4):
             rows += f'<div style="padding:5px 0;border-bottom:1px solid {BG}">{n}. <b>{esc(i["who"])}</b>: {esc(i["what"])}{flag}</div>'
         if len(tray) > 10:
             rows += f'<div style="padding:5px 0;color:{GREY}">+{len(tray)-10} more in tray</div>'
-        rows += f'<div style="margin-top:10px;color:{GREY};font-style:italic">Say "actions" in Cowork to walk these with drafts ready.</div>'
+        rows += f'<div style="margin-top:10px;color:{GREY};font-style:italic">Say "replies" in Cowork to walk these with drafts ready.</div>'
         parts.append(_card(f"ACTIONS TRAY ({len(tray)}, {aging} aging)", rows))
     else:
         parts.append(_card("ACTIONS TRAY", "Tray clear."))

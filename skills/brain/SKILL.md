@@ -83,7 +83,7 @@ For full reference, read `references/obsidian-formatting.md`.
 10 top-level sections (Invoices/ and Delegated/ folded 2026-05-06). Full subfolder breakdown + per-section rules: `[[vault-routing#vault-structure]]`.
 
 ```
-Projects/        -- Time-bound work (flat mirror of Asana). Includes Team-Finances/ (was Invoices/) and Team-General/Delegated/ (was Delegated/).
+Projects/        -- Time-bound work (flat mirror of the project hierarchy). Includes Team-Finances/ (was Invoices/) and Team-General/Delegated/ (was Delegated/).
 Properties/      -- Persistent digital assets (websites, apps)
 Customers/       -- Named customer relationships. SY-Clancy is the one customer with a matching standalone Asana project; vault content stays here, NOT under Projects/.
 Suppliers/       -- Paid external relationships
@@ -96,8 +96,8 @@ Screenshots/     -- macOS Cmd-Shift-3/4/5 capture target
 ```
 
 **Project / sub-project pattern (post 2026-05-06 restructure):**
-- A **project** is a top-level Asana project + a top-level vault folder + its own README.
-- A **sub-project** is an Asana section under a parent + a vault subfolder direct under the parent (NOT inside `files/`) + its own README + its own `files/`.
+- A **project** is a top-level `public.tasks` project (its own `project_slug`) + a top-level vault folder + its own README.
+- A **sub-project** is a sub-grouping under a parent `project_slug` + a vault subfolder direct under the parent (NOT inside `files/`) + its own README + its own `files/`.
 - Example: `Projects/SY-Website/` is the parent (with parent README + `files/`), and `Projects/SY-Website/seo/` is a sub-project (with its own README + `files/`).
 - When new work surfaces, default to the parent's `{prefix}-General` sub-project. Don't create a new project or sub-project for 1-2 tasks. Ask before creating either.
 
@@ -656,7 +656,7 @@ Brain owns workflow orchestration. Hand off to specialised skills when their ver
 | `fortnightly review`, "check the positions", "has it moved" | `audit-review` |
 | `connect to my site`, "look at my app", "set up a new project" | `property-manager` |
 | `simplify`, "review my code" | `simplify` |
-| End-of-session vault cleanup | `vault-writer` (defers to brain Compress for Asana sync) |
+| End-of-session vault cleanup | `vault-writer` (defers to brain Compress for task sync) |
 | Distinctive frontend design | `frontend-design` |
 
 ## Auto-Save Rule

@@ -42,7 +42,7 @@ The golden rule: **search first, then write**.
 The vault is retired. Save to the cloud homes (full matrix: [[vault-routing]]):
 - **Knowledge / decisions / notes / research** → CC `vault_notes`: write a `.md` to `/tmp`, then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`.
 - **Files / documents / data** → the entity's **Google Drive** folder (find it: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`).
-- **Live work** → Asana / the CC `tasks` engine. **Session log** → CC `daily_log`.
+- **Live work** → the CC `tasks` engine (`public.tasks`; Asana is Jane's only). **Session log** → CC `daily_log`.
 - **Tools** pull from GitHub to `/tmp/pbs`; run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`.
 
 ---
@@ -89,16 +89,15 @@ Then scan everything discussed this session and route each category to its cloud
 - **CLAUDE.md** → only on an explicit Pete correction he asks to be saved; structured rules → `vault_notes`.
 - **Vault-routing capture** → a new convention must be reflected in `[[vault-routing]]` (ingest the update) AND notify Pete.
 
-### Step 3: Asana sync (auto-create, no asking)
+### Step 3: CC task sync (auto-create, no asking)
 
-This step defers to the brain skill's Compress Step 4, which is the canonical authority on session-end Asana sync. Brain owns workflow orchestration; vault-writer follows the same auto-create model.
+This step defers to the brain skill's Compress Step 4, the canonical authority on session-end task sync. Brain owns workflow orchestration; vault-writer follows the same auto-create model. **Pete is off Asana — his tasks live in the CC `public.tasks` table** (Asana is Jane's only; never route Pete's tasks there).
 
-- Pull current Asana state for relevant projects -- verify vault reflects reality
+- Pull current `public.tasks` state for the relevant projects -- verify the CC reflects reality
 - Identify follow-up actions from the session (what's pending, what surfaced, what needs watching)
-- **Auto-create those tasks in Asana** with correct project, assignee, priority (custom field), due date (P1+2d / P2+7d / P3+30d / P4 none), and section (To Do / Backlog as appropriate). No "shall I send these?" gate.
-- Mark any completed tasks as done in the CC task store: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'"` (Pete is off Asana — his tasks are `public.tasks`)
-- Check if any new Asana projects need vault folders -- create them if missing
-- Report what was created in Step 6 with task GIDs
+- **Auto-create those tasks in `public.tasks`**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source) VALUES (gen_random_uuid(),'<name>','<P1|P2|P3|P4>','<due or NULL>','<entity>','<project_slug>','todo','claude')"` — correct `project_slug`, `entity_slug`, priority and due date (P1+2d / P2+7d / P3+30d / P4 none). No "shall I send these?" gate.
+- Mark any completed tasks as done: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'"`
+- Report what was created in Step 6
 
 If a follow-up is genuinely judgement-call (e.g. "should we even do this?"), surface it as a *question* in Step 6 instead of creating a task. Default for clear actions: just create the task.
 
@@ -135,9 +134,9 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_sl
 
 **Why:** end-of-session is the natural moment to keep the work brain clean. Surfaced 2026-05-20 when SY-Website carried 80 open tasks — 42 stale Jane backlink tasks from 6 May (since emailed to move to her own project) + ~6 April-dated SEO monitoring tasks long since done. Mirror in brain Compress so it runs whichever skill closes the session.
 
-#### Step 3c: Asana state parity
+#### Step 3c: CC task-state parity
 
-For every project **touched this session**, confirm Asana reflects what shipped — the task is closed / moved to the right section (overlaps Step 3a); conversely a task marked done in Asana has its artefact updated in the cloud (Drive / `vault_notes` / CC). **Don't sprawl**: never create a new project/sub-project for 1-2 tasks; default to the parent's `{prefix}-General`; ask Pete before creating either. (The old Asana↔vault-folder parity check is retired — there are no vault project folders.)
+For every project **touched this session**, confirm `public.tasks` reflects what shipped — the task is closed (overlaps Step 3a); conversely a task marked done in the CC has its artefact updated in the cloud (Drive / `vault_notes` / CC). **Don't sprawl**: never create a new project/sub-project for 1-2 tasks; default to the parent's `{prefix}-General`; ask Pete before creating either. (The old Asana↔vault-folder parity check is retired — there are no vault project folders.)
 
 ### Step 4: Housekeeping
 
@@ -153,7 +152,7 @@ For every project **touched this session**, confirm Asana reflects what shipped 
 
 ### Step 6: Report to Pete
 
-- Present a summary: what was saved, where, what was updated, what Asana tasks were created
+- Present a summary: what was saved, where, what was updated, what CC tasks were created
 - Flag anything that needs Pete's attention next session
 - Pete may request changes, additions, or notes at this point -- handle them before continuing
 
@@ -275,7 +274,7 @@ When in doubt, save it.
 - Create orphan notes -- link from at least one existing file
 - Write to a retired vault folder (`Properties/`, `Customers/`, `Projects/`, `Library/lessons` …) — they're gone; route to Drive + `vault_notes`
 - Put operational data (keyword trackers, Surfer scores) anywhere but the property's Drive folder + its CC record
-- Auto-create tasks anywhere other than Asana
+- Auto-create tasks anywhere other than `public.tasks`
 - Skip the daily note after meaningful work
 
 ## Related lessons (auto-surfaced by deployment matrix)

@@ -98,7 +98,7 @@ Read the generated `.md` and present it to Pete with interpretation, not just th
    PY
    ```
    (Adjust `md_path` to the exact file this run wrote if the glob picks the wrong one.) Verify at **commandcentre.info/m/sygma-reports** → Health reports tab → new period chip.
-6. **Offer next steps** — save is automatic (the dated `.md`). Offer to create Asana follow-ups (ask first — don't auto-create), or to deep-dive a specific page. Don't propose work on no-work pages.
+6. **Offer next steps** — save is automatic (the dated `.md`). Offer to create CC follow-up tasks in `public.tasks` (ask first — don't auto-create), or to deep-dive a specific page. Don't propose work on no-work pages.
 
 The report is a **snapshot** — each run is a new dated file, so trajectory across runs is preserved in `data/`.
 

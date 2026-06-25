@@ -176,13 +176,13 @@ For each `Library/processes/*.md`:
    - The credentials exist in `/tmp/pbs/Library/processes/secrets/` if the doc says so.
    - The helper script (`/tmp/pbs/{name}.py`) exists if referenced.
    - The MCP connector ID matches `Library/processes/connections.md` (the canonical registry).
-4. If it documents a workflow with steps, confirm the referenced scripts / API calls / Asana GIDs are still valid.
+4. If it documents a workflow with steps, confirm the referenced scripts / API calls / task-ids (CC `public.tasks`) are still valid.
 5. **Watch for drift**: a process doc that says "we do X via Y" when actually we no longer do X, or use Z not Y. Cross-check against current behaviour where verifiable.
 
 Particular attention:
 
 - `connections.md` -- against actual connected MCP servers + APIs
-- `asana-configuration.md` -- Asana team / workspace / priority field GIDs match live Asana
+- `asana-configuration.md` -- Asana GIDs (Jane's workspace only; Pete's own tasks are CC `public.tasks` now)
 - `gmail-label-scheme.md` -- sample a few labels; do they exist in Gmail?
 - `scheduled-tasks.md` -- list matches Phase 4's live cron registry
 - `vault-drive-sync.md` -- LaunchAgent loaded? `launchctl list | grep vault-drive` returns it?
@@ -215,7 +215,7 @@ Scan the **most recent 14 `daily_log` entries** in the CC. For each:
    - **Regardless of Asana state**: grep the rest of the same-day daily note for matching evidence (commit hashes, "ba02060"-style 7-char SHA refs, README "recent commits" lines, decision-doc creation, "shipped as", "landed", "closed by"). If a later session log on the same date shows the task's underlying work shipped, flag this as **same-day shipped / line-not-struck drift**.
 3. **Report-only.** vault-check reports drift; it does NOT auto-strike or auto-close. (Auto-strike + auto-close belong in brain Compress Step 7 + vault-writer Step 3a, which run every session as prevention.)
 
-Output for Phase 9 in the audit report: one row per drift finding, with daily-note path, line number, task summary, evidence type (Asana state mismatch / same-day shipped), and proposed fix. If brain Compress + vault-writer Step 3a are doing their job, this list should be empty most of the time -- non-empty means prevention silently failed and Pete should investigate why.
+Output for Phase 9 in the audit report: one row per drift finding, with daily-note path, line number, task summary, evidence type (CC task-state mismatch / same-day shipped), and proposed fix. If brain Compress + vault-writer Step 3a are doing their job, this list should be empty most of the time -- non-empty means prevention silently failed and Pete should investigate why.
 
 **Why this phase exists:** prevention can fail silently (a session that didn't run vault-writer at the end, a vault-writer step that errored, an updated SKILL.md that wasn't installed). Phase 9 is the periodic catch -- surfaced 2026-05-04, lesson [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
 

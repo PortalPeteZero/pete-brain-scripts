@@ -122,7 +122,7 @@ This is a new property. Follow the intake workflow:
 2. **Gather what Pete knows** -- domain (or "none yet"), tech stack, GitHub repo (or "not yet"), which GitHub account, hosting, department, Supabase (or "none"), description. Don't push for fields that don't apply -- not everything has a repo or database and that's fine.
 3. **Create the vault structure**:
    - `Properties/{project-name}/README.md` (property card with whatever details we have)
-   - `Projects/{project-name}/` for active project work (flat mirror of Asana)
+   - `Projects/{project-name}/` for active project work (flat mirror of the project hierarchy)
 4. **Update MAP.md** with all new entries.
 5. **Remind Pete** to update [[GitHub-Repo-Property-Master.xlsx]] if appropriate.
 6. **Log in daily note**.

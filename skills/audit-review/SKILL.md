@@ -116,7 +116,7 @@ Build a list of pages that are due or overdue for review. Present to Pete:
 
 If Pete came in asking about a specific page, skip the scan and go straight to that page.
 
-### 0c. Check Asana for Review Tasks
+### 0c. Check the CC for Review Tasks
 
 Query the CC task store (`public.tasks`) for the page's open tasks by `project_slug` (Pete is off Asana). Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on, status FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' ORDER BY due_on"` to find:
 
