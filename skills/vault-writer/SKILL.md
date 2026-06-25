@@ -110,34 +110,28 @@ Before sign-off, re-read **every prior `> [!todo] Pending Tasks` block in today'
 - If no CC task-id, grep today's daily note for the task's keywords. Same in-place strikethrough + evidence marker if matched.
 - When uncertain, ask Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) instead of auto-modifying.
 
-**Close-on-ship (mechanical — the durable fix for "shipped it, never closed it"):** for every discrete thing this session actually shipped — a commit, a cron added to the registry, a file created, an email sent that names a task — run `VAULT=/tmp/pbs python3 /tmp/pbs/asana-reconcile.py --ship <gid|keyword>…`. It searches the **full open Asana list** (not just today's TODO block) for the matching task(s) and lists them; after eyeballing the match, re-run with `--apply-auto` to close them with an audit comment. This catches the common miss the same-day check is blind to: a task opened in an *earlier* session whose work lands today. Same discipline — lists first, you confirm, never closes on assumption.
+**Close-on-ship (mechanical — the durable fix for "shipped it, never closed it"):** for every discrete thing this session actually shipped — a commit, a cron added to the registry, a file created, an email sent that names a task — run `VAULT=/tmp/pbs python3 /tmp/pbs/email-task-reconcile.py --ship <task-id|keyword>…`. It searches the **full open CC task list** (`public.tasks`, not just today's TODO block) for the matching task(s) and lists them; after eyeballing the match, re-run with `--apply` to close them (`status='done'`) with an audit note. This catches the common miss the same-day check is blind to: a task opened in an *earlier* session whose work lands today. Same discipline — lists first, you confirm, never closes on assumption.
 
-**Make the close findable (so the safety nets work):** two cheap conventions feed the `asana-ship-gate` Stop hook (deterministic, harness-run every turn — it won't let you sign off if you shipped a task-referenced thing that's still open):
-- **Code:** put the Asana gid in the commit message when a commit completes a task (e.g. `… (Asana 1215631946311467)`).
-- **Non-code ships you can't close immediately** (a cron, an email, a file): drop a `SHIPPED: <gid> — <evidence>` line in today's daily note. The reconciler treats that explicit marker as auto-closeable, and the hook catches it at sign-off.
-Neither replaces actually closing the task — they're what make a *missed* close get caught instead of rotting. Full design: [[Library/decisions/2026-06-14-asana-reconciliation-system]].
+**Make the close findable (so the safety nets work):** two cheap conventions help a missed close get caught at sign-off:
+- **Code:** put the CC task id in the commit message when a commit completes a task (e.g. `… (task 727634d8…)`).
+- **Non-code ships you can't close immediately** (a cron, an email, a file): drop a `SHIPPED: <task-id> — <evidence>` line in today's daily note. The reconciler treats that explicit marker as closeable.
+Neither replaces actually closing the task — they're what make a *missed* close get caught instead of rotting.
 
 **Why:** before this step, each session log's pending-task block was treated as final. A morning session opens "Wire X" + creates Asana 1234; a 12:30 detour ships X as commit ABC; end-of-day vault-writer never re-read the morning's TODO block. Asana sat with a closed-but-still-open task; daily note still claimed `[ ] Wire X`. Pete spots it the next morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (Asana 1214496261050040, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
 
 **How to apply:** Runs end-of-session, before Verification. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence -- never strikes a line on assumption alone. Mirror logic also lives in brain Compress Step 7 (canonical orchestrator); vault-writer's copy is the cleanup-checklist guarantee that it actually runs.
 
-#### Step 3b: Asana staleness sweep (NEW v5.5, 2026-05-20)
+#### Step 3b: Stale-task review (simplified — old evidence engine retired)
 
-Pete's projects drift messy over time. At session end, scan the whole workspace for stale work and surface a short digest in Step 6. **Surface-only — never bulk-close, delete, reassign, or re-section without Pete's explicit per-item confirmation** (Asana teams + tasks are sacred; never bulk-delete without confirmation).
+Pete's task list drifts messy over time. At session end, surface a short digest of stale work in Step 6. **Surface-only — never bulk-close, delete, reassign, or re-section without Pete's explicit per-item confirmation** (CC tasks are Pete's).
 
-**Mechanic — run the evidence reconciler, don't hand-roll it:**
-- `VAULT=/tmp/pbs python3 /tmp/pbs/asana-reconcile.py --overdue-only` (or no flag for the full open set). It pulls Pete's open tasks (direct PAT) and buckets each by **completion evidence**, not just age:
-  - **AUTO** — unambiguous mechanical proof (the gid is in a merged commit; a "build cron X" task whose named cron now exists in the registry). The only bucket eligible for unprompted close, via `--apply-auto`.
-  - **PROPOSE** — strict, suggestive evidence (a non-list daily-note line records it done next to the gid; or, for a reply/chase task, Pete sent the last message on the linked thread). **Surface for Pete's one-word confirm — never auto-close.**
-  - **PAYMENT** — "Pay X" payables; can't be verified here, always Pete's call.
-  - **OPEN** — no trustworthy signal; silent unless >30 days overdue.
-- The reconciler is deliberately **high-precision** (it once flagged 47/59 on a loose heuristic — status-dump resume lines leak completion words across task IDs; the strict version drops that to a handful). If it surfaces a lot, suspect a regex regression, not a real backlog.
+The old Asana evidence-sweep (commit / daily-note scanning that auto-bucketed tasks AUTO/PROPOSE/PAYMENT) is **retired** — it relied on the local `/code` repos and the `Daily/` vault folder, both removed at the 24 Jun cutover. Stale-task review is now a light query against `public.tasks`, surfaced for Pete's per-item call:
 
-**Digest (in Step 6):** surface the AUTO + PROPOSE + PAYMENT buckets (the OPEN >30d list is a quieter footnote). One line per task with its evidence + recommended action. If all buckets are empty, say so in one line — don't manufacture noise.
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_slug, due_on FROM tasks WHERE status!='done' AND due_on < current_date - interval '30 days' ORDER BY due_on LIMIT 30"
+```
 
-**Weekly safety net:** the full evidence sweep also runs every Sunday via the `asana-reconcile` cron, which emails Pete the pre-evidenced digest — so the backlog gets a regular pass even in weeks where no session triggers this step. (Registry: [[scheduled-tasks]].)
-
-**Never auto-act beyond AUTO.** The only unprompted Asana mutations are: closing tasks *this* session demonstrably shipped (Step 3a / `--ship`), the reconciler's AUTO bucket (`--apply-auto`, mechanical proof only), and auto-creating clear follow-ups (Step 3). PROPOSE / PAYMENT / stale-item cleanup is always Pete's per-item call (Asana teams + tasks are sacred).
+**Digest (in Step 6):** one line per stale task (name + priority + how overdue). If the list is empty, say so in one line — don't manufacture noise. Pete confirms any close per item; never auto-close. (A richer cloud evidence engine — `daily_log` + the GitHub API for commits + `public.crons` — can be rebuilt later if this manual pass proves too coarse.)
 
 **Why:** end-of-session is the natural moment to keep the work brain clean. Surfaced 2026-05-20 when SY-Website carried 80 open tasks — 42 stale Jane backlink tasks from 6 May (since emailed to move to her own project) + ~6 April-dated SEO monitoring tasks long since done. Mirror in brain Compress so it runs whichever skill closes the session.
 
