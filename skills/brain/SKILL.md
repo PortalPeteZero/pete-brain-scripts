@@ -199,7 +199,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
 **Edge cases:**
 - Priority unset → display as `–`.
 - Task in an unfamiliar `project_slug` (rare) → surface but flag the project.
-3b. **Replies tray check (added 2026-06-06)** -- Query Gmail LIVE: `g.search_threads("label:Replies", max_results=50)`. For each thread, age = days since the LAST message on the thread. Surface in the briefing as its own line:
+3b. **Replies tray check (added 2026-06-06)** -- Query Gmail LIVE: `g.search_threads("label:Actions OR label:Replies", max_results=50)` (transition-safe: the tray label was renamed Actions→Replies 2026-06-25; matches either name — trim to `label:Replies` once bedded in). For each thread, age = days since the LAST message on the thread. Surface in the briefing as its own line:
    - `**Replies tray**: {N} waiting ({M} aging >3d): {short-subject} {X}d · {short-subject} {Y}d — say "actions" to walk them with drafts ready.`
    - List every item older than **3 days**, oldest first; cap the inline list at 5 + `+K more aging`.
    - Tray empty → skip the line entirely.
