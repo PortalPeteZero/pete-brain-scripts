@@ -95,11 +95,10 @@ Daily/           -- Session logs (YYYY-MM-DD.md)
 Screenshots/     -- macOS Cmd-Shift-3/4/5 capture target
 ```
 
-**Project / sub-project pattern (post 2026-05-06 restructure):**
-- A **project** is a top-level `public.tasks` project (its own `project_slug`) + a top-level vault folder + its own README.
-- A **sub-project** is a sub-grouping under a parent `project_slug` + a vault subfolder direct under the parent (NOT inside `files/`) + its own README + its own `files/`.
-- Example: `Projects/SY-Website/` is the parent (with parent README + `files/`), and `Projects/SY-Website/seo/` is a sub-project (with its own README + `files/`).
-- When new work surfaces, default to the parent's `{prefix}-General` sub-project. Don't create a new project or sub-project for 1-2 tasks. Ask before creating either.
+**Project / bucket pattern (B1/B2, updated 2026-06-25 — Business OS):**
+- A **project** is a row in the CC `public.projects` table (own `slug` + `entity_slug` + Drive folder + knowledge home) — projects live in the CC + Drive now, **not** a vault folder.
+- A **bucket** is a sub-grouping within a project (CC `public.buckets`: `project_slug` + name); every project has a default **General** bucket.
+- **To create one, don't hand-roll it — run the full build-out helper:** `VAULT=/tmp/pbs python3 /tmp/pbs/cc-project-api.py "Name" --entity "<Sygma|Canary Detect|Personal|One System|El Atico>" [--desc "…"] [--gmail]`. It creates the `projects` row + General bucket + the Drive folder in the entity's correct drive + a seeded `vault_notes` knowledge home (tagged with the slug → links on the CC project page) and reports every link. The CC "New project" button writes the same row + bucket. **Resume reads the `projects` table (Step 3c)** so you already know what exists — propose-then-confirm, default to an existing project's General bucket, and don't create a project for 1-2 tasks.
 
 > **Glob workaround (April 2026):** Single-level directory wildcards (`*/`) are broken in Cowork additional directories. When using the Glob tool to find files like `Projects/*/README.md`, set `path` to the parent directory (e.g., `Projects/`) and use recursive pattern `**/README.md`. Do NOT put subdirectory names inside the Glob pattern.
 
@@ -204,6 +203,9 @@ When the most recent daily note covers today (rare edge case where Claude resume
    - List every item older than **3 days**, oldest first; cap the inline list at 5 + `+K more aging`.
    - Tray empty → skip the line entirely.
    - The tray is reply-shaped only (**Replies = waiting on Pete to respond by email; a task only when work is required**). Bills/work items are CC tasks with `[no-sync-close]` — they never appear here. Source = live Gmail, never the daily note. Operating manual: [[email-workflow]].
+3c. **Projects + Quick Notes index (B1/B7, added 2026-06-25)** -- so Claude always knows where work lives + what's been jotted, without Pete re-explaining ("stop making me repeat myself"):
+   - **Projects registry**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT slug, name, entity_slug, status, drive_folder_url FROM projects WHERE status='active' ORDER BY entity_slug, slug"` — the live CC `projects` table (backfilled from task `project_slug`s; the CC "New project" button + `cc-project-api.py` write here). When Pete says "the X project" / "new bucket" / "put this in Y", resolve against THIS list and its Drive homes — don't re-derive or ask. Buckets: `SELECT project_slug, name FROM buckets`.
+   - **Quick Notes**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, title, left(body,80) AS body FROM notes WHERE status='open' ORDER BY pinned DESC, updated_at DESC LIMIT 20"` — the Keep-style scratchpad (CC `notes`, distinct from `vault_notes`). Surface in the briefing as its own line `**Quick notes**: {N} open — {title} · {title} …` (like the Replies tray; skip the line if empty). The **"check notes"** verb pulls them on demand; "note: …" creates one (insert into `notes`); promote-to-task/project/knowledge happens in the CC UI.
 4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home — not the legacy `Businesses/` vault folder.
 5. **Check session plans** -- Look for incomplete session plans:
    - Query `vault_notes` for plan notes still open: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, frontmatter->>'status' FROM vault_notes WHERE type ILIKE '%plan%' AND frontmatter->>'status' IN ('in-progress','ready') ORDER BY source_updated DESC"` (note: there is no `public.plans` table — plans are notes in `vault_notes`).
