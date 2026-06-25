@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """ads-cc-publish.py — feed the CC's NATIVE Sygma Ads dashboard.
 
-Builds data/ads.json in the Command Centre repo from two sources:
+Builds the Sygma Ads feed from two sources:
   - account structure  ← Properties/Sygma Solutions Website/data/google-ads-account.json
                          (refreshed daily by ads-snapshot.py) → sectioned, not a md wall.
   - daily/weekly/monthly time-series ← Google Ads GAQL (ads-api.py), last ~180 days.
-Then commits/pushes so /m/sygma-ads renders it natively (tabs: Overview · Daily · Weekly
-· Monthly · Account). Replaces the 135KB md→html "wall of text".
+Then writes it to CC public.ads so /m/sygma-ads renders it natively (tabs: Overview · Daily
+· Weekly · Monthly · Account). Replaces the 135KB md→html "wall of text".
 
-  python3 ads-cc-publish.py            # build + commit + push
+  python3 ads-cc-publish.py            # build + write public.ads
   python3 ads-cc-publish.py --print     # build + print, no write
-  python3 ads-cc-publish.py --out PATH  # build + write JSON, no git
+  python3 ads-cc-publish.py --out PATH  # build + write JSON to PATH
 
 Run daily after ads-snapshot.py (which refreshes the account JSON).
 """
@@ -18,20 +18,18 @@ Run daily after ads-snapshot.py (which refreshes the account JSON).
 # what: Sygma Google Ads dashboard publish (account structure + 180d time-series)
 # why: feeds the /m/sygma-ads Command Centre dashboard (Overview/Daily/Weekly/Monthly/Account tabs)
 # reads: Google Ads API (ads-api via ads-snapshot.pull_state + account-level daily metrics)
-# writes: public.ads (CC) -> /m/sygma-ads; data/ads.json git-push (skipped on cloud — no CC repo there)
+# writes: public.ads (CC) -> /m/sygma-ads
 # entity: sygma
 # report: sygma-ads
 # schedule: 45 6 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
-import os, sys, json, subprocess, datetime, importlib.util, time
+import os, sys, json, datetime, importlib.util
 from pathlib import Path
 from collections import defaultdict
 
 VAULT = "/tmp/pbs"
 SCRIPTS = Path(__file__).resolve().parent
-HOME = Path(os.path.expanduser("~"))
-CC_REPO = HOME / "code/command-centre"
 ACCOUNT_JSON = f"{VAULT}/Properties/Sygma Solutions Website/data/google-ads-account.json"
 
 def gbp(micros):
@@ -134,16 +132,9 @@ def build():
     }
     return data
 
-def git(repo, *a, retries=4):
-    for i in range(retries):
-        r = subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
-        if r.returncode == 0: return r
-        if i == retries - 1: raise RuntimeError(f"git {a[0]}: {r.stderr.strip()[:160]}")
-        time.sleep(3)
-
 def publish_to_cc_ads(data):
-    """Write the whole ads feed to CC public.ads — the source for the /m/sygma-ads dashboard once
-    repointed off data/ads.json. Non-fatal; CC keys env-first (Railway) else the vault keys file."""
+    """Write the whole ads feed to CC public.ads — the source for the /m/sygma-ads dashboard.
+    Non-fatal; CC keys env-first (Railway) else the vault keys file."""
     import urllib.request
     url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
     if not (url and key):
@@ -167,16 +158,7 @@ def main():
     if "--print" in args: print(json.dumps(data, indent=2)[:3000]); return
     if "--out" in args:
         p = args[args.index("--out") + 1]; Path(p).write_text(json.dumps(data, indent=2)); print("wrote", p); return
-    if not CC_REPO.exists(): print("CC repo missing — skip"); return
-    git(CC_REPO, "fetch", "origin", "main"); git(CC_REPO, "pull", "--rebase", "--autostash", "origin", "main")
-    (CC_REPO / "data").mkdir(exist_ok=True)
-    (CC_REPO / "data/ads.json").write_text(json.dumps(data, indent=2))
-    subprocess.run(["git", "-C", str(CC_REPO), "add", "data/ads.json"], check=True)
-    if subprocess.run(["git", "-C", str(CC_REPO), "diff", "--cached", "--quiet"]).returncode == 0:
-        print("ads->CC: no change"); return
-    git(CC_REPO, "commit", "-m", "data: refresh Sygma Ads dashboard", retries=1)
-    git(CC_REPO, "push", "origin", "main")
-    print(f"ads->CC: pushed ({len(data['daily'])}d / {len(data['weekly'])}w / {len(data['monthly'])}m, {len(data['keywords'])} keywords)")
+    print(f"ads->CC public.ads done ({len(data['daily'])}d / {len(data['weekly'])}w / {len(data['monthly'])}m, {len(data['keywords'])} keywords)")
 
 if __name__ == "__main__":
     main()

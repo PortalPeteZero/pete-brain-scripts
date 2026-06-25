@@ -3,13 +3,12 @@
 
 Reads the live `utilisation report.xlsx` (Drive 14NRq…, built daily 17:00 by
 utilisation-tracker-refresh.py) → normalises Summary + per-month per-trainer
-metrics → writes data/utilisation.json into the Command Centre repo
-(~/code/command-centre) and commits/pushes (same git pattern as the eval sync),
-so the native page /m/sygma-training/utilisation refreshes.
+metrics → writes the snapshot to the Portal hub.diary_utilisation table, so the
+staff /hub/diary-utilisation page refreshes.
 
-  python3 utilisation-cc-publish.py            # download, parse, write+commit+push
+  python3 utilisation-cc-publish.py            # download, parse, write to Portal
   python3 utilisation-cc-publish.py --print     # parse + print JSON, no write
-  python3 utilisation-cc-publish.py --out PATH  # parse + write JSON to PATH, no git
+  python3 utilisation-cc-publish.py --out PATH  # parse + write JSON to PATH
 
 Triggered daily ~17:20 (after utilisation-tracker-refresh's 17:00 write).
 """
@@ -17,19 +16,17 @@ Triggered daily ~17:20 (after utilisation-tracker-refresh's 17:00 write).
 # what: Diary utilisation publish (utilisation xlsx -> hub.diary_utilisation + CC dashboard)
 # why: feeds the Portal Diary Utilisation hub page (/hub/diary-utilisation); legacy CC /m page pending H5 repoint
 # reads: utilisation report.xlsx (Drive)
-# writes: hub.diary_utilisation (Portal Supabase); CC data/utilisation.json (skipped on cloud — no CC repo there)
+# writes: hub.diary_utilisation (Portal Supabase)
 # entity: sygma
 # report: diary-utilisation
 # schedule: 20 17 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
-import os, sys, json, subprocess, tempfile, datetime, importlib.util, time
+import os, sys, json, subprocess, tempfile, datetime, importlib.util
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent
-HOME = Path(os.path.expanduser("~"))
 LIVE_FILE_ID = "14NRq_A-IJCgqvEHgII6vmg9Gy6fhUYa6"
-CC_REPO = HOME / "code/command-centre"
 
 def _num(v):
     if v is None or v == "": return None
@@ -102,13 +99,6 @@ def parse(path):
             out["months"].append({"sheet": sn, "trainers": trainers, "totals": totals})
     return out
 
-def git(repo, *args, retries=4):
-    for i in range(retries):
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
-        if r.returncode == 0: return r
-        if i == retries - 1: raise RuntimeError(f"git {args[0]}: {r.stderr.strip()[:160]}")
-        time.sleep(3)
-
 def publish_to_portal(data):
     """Write the diary-utilisation snapshot to the Portal hub.diary_utilisation table (the staff-only
     'Diary Utilisation' /hub section). SEPARATE from the go-live Portal Utilisation. Non-fatal."""
@@ -141,17 +131,7 @@ def main():
         print(json.dumps(data, indent=2)); return
     if "--out" in args:
         p = args[args.index("--out") + 1]; Path(p).write_text(json.dumps(data, indent=2)); print("wrote", p); return
-    if not CC_REPO.exists():
-        print("CC repo missing — skip"); return
-    git(CC_REPO, "fetch", "origin", "main"); git(CC_REPO, "pull", "--rebase", "--autostash", "origin", "main")
-    (CC_REPO / "data").mkdir(exist_ok=True)
-    (CC_REPO / "data/utilisation.json").write_text(json.dumps(data, indent=2))
-    subprocess.run(["git", "-C", str(CC_REPO), "add", "data/utilisation.json"], check=True)
-    if subprocess.run(["git", "-C", str(CC_REPO), "diff", "--cached", "--quiet"]).returncode == 0:
-        print("utilisation->CC: no change"); return
-    git(CC_REPO, "commit", "-m", "data: refresh trainer utilisation", retries=1)
-    git(CC_REPO, "push", "origin", "main")
-    print(f"utilisation->CC: pushed ({len(data['months'])} months, {len(data['summary'])} summary rows)")
+    print(f"utilisation->Portal done ({len(data['months'])} months, {len(data['summary'])} summary rows)")
 
 if __name__ == "__main__":
     main()
