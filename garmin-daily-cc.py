@@ -66,6 +66,7 @@ def _preserve_local_fields(date_iso, snap):
 
 def main():
     g = gdp.garmin_mod.GarminAPI()
+    gdp._persist_garmin_token(g)  # republish the live token to CC secrets each run so local boots never hit a stale copy
     today = _dt.datetime.now(TZ).date()
     dates = [(today - timedelta(days=1)).isoformat(), today.isoformat()]
     ok = 0
