@@ -49,8 +49,8 @@ def page(params):
 
 SHARED = {"Sygma Hub": "0APzpyHHfvUyIUk9PVA", "Canary Detect": "0AAcMZiTrK0txUk9PVA", "Sygma Private": "0AC_ioGo0GJ3tUk9PVA", "CD Private": "0AFilU9XoRsf_Uk9PVA", "Ashcroft Family": "0ACX0xe254y5kUk9PVA", "One System": "0AGTfg0QwTS8kUk9PVA", "El Atico": "0AP-TBWWevTInUk9PVA",
           "Sygma Mala": "0ANYL9DOJQtmQUk9PVA", "Sygma Trainers": "0AP9_VgbvNGyEUk9PVA", "External Sygma Solutions": "0AOTm_FPU_iRmUk9PVA", "External Canary Detect": "0APjm9rgEA8PDUk9PVA"}
-FFIELDS = "nextPageToken,files(id,name,parents)"
-XFIELDS = "nextPageToken,files(id,name,parents,mimeType,size,modifiedTime)"
+FFIELDS = "nextPageToken,files(id,name,parents,driveId)"
+XFIELDS = "nextPageToken,files(id,name,parents,mimeType,size,modifiedTime,driveId)"
 
 def build(drive, folders, files):
     fmap = {f["id"]: (f["name"], (f.get("parents") or [None])[0]) for f in folders}
@@ -75,9 +75,15 @@ def scan_shared(name, did):
     return build(name, folders, files)
 
 def scan_mydrive():
-    common = {"corpora": "user", "spaces": "drive", "pageSize": 1000}
+    common = {"corpora": "user", "spaces": "drive", "supportsAllDrives": "true", "pageSize": 1000}
     folders = page({**common, "q": "mimeType='application/vnd.google-apps.folder' and trashed=false", "fields": FFIELDS})
     files = page({**common, "q": "mimeType!='application/vnd.google-apps.folder' and trashed=false", "fields": XFIELDS})
+    # A user-OWNED item that physically lives in a shared drive surfaces in this corpora=user pass too.
+    # Its own scan_shared() pass already captures it with the correct drive + full path, so drop it here
+    # — otherwise build() relabels it 'My Drive' (the original index-corruption bug; same guard as
+    # drive-changes-watch.py: `if did is None and f.get("driveId"): continue`).
+    folders = [f for f in folders if not f.get("driveId")]
+    files = [f for f in files if not f.get("driveId")]
     return build("My Drive", folders, files)
 
 def upsert(rows):
