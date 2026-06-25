@@ -28,7 +28,7 @@ Reconciliation engine for the email workflow: a bidirectional sync between Gmail
 
 User says any of: "sync" · "sync tasks" · "reconcile my tasks" · "check my delegations" · "close completed tasks" · "clean up stale labels".
 
-Also: **offered at the end of every `triage` session** (opt-in y/n after the Replies walker — triage never auto-chains; see inbox-triage Step 8b). This skill runs **on demand only** — there is no scheduled cron (an earlier 07:15 `daily-asana-gmail-sync` was specced but never deployed; the live registry has no email/task sync cron).
+Also: **offered at the end of every `triage` session** (opt-in y/n after the Replies walker — triage never auto-chains; see inbox-triage Step 8b). This skill runs **on demand only** — there is no scheduled cron (an earlier daily 07:15 email/task sync cron was specced but never deployed; the live registry has no email/task sync cron).
 
 ## Dependencies
 
