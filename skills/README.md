@@ -11,7 +11,7 @@ Canonical home for every custom skill Pete uses. Each skill lives in its own fol
 
 > **SKILL.md convention (locked 2026-05-20)**: each skill's `SKILL.md` carries **current operational instructions only**. Version banners, inline `(vX.Y)` tags, `(NEW)` markers, and historical commentary belong in the sibling `CHANGELOG.md`. The skills-slim-down pass on 2026-05-20 stripped ~40KB of accumulated version history across all 13 skills. Pete's reasoning: long preambles eat context budget every invocation, slow execution, and let stale rules drift back into the operational sections. SKILL.md should read as if written for someone landing fresh, with the lesson `[[Library/lessons/2026-05-20-skill-md-current-state-only-history-in-changelog]]` documenting the policy.
 
-Installing a skill elsewhere (for example via Claude Code plugin marketplaces or the Cowork skill installer) is fine. This folder is the **source of truth** that those installations are built from. When a skill is updated here, a `.skill` archive is produced and re-installed into the active skill location.
+Installing a skill elsewhere (for example via Claude Code plugin marketplaces or the Cowork skill installer) is fine. This folder is the **source of truth** that those installations are built from. **When a skill is updated here, run `package-skill.py <name>`** — it rebuilds the `.skill` archive in lockstep with the source AND delivers the current package to `~/Downloads/cc-skills-to-install/`, ready to install in Cowork. Never hand-zip a `.skill` (that drifted: Downloads held pre-repackage versions). See **Packaging & delivery** below.
 
 ## Active Skills
 
@@ -37,10 +37,25 @@ Installing a skill elsewhere (for example via Claude Code plugin marketplaces or
 |---|---|---|
 | `seo-gap-analysis` | 2026-04-18 | Absorbed into `ahrefs-audit` v2.0. No replacement needed. |
 
+## Packaging & delivery
+
+The single packager `package-skill.py` (in `pete-brain-scripts`, run with `VAULT=/tmp/pbs`) keeps the source folder and the `.skill` archive in lockstep AND hands the installable package to Pete. It zips the folder's **contents** (so `SKILL.md` sits at the archive root, never nested), and copies the result to `~/Downloads/cc-skills-to-install/` with an `_INSTALL-ME.md` manifest.
+
+```
+package-skill.py <name> [<name> ...]   # repackage + deliver the named skills
+package-skill.py --changed             # only skills whose source ≠ its .skill (content-compare)
+package-skill.py --all                 # every skill
+package-skill.py --no-deliver ...      # rebuild the archive(s) only, skip local delivery
+```
+
+- **Change detection is content-based** (ignores zip timestamps), so `--changed` rebuilds only genuinely-edited skills and surfaces any pre-existing drift (it caught 2 stale + 2 malformed archives on 2026-06-25).
+- **Delivery is automatic when `~/Downloads` exists** (a local Mac session); on a cloud/Railway run it skips delivery but still rebuilds the archive, so source and package never drift.
+- After editing a skill: `package-skill.py <name>` → install the delivered package in Cowork → empty the folder.
+
 ## Installing
 
-1. `.skill` archive is produced per skill in this directory (same folder name + `.skill` extension).
-2. Install via the Cowork or Claude Code skill installer.
+1. Run the packager (above) — the current `.skill` lands in `~/Downloads/cc-skills-to-install/`.
+2. Install each `.skill` via the Cowork or Claude Code skill installer (replaces the installed version).
 3. Update `Library/processes/connections.md` if connector requirements change.
 4. Update this README when version bumps land.
 
