@@ -6,15 +6,21 @@ that contains malformed rows -- specifically, the 27 April 2026 failure mode
 where a `Task this` row was authored as `File under X` + a Task-column entry,
 causing the Actions label to be dropped on every tasked thread.
 
-2026-06-06 — Action/Task verb split (plan: Projects/PA-General/files/
-email-workflow-plan-2026-06-06-action-task-split.md):
+2026-06-06 — Action/Task verb split:
   * `Action this Pn` = tray verb — Actions label + filing label, atomic.
     Reply-shaped asks only (reply / rsvp / decision-by-replying).
-  * `Task this Pn`   = Asana-only verb — filing label ONLY, no Actions label.
+  * `Task this Pn`   = CC-task verb — filing label ONLY, no Actions label.
     The created task's notes must carry `[no-sync-close]` (enforced at the
     task-creation call site, not here — this validator sees only the table).
-  One-sentence rule: Actions = waiting on Pete to respond by email.
-  Everything else = Asana only.
+
+2026-06-25 — Action/task decoupling:
+  An `Action this` row NO LONGER requires a task. An Action just means "an email
+  Pete owes a reply to" (the Actions label) — a task is created ONLY when the
+  reply needs real work done first (the overlap case), and is then optional, not
+  mandatory. `Task this` and `Delegate to` still require their cell. Only the
+  task-REQUIRED check relaxes; the Actions label is still added atomically.
+  One-sentence rule: Actions = waiting on Pete to respond by email; a task is
+  created only when work is required, never automatically from the label.
 
 Usage:
     from triage_validator import validate_ops, TriageOpsError
@@ -70,7 +76,8 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
     Checks:
       1. Action is one of the seven allowed verbs.
       2. Task cell present  ⇒  Action begins with 'Action this ' or 'Task this '.
-      3. Action/Task verb  ⇒  Task cell present.
+      3. 'Task this ' verb  ⇒  Task cell present. ('Action this ' may carry a
+         task (the overlap case) but no longer requires one — task-free passes.)
       4. Delegate cell present  ⇒  Action begins with 'Delegate to '.
       5. Action begins with 'Delegate to '  ⇒  Delegate cell present.
       6. (when `ask` present) Ask vocabulary + Ask⇔verb matrix:
@@ -93,7 +100,13 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
         has_task = bool(task) and task != '-'
         has_delegate = bool(delegate) and delegate != '-'
 
+        # is_task_bearing  = a Task cell is PERMITTED (and the verb counts as an
+        #                    actionable verb for the Ask⇔verb checks below).
+        # is_task_required = a Task cell is MANDATORY. As of 2026-06-25 only
+        #                    'Task this' requires one; 'Action this' may carry a
+        #                    task in the overlap case but a task-free Action passes.
         is_task_bearing = action.startswith(('Action this ', 'Task this '))
+        is_task_required = action.startswith('Task this ')
         is_delegate_verb = action.startswith('Delegate to ')
 
         # 1. Seven-verb rule
@@ -103,14 +116,17 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
                 f"({', '.join(p.strip() for p in _ALLOWED_PREFIXES)})"
             )
 
-        # 2 + 3. Task atomicity (both task-bearing verbs)
+        # 2. Task cell may only appear on a task-bearing verb (catches the 27-Apr
+        #    'File under X' + Task-cell failure that dropped the Actions label).
         if has_task and not is_task_bearing:
             errors.append(
                 f"Row {row}: Task cell present ('{task[:60]}...') but Action is '{action}' -- "
                 f"row is malformed. Either change Action to 'Action this Pn' / 'Task this Pn' or "
                 f"clear the Task cell."
             )
-        if is_task_bearing and not has_task:
+        # 3. Only 'Task this' REQUIRES a task cell. 'Action this' is now label-only
+        #    by default (a task is optional — the overlap case), so it is exempt.
+        if is_task_required and not has_task:
             errors.append(
                 f"Row {row}: Action is '{action}' but Task cell is empty -- row is malformed. "
                 f"Either fill in the Task spec or change the verb."
@@ -222,19 +238,32 @@ if __name__ == '__main__':
         {'row': 7, 'action': 'Keep in inbox + label Alerts'},
         {'row': 8, 'action': 'Task this P1 in SY-General', 'task': 'Reply-shaped but Pete insisted',
          'ask': 'reply', 'pete_override': True},
+        {'row': 9, 'action': 'Action this P3 in PA-General', 'ask': 'reply'},  # task-free Action (2026-06-25 decoupling) — must pass
+        {'row': 10, 'action': 'Action this P2 in SY-General', 'task': 'Reply once quote built',
+         'ask': 'decision'},  # overlap: Action with an optional task — still allowed
     ]
     validate_ops(good)
-    print("✓ good ops table passes")
+    print("✓ good ops table passes (incl. task-free Action this + overlap Action+task)")
 
     bad = [
         {'row': 1, 'action': 'File under SY-General', 'task': 'P2 in SY-General "Reply"'},  # the 27 Apr failure
         {'row': 2, 'action': 'Task this P2 in SY-General', 'task': 'Reply to Bob', 'ask': 'reply'},  # reply-shaped on Task, no override
+        {'row': 3, 'action': 'Task this P2 in Team-Finances', 'ask': 'decision'},  # Task this with NO task cell — must still fail
     ]
     try:
         validate_ops(bad)
         print("✗ should have raised")
     except TriageOpsError as e:
         print(f"✓ bad ops table caught:\n{e}")
+
+    # 2026-06-25 decoupling — targeted asserts
+    validate_ops([{'row': 1, 'action': 'Action this P2 in PA-General', 'ask': 'reply'}])  # no task → must pass
+    print("✓ task-free 'Action this' passes (decoupled from task)")
+    try:
+        validate_ops([{'row': 1, 'action': 'Task this P2 in Team-Finances', 'ask': 'decision'}])  # no task → must fail
+        print("✗ task-free 'Task this' should have raised")
+    except TriageOpsError:
+        print("✓ task-free 'Task this' still rejected (task still required)")
 
     # verb_to_primitive
     p = verb_to_primitive('Action this P1 in CD-Invoices', 'L_filing', 'L_actions', None)
