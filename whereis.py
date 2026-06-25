@@ -43,12 +43,30 @@ def main():
             if r.get('consumes'): print(f"      reads  ← {str(r['consumes'])[:150]}")
         print()
 
-    rows = q(f"SELECT module_key, slug, title, section FROM modules "
+    rows = q(f"SELECT module_key, slug, title, section, reads FROM modules "
              f"WHERE module_key ILIKE '{L}' OR slug ILIKE '{L}' OR title ILIKE '{L}' ORDER BY module_key LIMIT 12")
     if rows:
-        hits += len(rows); print("CC PAGES  (commandcentre.info — repo: ~/code/command-centre, app/m/<slug>):")
+        hits += len(rows); print("CC PAGES  (commandcentre.info — clone fresh: command-centre repo, app/m/<slug>):")
         for r in rows:
             print(f"  • /m/{r['slug']}  \"{r['title']}\"  [{r.get('section') or ''}]  key={r['module_key']}")
+            rd = r.get('reads') or []
+            if rd:
+                print(f"      feeds ← {', '.join(rd)}")
+        print()
+
+    # LINEAGE — term names a table/feed: who WRITES it (cron) + who READS it (CC page).
+    # Closes the page→feed→writer loop (modules.reads, Phase 5.3). Verified, not guessed.
+    writers = q(f"SELECT key, script_file, produces FROM crons WHERE produces ILIKE '{L}' ORDER BY key LIMIT 12")
+    readers = q(f"SELECT slug, reads FROM modules "
+                f"WHERE EXISTS (SELECT 1 FROM unnest(reads) x WHERE x ILIKE '{L}') ORDER BY slug LIMIT 20")
+    if writers or readers:
+        hits += len(writers) + len(readers)
+        print("LINEAGE  (table/feed → writer cron + reader page — script_file is the DEPLOYED writer):")
+        for w in writers:
+            print(f"  writer →  {w['key']}  script_file={w['script_file']}  produces {str(w['produces'])[:90]}")
+        for rr in readers:
+            m = [x for x in (rr.get('reads') or []) if safe.lower() in x.lower()] or (rr.get('reads') or [])
+            print(f"  reader ←  /m/{rr['slug']}  reads {', '.join(m)}")
         print()
 
     rows = q(f"SELECT domain, home, access FROM data_map "
