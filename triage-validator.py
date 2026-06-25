@@ -3,24 +3,33 @@ Triage ops-table validator.
 
 Single import for inbox-triage skill execution scripts. Refuses to run a batch
 that contains malformed rows -- specifically, the 27 April 2026 failure mode
-where a `Task this` row was authored as `File under X` + a Task-column entry,
-causing the Actions label to be dropped on every tasked thread.
+where a tasked row was authored as `File ...` + a Task-column entry, causing the
+tray label to be dropped on every tasked thread.
 
-2026-06-06 — Action/Task verb split:
-  * `Action this Pn` = tray verb — Actions label + filing label, atomic.
-    Reply-shaped asks only (reply / rsvp / decision-by-replying).
-  * `Task this Pn`   = CC-task verb — filing label ONLY, no Actions label.
-    The created task's notes must carry `[no-sync-close]` (enforced at the
-    task-creation call site, not here — this validator sees only the table).
+2026-06-25 — plain-word verbs (supersedes the 2026-06-06 "Action this / Task this"
+split and the 2026-06-25 decoupling, which are folded in here). The verbs are now:
 
-2026-06-25 — Action/task decoupling:
-  An `Action this` row NO LONGER requires a task. An Action just means "an email
-  Pete owes a reply to" (the Actions label) — a task is created ONLY when the
-  reply needs real work done first (the overlap case), and is then optional, not
-  mandatory. `Task this` and `Delegate to` still require their cell. Only the
-  task-REQUIRED check relaxes; the Actions label is still added atomically.
-  One-sentence rule: Actions = waiting on Pete to respond by email; a task is
+  * `Reply`              = tray verb — `Replies` label + filing label, atomic.
+                          Reply-shaped asks (reply / rsvp / decision-by-replying).
+                          NO task by default — the `Replies` label IS the record.
+                          A Task cell is OPTIONAL: a filled Task cell makes it a
+                          **Reply + Task** (the overlap — a reply gated on doing
+                          work first). That task carries `[no-sync-close]` + the
+                          Mimestream link (enforced at the create site, not here).
+  * `Task Pn`            = work verb — filing label ONLY, no `Replies` label.
+                          REQUIRES a Task cell. Its task carries `[no-sync-close]`.
+  * `Hand to {person}`   = delegate — `Delegated` label + a chase task. REQUIRES a
+                          Delegate cell.
+  * `File {label}`       = filing label + archive (out of inbox).
+  * `Keep {label}`       = filing label, LEAVE in inbox (you're watching it).
+  * `Clear`              = archive, no label (pure noise). Archives, not deletes.
+  * `Skip` / `-`         = no Gmail call (defer).
+
+  One-sentence rule: `Replies` = waiting on Pete to respond by email; a task is
   created only when work is required, never automatically from the label.
+
+  (The Gmail tray label was renamed `Actions` → `Replies` in the same 2026-06-25
+  pass; the label keeps its ID, so only name-based searches changed.)
 
 Usage:
     from triage_validator import validate_ops, TriageOpsError
@@ -46,16 +55,13 @@ class TriageOpsError(ValueError):
     """Raised when the ops table contains malformed rows."""
 
 
-_ALLOWED_PREFIXES = (
-    'File under ',
-    'Keep in inbox + label ',
-    'Silent archive',
-    'Skip',
-    '-',
-    'Action this ',
-    'Task this ',
-    'Delegate to ',
-)
+# Verbs that take NO argument (exact match).
+_EXACT_VERBS = ('Clear', 'Skip', '-')
+# Verb prefixes — the verb may be bare or carry a label / project / person / Pn after.
+# 'Reply' has no trailing space so it matches both bare "Reply" and "Reply in {project}".
+_PREFIX_VERBS = ('Reply', 'Task ', 'Hand to ', 'File ', 'Keep ')
+_ALL_VERBS_DISPLAY = ('Reply', 'Task Pn', 'Hand to {person}', 'File {label}',
+                      'Keep {label}', 'Clear', 'Skip', '-')
 
 _VALID_ASKS = {'none', 'info-only', 'reply', 'decision', 'review', 'rsvp'}
 _ACTIONABLE_ASKS = {'reply', 'decision', 'review', 'rsvp'}
@@ -64,9 +70,9 @@ _REPLY_SHAPED_ASKS = {'reply', 'rsvp'}
 
 def _is_allowed_verb(action: str) -> bool:
     a = (action or '').strip()
-    if a in ('Silent archive', 'Skip', '-'):
+    if a in _EXACT_VERBS:
         return True
-    return any(a.startswith(p) for p in _ALLOWED_PREFIXES if p.endswith(' '))
+    return any(a.startswith(p) for p in _PREFIX_VERBS)
 
 
 def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
@@ -74,18 +80,18 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
     Raise TriageOpsError if any row is malformed. Returns None on success.
 
     Checks:
-      1. Action is one of the seven allowed verbs.
-      2. Task cell present  ⇒  Action begins with 'Action this ' or 'Task this '.
-      3. 'Task this ' verb  ⇒  Task cell present. ('Action this ' may carry a
-         task (the overlap case) but no longer requires one — task-free passes.)
-      4. Delegate cell present  ⇒  Action begins with 'Delegate to '.
-      5. Action begins with 'Delegate to '  ⇒  Delegate cell present.
+      1. Action is one of the allowed verbs.
+      2. Task cell present  ⇒  verb is `Reply` (combo) or `Task` (task-permitted).
+      3. `Task` verb  ⇒  Task cell present. (`Reply` may carry a task — the overlap
+         combo — but does NOT require one; a task-free Reply passes.)
+      4. Delegate cell present  ⇒  verb is `Hand to`.
+      5. `Hand to` verb  ⇒  Delegate cell present.
       6. (when `ask` present) Ask vocabulary + Ask⇔verb matrix:
-         - reply/rsvp ⇒ verb must be Action this / Delegate to
-           (Task this on a reply-shaped Ask is the transition-guard case:
-           flag to Pete once, only proceed on his explicit override)
-         - decision/review ⇒ verb must be Action this / Task this / Delegate to
-         - task-bearing verb ⇒ ask must be actionable
+         - reply/rsvp ⇒ verb must be `Reply` or `Hand to`
+           (`Task` on a reply-shaped Ask is the transition-guard case: flag to
+           Pete once, only proceed on his explicit override)
+         - decision/review ⇒ verb must be `Reply` / `Task` / `Hand to`
+         - an actionable verb ⇒ ask must be actionable
     """
     errors: list[str] = []
 
@@ -100,44 +106,46 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
         has_task = bool(task) and task != '-'
         has_delegate = bool(delegate) and delegate != '-'
 
-        # is_task_bearing  = a Task cell is PERMITTED (and the verb counts as an
-        #                    actionable verb for the Ask⇔verb checks below).
-        # is_task_required = a Task cell is MANDATORY. As of 2026-06-25 only
-        #                    'Task this' requires one; 'Action this' may carry a
-        #                    task in the overlap case but a task-free Action passes.
-        is_task_bearing = action.startswith(('Action this ', 'Task this '))
-        is_task_required = action.startswith('Task this ')
-        is_delegate_verb = action.startswith('Delegate to ')
+        # Verb classification:
+        #   is_reply_verb     — `Reply` (tray). A Task cell is OPTIONAL (combo).
+        #   is_task_verb      — `Task`  (work). A Task cell is REQUIRED.
+        #   is_hand_verb      — `Hand to` (delegate). A Delegate cell is REQUIRED.
+        is_reply_verb = action.startswith('Reply')
+        is_task_verb = action.startswith('Task ')
+        is_hand_verb = action.startswith('Hand to ')
+        is_task_permitted = is_reply_verb or is_task_verb   # a Task cell may appear
+        is_task_required = is_task_verb                     # a Task cell MUST appear
+        is_actionable_verb = is_reply_verb or is_task_verb or is_hand_verb
 
-        # 1. Seven-verb rule
+        # 1. Allowed-verb rule
         if not _is_allowed_verb(action):
             errors.append(
-                f"Row {row}: Action '{action}' is not one of the seven allowed verbs "
-                f"({', '.join(p.strip() for p in _ALLOWED_PREFIXES)})"
+                f"Row {row}: Action '{action}' is not one of the allowed verbs "
+                f"({', '.join(_ALL_VERBS_DISPLAY)})"
             )
 
-        # 2. Task cell may only appear on a task-bearing verb (catches the 27-Apr
-        #    'File under X' + Task-cell failure that dropped the Actions label).
-        if has_task and not is_task_bearing:
+        # 2. A Task cell may only appear on `Reply` (combo) or `Task` (catches the
+        #    27-Apr 'File X' + Task-cell failure that dropped the tray label).
+        if has_task and not is_task_permitted:
             errors.append(
                 f"Row {row}: Task cell present ('{task[:60]}...') but Action is '{action}' -- "
-                f"row is malformed. Either change Action to 'Action this Pn' / 'Task this Pn' or "
+                f"row is malformed. Put the task on a `Reply` (combo) or `Task Pn` verb, or "
                 f"clear the Task cell."
             )
-        # 3. Only 'Task this' REQUIRES a task cell. 'Action this' is now label-only
-        #    by default (a task is optional — the overlap case), so it is exempt.
+        # 3. Only `Task` REQUIRES a Task cell. `Reply` is label-only by default
+        #    (a task is optional — the overlap combo), so it is exempt.
         if is_task_required and not has_task:
             errors.append(
                 f"Row {row}: Action is '{action}' but Task cell is empty -- row is malformed. "
                 f"Either fill in the Task spec or change the verb."
             )
 
-        # 4 + 5. Delegate atomicity
-        if has_delegate and not is_delegate_verb:
+        # 4 + 5. Delegate atomicity (`Hand to`)
+        if has_delegate and not is_hand_verb:
             errors.append(
                 f"Row {row}: Delegate cell present ('{delegate[:60]}...') but Action is '{action}' -- malformed."
             )
-        if is_delegate_verb and not has_delegate:
+        if is_hand_verb and not has_delegate:
             errors.append(
                 f"Row {row}: Action is '{action}' but Delegate cell is empty -- malformed."
             )
@@ -148,18 +156,17 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
                 errors.append(f"Row {row}: Ask '{ask}' not in vocabulary {sorted(_VALID_ASKS)}")
             else:
                 actionable = ask in _ACTIONABLE_ASKS
-                if actionable and not (is_task_bearing or is_delegate_verb):
+                if actionable and not is_actionable_verb:
                     errors.append(
                         f"Row {row}: Ask='{ask}' implies action but verb is '{action}' -- malformed"
                     )
-                if ask in _REPLY_SHAPED_ASKS and action.startswith('Task this ') \
-                        and not op.get('pete_override'):
+                if ask in _REPLY_SHAPED_ASKS and is_task_verb and not op.get('pete_override'):
                     errors.append(
-                        f"Row {row}: Ask='{ask}' is reply-shaped — verb should be 'Action this' or "
-                        f"'Delegate to'. If Pete explicitly chose Task, set pete_override=True after "
+                        f"Row {row}: Ask='{ask}' is reply-shaped — verb should be 'Reply' or "
+                        f"'Hand to'. If Pete explicitly chose Task, set pete_override=True after "
                         f"flagging once (transition guard)."
                     )
-                if (is_task_bearing or is_delegate_verb) and not actionable:
+                if is_actionable_verb and not actionable:
                     errors.append(
                         f"Row {row}: verb is '{action}' but Ask='{ask}' doesn't imply action -- malformed"
                     )
@@ -171,54 +178,55 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
         )
 
 
-def verb_to_primitive(action: str, label_id: str | None, actions_label_id: str | None,
+def verb_to_primitive(action: str, label_id: str | None, replies_label_id: str | None,
                       delegated_label_id: str | None) -> dict | None:
     """
     Map a row's verb + label IDs to the EXACT modify_thread kwargs.
 
     Returns None for Skip / '-'. Raises TriageOpsError for unknown verbs.
 
-    `Action this` is the canonical atomic tray form — Actions label in the same
-    call as the filing label. `Task this` deliberately does NOT include the
-    Actions label (Asana-only class; its task carries [no-sync-close]).
-    Use this helper to BUILD the modify_thread call; never construct the
-    add/remove lists by hand at the call site.
+    `Reply` is the canonical atomic tray form — the `Replies` label in the same
+    call as the filing label. `Task` deliberately does NOT include the `Replies`
+    label (its task carries [no-sync-close]). A Reply + Task combo uses the SAME
+    `Reply` primitive here — the prep task is created separately by the skill, it
+    doesn't change the label call. Use this helper to BUILD the modify_thread
+    call; never construct the add/remove lists by hand at the call site.
     """
     a = (action or '').strip()
 
     if a in ('Skip', '-'):
         return None
 
-    if a == 'Silent archive':
+    if a == 'Clear':
         return {'remove': ['INBOX']}
 
-    if a.startswith('File under '):
+    if a.startswith('File '):
         if not label_id:
-            raise TriageOpsError(f"verb_to_primitive: 'File under' requires label_id")
+            raise TriageOpsError("verb_to_primitive: 'File' requires label_id")
         return {'add': [label_id], 'remove': ['INBOX']}
 
-    if a.startswith('Keep in inbox + label '):
+    if a.startswith('Keep '):
         if not label_id:
-            raise TriageOpsError(f"verb_to_primitive: 'Keep in inbox + label' requires label_id")
-        return {'add': [label_id]}
+            raise TriageOpsError("verb_to_primitive: 'Keep' requires label_id")
+        return {'add': [label_id]}  # leave INBOX — Pete is watching it
 
-    if a.startswith('Action this '):
-        if not label_id or not actions_label_id:
+    if a.startswith('Reply'):
+        if not label_id or not replies_label_id:
             raise TriageOpsError(
-                f"verb_to_primitive: 'Action this' requires BOTH label_id AND actions_label_id "
-                f"(atomicity rule -- Actions must be in the same call as the filing label)"
+                "verb_to_primitive: 'Reply' requires BOTH label_id AND replies_label_id "
+                "(atomicity rule -- Replies must be in the same call as the filing label)"
             )
-        return {'add': [label_id, actions_label_id], 'remove': ['INBOX']}
+        return {'add': [label_id, replies_label_id], 'remove': ['INBOX']}
 
-    if a.startswith('Task this '):
+    if a.startswith('Task '):
         if not label_id:
-            raise TriageOpsError(f"verb_to_primitive: 'Task this' requires label_id")
-        # NO Actions label — Asana-only class (2026-06-06 split)
+            raise TriageOpsError("verb_to_primitive: 'Task' requires label_id")
+        # NO Replies label — work item; its task carries [no-sync-close]
         return {'add': [label_id], 'remove': ['INBOX']}
 
-    if a.startswith('Delegate to '):
+    if a.startswith('Hand to '):
         if not delegated_label_id:
-            raise TriageOpsError(f"verb_to_primitive: 'Delegate to' requires delegated_label_id")
+            raise TriageOpsError("verb_to_primitive: 'Hand to' requires delegated_label_id")
         return {'add': [delegated_label_id]}
 
     raise TriageOpsError(f"verb_to_primitive: unknown verb '{a}'")
@@ -229,26 +237,25 @@ def verb_to_primitive(action: str, label_id: str | None, actions_label_id: str |
 if __name__ == '__main__':
     # Smoke tests
     good = [
-        {'row': 1, 'action': 'Silent archive'},
-        {'row': 2, 'action': 'File under Receipts'},
-        {'row': 3, 'action': 'Action this P2 in SY-General', 'task': 'Reply to whoever', 'ask': 'reply'},
-        {'row': 4, 'action': 'Task this P2 in Team-Finances', 'task': 'Pay invoice 123', 'ask': 'decision'},
-        {'row': 5, 'action': 'Delegate to Jane', 'delegate': 'Jane to chase', 'ask': 'reply'},
-        {'row': 6, 'action': 'Skip'},
-        {'row': 7, 'action': 'Keep in inbox + label Alerts'},
-        {'row': 8, 'action': 'Task this P1 in SY-General', 'task': 'Reply-shaped but Pete insisted',
+        {'row': 1, 'action': 'Clear'},
+        {'row': 2, 'action': 'File Receipts'},
+        {'row': 3, 'action': 'Reply in SY-General', 'ask': 'reply'},                         # reply only — no task, passes
+        {'row': 4, 'action': 'Reply in SY-Survey', 'task': 'Build the quote first',
+         'ask': 'decision'},                                                                 # Reply + Task (combo) — passes
+        {'row': 5, 'action': 'Task P2 in Team-Finances', 'task': 'Pay invoice 123', 'ask': 'decision'},
+        {'row': 6, 'action': 'Hand to Jane', 'delegate': 'Jane to chase', 'ask': 'reply'},
+        {'row': 7, 'action': 'Skip'},
+        {'row': 8, 'action': 'Keep Alerts'},
+        {'row': 9, 'action': 'Task P1 in SY-General', 'task': 'Reply-shaped but Pete insisted',
          'ask': 'reply', 'pete_override': True},
-        {'row': 9, 'action': 'Action this P3 in PA-General', 'ask': 'reply'},  # task-free Action (2026-06-25 decoupling) — must pass
-        {'row': 10, 'action': 'Action this P2 in SY-General', 'task': 'Reply once quote built',
-         'ask': 'decision'},  # overlap: Action with an optional task — still allowed
     ]
     validate_ops(good)
-    print("✓ good ops table passes (incl. task-free Action this + overlap Action+task)")
+    print("✓ good ops table passes (incl. task-free Reply + the Reply+Task combo)")
 
     bad = [
-        {'row': 1, 'action': 'File under SY-General', 'task': 'P2 in SY-General "Reply"'},  # the 27 Apr failure
-        {'row': 2, 'action': 'Task this P2 in SY-General', 'task': 'Reply to Bob', 'ask': 'reply'},  # reply-shaped on Task, no override
-        {'row': 3, 'action': 'Task this P2 in Team-Finances', 'ask': 'decision'},  # Task this with NO task cell — must still fail
+        {'row': 1, 'action': 'File SY-General', 'task': 'should not be here'},               # task cell on File
+        {'row': 2, 'action': 'Task P2 in SY-General', 'task': 'Reply to Bob', 'ask': 'reply'},  # reply-shaped on Task, no override
+        {'row': 3, 'action': 'Task P2 in Team-Finances', 'ask': 'decision'},                 # Task with NO task cell
     ]
     try:
         validate_ops(bad)
@@ -256,24 +263,38 @@ if __name__ == '__main__':
     except TriageOpsError as e:
         print(f"✓ bad ops table caught:\n{e}")
 
-    # 2026-06-25 decoupling — targeted asserts
-    validate_ops([{'row': 1, 'action': 'Action this P2 in PA-General', 'ask': 'reply'}])  # no task → must pass
-    print("✓ task-free 'Action this' passes (decoupled from task)")
+    # targeted asserts
+    validate_ops([{'row': 1, 'action': 'Reply in PA-General', 'ask': 'reply'}])              # no task → must pass
+    print("✓ task-free 'Reply' passes (label-only)")
+    validate_ops([{'row': 1, 'action': 'Reply in SY-Survey', 'task': 'build quote', 'ask': 'decision'}])
+    print("✓ 'Reply + Task' combo passes (Reply with an optional task cell)")
     try:
-        validate_ops([{'row': 1, 'action': 'Task this P2 in Team-Finances', 'ask': 'decision'}])  # no task → must fail
-        print("✗ task-free 'Task this' should have raised")
+        validate_ops([{'row': 1, 'action': 'Task P2 in Team-Finances', 'ask': 'decision'}])  # no task → must fail
+        print("✗ task-free 'Task' should have raised")
     except TriageOpsError:
-        print("✓ task-free 'Task this' still rejected (task still required)")
+        print("✓ task-free 'Task' still rejected (task still required)")
 
     # verb_to_primitive
-    p = verb_to_primitive('Action this P1 in CD-Invoices', 'L_filing', 'L_actions', None)
-    assert p == {'add': ['L_filing', 'L_actions'], 'remove': ['INBOX']}, p
-    print(f"✓ Action verb produces atomic add=[filing, Actions]: {p}")
+    p = verb_to_primitive('Reply in CD-Invoices', 'L_filing', 'L_replies', None)
+    assert p == {'add': ['L_filing', 'L_replies'], 'remove': ['INBOX']}, p
+    print(f"✓ Reply produces atomic add=[filing, Replies]: {p}")
 
-    p = verb_to_primitive('Task this P1 in Team-Finances', 'L_filing', 'L_actions', None)
+    p = verb_to_primitive('Task P1 in Team-Finances', 'L_filing', 'L_replies', None)
     assert p == {'add': ['L_filing'], 'remove': ['INBOX']}, p
-    print(f"✓ Task verb adds filing ONLY (no Actions): {p}")
+    print(f"✓ Task adds filing ONLY (no Replies): {p}")
 
-    p = verb_to_primitive('File under Receipts', 'L_receipts', 'L_actions', None)
+    p = verb_to_primitive('File Receipts', 'L_receipts', 'L_replies', None)
     assert p == {'add': ['L_receipts'], 'remove': ['INBOX']}, p
-    print(f"✓ File verb does NOT add Actions: {p}")
+    print(f"✓ File does NOT add Replies: {p}")
+
+    p = verb_to_primitive('Keep Alerts', 'L_alerts', 'L_replies', None)
+    assert p == {'add': ['L_alerts']}, p
+    print(f"✓ Keep adds the label but leaves INBOX: {p}")
+
+    p = verb_to_primitive('Hand to Jane', 'L_filing', 'L_replies', 'L_delegated')
+    assert p == {'add': ['L_delegated']}, p
+    print(f"✓ Hand to adds Delegated: {p}")
+
+    p = verb_to_primitive('Clear', None, None, None)
+    assert p == {'remove': ['INBOX']}, p
+    print(f"✓ Clear archives with no label: {p}")
