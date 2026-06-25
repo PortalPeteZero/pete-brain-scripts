@@ -2,10 +2,10 @@
 name: email-task-sync
 description: >
   Reconciliation engine for Pete's email workflow. Bidirectional sync between
-  Gmail labels (`Actions`, `Delegated`) and the Command Centre task table
-  (`public.tasks`). An `Actions`-labelled thread with no task is the EXPECTED
+  Gmail labels (`Replies`, `Delegated`) and the Command Centre task table
+  (`public.tasks`). A `Replies`-labelled thread with no task is the EXPECTED
   state (the label IS the record) — the sync SURFACES those for awareness, it
-  never auto-creates a task. Marks a CC task done when its `Actions`/`Delegated`
+  never auto-creates a task. Marks a CC task done when its `Replies`/`Delegated`
   label is removed in Gmail, and strips the Gmail label when a CC task is marked
   done. Detects auto-filter and demand-driven label opportunities and label↔home
   parity drift, surfacing them for Pete's confirmation. Closure exemptions:
@@ -19,7 +19,7 @@ description: >
 
 # email-task-sync
 
-Reconciliation engine for the email workflow: a bidirectional sync between Gmail labels (`Actions`, `Delegated`) and Command Centre task state in **`public.tasks`**. All task CRUD is a `cc-sql.py` INSERT / SELECT / UPDATE against `public.tasks` (`name`, `priority`, `due_on`, `entity_slug`, `project_slug`, `notes`, `status`). **Asana is Jane's, for her work only — this skill never connects to it.**
+Reconciliation engine for the email workflow: a bidirectional sync between Gmail labels (`Replies`, `Delegated`) and Command Centre task state in **`public.tasks`**. All task CRUD is a `cc-sql.py` INSERT / SELECT / UPDATE against `public.tasks` (`name`, `priority`, `due_on`, `entity_slug`, `project_slug`, `notes`, `status`). **Asana is Jane's, for her work only — this skill never connects to it.**
 
 > **Operating manual**: `[[email-workflow]]` (full system — verbs, decision lines, sweep behaviour, delegation flow).
 > **Routing rules**: `[[vault-routing]]`. Gmail-side rules: `[[gmail-label-scheme]]`. **Version history**: `[[CHANGELOG]]`.
@@ -28,7 +28,7 @@ Reconciliation engine for the email workflow: a bidirectional sync between Gmail
 
 User says any of: "sync" · "sync tasks" · "reconcile my tasks" · "check my delegations" · "close completed tasks" · "clean up stale labels".
 
-Also: **offered at the end of every `triage` session** (opt-in y/n after the Actions walker — triage never auto-chains; see inbox-triage Step 8b). This skill runs **on demand only** — there is no scheduled cron (an earlier 07:15 `daily-asana-gmail-sync` was specced but never deployed; the live registry has no email/task sync cron).
+Also: **offered at the end of every `triage` session** (opt-in y/n after the Replies walker — triage never auto-chains; see inbox-triage Step 8b). This skill runs **on demand only** — there is no scheduled cron (an earlier 07:15 `daily-asana-gmail-sync` was specced but never deployed; the live registry has no email/task sync cron).
 
 ## Dependencies
 
@@ -40,15 +40,15 @@ Also: **offered at the end of every `triage` session** (opt-in y/n after the Act
 ## Core principles
 
 1. **Idempotent.** Safe to run repeatedly. No double-create, no double-close.
-2. **Bidirectional.** Mark a CC task `status='done'` → its Gmail label leaves. Remove `Actions`/`Delegated` in Gmail → the CC task is set `status='done'`.
-3. **Surface, never auto-create.** An `Actions`-labelled thread with no task is the expected state — the label IS the record (an Action just means "an email Pete owes a reply to"). The sync surfaces these for awareness; it NEVER creates a task from a label. A task is created only when Pete explicitly asks (a reply gated on real work — the overlap/de-tray case), and then it carries `[no-sync-close]`. New labels, folders, filters always need Pete's confirmation via the proposal pattern.
+2. **Bidirectional.** Mark a CC task `status='done'` → its Gmail label leaves. Remove `Replies`/`Delegated` in Gmail → the CC task is set `status='done'`.
+3. **Surface, never auto-create.** A `Replies`-labelled thread with no task is the expected state — the label IS the record (it just means "an email Pete owes a reply to"). The sync surfaces these for awareness; it NEVER creates a task from a label. A task is created only when Pete explicitly asks (a reply gated on real work — the overlap/de-tray case), and then it carries `[no-sync-close]`. New labels, folders, filters always need Pete's confirmation via the proposal pattern.
 4. **`public.tasks` is the source of truth for task STATE** (priority, completion). Gmail labels are a view — they follow CC task state.
-5. **Re-prioritisation lives in the CC only.** Pete edits the `priority` column directly; there's no Gmail sub-label to swap. The close-on-label-removed rule fires only when NEITHER `Actions` NOR `Delegated` is on the thread. **Changing priority does NOT recompute `due_on`** — a P3→P1 change keeps the existing due date unless Pete edits it.
+5. **Re-prioritisation lives in the CC only.** Pete edits the `priority` column directly; there's no Gmail sub-label to swap. The close-on-label-removed rule fires only when NEITHER `Replies` NOR `Delegated` is on the thread. **Changing priority does NOT recompute `due_on`** — a P3→P1 change keeps the existing due date unless Pete edits it.
 
 ## Execution: ALWAYS call the deterministic wrapper first
 
 > [!important] The skill's first action MUST be to run `/tmp/pbs/email-task-sync.py`.
-> The wrapper is the deterministic Python implementation of Steps 1, 3, 4, 5, 7, 8 — every run executes the same 8-step algorithm, no prose interpretation. Step 6 surfaces `Actions`-without-task threads for awareness only (no task creation). **Don't re-derive the steps in bash — always run the wrapper.**
+> The wrapper is the deterministic Python implementation of Steps 1, 3, 4, 5, 7, 8 — every run executes the same 8-step algorithm, no prose interpretation. Step 6 surfaces `Replies`-without-task threads for awareness only (no task creation). **Don't re-derive the steps in bash — always run the wrapper.**
 
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/email-task-sync.py            # run + apply changes
@@ -56,11 +56,11 @@ VAULT=/tmp/pbs python3 /tmp/pbs/email-task-sync.py --dry-run  # report only, no 
 VAULT=/tmp/pbs python3 /tmp/pbs/email-task-sync.py --json     # raw JSON (for LLM chaining)
 ```
 
-**Exit codes:** `0` = complete, no decisions needed · `1` = complete, Step 6 surfaced `Actions`-without-task threads for awareness (informational — no action required) · `2` = fatal error (auth, API, filesystem).
+**Exit codes:** `0` = complete, no decisions needed · `1` = complete, Step 6 surfaced `Replies`-without-task threads for awareness (informational — no action required) · `2` = fatal error (auth, API, filesystem).
 
 **After running the wrapper:**
-1. Read its output (closures, label strips, parity, surfaced Actions-without-task threads).
-2. The Step 6 surfaced threads are the EXPECTED state — the Actions label is the record. Do NOT create tasks for them. Only if Pete explicitly asks to track one as work (the overlap/de-tray case) create a `Task this`-style task with `[no-sync-close]` (route it like inbox-triage's `Task this`).
+1. Read its output (closures, label strips, parity, surfaced Replies-without-task threads).
+2. The Step 6 surfaced threads are the EXPECTED state — the Replies label is the record. Do NOT create tasks for them. Only if Pete explicitly asks to track one as work (the overlap/de-tray case) create a `Task`-style task with `[no-sync-close]` (route it like inbox-triage's `Task`).
 3. Report the consolidated outcome to Pete in the format at the bottom of this file.
 
 Why the wrapper is mandatory: [[Library/lessons/2026-05-20-sync-must-call-wrapper-not-re-derive-steps]].
@@ -82,7 +82,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, notes, status, updat
 
 For each task, extract Gmail thread IDs from `notes` (both `mail.google.com/mail/u/0/#[a-z]+/{thread_id}` and `links.mimestream.com/g/{email}/t/{thread_id}` forms). Carry forward `id`, `name`, `status`, `due_on`, `entity_slug`, `project_slug`, the thread IDs, and `priority`.
 
-**Both-sides query is non-negotiable.** If Step 1 only pulls open tasks, Step 3 has no done tasks to act on — the Gmail label persists after CC-side closure, so the thread wrongly lingers in the Actions tray after its task is done. See [[Library/lessons/2026-05-20-sync-must-query-both-open-and-closed-tasks]].
+**Both-sides query is non-negotiable.** If Step 1 only pulls open tasks, Step 3 has no done tasks to act on — the Gmail label persists after CC-side closure, so the thread wrongly lingers in the Replies tray after its task is done. See [[Library/lessons/2026-05-20-sync-must-query-both-open-and-closed-tasks]].
 
 ### Step 2: Priority reconciliation — no-op
 
@@ -90,34 +90,34 @@ No Gmail sub-labels for priority; the `priority` column is the sole authority. S
 
 ### Step 3: Completion reconciliation (CC → Gmail)
 
-For each linked task whose `status = 'done'`, strip the `Actions` or `Delegated` label from the Gmail thread (whichever is present) via `gmail-api.py modify_thread` with `remove=[label_id]`.
+For each linked task whose `status = 'done'`, strip the `Replies` or `Delegated` label from the Gmail thread (whichever is present) via `gmail-api.py modify_thread` with `remove=[label_id]`.
 
-**`[no-sync-close]` keeps the label (the marker is symmetric).** If the done task carries `[no-sync-close]`, do NOT strip its Gmail label — the label/tray item is independent of the task (an overlap reply still owed, or a task closed under the label-only migration where the Actions label is now the record). The same marker that stops a label-removal from closing a task (Step 4) symmetrically stops a task-closure from stripping the label here.
+**`[no-sync-close]` keeps the label (the marker is symmetric).** If the done task carries `[no-sync-close]`, do NOT strip its Gmail label — the label/tray item is independent of the task (an overlap reply still owed, or a task closed under the label-only migration where the Replies label is now the record). The same marker that stops a label-removal from closing a task (Step 4) symmetrically stops a task-closure from stripping the label here.
 
 When completion strips the last workflow label:
 - Thread still has a filing label (`Customers/*`, `Suppliers/*`, `Projects/*`, `Invoices/*` (legacy → re-route to Team-Finances at sync time), `Accreditations/*` (legacy → re-route to Team-General/SY-General), or any Mode-A top-level): no further action — it stays archived under its home.
-- Thread has NO filing label: don't silently orphan. Add to the Step 8 report: "{subject} has no filing home — file under X, archive, or bin?". Pete decides.
+- Thread has NO filing label: don't silently orphan. Add to the Step 8 report: "{subject} has no filing home — file X, archive, or bin?". Pete decides.
 
 ### Step 4: Bidirectional close (Gmail → CC)
 
 For each linked task still open (`status != 'done'`), check the linked thread's current labels:
-- Has `Actions` OR `Delegated` → leave it (still active).
+- Has `Replies` OR `Delegated` → leave it (still active).
 - Has NEITHER → **set the task `status='done'`** (`UPDATE tasks SET status='done' WHERE id=...`). Pete handled it in Gmail and removed the workflow label; sync follows.
 
 **Exemptions (Action/Task split, locked 2026-06-06 — the wrapper enforces both):**
-1. **`[no-sync-close]` marker in task notes** → NEVER close on label state. Two uses: (a) Pete-sent watch tasks (chase-if-no-reply; thread never had Actions); (b) CC-only tasks — bills, cert batches, work items created by `Task this` or de-trayed by Pete. Their work happens outside email, so label state must never close them.
+1. **`[no-sync-close]` marker in task notes** → NEVER close on label state. Two uses: (a) Pete-sent watch tasks (chase-if-no-reply; thread never had Replies); (b) CC-only tasks — bills, cert batches, work items created by `Task` or de-trayed by Pete. Their work happens outside email, so label state must never close them.
 2. **Team-Finances blanket** — any task with `project_slug='Team-Finances'` is exempt regardless of marker. A bill is never a reply.
 
-**Closure audit note** — every task Step 4 closes gets a note appended: *"Closed by sync — Actions/Delegated label removed in Gmail, {date}. If this was a tray clear-out rather than completion, reopen (`status='open'`) and ask Claude to mark it [no-sync-close]."* Closures are also listed in the run's daily-note block.
+**Closure audit note** — every task Step 4 closes gets a note appended: *"Closed by sync — Replies/Delegated label removed in Gmail, {date}. If this was a tray clear-out rather than completion, reopen (`status='open'`) and ask Claude to mark it [no-sync-close]."* Closures are also listed in the run's daily-note block.
 
-**The rule behind the split: Actions = waiting on Pete to respond by email. Everything else = a CC task only.** Record: [[Library/decisions/2026-06-06-actions-label-reply-only]].
+**The rule: Replies = waiting on Pete to respond by email; a task is created only when work is required.** Record: [[Library/decisions/2026-06-06-actions-label-reply-only]].
 
-**Multi-thread tasks**: a task can link multiple threads (parsed from notes). Close only when ALL linked threads have lost BOTH `Actions` AND `Delegated`.
+**Multi-thread tasks**: a task can link multiple threads (parsed from notes). Close only when ALL linked threads have lost BOTH `Replies` AND `Delegated`.
 
 Edge cases:
 - Thread trashed → all labels stripped → task closes (action is done by definition).
 - Thread deleted (Gmail URL 404) → close the task with note "Source thread deleted from Gmail."
-- Thread archived but still has `Actions` → no closure (archive removes INBOX, not the workflow label).
+- Thread archived but still has `Replies` → no closure (archive removes INBOX, not the workflow label).
 
 Report: "Closed X via Gmail-side completion: {task name list}".
 
@@ -135,17 +135,18 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, notes FROM tasks WHE
 4. Genuine reply → set task `status='done'` + remove `Delegated` label + append the audit note ("Closed by sync — {delegatee} replied {date}"). Report e.g. "✓ Jane replied to the Clancy Q2 delegation — closed the task." (Jane here = a delegatee Pete forwarded to.)
 5. No reply AND follow-up date passed → flag for chase (draft only, never auto-send): draft a polite chaser to Gmail Drafts via `gmail-api.py draft`. Report "⚠ 3 delegations overdue — drafted chasers to Drafts."
 
-### Step 6: Surface `Actions`/`Delegated` threads with no task (awareness only — NO auto-create)
+### Step 6: Surface `Replies`/`Delegated` threads with no task (awareness only — NO auto-create)
 
-Find Gmail threads labelled `Actions` or `Delegated` with NO matching task in `public.tasks` (no row whose `notes` link to the thread id).
+Find Gmail threads labelled `Replies` or `Delegated` with NO matching task in `public.tasks` (no row whose `notes` link to the thread id).
 
-**This is the expected, correct state — not an orphan to fix.** An `Actions` thread with no task just means "an email Pete owes a reply to" (he labelled it, usually from his phone). The Actions label IS the record — the morning brain-flag and the triage Actions walker surface the tray. **Do NOT create a task.** List these threads in the Step 8 report for awareness only (subject + age + which label).
+**This is the expected, correct state — not an orphan to fix.** A `Replies` thread with no task just means "an email Pete owes a reply to" (he labelled it, usually from his phone). The Replies label IS the record — the morning brain-flag and the triage Replies walker surface the tray. **Do NOT create a task.** List these threads in the Step 8 report for awareness only (subject + age + which label).
 
-**Only when Pete EXPLICITLY asks** to track one as work — a reply gated on doing something first (the overlap / de-tray case) — create a `Task this`-class task carrying the **`[no-sync-close]`** marker (so the label and task stay independent), routed exactly like inbox-triage's `Task this`. The smart-routing chain below is reference for THAT case only; it is **never run automatically**.
+**Only when Pete EXPLICITLY asks** to track one as work — a reply gated on doing something first (the overlap / de-tray case) — create a `Task`-class task **tagged `reply`** (it's reply-linked — shows in the CC *Replies* filter), carrying the **`[no-sync-close]`** marker (so the label and task stay independent) and the **mandatory Mimestream link**, routed exactly like inbox-triage's `Task`. The smart-routing chain below is reference for THAT case only; it is **never run automatically**.
 
 ```bash
-# ONLY when Pete asks to task an Actions thread (overlap / de-tray). Note the [no-sync-close] marker.
-VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes, status) VALUES ('<action verb + WHO + WHAT>', 'P2', '<today+7d>', '<entity_slug>', '<project_slug NAME>', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary + routing trail\n[no-sync-close]', 'open')"
+# ONLY when Pete asks to task a Replies thread (overlap / de-tray). Reply-linked → tag 'reply'
+# + [no-sync-close] marker; the Mimestream link is mandatory.
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, tags, notes, status) VALUES ('<action verb + WHO + WHAT>', 'P2', '<today+7d>', '<entity_slug>', '<project_slug NAME>', '{reply}', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary + routing trail\n[no-sync-close]', 'open')"
 ```
 
 - **Routing discipline**: the chain below implements the decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project first, else `{prefix}-General`; project escalation only ever by proposal to Pete, never auto-created.
@@ -174,7 +175,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, du
 - **Due date** (`due_on`), Atlantic/Canary: P1 → +2d · P2 → +7d (default) · P3 → +30d · P4 → none · `Delegated`-only → none (Step 5 handles timing). Pete can edit `due_on` after creation.
 - **Owner**: always Pete — the table is Pete's.
 
-Report: "N `Actions` threads have no task (expected — surfaced for awareness, no task created): {subject + age list}." Only if Pete then asks to task one: "Created 1 `Task this` (with `[no-sync-close]`): {name}."
+Report: "N `Replies` threads have no task (expected — surfaced for awareness, no task created): {subject + age list}." Only if Pete then asks to task one: "Created 1 `Task` (with `[no-sync-close]`): {name}."
 
 ### Step 7: Pattern detection
 
@@ -199,19 +200,19 @@ sync tasks complete
 PRIORITY moves: — (no-op: priority lives in the CC `priority` column only)
 
 CLOSED from CC completion (status='done'):
-- {task name} — closed, Gmail Actions label stripped, thread filed under {Customers/SY-Clancy}
+- {task name} — closed, Gmail Replies label stripped, thread filed under {Customers/SY-Clancy}
 
 CLOSED from Gmail-side completion:
-- {task name} — Actions label removed in Gmail, set CC task status='done'
+- {task name} — Replies label removed in Gmail, set CC task status='done'
 
 DELEGATED:
 - ✓ Jane replied to {thread} — closed (2 days ago)
 - ⚠ 3 overdue chasers drafted to Drafts: {subject} to {delegatee} — 9 days overdue …
 
 ACTIONS WITH NO TASK (expected — surfaced for awareness, NO task created):
-- {subject} — 2d in the tray (Actions)
-- {subject} — 5d in the tray (Actions)
-  (the Actions label is the record; reply via the triage Actions walker. Say "task this" on any of them only if a reply needs work done first.)
+- {subject} — 2d in the tray (Replies)
+- {subject} — 5d in the tray (Replies)
+  (the Replies label is the record; reply via the triage Replies walker. Say "task" on any of them only if a reply needs work done first.)
 
 DEMAND-DRIVEN LABEL suggestions:
 - 3 emails from *@partnerco.co.uk match the CD-Partnership-Programme home (no label exists)
@@ -244,15 +245,15 @@ If nothing changed: `sync tasks complete — no changes (X linked tasks checked,
 5. **Preserve label IDs.** Use `patch_label` renames, never delete-and-recreate, to keep associations.
 6. **`public.tasks` is the source of truth for priority and completion.** Gmail labels are a view on top.
 7. **Calendar revisit on completion sweep.** A closed thread with a flight/hotel/car/meeting mention not on the calendar → flag it (don't auto-add). Default tz Atlantic/Canary, default calendar Pete's primary; "put this in {name}'s calendar" → resolve via `list_calendars()`. See [[calendar-api-configuration]].
-8. **Surface `Actions`/* threads with no task — NEVER auto-create.** The Actions label IS the record; a task is made only when Pete explicitly asks (overlap/de-tray), and then it carries `[no-sync-close]`.
+8. **Surface `Replies`/* threads with no task — NEVER auto-create.** The Replies label IS the record; a task is made only when Pete explicitly asks (overlap/de-tray), and then it carries `[no-sync-close]`.
 9. **Filters, labels, folders, new `project_slug` values — ALWAYS confirmed.** Pattern detection surfaces; Pete confirms; sync executes.
 10. **Respect the declined-suggestion list** in `email-workflow-state.md` before surfacing any suggestion.
-11. **Re-prioritisation is not closure.** Close-on-label-removed fires only when NEITHER `Actions` NOR `Delegated` remains.
+11. **Re-prioritisation is not closure.** Close-on-label-removed fires only when NEITHER `Replies` NOR `Delegated` remains.
 12. **Trashed thread = action complete.** Close the task with a note.
 
 ## Typical run
 
-User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-sync.py` → reads `email-workflow-state.md` → executes the 8 steps → produces the consolidated report (incl. any `Actions`-without-task threads surfaced for awareness) → lists any y/n decisions. If Pete answers y/n, those execute and a short follow-up confirms.
+User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-sync.py` → reads `email-workflow-state.md` → executes the 8 steps → produces the consolidated report (incl. any `Replies`-without-task threads surfaced for awareness) → lists any y/n decisions. If Pete answers y/n, those execute and a short follow-up confirms.
 
 ## Related skills
 
@@ -266,6 +267,6 @@ User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-syn
 ## Related lessons
 
 - [[Library/lessons/2026-04-25-email-mutation-pre-action-checklist]] — every Gmail mutation pre-flight.
-- [[Library/lessons/2026-04-28-actions-label-proposed-not-auto-applied]] — the Actions label is surfaced, never auto-tasked.
+- [[Library/lessons/2026-04-28-actions-label-proposed-not-auto-applied]] — the Replies label is surfaced, never auto-tasked.
 - [[Library/lessons/2026-05-20-sync-must-call-wrapper-not-re-derive-steps]] — always run the deterministic wrapper.
 - [[Library/lessons/2026-05-20-sync-must-query-both-open-and-closed-tasks]] — Step 1 must pull BOTH open and recently-done.

@@ -2,7 +2,7 @@
 """
 email-task-sync.py -- deterministic implementation of the 8-step email-task-sync algorithm.
 
-Reconciles Gmail labels (Actions / Delegated) with Pete's Command Centre tasks in
+Reconciles Gmail labels (Replies / Delegated) with Pete's Command Centre tasks in
 `public.tasks`. Steps 1, 3, 4, 5, 7, 8 run as Python so the behaviour is repeatable; Step 6
 (orphan routing) surfaces candidates with full context for the LLM/skill to action (task-name
 generation + routing decision). Asana belongs to Jane only — this never touches it.
@@ -17,7 +17,7 @@ Usage:
 
 Exit codes:
   0 = sync complete, no decisions needed
-  1 = sync complete, Step 6 orphans need LLM routing
+  1 = sync complete, Step 6 surfaced Replies-without-task threads (informational — no action required)
   2 = fatal error (auth, API, file)
 
 Reads/writes:
@@ -41,7 +41,7 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # --- Configuration -----------------------------------------------------------
 
-ACTIONS_LABEL = "Label_165"
+REPLIES_LABEL = "Label_165"   # Gmail tray label — renamed Actions→Replies 2026-06-25; ID unchanged, so modify/check by ID is rename-proof
 DELEGATED_LABEL = "Label_170"
 
 EMAIL = "pete.ashcroft@sygma-solutions.com"
@@ -112,8 +112,9 @@ def step1_pull_tasks():
 
     Both sides are needed: open tasks drive Step 4 (close on Gmail-side label removal);
     recently-done tasks drive Step 3 (strip the Gmail label after CC-side closure). If
-    Step 1 skipped done tasks, the label would persist after closure and Step 6 would
-    auto-create a duplicate. (No 100-cap workaround needed any more — SQL isn't paged.)
+    Step 1 skipped done tasks, the label would persist after closure, so the thread would
+    wrongly linger in the Replies tray after its task is done. (No 100-cap workaround needed
+    any more — SQL isn't paged.)
     """
     open_rows = cc_sql(
         "SELECT id, name, notes, due_on, project_slug, entity_slug, priority "
@@ -137,7 +138,7 @@ def _fetch_thread_labels(tid):
     return tid, thread_labels(gmail_get_thread(tid))
 
 def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None):
-    """For each closed task, strip Actions/Delegated from linked Gmail threads.
+    """For each closed task, strip Replies/Delegated from linked Gmail threads.
 
     Multi-task ownership rule: a thread can be linked to multiple tasks. Strip the
     workflow label only when NO OPEN task still links the same thread — otherwise the
@@ -148,7 +149,7 @@ def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None)
     from the task in BOTH directions. It already stops a label-removal from closing a task
     (Step 4); symmetrically, closing a `[no-sync-close]` task must NOT strip its Gmail label
     — the label/tray item is independent of the task (an overlap reply still owed, or a
-    Part-C migration close where the Actions label is now the record). Keep the label.
+    Part-C migration close where the Replies label is now the record). Keep the label.
     """
     stripped = []
     thread_to_task = {}
@@ -183,7 +184,7 @@ def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None)
 
     for tid, labels in results.items():
         to_remove = []
-        if ACTIONS_LABEL in labels: to_remove.append(ACTIONS_LABEL)
+        if REPLIES_LABEL in labels: to_remove.append(REPLIES_LABEL)
         if DELEGATED_LABEL in labels: to_remove.append(DELEGATED_LABEL)
         if to_remove:
             if not dry_run:
@@ -202,7 +203,7 @@ def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None)
     return stripped
 
 def step4_close_tasks_from_gmail(open_tasks, dry_run=False):
-    """Close an open CC task when its linked thread no longer has Actions/Delegated.
+    """Close an open CC task when its linked thread no longer has Replies/Delegated.
 
     Exemptions (the wrapper enforces both):
       1. `[no-sync-close]` marker in notes — never close on label state (Pete-sent watch
@@ -226,7 +227,7 @@ def step4_close_tasks_from_gmail(open_tasks, dry_run=False):
         if "[no-sync-close]" in (t.get("notes") or ""):
             continue
         labels_gone = all(
-            ACTIONS_LABEL not in thread_to_labels.get(tid, set())
+            REPLIES_LABEL not in thread_to_labels.get(tid, set())
             and DELEGATED_LABEL not in thread_to_labels.get(tid, set())
             for tid in t["thread_ids"])
         # Opt-out 2 — Team-Finances blanket (a bill is never a reply)
@@ -237,7 +238,7 @@ def step4_close_tasks_from_gmail(open_tasks, dry_run=False):
             continue
         if labels_gone:
             if not dry_run:
-                audit = ("\n\nClosed by sync — Actions/Delegated label removed in Gmail, "
+                audit = ("\n\nClosed by sync — Replies/Delegated label removed in Gmail, "
                          f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC. If this strip "
                          "was a tray clear-out rather than completion, reopen (status='open') and ask "
                          "Claude to mark it [no-sync-close].")
@@ -259,8 +260,10 @@ def step5_delegation_check(dry_run=False):
             "details": [{"id": r["id"], "name": r["name"], "due": r.get("due_on")} for r in rows]}
 
 def step6_orphan_candidates(linked_open):
-    """Find Actions-labelled threads with no linked open task. Surface candidates (no auto-create)."""
-    actions_threads = gmail_search("label:Actions", 100)
+    """Find Replies-labelled threads with no linked open task. Surface candidates (no auto-create)."""
+    # Transition-safe: matches the tray BEFORE and AFTER the Actions→Replies rename.
+    # Trim to "label:Replies" once the rename has bedded in.
+    actions_threads = gmail_search("label:Actions OR label:Replies", 100)
     open_thread_ids = set()
     for t in linked_open:
         for tid in t["thread_ids"]:
@@ -363,7 +366,7 @@ def main():
           f" (skipped {len(s3_skipped)} — open task still owns the thread;"
           f" kept {len(s3_keep)} — [no-sync-close] keeps the label as the record)")
     for s in s3_stripped:
-        names = ["Actions" if l == ACTIONS_LABEL else "Delegated" for l in s["labels_removed"]]
+        names = ["Replies" if l == REPLIES_LABEL else "Delegated" for l in s["labels_removed"]]
         print(f"  ✗ {s['thread_id']} | -{','.join(names)} | task: {s['task_name'][:60]}")
     print(f"\nStep 4: closed {len(report['step4_closures'])} open tasks where Gmail label removed"
           f" (exempt-skipped {len(report.get('step4_exempt', []))})")
@@ -372,7 +375,7 @@ def main():
     for e in report.get("step4_exempt", []):
         print(f"  ⊝ exempt ({e['reason']}) | {e['task_name'][:60]}")
     print(f"\nStep 5: delegated open count = {report['step5']['open_delegated_count']}")
-    print(f"\nStep 6: Actions threads with no task = {len(report['step6_orphan_candidates'])} "
+    print(f"\nStep 6: Replies threads with no task = {len(report['step6_orphan_candidates'])} "
           f"(expected state — surfaced for awareness; the label is the record, NO task is created)")
     for o in report["step6_orphan_candidates"]:
         print(f"  • {o['thread_id']} | from={o['from'][:40]} | subj={o['subject'][:50]} | labels={o['labels']}")
