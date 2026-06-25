@@ -76,8 +76,11 @@ def scan_shared(name, did):
 
 def scan_mydrive():
     common = {"corpora": "user", "spaces": "drive", "supportsAllDrives": "true", "pageSize": 1000}
-    folders = page({**common, "q": "mimeType='application/vnd.google-apps.folder' and trashed=false", "fields": FFIELDS})
-    files = page({**common, "q": "mimeType!='application/vnd.google-apps.folder' and trashed=false", "fields": XFIELDS})
+    # `'me' in owners` keeps My Drive to the files Pete OWNS. Without it, corpora=user also returns
+    # every "Shared with me" item, which then gets indexed + relabelled 'My Drive' — clutter that
+    # doesn't match Pete's real My Drive. (My-Drive ownership fix, 2026-06-25.)
+    folders = page({**common, "q": "mimeType='application/vnd.google-apps.folder' and trashed=false and 'me' in owners", "fields": FFIELDS})
+    files = page({**common, "q": "mimeType!='application/vnd.google-apps.folder' and trashed=false and 'me' in owners", "fields": XFIELDS})
     # A user-OWNED item that physically lives in a shared drive surfaces in this corpora=user pass too.
     # Its own scan_shared() pass already captures it with the correct drive + full path, so drop it here
     # — otherwise build() relabels it 'My Drive' (the original index-corruption bug; same guard as

@@ -124,7 +124,7 @@ def process_drive(drive, did):
     raw = []
     pt = t
     while pt:
-        params = {"pageToken": pt, "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,mimeType,size,modifiedTime,trashed,driveId))", "pageSize": 1000, "includeRemoved": "true", "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
+        params = {"pageToken": pt, "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,mimeType,size,modifiedTime,trashed,driveId,ownedByMe))", "pageSize": 1000, "includeRemoved": "true", "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
         if did: params["driveId"] = did; params["corpora"] = "drive"
         r = gapi("/changes", params)
         for chg in r.get("changes", []):
@@ -147,11 +147,13 @@ def process_drive(drive, did):
         if removed or (f and f.get("trashed")):
             deletes.append(fid); continue
         if not f: continue
-        # A shared-drive item can also surface in the My Drive (user-corpus) pass; its own per-drive
-        # pass already upserts it with the correct drive + full path, so skip it here. THIS is what
-        # stops shared-drive files being relabelled 'My Drive' (the original index-corruption bug),
-        # without the false-deletes that includeItemsFromAllDrives=false caused.
-        if did is None and f.get("driveId"): continue
+        # On the My Drive (user-corpus) pass, skip two kinds of item so neither gets relabelled
+        # 'My Drive': (1) shared-DRIVE files (driveId set) — their own per-drive pass already upserts
+        # them with the correct drive + full path; (2) "Shared with me" files Pete doesn't own
+        # (ownedByMe false) — clutter that isn't in his real My Drive. Mirrors the `'me' in owners`
+        # filter in drive-files-index.py. (Without (1): the original index-corruption bug; without the
+        # false-deletes that includeItemsFromAllDrives=false caused.)
+        if did is None and (f.get("driveId") or not f.get("ownedByMe")): continue
         par = (f.get("parents") or [None])[0]
         cur = par; guard = 0
         while cur and cur not in fmap and guard < 50:
