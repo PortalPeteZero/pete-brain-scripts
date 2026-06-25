@@ -213,7 +213,7 @@ def classify_thread(thread: dict, pete_email: str = PETE_DEFAULT) -> dict:
     msg_count = thread.get("msgs", thread.get("msg_count", 1))
     user_labels = thread.get("user_labels", []) or []
 
-    has_actions = "Actions" in user_labels
+    has_actions = "Replies" in user_labels or "Actions" in user_labels  # transition-safe: tray renamed Actions→Replies 2026-06-25
     has_delegated = "Delegated" in user_labels
     has_linked_task = thread.get("has_linked_asana_task", False)
 
@@ -327,8 +327,8 @@ def classify_thread(thread: dict, pete_email: str = PETE_DEFAULT) -> dict:
 
 import re as _re
 # Action/Task verb split (2026-06-06): signals that the action happens OUTSIDE
-# the email (pay / process / portal / build) → suggest the Asana-only `Task this`
-# verb. Everything actionable without these signals defaults to `Action this`
+# the email (pay / process / portal / build) → suggest the Asana-only `Task`
+# verb. Everything actionable without these signals defaults to `Reply`
 # (tray). Claude reviews — this is a hint, not a decision.
 _TASK_SHAPED = _re.compile(
     r"\b(invoice|statement of account|statement from|remittance|payment due|"

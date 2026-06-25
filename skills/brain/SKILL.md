@@ -34,7 +34,7 @@ Primary skill for managing Pete's Second Brain: session resume/compress, daily r
 ## Routing
 
 > [!important] Default verb: Resume. Bare `/brain` invocations run Resume.
-> Pete uses `/brain` only at session start as shorthand for "resume". When the user's message names a different verb (e.g. "compress", "morning", "task this", "triage"), route per the table below. When the user's message is a bare `/brain` (no verb), run Resume.
+> Pete uses `/brain` only at session start as shorthand for "resume". When the user's message names a different verb (e.g. "compress", "morning", "task", "triage"), route per the table below. When the user's message is a bare `/brain` (no verb), run Resume.
 >
 > Resume is a heavy operation -- it loads MAP + vault-routing + project READMEs + 3 daily notes + `public.tasks` state + Gmail Cowork-Inbox + writes to today's daily note. That's by design: Pete's first move every session is "give me everything I need to start working". The previous "show routing table and ask" behaviour was wrong; reverted 2026-05-06.
 
@@ -50,7 +50,7 @@ Match the user's intent to the right section:
 | "output style", "writing style", "switch style" | [Output Styles](#output-styles) |
 | "save this prompt", "swipe file", "framework", "template", "resources" | [Resources](#resources) |
 | "meeting", "transcript", "action items", "Fireflies", "sync meetings" | [Meeting Intelligence](#meeting-intelligence) |
-| "triage", "sweep", "sync asana", "delegate this", "action this", "task this", "actions" / "my actions" (tray walker), "de-tray this", "file under", "file all emails", "add to calendar" | see [[email-workflow]] -- handled by `inbox-triage` + `asana-gmail-sync` skills |
+| "triage", "sweep", "sync", "hand to", "reply", "task", "replies" / "my replies" (tray walker; legacy "actions"), "de-tray this", "file", "file all emails", "add to calendar" | see [[email-workflow]] -- handled by `inbox-triage` + `email-task-sync` skills |
 | "draft an email", "write a blog post", "outbound", customer reply | [Output Styles](#output-styles) + Pete's Preferences (read [[voice-principles]] first) |
 | "invoice", "Soldo", "Dext", "Odoo", "Xero", "payroll", "VAT" | [[finance-workflow]] |
 
@@ -199,11 +199,11 @@ When the most recent daily note covers today (rare edge case where Claude resume
 **Edge cases:**
 - Priority unset → display as `–`.
 - Task in an unfamiliar `project_slug` (rare) → surface but flag the project.
-3b. **Actions tray check (added 2026-06-06)** -- Query Gmail LIVE: `g.search_threads("label:Actions", max_results=50)`. For each thread, age = days since the LAST message on the thread. Surface in the briefing as its own line:
-   - `**Actions tray**: {N} waiting ({M} aging >3d): {short-subject} {X}d · {short-subject} {Y}d — say "actions" to walk them with drafts ready.`
+3b. **Replies tray check (added 2026-06-06)** -- Query Gmail LIVE: `g.search_threads("label:Replies", max_results=50)`. For each thread, age = days since the LAST message on the thread. Surface in the briefing as its own line:
+   - `**Replies tray**: {N} waiting ({M} aging >3d): {short-subject} {X}d · {short-subject} {Y}d — say "actions" to walk them with drafts ready.`
    - List every item older than **3 days**, oldest first; cap the inline list at 5 + `+K more aging`.
    - Tray empty → skip the line entirely.
-   - The tray is reply-shaped only (Action/Task split, locked 2026-06-06: **Actions = waiting on Pete to respond by email; everything else = a CC task**). Bills/work items are CC tasks with `[no-sync-close]` — they never appear here. Source = live Gmail, never the daily note. Operating manual: [[email-workflow]].
+   - The tray is reply-shaped only (**Replies = waiting on Pete to respond by email; a task only when work is required**). Bills/work items are CC tasks with `[no-sync-close]` — they never appear here. Source = live Gmail, never the daily note. Operating manual: [[email-workflow]].
 4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home — not the legacy `Businesses/` vault folder.
 5. **Check session plans** -- Look for incomplete session plans:
    - Query `vault_notes` for plan notes still open: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, frontmatter->>'status' FROM vault_notes WHERE type ILIKE '%plan%' AND frontmatter->>'status' IN ('in-progress','ready') ORDER BY source_updated DESC"` (note: there is no `public.plans` table — plans are notes in `vault_notes`).
@@ -222,7 +222,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
    Welcome back, Pete.
 
    **Last session** (date): [Brief summary -- link [[projects]] mentioned]
-   **Actions tray**: [N waiting (M aging >3d): item Xd · item Yd — say "actions" to walk them]
+   **Replies tray**: [N waiting (M aging >3d): item Xd · item Yd — say "actions" to walk them]
    **Task priorities**: [P1/P2 tasks from public.tasks]
    **Manual tasks since last session**: [N added to public.tasks -- list one-liners with entity/project + priority]
    **From your iPhone** (Cowork-Inbox): [N requests pending -- list one-liners]
@@ -629,7 +629,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **MAP.md is your index.** Check before creating any file. Update after creating new files.
 - **Memory protocol**: Load context files at session start. Route new knowledge per `[[vault-routing]]`.
 - **Sweep verb**: `sweep` is a single deliberate verb, manual trigger only. No skill should auto-offer it. Email-workflow operating manual: `[[email-workflow]]`.
-- **Email-workflow verbs**: `triage`, `sync asana`, `delegate this`, `action this` (tray: Actions label + task), `task this` (CC task: no Actions label, `[no-sync-close]`), `actions` / `my actions` (tray walker), `de-tray this`, `file under`, `file all emails`, `add to calendar`. One-sentence rule: **Actions = waiting on Pete to respond by email; everything else = a CC task** (locked 2026-06-06). See `[[email-workflow]]` -- handled by `inbox-triage` and `asana-gmail-sync` skills.
+- **Email-workflow verbs**: `triage`, `sync asana`, `delegate this`, `reply` (tray: Replies label + task), `task` (CC task: no Replies label, `[no-sync-close]`), `actions` / `my actions` (tray walker), `de-tray this`, `file under`, `file all emails`, `add to calendar`. One-sentence rule: **Actions = waiting on Pete to respond by email; everything else = a CC task** (locked 2026-06-06). See `[[email-workflow]]` -- handled by `inbox-triage` and `asana-gmail-sync` skills.
 - **Wikilinks everywhere**: Every mention of a project, person, or vault note MUST be a `[[wikilink]]`.
 - **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> `Library/lessons/{date}-{slug}.md` + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
 - **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[Library/lessons/README]]`.
@@ -651,7 +651,7 @@ Brain owns workflow orchestration. Hand off to specialised skills when their ver
 | Verb / phrase | Skill |
 |---|---|
 | `triage` | `inbox-triage` |
-| `sync asana`, `sweep` (verb), orphan reconciliation | `asana-gmail-sync` |
+| `sync`, `sweep` (verb), orphan reconciliation | `email-task-sync` |
 | `audit this page`, `ahrefs audit`, "research this keyword" | `ahrefs-audit` |
 | `fortnightly review`, "check the positions", "has it moved" | `audit-review` |
 | `connect to my site`, "look at my app", "set up a new project" | `property-manager` |

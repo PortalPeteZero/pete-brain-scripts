@@ -5,14 +5,14 @@ Replaces the old Cowork SKILL.md (and the short-lived LLM agent_jobs version tha
 HTML). Gathers every section from real sources, renders ONE consistent styled template, sends to Pete,
 and publishes the same HTML to the CC morning-brief page. No LLM in the render → it looks right every time.
 
-Sources (Business OS — Asana retired): Actions tray = Gmail label:Actions · tasks = CC public.tasks ·
+Sources (Business OS — Asana retired): Replies tray = Gmail label:Replies · tasks = CC public.tasks ·
 calendar = calendar-api · recovery = CC garmin_daily · GA4 = ga4-api (Sygma + Canary Detect). The PF
 lesson lead reads the local journal when present (Mac) and is skipped silently otherwise.
 """
 # CRON-META
-# what: Pete's daily morning briefing email (Actions tray, tasks, calendar, Garmin recovery, GA4) + CC publish
+# what: Pete's daily morning briefing email (Replies tray, tasks, calendar, Garmin recovery, GA4) + CC publish
 # why: One morning operating email from one place; deterministic styled HTML, reads the CC task+garmin engine
-# reads: Gmail label:Actions + public.tasks + Calendar + garmin_daily + GA4
+# reads: Gmail label:Replies + public.tasks + Calendar + garmin_daily + GA4
 # writes: email to Pete + reports.snapshots morning-brief (CC)
 # entity: canary-detect
 # report: morning-brief
@@ -85,9 +85,10 @@ def pf_lesson(today):
     return None
 
 
-def actions_tray():
+def replies_tray():
     g = _helper("gmail-api.py", "gmail_api").GmailAPI()
-    threads = g.search_threads("label:Actions", max_results=15) or []
+    # transition-safe: tray label renamed Actions→Replies 2026-06-25 (trim to label:Replies once bedded in)
+    threads = g.search_threads("label:Actions OR label:Replies", max_results=15) or []
     items = []
     now = datetime.datetime.now(datetime.timezone.utc)
     for t in threads:
@@ -168,7 +169,7 @@ def render(today, lesson, tray, due, overdue, events, garmin, ga4):
     if lesson:
         parts.append(_card("Lesson from yesterday",
                            f'<div style="border-left:3px solid {AMBER};padding-left:12px;color:#334155;font-style:italic">{esc(lesson)}</div>'))
-    # Actions tray
+    # Replies tray
     aging = sum(1 for i in tray if i["age"] > 3)
     if tray:
         rows = ""
@@ -248,7 +249,7 @@ def main():
             print(f"  section {fn.__name__} failed: {e}", file=sys.stderr)
             return None
     lesson = safe(pf_lesson, today)
-    tray = safe(actions_tray) or []
+    tray = safe(replies_tray) or []
     due, overdue = safe(tasks_today, today) or ([], {})
     events = safe(calendar_today, today) or []
     garmin = safe(garmin_recovery)

@@ -6,7 +6,7 @@ caller runs THIS once and gets every thread's {id, from, subject, date,
 labels, snippet, age_days} as JSON, ready to classify.
 
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py                       # in:inbox, 100
-  VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py "label:Actions" 50    # any query + limit
+  VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py "label:Replies" 50    # any query + limit
 
 Loads the canonical gmail-api.py by path (the file is hyphenated).
 """
