@@ -5,8 +5,9 @@ Parallels `garmin-api.py`, `gmail-api.py` and `calendar-api.py` in pattern and
 style. Talks to the Asana REST API directly with a Personal Access Token (no
 MCP, no SDK dependency — stdlib only). Exposes:
 
-  * An `AsanaAPI` class for library use from other scripts (sync-asana,
-    asana-gmail-sync, brain Compress, anywhere we touch tasks).
+  * An `AsanaAPI` class for library use. NB: Pete's work moved OFF Asana onto CC
+    public.tasks (24 Jun 2026); Asana is Jane's only. This helper is retained solely
+    for any Asana-side operations Jane's own automations may still need.
   * A CLI for ad-hoc work from the shell.
 
 Auth:
