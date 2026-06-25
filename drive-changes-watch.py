@@ -114,11 +114,12 @@ def fetch_folder(fid):
     except Exception:
         return None
 
-total_up = total_del = 0
-for drive, did in DRIVES:
+def process_drive(drive, did):
+    """One drive's change feed → (upserts, deletes). Errors propagate to the caller so a single
+    drive's failure can't starve the rest; an expired change token (410/404) is re-baselined there."""
     t = get_token(drive)
     if not t:
-        set_token(drive, start_token(did)); print(f"{drive}: token initialised (baseline)", flush=True); continue
+        set_token(drive, start_token(did)); print(f"{drive}: token initialised (baseline)", flush=True); return 0, 0
     fmap = load_folders(drive)
     raw = []
     pt = t
@@ -167,6 +168,23 @@ for drive, did in DRIVES:
         cc("POST", "drive_files?on_conflict=drive_file_id", upserts[i:i + 500])
     for fid in deletes:
         cc("DELETE", f"drive_files?drive_file_id=eq.{fid}")
-    total_up += len(upserts); total_del += len(deletes)
     print(f"{drive}: {len(upserts)} upserts, {len(deletes)} deletes", flush=True)
+    return len(upserts), len(deletes)
+
+total_up = total_del = 0
+for drive, did in DRIVES:
+    try:
+        up, dl = process_drive(drive, did)
+        total_up += up; total_del += dl
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 410):   # expired/invalid change token → re-baseline so it self-heals next run
+            try:
+                set_token(drive, start_token(did))
+                print(f"{drive}: change token expired ({e.code}) → re-baselined; resumes next run", flush=True)
+            except Exception as e2:
+                print(f"{drive}: re-baseline FAILED after {e.code}: {e2}", flush=True)
+        else:
+            print(f"{drive}: HTTP {e.code} — skipped this run, other drives continue", flush=True)
+    except Exception as e:
+        print(f"{drive}: ERROR {e} — skipped this run, other drives continue", flush=True)
 print(f"DONE: {total_up} upserts, {total_del} deletes across all drives", flush=True)
