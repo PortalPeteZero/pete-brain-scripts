@@ -128,7 +128,8 @@ def step1_pull_tasks():
                     "project_slug": r.get("project_slug")}
                    for r in open_rows if _extract_tids(r.get("notes"))]
     linked_closed = [{"id": r["id"], "name": (r.get("name") or "")[:90],
-                      "thread_ids": _extract_tids(r.get("notes"))}
+                      "thread_ids": _extract_tids(r.get("notes")),
+                      "notes": r.get("notes") or ""}
                      for r in closed_rows if _extract_tids(r.get("notes"))]
     return {"open": linked_open, "closed": linked_closed, "all_open_count": len(open_rows)}
 
@@ -142,6 +143,12 @@ def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None)
     workflow label only when NO OPEN task still links the same thread — otherwise the
     strip would orphan the open task's Gmail-side signal and Step 4 would then false-close
     the open task. Pass `open_tasks` so we can build the "still owned" set.
+
+    `[no-sync-close]` keep-label rule (2026-06-25): the marker decouples the Gmail label
+    from the task in BOTH directions. It already stops a label-removal from closing a task
+    (Step 4); symmetrically, closing a `[no-sync-close]` task must NOT strip its Gmail label
+    — the label/tray item is independent of the task (an overlap reply still owed, or a
+    Part-C migration close where the Actions label is now the record). Keep the label.
     """
     stripped = []
     thread_to_task = {}
@@ -155,8 +162,18 @@ def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None)
             for tid in t["thread_ids"]:
                 open_owned.add(tid)
 
-    tids_to_check = [tid for tid in thread_to_task.keys() if tid not in open_owned]
+    # threads whose closing task says "keep the label" — never strip these
+    keep_label = set()
+    for t in closed_tasks:
+        if "[no-sync-close]" in (t.get("notes") or ""):
+            for tid in t["thread_ids"]:
+                keep_label.add(tid)
+
+    tids_to_check = [tid for tid in thread_to_task.keys()
+                     if tid not in open_owned and tid not in keep_label]
     skipped_due_to_open = [tid for tid in thread_to_task.keys() if tid in open_owned]
+    skipped_keep_label = [tid for tid in thread_to_task.keys()
+                          if tid in keep_label and tid not in open_owned]
 
     if not tids_to_check:
         results = {}
@@ -177,6 +194,10 @@ def step3_strip_labels_from_closed(closed_tasks, dry_run=False, open_tasks=None)
     for tid in skipped_due_to_open:
         tasks = thread_to_task[tid]
         stripped.append({"thread_id": tid, "labels_removed": [], "skipped_open_owner": True,
+                         "task_name": tasks[0]["name"], "task_id": tasks[0]["id"]})
+    for tid in skipped_keep_label:
+        tasks = thread_to_task[tid]
+        stripped.append({"thread_id": tid, "labels_removed": [], "skipped_keep_label": True,
                          "task_name": tasks[0]["name"], "task_id": tasks[0]["id"]})
     return stripped
 
@@ -335,10 +356,12 @@ def main():
 
     print(f"\n═══ email-task sync ═══ {report['started_at'][:19]} {'[DRY-RUN]' if args.dry_run else ''}")
     print(f"\nStep 1: open linked tasks={report['step1']['open_linked']} | done linked (30d)={report['step1']['closed_linked']}")
-    s3_stripped = [s for s in report["step3_stripped"] if not s.get("skipped_open_owner")]
+    s3_stripped = [s for s in report["step3_stripped"] if s.get("labels_removed")]
     s3_skipped = [s for s in report["step3_stripped"] if s.get("skipped_open_owner")]
+    s3_keep = [s for s in report["step3_stripped"] if s.get("skipped_keep_label")]
     print(f"\nStep 3: stripped Gmail labels from {len(s3_stripped)} done-task threads"
-          f" (skipped {len(s3_skipped)} — open task still owns the thread)")
+          f" (skipped {len(s3_skipped)} — open task still owns the thread;"
+          f" kept {len(s3_keep)} — [no-sync-close] keeps the label as the record)")
     for s in s3_stripped:
         names = ["Actions" if l == ACTIONS_LABEL else "Delegated" for l in s["labels_removed"]]
         print(f"  ✗ {s['thread_id']} | -{','.join(names)} | task: {s['task_name'][:60]}")
@@ -349,9 +372,10 @@ def main():
     for e in report.get("step4_exempt", []):
         print(f"  ⊝ exempt ({e['reason']}) | {e['task_name'][:60]}")
     print(f"\nStep 5: delegated open count = {report['step5']['open_delegated_count']}")
-    print(f"\nStep 6: orphan candidates needing routing = {len(report['step6_orphan_candidates'])}")
+    print(f"\nStep 6: Actions threads with no task = {len(report['step6_orphan_candidates'])} "
+          f"(expected state — surfaced for awareness; the label is the record, NO task is created)")
     for o in report["step6_orphan_candidates"]:
-        print(f"  ? {o['thread_id']} | from={o['from'][:40]} | subj={o['subject'][:50]} | labels={o['labels']}")
+        print(f"  • {o['thread_id']} | from={o['from'][:40]} | subj={o['subject'][:50]} | labels={o['labels']}")
     p = report["step8_parity"]
     print(f"\nStep 8 (Gmail labels for the skill's parity pass): "
           f"{len(p['gmail_customer_labels'])} customer · {len(p['gmail_supplier_labels'])} supplier labels")

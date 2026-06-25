@@ -92,6 +92,8 @@ No Gmail sub-labels for priority; the `priority` column is the sole authority. S
 
 For each linked task whose `status = 'done'`, strip the `Actions` or `Delegated` label from the Gmail thread (whichever is present) via `gmail-api.py modify_thread` with `remove=[label_id]`.
 
+**`[no-sync-close]` keeps the label (the marker is symmetric).** If the done task carries `[no-sync-close]`, do NOT strip its Gmail label — the label/tray item is independent of the task (an overlap reply still owed, or a task closed under the label-only migration where the Actions label is now the record). The same marker that stops a label-removal from closing a task (Step 4) symmetrically stops a task-closure from stripping the label here.
+
 When completion strips the last workflow label:
 - Thread still has a filing label (`Customers/*`, `Suppliers/*`, `Projects/*`, `Invoices/*` (legacy → re-route to Team-Finances at sync time), `Accreditations/*` (legacy → re-route to Team-General/SY-General), or any Mode-A top-level): no further action — it stays archived under its home.
 - Thread has NO filing label: don't silently orphan. Add to the Step 8 report: "{subject} has no filing home — file under X, archive, or bin?". Pete decides.
