@@ -24,8 +24,11 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 HERE = Path(__file__).resolve().parent
-SEC = HERE.parent / "secrets"
-MANIFEST = HERE.parent / "crons-manifest.json"
+# Post-cutover layout: tools are flat at $VAULT and secrets are materialised under
+# Library/processes/secrets (railway-bootstrap puts them there); the old HERE.parent/"secrets"
+# resolved to /tmp/secrets and broke every deploy.
+SEC = HERE / "Library" / "processes" / "secrets"
+MANIFEST = HERE / "crons-manifest.json"
 PROJECT = "b2d89898-cc67-43a7-b900-af2c2c8e4a66"
 ENVN = "7b0fd4ed-0f4a-41a4-8eb0-86e713397380"
 REPO = "PortalPeteZero/pete-brain-scripts"
