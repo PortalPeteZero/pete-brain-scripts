@@ -1,7 +1,8 @@
 # Kernel-materialised secrets — these live in the CC `secrets` table and are written into
 # Library/processes/secrets/ at runtime by pete-session-bootstrap.py / railway-bootstrap.py.
-# They must NEVER be committed.
-Library/processes/secrets/
+# They must NEVER be committed. The whole Library/ tree is runtime-materialised
+# (secrets + helper symlinks) — the repo tracks no Library/ content, so ignore it all.
+Library/
 
 # Python bytecode
 __pycache__/

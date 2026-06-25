@@ -63,7 +63,11 @@ import json
 import sys
 from pathlib import Path
 
-_GARMIN_API = Path(f"{VAULT}/Library/processes/scripts/garmin-api.py")
+# Post-migration the helpers are flat at $VAULT/; keep the old nested path as a
+# fallback so this resolves under either layout.
+_GARMIN_API = Path(f"{VAULT}/garmin-api.py")
+if not _GARMIN_API.exists():
+    _GARMIN_API = Path(f"{VAULT}/Library/processes/scripts/garmin-api.py")
 
 
 def _load_client():
