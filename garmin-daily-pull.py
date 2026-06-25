@@ -1029,6 +1029,42 @@ def _upsert_garmin_daily(day: dict, snapshot: dict | None = None):
         print(f"  Warning: garmin_daily upsert failed: {e}", file=sys.stderr)
 
 
+def _persist_garmin_token(g):
+    """Save the (refreshed/rotated) Garmin token back to the CC `secrets` table after a
+    successful auth. Garmin ROTATES the refresh token, so a snapshot that is never
+    re-saved eventually gets invalidated -> forced credential re-login (MFA hell, and a
+    dead local bootstrap). This closes that loop: every Railway run re-seeds the cloud
+    copy, so any session/bootstrap pulls a live, self-refreshing token. Non-fatal."""
+    try:
+        import urllib.request
+        tokens_dir = Path(garmin_mod.TOKENS_DIR)
+        # force-write the current in-memory (post-refresh) token to disk, then read it
+        try:
+            g.client.client.dump(str(tokens_dir))
+        except Exception:
+            pass  # fall back to whatever is already on disk (the materialised copy)
+        tf = tokens_dir / "garmin_tokens.json"
+        val = tf.read_text()
+        d = json.loads(val)
+        if not (isinstance(d, dict) and d.get("di_refresh_token")):
+            print("  Warning: garmin token missing refresh — not persisting", file=sys.stderr)
+            return
+        url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+        if not (url and key):
+            kp = (Path(os.environ["VAULT"]) if os.environ.get("VAULT") else VAULT) / "Library/processes/secrets/command-centre-supabase-keys.json"
+            kd = json.loads(kp.read_text()); url, key = kd["url"], kd["service_role_key"]
+        row = {"name": "garminconnect-tokens/garmin_tokens.json", "value": val, "encoding": "text"}
+        req = urllib.request.Request(
+            url.rstrip("/") + "/rest/v1/secrets?on_conflict=name",
+            data=json.dumps([row]).encode(), method="POST",
+            headers={"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json",
+                     "Prefer": "resolution=merge-duplicates,return=minimal"})
+        urllib.request.urlopen(req, timeout=30)
+        print("  CC: garmin token persisted back to secrets (refresh loop healthy)")
+    except Exception as e:
+        print(f"  Warning: garmin token persist failed: {e}", file=sys.stderr)
+
+
 def write_day(g: "garmin_mod.GarminAPI", iso_date: str, dry: bool = False) -> tuple:
     """Pull + render + write one day. Returns (path, status, has_data, day_dict).
 
@@ -1249,6 +1285,7 @@ def main():
     print(f"=== garmin-daily-pull | {started.isoformat()} | dry={args.dry} ===")
 
     g = garmin_mod.GarminAPI()
+    _persist_garmin_token(g)  # keep the CC token copy fresh (Garmin rotates the refresh token)
 
     # Decide the list of dates
     dates: list[str] = []
