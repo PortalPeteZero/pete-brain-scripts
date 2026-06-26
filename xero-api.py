@@ -19,7 +19,9 @@ Usage:
 import json, time, os, sys, secrets, urllib.request, urllib.parse, urllib.error
 import http.server, threading, webbrowser
 
-SECRETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets")
+SECRETS_DIR = (os.path.join(os.environ["VAULT"], "Library", "processes", "secrets")
+               if os.environ.get("VAULT")                       # $VAULT-aware (/tmp/pbs flat layout; matches drive-api.py)
+               else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets"))
 CREDS_FILE  = os.path.join(SECRETS_DIR, "xero-credentials.json")
 TOKENS_FILE = os.path.join(SECRETS_DIR, "xero-tokens.json")
 
