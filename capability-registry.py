@@ -39,7 +39,7 @@ def infer_service(fn):
         ("google-maps", "Google Maps/Places"), ("geocod", "Google Geocoding"), ("vision", "Cloud Vision"),
         ("ionos", "IONOS DNS"), ("godaddy", "GoDaddy DNS"), ("cloudflare", "Cloudflare"),
         ("ahrefs", "Ahrefs"), ("surfer", "Surfer"), ("sentry", "Sentry"), ("xero", "Xero"),
-        ("odoo", "Odoo"), ("soldo", "Soldo"), ("jotform", "JotForm"), ("asana", "Asana"),
+        ("odoo", "Odoo"), ("soldo", "Soldo"), ("jotform", "JotForm"),
         ("pagespeed", "PageSpeed/CrUX"), ("anthropic", "Anthropic API"), ("apple", "Apple Wallet/PassKit"),
         ("passkit", "PassKit"), ("xhale", "Xhale"), ("resend", "Resend email"), ("cookieyes", "CookieYes"),
         ("gtm", "Google Tag Manager"), ("ga4", "GA4"), ("indexnow", "IndexNow"),
@@ -133,7 +133,6 @@ def liveness():
     tests = [
         ("GitHub PAT", _ping("https://api.github.com/rate_limit", {"Authorization": f"token {GH}", "User-Agent": "cap-reg"})),
         ("Vercel token", _ping("https://api.vercel.com/v2/user", {"Authorization": f"Bearer {VC}"})),
-        ("Asana PAT", _ping("https://app.asana.com/api/1.0/users/me", {"Authorization": f"Bearer {rd('asana-pat')}"})),
         ("Ahrefs token", _ping("https://api.ahrefs.com/v3/site-explorer/domain-rating?target=ahrefs.com&date=2026-06-06", {"Authorization": f"Bearer {rd('ahrefs-token')}"})),
     ]
     return tests
