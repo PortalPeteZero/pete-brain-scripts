@@ -8,8 +8,8 @@ of the script for Railway — that copy then drifts from canonical and silently 
 
 The RIGHT fix is this bootstrap: it materialises the secret FILES from Railway env vars and points
 $VAULT at the repo, then execs the UNCHANGED canonical script. The repo therefore holds the real
-canonical code (byte-for-byte, kept in lockstep by railway-sync-repo.py + the cc-cron-sync drift
-guard) — there is nothing to drift.
+canonical code (byte-for-byte) — the Railway repo IS the canonical repo (auto-deploy on push), so
+there is nothing to drift.
 
 Start command on each Railway service:  python railway-bootstrap.py <canonical-script.py> [args...]
 
