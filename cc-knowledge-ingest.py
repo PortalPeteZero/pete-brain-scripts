@@ -84,11 +84,22 @@ def walk_md(roots):
             dn[:]=[d for d in dn if not d.startswith(".") and d!="_archive"]
             for f in fn:
                 if f.endswith(".md") and not f.startswith("."): yield os.path.join(dp,f)
+# Prevention (2026-06-26 KB cleanup): never (re)ingest throwaway scaffolding/history into the
+# knowledge base — that is what bloated it. Skip skill files, style/template refs, and ephemeral types.
+# (Daily notes are intentionally NOT skipped — the CC Daily page reads them.)
+EPHEMERAL_TYPES={"session-plan","session-log","session-report","run-log","drift-check","email-extract"}
+def is_ephemeral(rel,ty):
+    base=os.path.basename(rel); low=rel.lower()
+    if base in ("SKILL.md","CHANGELOG.md"): return True
+    if "/skills/" in low or "/references/style-" in low or "/references/template-" in low: return True
+    return ty in EPHEMERAL_TYPES
 roots=sys.argv[1:] or ["Library/lessons"]
-batch=[]; n=0; fails=0
+batch=[]; n=0; fails=0; skipped=0
 for p in walk_md(roots):
-    try: batch.append(row_for(p))
+    try: r=row_for(p)
     except Exception as e: fails+=1; continue
+    if is_ephemeral(r["vault_path"],r["type"]): skipped+=1; continue
+    batch.append(r)
     if len(batch)>=100:
         try: post(batch); n+=len(batch)
         except urllib.error.HTTPError as e: print("POST err",e.code,e.read().decode()[:200]); fails+=len(batch)
@@ -96,4 +107,4 @@ for p in walk_md(roots):
 if batch:
     try: post(batch); n+=len(batch)
     except urllib.error.HTTPError as e: print("POST err",e.code,e.read().decode()[:300]); fails+=len(batch)
-print(f"DONE: {n} notes ingested, {fails} failed  (roots={roots})")
+print(f"DONE: {n} notes ingested, {skipped} ephemeral skipped, {fails} failed  (roots={roots})")
