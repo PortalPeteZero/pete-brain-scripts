@@ -23,19 +23,35 @@ def offset_hours(tz="Atlantic/Canary"):
     """Current whole-hour offset of the zone from UTC (0 winter / 1 summer for Atlantic/Canary)."""
     return int(datetime.now(ZoneInfo(tz)).utcoffset().total_seconds() // 3600)
 
+def _shift_hour_token(tok, off):
+    """Shift ONE hour-field token (a single hour, or an 'a-b' range) by -off, wrapping at 24.
+    Returns (shifted_token, crossed_midnight). '*' / '*/n' steps can't be offset meaningfully → left as-is."""
+    if tok.isdigit():
+        raw = int(tok) - off
+        return str(raw % 24), raw < 0
+    if "-" in tok:
+        a, _, b = tok.partition("-")
+        if a.isdigit() and b.isdigit():
+            ra, rb = int(a) - off, int(b) - off
+            return f"{ra % 24}-{rb % 24}", (ra < 0 or rb < 0)
+    return tok, False
+
 def local_to_utc(expr, tz="Atlantic/Canary"):
-    """Return (utc_cron, offset, crosses_midnight). Only the hour field is shifted; a numeric hour
-    that goes below 0 wraps to the previous day (day-of-week / day-of-month would then need care —
-    flagged, since Pete's crons sit well inside the day)."""
+    """Return (utc_cron, offset, crosses_midnight). EVERY element of the hour field is shifted — a single
+    hour, a comma-list ('7,22') AND a range ('9-17') — fixing the old bug where a list/range passed through
+    UNCONVERTED (so a local '0 7,22' silently fired at 08:00/23:00 in summer). '*' and steps are left as-is."""
     parts = expr.split()
     if len(parts) != 5:
         raise ValueError("need a 5-field cron: 'M H DOM MON DOW'")
     m, h, dom, mon, dow = parts
     off = offset_hours(tz)
-    if h.isdigit():
-        raw = int(h) - off
-        return " ".join([m, str(raw % 24), dom, mon, dow]), off, raw < 0
-    return expr, off, False   # non-numeric hour (*, lists, ranges) — left as-is
+    if off == 0 or h == "*":
+        return expr, off, False                        # winter (no shift) or every-hour → unchanged
+    shifted, crossed = [], False
+    for tok in h.split(","):
+        s, c = _shift_hour_token(tok, off)
+        shifted.append(s); crossed = crossed or c
+    return " ".join([m, ",".join(shifted), dom, mon, dow]), off, crossed
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

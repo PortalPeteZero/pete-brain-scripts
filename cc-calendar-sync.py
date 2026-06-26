@@ -7,6 +7,17 @@ once now for the initial fill.
 
 Usage: VAULT=/tmp/pbs python3 /tmp/pbs/cc-calendar-sync.py
 """
+# CRON-META
+# what: Sync Pete's Google Calendar (primary) into public.calendar_events for the CC Schedule overlay
+# why: the Schedule page (month/week/day) reads calendar_events; without this the overlay is empty/stale
+# reads: Google Calendar primary (calendar-api.py, domain-wide delegation as pete.ashcroft@sygma-solutions.com)
+# writes: public.calendar_events (clean-replace of the -30d..+120d window)
+# entity: command-centre
+# report: schedule
+# schedule: 0 7,13,19 * * *
+# timezone: Atlantic/Canary
+# secrets: GOOGLE_SA_JSON
+# CRON-META-END
 import json, os, importlib.util, urllib.request, urllib.error
 from datetime import datetime, timezone, timedelta
 
