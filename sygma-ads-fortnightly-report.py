@@ -17,7 +17,7 @@ come LIVE from the Ads API (better than a stale snapshot), no vault needed.
 # writes: HTML email to Pete (gmail-api); reports.snapshots 'sygma-ads-fortnightly' (cc_publish) → /m/sygma-ads
 # entity: sygma
 # report: sygma-ads
-# schedule: 0 8 1,15 * *
+# schedule: 0 9 1,15 * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 """

@@ -19,7 +19,7 @@ Triggered daily ~17:20 (after utilisation-tracker-refresh's 17:00 write).
 # writes: hub.diary_utilisation (Portal Supabase)
 # entity: sygma
 # report: diary-utilisation
-# schedule: 20 17 * * *
+# schedule: 20 18 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os, sys, json, subprocess, tempfile, datetime, importlib.util

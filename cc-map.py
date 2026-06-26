@@ -25,7 +25,7 @@ env-first CC keys on the cloud, the vault keys file locally.
 # reads: public.modules, profiles, groups, user_groups, module_user_grants, access_audit (CC, read-only)
 # writes: public.cc_map (CC, single 'latest' row); Properties/Pete Command Centre/cc-map.md (vault mirror — local only, skipped headless)
 # entity: command-centre
-# schedule: 30 8 * * *
+# schedule: 30 9 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 """

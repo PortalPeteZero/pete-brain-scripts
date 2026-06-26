@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "date": "2026-06-24",
+  "garmin_tracked": true,
+  "pending_garmin_backfill": false,
+  "entries": [
+    {
+      "time": "09:45",
+      "garmin_activity_id": 23362026593,
+      "activity_name": "Yaiza Open Water Swim",
+      "sport": "swimming",
+      "session_type": "easy",
+      "distance_km": 1.98,
+      "duration_min": 46,
+      "avg_hr": 153,
+      "max_hr": 186,
+      "kit": "sleeveless wetsuit",
+      "intro_block": "Wed 24 Jun — open water swim, 09:45 start, 46:13\nConditions: 24°C, wind 16 km/h N, 61%, water ~21°C. Flat and calm, sun shining.\nCourse: Yaiza open water, 10 × 200m laps\nPre: granola + protein (usual breakfast)\nDuring: nothing\nKit: sleeveless wetsuit\nBody: feeling good",
+      "feedback_text": "Focus today was just a gentle swim, trying to practise some of the technique with my arm recovery.\n\nUnfortunately, today's session was one of those sessions where I just couldn't find any rhythm. I just couldn't seem to put it all together. However, I didn't let this frustrate me. I knew I'd had a good swim on Sunday, and I've been doing this long enough now to realise that sometimes you have great sessions, sometimes you have okay sessions, and sometimes they're not that great. While there wasn't anything particularly bad about this one, I just couldn't really find that rhythm and connection like I normally can recently. It didn't feel as hard as the heart rate showed.",
+      "headline": "Yaiza Open Water Swim — 1.98 km in 46:13 — avg 2:20/100m — HR 153/186",
+      "notes_tags": [
+        "technique-focus",
+        "arm-recovery",
+        "no-rhythm",
+        "open-water",
+        "hr-higher-than-feel"
+      ],
+      "sent_via": "xhale"
+    },
+    {
+      "time": "18:32",
+      "garmin_activity_id": 23367234123,
+      "activity_name": "Indoor Cycling",
+      "sport": "cycling",
+      "session_type": "intervals",
+      "set_name": "zone pyramid (4→3→2→1)",
+      "duration_min": 65,
+      "avg_hr": 112,
+      "max_hr": 124,
+      "kit": "TT bike on the turbo, shammy cream",
+      "intro_block": "Wed 24 Jun — indoor cycling (turbo), 18:32 start, 65:27\nCourse: turbo, zone pyramid (4→3→2→1 min blocks)\nPre: 3 scoops Tailwind (skipped dinner, didn't want it in my stomach)\nKit: TT bike on the turbo, shammy cream\nBody: feeling good",
+      "feedback_text": "This was an indoor bike session on my TT bike. Three scoops of Tailwind beforehand. I didn't really want to eat dinner and have that in my stomach before.\n\nGreat session with Megha. She was really impressive and sounded really professional and encouraging, and the time flew by.\n\nIt was a really different experience for me doing this at this time in the evening, but I enjoyed it.\n\nManaged to find some shammy cream in my bathroom drawer. I actually forgot what it was. I pulled it out a while ago and thought it was for swimming. It was only when you mentioned shammy cream on WhatsApp the other day that I was like, oh.\n\nSo I broke coach's orders a little bit here. You did say I could work up to upper control as a maximum. However, with it turning into a shorter session than we normally have on a Wednesday, and it being the pyramid with just the short challenging block on top, I thought I would do the session up to challenging. I quite like the pyramid sessions. And I also understand that the point, or focus, of the bike at the minute is to get used to intensities again. I thought it would actually be beneficial with the pyramid to go up from comfortable to controlled to challenging and back down again. So sorry for breaking a rule, but I think it was for the right reasons. With only three short challenging blocks, decreasing throughout the set, I felt it was safe enough, and actually more beneficial, to do it this time.\n\nI felt really good throughout. It was good to do this one where you're going between intervals without the chill rest, going from one intensity to another, up again and then back down through them. It's good. I found it a little bit challenging on my legs towards the end of the session, but finished feeling strong.",
+      "headline": "Indoor Cycling — 65:27 — avg 124W — HR 112/124 — cad 68",
+      "notes_tags": [
+        "pyramid",
+        "evening-session",
+        "broke-rule-to-challenging",
+        "intensities",
+        "felt-strong"
+      ],
+      "sent_via": "xhale"
+    }
+  ]
+}

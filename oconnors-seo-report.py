@@ -20,7 +20,7 @@ source. Run weekly (Mon AM, launchd). Idempotent (newest row per period wins).
 # writes: reports.snapshots keys oconnors-seo + oconnors-seo-trends (CC) -> /m/oconnors-seo
 # entity: one-system
 # report: oconnors-seo
-# schedule: 0 8 * * 1
+# schedule: 0 9 * * 1
 # timezone: Atlantic/Canary
 # CRON-META-END
 import importlib.util, json, os, urllib.request, urllib.parse, datetime as dt, sys

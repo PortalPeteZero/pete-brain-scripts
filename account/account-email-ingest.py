@@ -20,7 +20,7 @@ Usage: account-email-ingest.py [--days N] [--dry-run]
 # writes: CC account_people / account_documents / account_state
 # entity: customers
 # report:
-# schedule: 10 7 * * *
+# schedule: 10 8 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os

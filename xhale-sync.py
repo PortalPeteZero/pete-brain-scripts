@@ -44,7 +44,7 @@ from pathlib import Path
 # reads: Xhale iCal feed (token); Anthropic Haiku (time parse); GCal (calendar-api, dedup scan); CC cron_state (ledger)
 # writes: GCal events (create/patch/delete on primary); CC cron_state (xhale-sync ledger)
 # entity: canary-detect
-# schedule: 0 7,18 * * *
+# schedule: 0 8,19 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 

@@ -21,7 +21,7 @@ Run standalone any time; the Monday cron runs it for the just-ended week.
 # writes: reports.snapshots key backlinks-weekly (CC) -> /m/sygma-backlinks
 # entity: sygma
 # report: sygma-backlinks
-# schedule: 45 7 * * 1
+# schedule: 45 8 * * 1
 # timezone: Atlantic/Canary
 # CRON-META-END
 import json, os, urllib.request, datetime

@@ -23,7 +23,7 @@ Owner of source file: pete.ashcroft@sygma-solutions.com (impersonated)
 # writes: hub.training_kpis (Portal Supabase) -> /hub/training-kpis; local vault kpis.md (skipped on cloud)
 # entity: sygma
 # report: training-kpis
-# schedule: 0 7 * * 1
+# schedule: 0 8 * * 1
 # timezone: Atlantic/Canary
 # CRON-META-END
 import importlib.util, json, os, urllib.request, datetime, sys, tempfile

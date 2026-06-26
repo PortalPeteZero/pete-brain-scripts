@@ -18,7 +18,7 @@ SKILL.md wrote is dropped (the emails are the output).
 # writes: 2 emails (team briefing gated to Pete until BRIEFING_LIVE=1; personal to Pete)
 # entity: canary-detect
 # report: cd-briefings
-# schedule: 15 18 * * 0-5
+# schedule: 15 19 * * 0-5
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os

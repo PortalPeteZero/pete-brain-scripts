@@ -17,7 +17,7 @@ Recipient is Pete only, so this is safe to fire ad-hoc. Voice: plain, no em dash
 # writes: reminder email to Pete
 # entity: personal
 # report:
-# schedule: 10 18 * * *
+# schedule: 10 19 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os

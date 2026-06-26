@@ -50,7 +50,7 @@ from zoneinfo import ZoneInfo
 # reads: Odoo (calendar.event + crm.lead); Google Drive (API); Google Vision; geocoding cache
 # writes: Drive (folders + appProperties + photo moves + _MAP.md); Odoo (x_studio_photos_uploaded); gmail (unmapped notice)
 # entity: canary-detect
-# schedule: 0 18 * * *
+# schedule: 0 19 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 

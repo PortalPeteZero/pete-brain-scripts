@@ -38,7 +38,7 @@ import os, tempfile  # noqa: E402
 # reads: JotForm API (jotform-api-key); chains aggregate + eval-hub-load
 # writes: Portal hub.training_evaluations (rsczwfstwkthaybxhszy); intermediate JSON in an ephemeral data dir (headless)
 # entity: sygma
-# schedule: 34 6 * * 1
+# schedule: 34 7 * * 1
 # timezone: Atlantic/Canary
 # CRON-META-END
 

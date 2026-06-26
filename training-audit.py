@@ -40,7 +40,7 @@ SOP: Businesses/sygma-solutions/training/sops/weekly-training-audit.md
 # writes: audit report (Drive + local vault copy) -> Management chat -> HTML email (office team, AUDIT_LIVE-gated)
 # entity: sygma
 # report: weekly-training-audit
-# schedule: 0 7 * * 1
+# schedule: 0 8 * * 1
 # timezone: Atlantic/Canary
 # CRON-META-END
 import sys, os, re, json, datetime, importlib.util, urllib.request, tempfile

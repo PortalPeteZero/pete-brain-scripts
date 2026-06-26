@@ -21,7 +21,7 @@ Cloud:  property-state-cc.py                        # read property_declarations
 # reads: CC property_declarations; GitHub / Vercel / Supabase / domains live
 # writes: CC public.property_state → /m/properties
 # entity: command-centre
-# schedule: 5 0 * * *
+# schedule: 5 1 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 """

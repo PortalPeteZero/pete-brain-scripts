@@ -13,7 +13,7 @@ email the trainers by accident). NIGHTS_FORCE=1 bypasses the last-Friday guard f
 # writes: 1:1 emails to trainers (gated to Pete until NIGHTS_LIVE=1)
 # entity: sygma
 # report:
-# schedule: 0 8 * * 5
+# schedule: 0 9 * * 5
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os

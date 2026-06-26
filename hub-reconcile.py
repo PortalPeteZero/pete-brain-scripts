@@ -24,7 +24,7 @@ Process doc: Library/processes/hub-maintenance.md
 # reads: Sygma Hub shared drive (Changes API delta), cron_state token
 # writes: Hub folder READMEs (Drive) + hub-content-index.md (local, skipped on cloud) + Pete digest email + CC snapshot
 # entity: sygma
-# schedule: 30 17 * * *
+# schedule: 30 18 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 import importlib.util, json, os, sys, time, urllib.parse, urllib.request, urllib.error

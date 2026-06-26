@@ -32,7 +32,7 @@ SOP: Businesses/sygma-solutions/training/sops/daily-utilisation-tracker.md
 # writes: utilisation report.xlsx (Drive Sygma Office) -> Management chat post -> downstream hub.diary_utilisation
 # entity: sygma
 # report: diary-utilisation
-# schedule: 0 17 * * *
+# schedule: 0 18 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os, sys, re, json, datetime, importlib.util, urllib.request, tempfile, calendar as pycal

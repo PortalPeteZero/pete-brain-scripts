@@ -21,7 +21,7 @@ Run daily after ads-snapshot.py (which refreshes the account JSON).
 # writes: public.ads (CC) -> /m/sygma-ads
 # entity: sygma
 # report: sygma-ads
-# schedule: 45 6 * * *
+# schedule: 45 7 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os, sys, json, datetime, importlib.util

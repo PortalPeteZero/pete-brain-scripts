@@ -14,7 +14,7 @@ Cron: Fridays 17:00 (com.peterashcroft.account-weekly-review), --send.
 # writes: email to Pete + account_state.last_weekly_review
 # entity: customers
 # report:
-# schedule: 0 17 * * 5
+# schedule: 0 18 * * 5
 # timezone: Atlantic/Canary
 # CRON-META-END
 import os
