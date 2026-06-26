@@ -3,7 +3,7 @@ import os
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC=f"{VAULT}/Library/processes/secrets"
 k=json.load(open(f"{SEC}/command-centre-supabase-keys.json")); URL=k["url"]; SR=k["service_role_key"]
-MEM="/Users/peterashcroft/.claude/projects/-Users-peterashcroft-Second-Brain/memory"
+MEM=os.environ.get("MEMORY_DIR","/Users/peterashcroft/.claude/projects/-Users-peterashcroft-Command-Centre/memory")
 H={"apikey":SR,"Authorization":f"Bearer {SR}","Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}
 def fm_parse(text):
     fm={}; body=text
