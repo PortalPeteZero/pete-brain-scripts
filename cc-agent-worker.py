@@ -15,7 +15,7 @@ Usage:
   cc-agent-worker.py --drain    # run all currently-pending jobs then exit
 """
 import json, os, sys, time, urllib.request, urllib.error, urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 try:
     from zoneinfo import ZoneInfo
     _CANARY = ZoneInfo("Atlantic/Canary")
@@ -83,11 +83,17 @@ SYSTEM = (
     "• QUICK NOTES = public.notes (title, body, pinned, colour, tags[], status open/archived) — Pete's Keep-style "
     "scratchpad. This is DISTINCT from vault_notes (the curated brain). When Pete says 'note: …', insert a row "
     "into public.notes — do NOT confuse it with vault_notes.\n"
-    "• EVENTS / CALENDAR = public.calendar_events (title, event_date, starts_at, all_day, location) — synced from "
-    "Pete's Google Calendar; read it for 'what's on today/this week'. Use the calendar_list tool for live lookups "
-    "beyond the synced window.\n"
+    "• CALENDAR / EVENTS — Pete's Google Calendar is the SOURCE OF TRUTH. To SCHEDULE / MOVE / CANCEL an event "
+    "use the calendar_create / calendar_update / calendar_delete tools — they write to Google Calendar at Pete's "
+    "Atlantic/Canary local time and sync into the CC automatically. public.calendar_events is a READ-ONLY MIRROR "
+    "(read it, or use calendar_list, for 'what's on') — NEVER write to it: a row written there isn't in Google, "
+    "shows the wrong time, and is wiped on the next sync. A time Pete gives is his LOCAL Lanzarote time — pass it "
+    "as 'YYYY-MM-DDTHH:MM' (or a bare 'YYYY-MM-DD' for all-day) and the tool handles the timezone. To move/cancel, "
+    "first calendar_list to get the event's id, then calendar_update/delete it.\n"
     "• KNOWLEDGE = vault_notes (lessons/decisions/processes, semantic + full-text); AUTOMATIONS = crons; "
-    "FILE INDEX = drive_files; DATA HOMES = data_map."
+    "FILE INDEX = drive_files; for 'where does X live' consult DATA HOMES = data_map.\n"
+    "MEMORY: the recent Telegram conversation is provided as prior messages — use it for context (follow-ups, "
+    "pronouns like 'that meeting', 'move it', 'them'). Don't claim you have no memory; refer back when relevant."
 )
 
 def sb(method, path, body=None, prefer=None):
@@ -113,7 +119,9 @@ def claim_job():
 # Pete wants maximal access on his owner system. READ = everything via cc_read (read-only enforced in
 # the DB). WRITE = any data table EXCEPT credentials/access-control, and update/delete MUST target rows
 # (no mass wipes). External world (email/Drive/calendar send) is the next, human-gated layer — not here.
-WRITE_DENY = {"secrets", "profiles", "grants", "group_grants", "module_grants", "groups"}
+# calendar_events is a READ-ONLY mirror of Google Calendar — writing there bypasses gcal, shows the
+# wrong time, and gets wiped on the next sync. Force scheduling through the calendar_create/update/delete tools.
+WRITE_DENY = {"secrets", "profiles", "grants", "group_grants", "module_grants", "groups", "calendar_events"}
 
 TOOLS = [
     {"name": "cc_read",
@@ -158,6 +166,10 @@ def t_cc_search(a):
 def t_cc_write(a):
     table = (a.get("table") or "").strip().lower(); op = a.get("op")
     data = a.get("data") or {}; match = a.get("match") or {}
+    if table == "calendar_events":
+        return ("ERROR: calendar_events is a READ-ONLY mirror of Google Calendar. To schedule/move/cancel an "
+                "event use the calendar_create / calendar_update / calendar_delete tools instead (they write to "
+                "Google Calendar at Pete's local time and sync back to the CC).")
     if table in WRITE_DENY:
         return f"ERROR: '{table}' is a credentials/access table — read-only to the agent."
     if op in ("update", "delete") and not match:
@@ -221,18 +233,86 @@ def t_gmail_send(a):
     except Exception as e:
         return f"ERROR gmail_send: {e}"
 
+def _canary_offset():
+    """Pete's current Atlantic/Canary UTC offset as '+01:00'/'+00:00' (DST-aware), or 'Z' fallback."""
+    if not _CANARY: return "Z"
+    o = datetime.now(_CANARY).strftime("%z")            # e.g. +0100
+    return (o[:3] + ":" + o[3:]) if o else "Z"
+
 def _rfc3339(s):
     if not s: return s
-    if "T" not in s: s = s + "T00:00:00"                      # bare date (YYYY-MM-DD) → start-of-day
-    return s if (s.endswith("Z") or "+" in s[11:] or "-" in s[11:]) else s + "Z"  # GCal needs full RFC3339
+    if "T" not in s: s = s + "T00:00:00"                      # bare date (YYYY-MM-DD) → start-of-day…
+    tail = s[11:]
+    if tail.endswith("Z") or "+" in tail or "-" in tail: return s
+    off = _canary_offset()                                    # …in PETE'S timezone, not UTC (so 'today' boundaries are local)
+    return s + (off if off != "Z" else "Z")
+
+# build Google start/end dicts from local (Atlantic/Canary) date or 'YYYY-MM-DDTHH:MM' strings
+def _gcal_when(start_raw, end_raw, dur_min):
+    if "T" not in start_raw:                                  # all-day event (bare dates)
+        return {"date": start_raw}, {"date": (end_raw or start_raw)}
+    sdt = datetime.strptime(start_raw[:16], "%Y-%m-%dT%H:%M")
+    if _CANARY: sdt = sdt.replace(tzinfo=_CANARY)
+    if end_raw and "T" in end_raw:
+        edt = datetime.strptime(end_raw[:16], "%Y-%m-%dT%H:%M")
+        if _CANARY: edt = edt.replace(tzinfo=_CANARY)
+    else:
+        edt = sdt + timedelta(minutes=dur_min)
+    return ({"dateTime": sdt.isoformat(), "timeZone": "Atlantic/Canary"},
+            {"dateTime": edt.isoformat(), "timeZone": "Atlantic/Canary"})
 
 def t_calendar_list(a):
     try:
         c = _helper("calendar-api.py", "calendar_api").CalendarAPI(**_google_kwargs())
         evs = c.list_events(calendar_id=a.get("calendar", "primary"), time_min=_rfc3339(a.get("from")), time_max=_rfc3339(a.get("to")))
-        return json.dumps([{"summary": e.get("summary"), "start": e.get("start"), "end": e.get("end")} for e in (evs or [])][:50])[:8000]
+        return json.dumps([{"id": e.get("id"), "summary": e.get("summary"), "start": e.get("start"), "end": e.get("end"), "location": e.get("location")} for e in (evs or [])][:50])[:8000]
     except Exception as e:
         return f"ERROR calendar_list: {e}"
+
+def t_calendar_create(a):
+    try:
+        c = _helper("calendar-api.py", "calendar_api").CalendarAPI(**_google_kwargs())
+        title = (a.get("title") or a.get("summary") or "").strip()
+        start_raw = (a.get("start") or "").strip()
+        if not title or not start_raw:
+            return "ERROR: need 'title' + 'start' ('YYYY-MM-DD' for all-day, or 'YYYY-MM-DDTHH:MM' in Pete's local time)."
+        start, end = _gcal_when(start_raw, (a.get("end") or "").strip(), int(a.get("duration_minutes", 30)))
+        ev = {"summary": title, "start": start, "end": end}
+        if a.get("location"): ev["location"] = a["location"]
+        if a.get("description"): ev["description"] = a["description"]
+        r = c.create_event(a.get("calendar", "primary"), ev) or {}
+        when = (r.get("start") or {}).get("dateTime") or (r.get("start") or {}).get("date")
+        return f"✓ created in Google Calendar: '{r.get('summary')}' @ {when} (id {str(r.get('id',''))[:26]}). Syncs into the CC automatically."
+    except Exception as e:
+        return f"ERROR calendar_create: {e}"
+
+def t_calendar_update(a):
+    try:
+        c = _helper("calendar-api.py", "calendar_api").CalendarAPI(**_google_kwargs())
+        eid = (a.get("event_id") or "").strip()
+        if not eid: return "ERROR: need 'event_id' — calendar_list first to find it."
+        fields = {}
+        if a.get("title"): fields["summary"] = a["title"]
+        if a.get("location") is not None: fields["location"] = a["location"]
+        if a.get("description") is not None: fields["description"] = a["description"]
+        if a.get("start"):
+            fields["start"], fields["end"] = _gcal_when((a.get("start") or "").strip(), (a.get("end") or "").strip(), int(a.get("duration_minutes", 30)))
+        if not fields: return "ERROR: nothing to change (pass title/start/location)."
+        r = c.update_event(eid, calendar_id=a.get("calendar", "primary"), **fields) or {}
+        when = (r.get("start") or {}).get("dateTime") or (r.get("start") or {}).get("date")
+        return f"✓ updated Google Calendar event: '{r.get('summary')}' @ {when}."
+    except Exception as e:
+        return f"ERROR calendar_update: {e}"
+
+def t_calendar_delete(a):
+    try:
+        c = _helper("calendar-api.py", "calendar_api").CalendarAPI(**_google_kwargs())
+        eid = (a.get("event_id") or "").strip()
+        if not eid: return "ERROR: need 'event_id' — calendar_list first to find it."
+        c.delete_event(eid, calendar_id=a.get("calendar", "primary"))
+        return f"✓ cancelled Google Calendar event {eid[:24]}."
+    except Exception as e:
+        return f"ERROR calendar_delete: {e}"
 
 def t_odoo_query(a):
     try:
@@ -260,6 +340,7 @@ def t_gsc_query(a):
         return f"ERROR gsc_query: {e}"
 
 TOOL_FN.update({"gmail_search": t_gmail_search, "gmail_send": t_gmail_send, "calendar_list": t_calendar_list,
+                "calendar_create": t_calendar_create, "calendar_update": t_calendar_update, "calendar_delete": t_calendar_delete,
                 "odoo_query": t_odoo_query, "ga4_query": t_ga4_query, "gsc_query": t_gsc_query})
 TOOLS += [
     {"name": "ga4_query", "description": "Query Google Analytics 4 (runReport) for a property. property_id = numeric GA4 id; metrics e.g. ['sessions','conversions','totalUsers']; dimensions e.g. ['date']. days = lookback. READ — safe.",
@@ -270,8 +351,14 @@ TOOLS += [
      "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "max": {"type": "integer"}}, "required": ["query"]}},
     {"name": "gmail_send", "description": "Send an email as Pete. SAFETY: until AGENT_EMAIL_LIVE=1 this routes to Pete only (test). Client sends go live only once verified correct.",
      "input_schema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}, "html": {"type": "string"}}, "required": ["to", "subject", "body"]}},
-    {"name": "calendar_list", "description": "List Pete's Google Calendar events between two ISO datetimes. READ — safe.",
+    {"name": "calendar_list", "description": "List Pete's Google Calendar events between two dates/datetimes (Pete's local time). Returns each event's id (needed to move/cancel), summary, start, end, location. READ — safe.",
      "input_schema": {"type": "object", "properties": {"calendar": {"type": "string"}, "from": {"type": "string"}, "to": {"type": "string"}}, "required": ["from", "to"]}},
+    {"name": "calendar_create", "description": "Create an event in Pete's Google Calendar (the source of truth — it syncs into the CC automatically). Use THIS to schedule, never write calendar_events. 'start'/'end' are Pete's LOCAL Lanzarote time as 'YYYY-MM-DDTHH:MM' (timed) or 'YYYY-MM-DD' (all-day); if no end, give duration_minutes (default 30). No attendees — Pete's own calendar only.",
+     "input_schema": {"type": "object", "properties": {"title": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"}, "duration_minutes": {"type": "integer"}, "location": {"type": "string"}, "description": {"type": "string"}, "calendar": {"type": "string"}}, "required": ["title", "start"]}},
+    {"name": "calendar_update", "description": "Move/edit a Google Calendar event (reschedule, rename, relocate). Get event_id from calendar_list first. 'start'/'end' are Pete's local time 'YYYY-MM-DDTHH:MM'.",
+     "input_schema": {"type": "object", "properties": {"event_id": {"type": "string"}, "title": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"}, "duration_minutes": {"type": "integer"}, "location": {"type": "string"}, "description": {"type": "string"}, "calendar": {"type": "string"}}, "required": ["event_id"]}},
+    {"name": "calendar_delete", "description": "Cancel/delete a Google Calendar event. Get event_id from calendar_list first.",
+     "input_schema": {"type": "object", "properties": {"event_id": {"type": "string"}, "calendar": {"type": "string"}}, "required": ["event_id"]}},
     {"name": "odoo_query", "description": "Read Canary Detect's Odoo (search_read). model e.g. 'calendar.event'/'crm.lead'/'account.move'; domain = Odoo domain list; fields = list. READ — safe.",
      "input_schema": {"type": "object", "properties": {"model": {"type": "string"}, "domain": {"type": "array"}, "fields": {"type": "array"}, "limit": {"type": "integer"}}, "required": ["model"]}},
 ]
@@ -295,10 +382,31 @@ def _anthropic(model, system, messages):
                 continue
             raise
 
-def run_agentic(prompt, model):
+def chat_history(chat_id, exclude_id, limit=6):
+    """Recent prior turns for this Telegram chat as Claude messages (oldest→newest). Best-effort: any
+    failure → no history (the agent simply behaves as before), so memory can never break a job."""
+    if not chat_id:
+        return []
+    try:
+        rows = sb("GET", f"agent_jobs?context-%3E%3Echat_id=eq.{urllib.parse.quote(str(chat_id))}"
+                          f"&status=eq.done&id=neq.{exclude_id}&result=not.is.null"
+                          f"&select=prompt,result&order=created_at.desc&limit={int(limit)}") or []
+    except Exception as e:
+        print(f"    · history skipped ({e})", flush=True)
+        return []
+    msgs = []
+    for r in reversed(rows):                       # oldest first
+        p = (r.get("prompt") or "").strip(); ans = (r.get("result") or "").strip()
+        if not p or not ans:
+            continue
+        msgs.append({"role": "user", "content": p[:1500]})
+        msgs.append({"role": "assistant", "content": ans[:1500]})
+    return msgs
+
+def run_agentic(prompt, model, history=None):
     """Tool-use loop: Claude calls cc_read / cc_search / cc_write until it has a final answer."""
     system = f"{SYSTEM}\n\nThe current time is {now_canary()} (Pete's timezone, Atlantic/Canary)."
-    messages = [{"role": "user", "content": prompt}]
+    messages = list(history or []) + [{"role": "user", "content": prompt}]
     tin = tout = 0
     for step in range(MAX_STEPS):
         resp = _anthropic(model, system, messages)
@@ -331,11 +439,13 @@ def fail(job_id, err):
 def process(job):
     jid = job["id"]; model = job.get("model") or MODEL
     prompt = job["prompt"]
-    if job.get("context"):
-        prompt = f"{prompt}\n\n[context]\n{json.dumps(job['context'])[:4000]}"
-    print(f"  ▶ job {jid[:8]} ({job.get('kind')}/{job.get('source')}) → {model}", flush=True)
+    ctx = job.get("context") or {}
+    history = chat_history(ctx.get("chat_id"), jid) if ctx.get("chat_id") else []
+    if ctx:
+        prompt = f"{prompt}\n\n[context]\n{json.dumps(ctx)[:4000]}"
+    print(f"  ▶ job {jid[:8]} ({job.get('kind')}/{job.get('source')}) → {model}{f' · +{len(history)//2} prior turns' if history else ''}", flush=True)
     try:
-        text, usage, steps = run_agentic(prompt, model)
+        text, usage, steps = run_agentic(prompt, model, history)
         complete(jid, text, usage, model)
         print(f"  ✓ job {jid[:8]} done ({steps} tool-steps, {(usage or {}).get('output_tokens','?')} out tok): {text[:90]!r}", flush=True)
         return True
