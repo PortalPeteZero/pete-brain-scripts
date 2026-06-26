@@ -66,7 +66,8 @@ def build(drive, folders, files):
         par = (f.get("parents") or [None])[0]
         pp = path(par)
         rows.append({"drive_file_id": f["id"], "name": f["name"], "path": (pp + "/" + f["name"]) if pp else f["name"], "drive": drive, "entity": drive, "mime": f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": False, "parent_id": par})
-    return rows
+    # cold-backup folders are hidden from the file index (Pete, 2026-06-26)
+    return [r for r in rows if "_backups" not in (r["path"] or "").split("/")]
 
 def scan_shared(name, did):
     common = {"corpora": "drive", "driveId": did, "includeItemsFromAllDrives": "true", "supportsAllDrives": "true", "pageSize": 1000}

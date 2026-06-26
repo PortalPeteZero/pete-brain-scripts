@@ -162,7 +162,9 @@ def process_drive(drive, did):
             fmap[cur] = got; cur = got[1]; guard += 1
         isf = f.get("mimeType") == FOLDER
         pp = path_of(fmap, par)
-        upserts.append({"drive_file_id": fid, "name": f["name"], "path": (pp + "/" + f["name"]) if pp else f["name"], "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par})
+        fp = (pp + "/" + f["name"]) if pp else f["name"]
+        if "_backups" in fp.split("/"): continue   # cold-backup folders are hidden from the file index (Pete, 2026-06-26)
+        upserts.append({"drive_file_id": fid, "name": f["name"], "path": fp, "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par})
     # de-dup: a file both changed+removed in window -> delete wins
     delset = set(deletes)
     upserts = [u for u in upserts if u["drive_file_id"] not in delset]
