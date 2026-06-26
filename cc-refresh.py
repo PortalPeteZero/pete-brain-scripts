@@ -4,7 +4,7 @@ Part H), the CC's derived/snapshot tables (automations registry · data-map · P
 hand-run. This runs all of them in sequence so "keep the CC current" is one command. At Part H this is
 the job Railway schedules.
 
-Runs: cc-automations-sync.py · cc-data-map-sync.py · cc-tasks-seed-from-asana.py · cc-knowledge-embed-backfill.py
+Runs: cc-automations-sync.py · cc-data-map-sync.py · cc-knowledge-embed-backfill.py
 Usage: python3 cc-refresh.py [--dry]
 """
 import subprocess, sys, os
@@ -14,7 +14,6 @@ STEPS = [
     ("cron registry → public.crons (+ timeline)", "cc-cron-sync.py"),
     ("automations registry → public.processes", "cc-automations-sync.py"),
     ("data-map → public.data_map", "cc-data-map-sync.py"),
-    ("Pete's tasks ← Asana → public.tasks", "cc-tasks-seed-from-asana.py"),
     ("knowledge sync: ingest changed docs + embed (keeps search current)", "cc-knowledge-sync.py"),
 ]
 print(f"cc-refresh — {len(STEPS)} steps{' (dry)' if DRY else ''}\n")
