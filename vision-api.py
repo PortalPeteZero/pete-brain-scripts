@@ -71,8 +71,11 @@ import urllib.parse
 import urllib.error
 import subprocess
 
-KEY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "..", "secrets", "google-seo-service-account.json")
+KEY_PATH = (
+    os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
+    if os.environ.get("VAULT")                       # $VAULT-aware (post-cutover /tmp/pbs flat layout; matches drive-api.py)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+)
 VISION_SCOPE = "https://www.googleapis.com/auth/cloud-vision"
 VISION_BASE = "https://vision.googleapis.com/v1/images:annotate"
 
