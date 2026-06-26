@@ -67,7 +67,15 @@ def main():
         return 2
 
     print(f"cc-deploy: READY (sha {sha}) — regenerating cc-map…")
-    rc = subprocess.call([sys.executable, os.path.join(VAULT, "Library/processes/scripts/cc-map.py")])
+    # cc-map.py lives at the repo root in the current flat /tmp/pbs layout; fall back to the old nested
+    # path so this keeps working whichever layout the tools are checked out in.
+    cc_map = os.path.join(VAULT, "cc-map.py")
+    if not os.path.exists(cc_map):
+        cc_map = os.path.join(VAULT, "Library/processes/scripts/cc-map.py")
+    if not os.path.exists(cc_map):
+        print(f"cc-deploy: cc-map.py not found (looked in {VAULT} and Library/processes/scripts) — deploy is READY, map NOT regenerated", file=sys.stderr)
+        return 1
+    rc = subprocess.call([sys.executable, cc_map])
     return 0 if rc == 0 else 1
 
 
