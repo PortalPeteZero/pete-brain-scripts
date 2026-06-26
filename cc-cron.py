@@ -175,7 +175,13 @@ def get_cron(key):
     return rows[0] if rows else None
 
 def write_cron(row):
+    """Upsert a FULL row (deploy) — must include the NOT-NULL columns (key, title, host)."""
     sb("POST", "crons?on_conflict=key", [row], prefer="resolution=merge-duplicates,return=minimal")
+
+def update_cron(key, patch):
+    """PATCH an EXISTING row — for partial updates (status/pause/resume/retire/set-schedule) so we don't
+    trip the NOT-NULL columns the way an upsert's implicit INSERT would."""
+    sb("PATCH", f"crons?key=eq.{key}", patch, prefer="return=minimal")
 
 def log_event(cron_key, kind, detail=""):
     try: sb("POST", "cron_events", [{"cron_key": cron_key, "kind": kind, "detail": detail}], prefer="return=minimal")
@@ -272,7 +278,7 @@ def cmd_set_schedule(a):
                 lines[i] = f"# schedule: {local}"; break
         p.write_text("\n".join(lines) + "\n")
         print(f"  CRON-META schedule line rewritten in {script} — commit+push so it persists")
-    write_cron({"key": key, "schedule": utc, "schedule_local": local, "updated_at": now_iso()})
+    update_cron(key, {"schedule": utc, "schedule_local": local, "updated_at": now_iso()})
     log_event(key, "schedule-changed", f"{row.get('schedule_local') or '?'} → {local} (UTC {utc})")
     print(f"✓ {key}: {local} (Atlantic/Canary) → Railway UTC '{utc}' + public.crons updated")
 
@@ -281,7 +287,7 @@ def cmd_pause(a):
     sid = row.get("host_ref") or find_service(a.key)
     if not sid: raise SystemExit(f"no Railway service for {a.key}")
     set_instance(sid, {"cronSchedule": NEVER_FIRE})
-    write_cron({"key": a.key, "enabled": False, "status": "frozen", "updated_at": now_iso()})
+    update_cron(a.key, {"enabled": False, "status": "frozen", "updated_at": now_iso()})
     log_event(a.key, "disabled", "paused (never-fire schedule)")
     print(f"✓ {a.key} PAUSED — never-fire schedule set, enabled=false (resume re-arms from schedule_local)")
 
@@ -293,14 +299,14 @@ def cmd_resume(a):
     sid = row.get("host_ref") or find_service(a.key)
     utc, off, cross = local_to_utc(local, row.get("timezone") or "Atlantic/Canary")
     set_instance(sid, {"cronSchedule": utc})
-    write_cron({"key": a.key, "schedule": utc, "enabled": True, "status": "live", "updated_at": now_iso()})
+    update_cron(a.key, {"schedule": utc, "enabled": True, "status": "live", "updated_at": now_iso()})
     log_event(a.key, "enabled", f"resumed → {local} (UTC {utc})")
     print(f"✓ {a.key} RESUMED — {local} → UTC '{utc}', enabled=true")
 
 def cmd_retire(a):
     row = get_cron(a.key) or {}
     sid = row.get("host_ref") or find_service(a.key)
-    write_cron({"key": a.key, "status": "binned", "enabled": False, "migration_status": "binned", "updated_at": now_iso()})
+    update_cron(a.key, {"status": "binned", "enabled": False, "migration_status": "binned", "updated_at": now_iso()})
     if sid:
         try: service_delete(sid); print(f"  ✓ Railway service {sid[:8]} deleted")
         except SystemExit as ex: print(f"  ⚠ service delete failed (binned still applied): {str(ex)[:120]}")
@@ -325,7 +331,7 @@ def cmd_status(a):
             rows = sb("GET", f"{tbl}?select={col}&order={col}.desc&limit=1")
             if rows and rows[0].get(col):
                 patch["last_run_at"] = rows[0][col]; patch.setdefault("last_status", "SUCCESS"); patch["status"] = "ok"
-        write_cron(patch)
+        update_cron(key, {k: v for k, v in patch.items() if k != "key"})
         print(f"  {key:30} deploy={deploy_status(sid) if sid else '-':10} last_run={patch.get('last_run_at','-')}")
     print(f"✓ status refreshed for {len(keys)} cron(s)")
 

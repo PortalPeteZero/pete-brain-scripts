@@ -59,7 +59,7 @@ for r in rows:
     if not sid:
         print(f"  ! {r['key']}: no Railway service"); continue
     cc.set_instance(sid, {"cronSchedule": utc})
-    cc.write_cron({"key": r["key"], "schedule": utc, "updated_at": cc.now_iso()})
+    cc.update_cron(r["key"], {"schedule": utc, "updated_at": cc.now_iso()})
     cc.log_event(r["key"], "schedule-changed", f"DST re-derive (UTC+{last}→UTC+{cur}) → {utc} (local {local})")
     print(f"  ✓ {r['key']}: {r.get('schedule')} → {utc}  (local {local})")
     changed += 1
