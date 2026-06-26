@@ -17,8 +17,9 @@ whole reason Garmin moved to Railway. No Drive/vault/dashboard writes.
 # reads: Garmin Connect API (stored OAuth tokens, GARMIN_TOKENS_JSON); reuses garmin-daily-pull.pull_day
 # writes: CC public.garmin_daily (one row per date, idempotent on date) incl. the snapshot column (the live Health-dashboard feed)
 # entity: canary-detect
-# schedule: 0 7,22 * * *
+# schedule: 0 0,6,8,16,21 * * *
 # timezone: Atlantic/Canary
+# note: a list-hour schedule bypasses tz-conversion, so this is authored in UTC — 0,6,8,16,21 UTC = 1am / 7am / 9am / 5pm / 10pm Atlantic/Canary (summer). 5x/day, set by Pete 26 Jun 2026.
 # CRON-META-END
 """
 import importlib.util
