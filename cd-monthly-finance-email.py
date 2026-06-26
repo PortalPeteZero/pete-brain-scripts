@@ -15,6 +15,16 @@ Usage:
 NOT scheduled (yet). Manual run when needed; if Pete wants this scheduled at
 month-end he can ask separately.
 """
+# CRON-META
+# what: CD monthly finance turnover report to Pete, Dave, Nicola.
+# why: Monthly CD turnover (after a week's late-invoice grace) — the fuller report with top customers + payment state.
+# reads: Odoo finance
+# writes: Monthly markdown report + HTML email
+# entity: canary-detect
+# report: cd-finance
+# schedule: 0 19 10 * *
+# timezone: Atlantic/Canary
+# CRON-META-END
 from __future__ import annotations
 
 import argparse

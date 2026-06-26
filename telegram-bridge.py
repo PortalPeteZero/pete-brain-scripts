@@ -23,6 +23,14 @@ Creds (env-first, like the rest of the cloud fleet):
 Run: python telegram-bridge.py   (Railway startCommand; restartPolicyType=ON_FAILURE; no schedule)
 Pure stdlib — no pip deps (matches cc-agent).
 """
+# CRON-META
+# what: Persistent bridge relaying @pete_command_centre_bot messages to/from the 24/7 cc-agent.
+# why: Gives Pete the Telegram (phone) chat surface into the Command Centre.
+# reads: Telegram Bot API + cc-agent
+# writes: Telegram replies (relays to/from cc-agent)
+# host: service
+# timezone: Atlantic/Canary
+# CRON-META-END
 import os, sys, json, time, urllib.request, urllib.error, urllib.parse
 from pathlib import Path
 

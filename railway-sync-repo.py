@@ -12,6 +12,12 @@ Env:   GITHUB_PAT  (or reads Library/processes/secrets/github-pat)
 
 Each Railway service then runs:  python railway-bootstrap.py   with env CRON_SCRIPT=<its script>.
 """
+
+import sys as _sys
+if __name__ == "__main__":
+    _sys.exit("DEPRECATED → crons are managed by cc-cron.py (list/deploy/set-schedule/pause/resume/retire/status). "
+              "See cron-registry.md. This script is retired — do not use it.")
+
 import os, sys, shutil, hashlib, subprocess, pathlib, json, urllib.request
 
 HERE = pathlib.Path(__file__).parent.resolve()       # Library/processes/scripts (canonical helpers)

@@ -16,6 +16,16 @@ Usage:
                                                    # leftovers + full re-create
   python3 cd-tom-jobs-calendar-sync.py --dry-run   # plan only, no Cal writes
 """
+# CRON-META
+# what: Odoo → Tom Google Calendar sync (evening). Appends summary to daily note.
+# why: Evening half of the Odoo→Tom calendar mirror; this run also writes the daily-note summary.
+# reads: Odoo (CRM jobs: calendar.event + crm.lead)
+# writes: Tom's Google Calendar events · daily-note block
+# entity: canary-detect
+# schedule: 0 19 * * *
+# timezone: Atlantic/Canary
+# note: multi-service: also deployed as the -noon key (30 13 local / 30 12 UTC)
+# CRON-META-END
 
 from __future__ import annotations
 

@@ -19,6 +19,12 @@ Usage:
   railway-deploy.py <cron-key> [--script NAME.py] [--also helper.py ...]
                     [--secret NAME=@secretfile | NAME=$ENVVAR ...] [--ff] [--check-sql "SQL"] [--dry]
 """
+
+import sys as _sys
+if __name__ == "__main__":
+    _sys.exit("DEPRECATED → crons are managed by cc-cron.py (list/deploy/set-schedule/pause/resume/retire/status). "
+              "See cron-registry.md. This script is retired — do not use it.")
+
 import argparse, json, os, subprocess, sys, time, urllib.request, urllib.error
 from pathlib import Path
 from datetime import datetime, timezone, timedelta

@@ -25,6 +25,15 @@ Env:
 
 Created: 2026-05-12. See [[Library/processes/email-workflow#xero-remittance-auto-forward]].
 """
+# CRON-META
+# what: Auto-forward remittance advice emails to Xero with PDF attachment.
+# why: Pushes remittance data into Xero on workdays so finance reconciliation stays current.
+# reads: Gmail (remittance)
+# writes: Xero entries
+# entity: finance
+# schedule: 1 10 * * 1-5
+# timezone: Atlantic/Canary
+# CRON-META-END
 import importlib.util, base64, re, os, sys, tempfile, json
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText

@@ -20,6 +20,12 @@ Credentials (env-first so it runs UNCHANGED on Railway; falls back to the CC sec
   CC_SUPABASE_URL · CC_SUPABASE_SERVICE_KEY · RAILWAY_TOKEN
 Usage: python3 cc-cron-sync.py [--dry]
 """
+
+import sys as _sys
+if __name__ == "__main__":
+    _sys.exit("DEPRECATED → crons are managed by cc-cron.py (list/deploy/set-schedule/pause/resume/retire/status). "
+              "See cron-registry.md. This script is retired — do not use it.")
+
 import json, os, sys, subprocess, urllib.request, urllib.error, shutil, datetime, hashlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))

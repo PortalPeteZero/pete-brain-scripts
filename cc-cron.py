@@ -250,7 +250,7 @@ def cmd_deploy(a):
            "enabled": True, "status": "live", "migration_status": "railway-live", "updated_at": now_iso()}
     for mk, ek in META_FIELDS.items():
         if meta.get(mk): row[ek] = meta[mk]
-    if meta.get("title"): row["title"] = meta["title"]
+    row["title"] = meta.get("title") or key            # title is NOT NULL in public.crons
     write_cron(row)
     log_event(key, "created" if not existing else "deployed",
               f"railway {sched_local or 'service'}{' → '+utc if utc else ''}")

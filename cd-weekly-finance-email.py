@@ -21,6 +21,16 @@ Usage:
   python3 cd-weekly-finance-email.py --dry-run        # render, no send
   python3 cd-weekly-finance-email.py --week 2026-04-20  # specific reference week
 """
+# CRON-META
+# what: CD weekly finance turnover report to Pete, Dave, Nicola.
+# why: Pete + CD finance see weekly turnover from Odoo without anyone running a report.
+# reads: Odoo finance
+# writes: 2 markdown reports + HTML email
+# entity: canary-detect
+# report: cd-finance
+# schedule: 0 19 * * 2
+# timezone: Atlantic/Canary
+# CRON-META-END
 from __future__ import annotations
 
 import argparse

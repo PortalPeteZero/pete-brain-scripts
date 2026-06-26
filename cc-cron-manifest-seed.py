@@ -9,6 +9,12 @@ Plus the two crons not in `processes`: the live Railway data-map-cron + the kept
 After this runs once, crons-manifest.json is the DURABLE source — maintained by editing it, then `cc-cron-sync.py`.
 Usage: python3 cc-cron-manifest-seed.py   (writes ../crons-manifest.json; never overwrites if it already exists unless --force)
 """
+
+import sys as _sys
+if __name__ == "__main__":
+    _sys.exit("DEPRECATED → crons are managed by cc-cron.py (list/deploy/set-schedule/pause/resume/retire/status). "
+              "See cron-registry.md. This script is retired — do not use it.")
+
 import json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -18,6 +18,16 @@ Data sources:
 - GA4 Data API (property 354127076) via Library/processes/scripts/ga4-api.py
 - Gmail send via Library/processes/scripts/gmail-api.py
 """
+# CRON-META
+# what: Daily Sygma Google performance email to Pete (GSC + GA4 pulse)
+# why: Daily Google (Ads/GA4/GSC) pulse for Sygma so performance shifts surface fast.
+# reads: Google (GSC/GA4)
+# writes: Daily HTML email to Pete (gmail-api, ~07:00)
+# entity: sygma
+# report: sygma-reports
+# schedule: 0 8 * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
 
 import importlib.util
 import json

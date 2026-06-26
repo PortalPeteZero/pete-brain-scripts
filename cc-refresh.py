@@ -11,18 +11,18 @@ import subprocess, sys, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 DRY = "--dry" in sys.argv
 STEPS = [
-    ("cron registry → public.crons (+ timeline)", "cc-cron-sync.py"),
-    ("automations registry → public.processes", "cc-automations-sync.py"),
-    ("data-map → public.data_map", "cc-data-map-sync.py"),
-    ("knowledge sync: ingest changed docs + embed (keeps search current)", "cc-knowledge-sync.py"),
+    ("cron registry → public.crons live status (+ timeline)", "cc-cron.py", ["status"]),
+    ("automations registry → public.processes", "cc-automations-sync.py", []),
+    ("data-map → public.data_map", "cc-data-map-sync.py", []),
+    ("knowledge sync: ingest changed docs + embed (keeps search current)", "cc-knowledge-sync.py", []),
 ]
 print(f"cc-refresh — {len(STEPS)} steps{' (dry)' if DRY else ''}\n")
 fails = 0
-for label, script in STEPS:
+for label, script, extra in STEPS:
     path = os.path.join(HERE, script)
     if not os.path.exists(path):
         print(f"  ⚠ {label}: {script} not found — skipped"); continue
-    args = ["python3", path] + (["--dry"] if DRY and script not in ("cc-knowledge-embed-backfill.py", "cc-knowledge-sync.py") else [])
+    args = ["python3", path] + extra + (["--dry"] if DRY and script not in ("cc-cron.py", "cc-knowledge-embed-backfill.py", "cc-knowledge-sync.py") else [])
     print(f"▶ {label}")
     r = subprocess.run(args, capture_output=True, text=True)
     out = (r.stdout.strip().splitlines() or [""])[-1]

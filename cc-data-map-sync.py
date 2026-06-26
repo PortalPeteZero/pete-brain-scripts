@@ -8,6 +8,15 @@ running it regenerates the table. Keep it current when a data home changes.
 
 Usage:  python3 cc-data-map-sync.py [--dry]
 """
+# CRON-META
+# what: Refreshes the data-map (the 21 'where does X live' rows) in CC Supabase so Claude and the Ask page always know where every kind of Pete's data lives.
+# why: Keeps the data-map (where every kind of Pete's data lives) current in the CC so Claude and the Ask page always know the homes. First cron proven on Railway (22 Jun).
+# reads: the data-home definitions
+# writes: CC Supabase data_map (the 21 data-homes)
+# entity: command-centre
+# schedule: 0 5 * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
 import json, sys, os, urllib.request, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")  # Railway bootstrap sets VAULT=repo
