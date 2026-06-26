@@ -25,6 +25,7 @@ rows=[]
 if not os.path.isdir(MEM): print("memory dir not found:",MEM); raise SystemExit
 for f in sorted(os.listdir(MEM)):
     if not f.endswith(".md"): continue
+    if f == "MEMORY.md": continue   # the index, not a memory
     text=open(os.path.join(MEM,f),encoding="utf-8",errors="replace").read()
     fm,body=fm_parse(text); stem=os.path.splitext(f)[0]
     links=sorted(set(m.split("|")[0].split("#")[0].strip() for m in LINK.findall(body) if m.strip()))
