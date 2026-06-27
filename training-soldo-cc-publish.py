@@ -114,7 +114,7 @@ def publish_soldo(cc):
 def sync_eval_to_cc():
     """Mirror the eval pipeline's data/ into the Command Centre repo (data/eval/) so the
     NATIVE dashboard at /m/sygma-training/evaluations refreshes. Same git pattern as
-    garmin-daily-pull. Idempotent — only commits + pushes when the weekly eval pipeline
+    Rebase-first git push pattern. Idempotent — only commits + pushes when the weekly eval pipeline
     has actually changed the data (daily no-op otherwise)."""
     import shutil, subprocess, time
     src = Path(HOME) / "code/sygma-training-eval-dashboard/data"

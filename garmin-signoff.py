@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """garmin-signoff.py — set Pete's confirmed sleep sign-off for a date. CC-only.
 
-Replaces the old `garmin-daily-pull.py --set-signoff`. Writes garmin_daily.snapshot.signoff.confirmed
+Writes garmin_daily.snapshot.signoff.confirmed
 in the Command Centre — Mac/Drive-independent. The brain calls this when Pete corrects the morning
 sign-off estimate; garmin-daily-cc._preserve_signoff keeps it across cron re-runs.
 

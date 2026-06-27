@@ -1,35 +1,18 @@
 #!/usr/bin/env python3
-"""Garmin daily pull — write one md file per day under Personal/health/garmin/.
+"""garmin-pull-lib.py — pure, cloud-native Garmin pull library.
 
-Pulls everything useful from Garmin Connect for a given date and writes a
-structured md file with rich frontmatter (queryable by Dataview) plus a human
-narrative body. Built 2026-05-24 per Pete's request: "do a daily cron at 8am
-to pull this info into the vault, it should also pull any other relevant
-garmin info, build up a picture of what i am doing and good vault context."
-
-Cron: 07:00 Atlantic/Canary, pulls yesterday + today's data.
-
-Usage:
-  python3 garmin-pull-lib.py                       # pull yesterday, write file
-  python3 garmin-daily-pull.py 2026-05-22            # pull a specific date
-  python3 garmin-daily-pull.py --backfill 90         # backfill last 90 days
-  python3 garmin-daily-pull.py --backfill 30 --dry   # dry-run for backfill
-  python3 garmin-daily-pull.py --range 2026-05-01 2026-05-23  # date range
-
-Output:
-  /tmp/pbs/Personal/health/garmin/YYYY-MM-DD.md
-
-Idempotency: re-running for an existing date overwrites the file. Safe.
+Imported by garmin-daily-cc.py (the Railway cron). Exposes the functions that fetch a day's data from
+Garmin Connect and shape it for the CC: `pull_day()`, `build_json_snapshot()`, `_upsert_garmin_daily()`,
+`_persist_garmin_token()` (+ their Garmin-data helpers). NO Drive, NO local files, NO Mac paths, NO
+standalone entry point — the cron is the only caller and it writes ONLY the CC `garmin_daily` table
+(metrics). The journal/feedback/weekly/zones live in their own CC `health_*` tables, authored in the app.
 
 Failure modes:
-  * Garmin token expired -> raise, log to daily note, do NOT retry. Pete
-    re-bootstraps via the bootstrap script.
-  * Per-endpoint exception -> log, write what we have, skip the section.
-  * No data for a date (e.g. watch wasn't worn) -> still writes the file but
-    every field is null. Surfaces as "no data" rather than missing file.
+  * Garmin token expired -> raise; Pete re-bootstraps via the bootstrap script.
+  * Per-endpoint exception -> log, return what we have, skip the section.
+  * No data for a date (watch not worn) -> the row's metrics are null ("no data"), not a missing row.
 """
 
-import argparse
 import importlib.util
 import json
 import os

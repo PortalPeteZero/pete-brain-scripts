@@ -4,7 +4,6 @@
 Pulls yesterday + today from Garmin and upserts the CC `garmin_daily` table. It imports the pure,
 cloud-native **garmin-pull-lib.py** (pull_day / build_json_snapshot / _upsert_garmin_daily /
 _persist_garmin_token — no Drive, no local files, no main) so there is no duplication and no drift.
-The old local `garmin-daily-pull.py` was deleted 27 Jun 2026.
 
 Runs on Railway (always-on), so the CC's Garmin data stays current even when the Mac is asleep — the
 whole reason Garmin moved to Railway. ONE JOB: Garmin → CC. No Drive/vault/dashboard writes.
