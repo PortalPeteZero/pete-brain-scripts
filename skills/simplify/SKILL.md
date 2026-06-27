@@ -13,8 +13,8 @@ description: >
 
 # Simplify — Multi-Agent Code Review & Fix
 
-> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> The code-review engine (clone to `/tmp`, review, fix, push) is unchanged. But anywhere a step reads `Properties/{name}/README.md` or writes a session plan / review findings to `Projects/`, `Properties/{name}/data/`, or `Daily/`, do the **cloud equivalent**: property/repo/stack → resolve from the **CC Properties module** / `drive_files`; review findings + session plan → **`vault_notes`** (ingest a `.md`); session log → CC `daily_log`. (The "run vault-writer" offer routes to the cloud now.) Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+> [!important] Where things go
+> Property repo / tech stack / account → the **CC Properties module** (`drive_files` for files). Review findings + session plan → **`vault_notes`** (ingest a `.md`). Session log → CC `daily_log`. Tools run from `/tmp/pbs`.
 
 Three parallel review agents (reuse opportunities, quality issues, efficiency improvements) review code, aggregate findings, then apply fixes. Style rules for outbound communications live in [[voice-principles]] only — commit messages, PR descriptions, README writes, and audit reports are internal artefacts and not subject to those rules.
 
@@ -31,17 +31,17 @@ The review process has four phases:
 1. **Connect** - Find the code, clone the repo if needed, understand the tech stack
 2. **Parallel Review** - Three agents run simultaneously, each examining the code from a different angle
 3. **Report** - Findings are aggregated into a single clear report, grouped by severity
-4. **Fix & Clean Up** - Approved fixes are applied, findings are saved to the vault
+4. **Fix & Clean Up** - Approved fixes are applied, findings are saved to the CC knowledge base (`vault_notes`)
 
 ## Phase 1: Connect to the Code
 
 ### If working on one of Pete's properties
 
-Read the property README from `Properties/{project-name}/README.md` to get the repo, tech stack, and account. Then read `Library/processes/github-configuration.md` for the PAT.
+Get the repo, tech stack, and account from the **CC Properties module** (`drive_files` for any files). The GitHub PAT: [[github-configuration]].
 
 **Pre-step: Write session plan**
 
-Before starting the review, write a session plan to `Projects/{project-name}/files/session-plan-YYYY-MM-DD.md` with goal, steps, and `status: in-progress`. Update it as you work through each phase.
+Before starting the review, write a session plan to `vault_notes` (ingest a `.md`) with goal, steps, and `status: in-progress`. Update it as you work through each phase.
 
 Clone the repo:
 
@@ -225,15 +225,15 @@ Always confirm with Pete before pushing. Show a summary of changes first.
 
 Update the session plan after pushing with commit hash and verification results.
 
-### 4c. Save findings to the vault
+### 4c. Save findings
 
 Route the review results to the right places:
 
 | What | Where |
 |------|-------|
-| Full review report | `Properties/{project-name}/data/[date]-code-review.md` |
+| Full review report | `vault_notes` (ingest a `.md`) |
 | Session progress | CC `daily_log` (`cron_name='session'`) |
-| Commit details | Note in property README if significant changes were made |
+| Commit details | Note on the property's CC card if significant changes were made |
 
 If the review uncovered something that should be tracked as a task (e.g. "needs a bigger refactor later"), create a task in the CC task store (`public.tasks`). Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`: `INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes) VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4>', NULL, '<entity>', '<project_slug NAME>', 'todo', 'claude', '<notes>');`
 

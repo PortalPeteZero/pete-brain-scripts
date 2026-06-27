@@ -115,15 +115,14 @@ Specific known overrides:
 
 ### When Pete asks for the standard YTD report
 
-1. Read `Businesses/canary-detect/finance/cost-base-reports/baseline-config.md` to confirm locked items.
+1. Confirm the locked baseline items (the skill's `scripts/baseline-config.md`).
 2. **Ask Pete**: "Any cash overtime to add for these months beyond the €800/mo default? Any new manual lines (vans started? Sygma rental resumed billing? new cash workers)?" If silent, use the current defaults baked into `build_data.py`.
-3. Run (paths resolve from `$VAULT_ROOT`, default `/Users/peterashcroft/Second Brain` on Pete's Mac; export `VAULT_ROOT=/sessions/{session-name}/mnt/Second Brain` when running in a Cowork sandbox):
+3. Run the skill's bundled generators (in this skill's `scripts/` directory):
    ```bash
-   cd "$VAULT_ROOT/Library/processes/scripts"
-   python3 "$VAULT_ROOT/Library/skills/cd-cost-report/scripts/build_data.py"
-   python3 "$VAULT_ROOT/Library/skills/cd-cost-report/scripts/render_html.py"
+   python3 scripts/build_data.py
+   python3 scripts/render_html.py
    ```
-4. Output saved to `Businesses/canary-detect/finance/cost-base-reports/2026-cost-base-YTD.html`.
+4. Output saved to `/tmp/2026-cost-base-YTD.html`.
 5. **Publish to the Command Centre** (the live mirror since 11 Jun 2026 — the old cd-cost-base.vercel.app project is DELETED; do not recreate it):
    ```bash
    python3 - <<'PY'
@@ -286,4 +285,4 @@ Do NOT:
 
 ## Related lessons
 
-- [[Library/lessons/2026-05-29-soldo-audit-ocr-every-receipt-no-exceptions]] — sister Sygma trainer-cost audit (monthly-soldo-audit): OCR every receipt, no exceptions. Same finance-discipline pattern.
+- [[2026-05-29-soldo-audit-ocr-every-receipt-no-exceptions]] — sister Sygma trainer-cost audit (monthly-soldo-audit): OCR every receipt, no exceptions. Same finance-discipline pattern.

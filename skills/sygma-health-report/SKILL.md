@@ -5,7 +5,7 @@ description: |
 
   Use this skill whenever Pete says: "run the sygma report", "sygma health report", "sygma website report", "how's the sygma website looking", "how's sygma doing", "sygma seo report", "pull all the data for sygma", "is it moving", "sygma health check", or any variation thereof.
 
-  Output: a dated Markdown report at Properties/Sygma Solutions Website/data/health-report-{date}.md plus an inline narrated summary. Read-only analysis — no code changes, no agents (website carve-out).
+  Output: a dated report ingested to the CC `vault_notes` plus an inline narrated summary. Read-only analysis — no code changes, no agents (website carve-out).
 version: 1.1
 trigger_phrases:
   - "run the sygma report"
@@ -41,7 +41,7 @@ Default deep-dive pages (the "recently worked on" cluster): **EUSR CAT1, Cat & G
 ## Guardrails (read before running)
 
 - **Website carve-out.** This is **read-only analysis**. Do NOT make code changes, do NOT spawn agents, do NOT touch the repo. If the report surfaces a fix, surface it to Pete and let him decide — sequential main-session only.
-- **`/knowledge-hub/hsg47-explained` is a no-work page.** State its data factually if it appears (it often intercepts "hsg47 training"); never propose optimising it. Decision locked: [[Library/decisions/2026-05-07-hsg47-explained-no-work]].
+- **`/knowledge-hub/hsg47-explained` is a no-work page.** State its data factually if it appears (it often intercepts "hsg47 training"); never propose optimising it. Decision locked: [[2026-05-07-hsg47-explained-no-work]].
 - **No backlink suggestions** for Sygma (Appear Online owns off-site). See `feedback_no_backlinks`.
 - **GSC position/CTR are 28-day blended averages.** Always read them alongside the live Ahrefs head-term position before concluding a page is "stuck".
 
@@ -106,12 +106,12 @@ The report is a **snapshot** — each run is a new dated file, so trajectory acr
 
 ## Files this skill owns
 
-- `Library/skills/sygma-health-report/SKILL.md` — this file
-- `Library/skills/sygma-health-report/scripts/build_report.py` — the generator (four pulls + markdown build)
-- Output: `Properties/Sygma Solutions Website/data/health-report-{date}.md` (one per run)
+- `skills/sygma-health-report/SKILL.md` — this file
+- `skills/sygma-health-report/scripts/build_report.py` — the generator (four pulls + markdown build)
+- Output: a dated report in `vault_notes` (one per run)
 
 ## Related
 
-- Property card: [[Properties/Sygma Solutions Website/README]] (IDs, latest production HEAD)
+- Property: the CC **Properties** module — Sygma Solutions Website card (IDs, latest production HEAD)
 - Config: [[ahrefs-api-configuration]] · [[google-api-credentials]] · [[google-ads-api-configuration]]
 - Sister skills: `ahrefs-audit` (single-page keyword/Surfer optimisation), `audit-review` (fortnightly position check)
