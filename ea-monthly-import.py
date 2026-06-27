@@ -32,6 +32,21 @@ MONTHS = {m: i + 1 for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
 BANK_ACCOUNTS = {"bank transfer", "card payment", "credit"}  # non-cash -> reconcile vs statement
 
+# GA category names the CC schema doesn't carry verbatim -> map to the CC category.
+CAT_ALIAS = {"income - online": "online sales", "online sales for april": "online sales"}
+# Keyword fallback for rows Michaela left with a blank category (description -> CC category).
+# Ordered: first match wins, so put specifics before generics (e.g. 'storeroom rent' -> Rent
+# before 'promoplan' -> Utilities). Categorisation never affects month TOTALS (those are
+# income/expense-column driven); it only shapes the FIN flag + the breakdown views.
+KEYWORDS = [
+    ("wage", "Wages"), ("rent", "Rent"), ("accountant", "Accountant Fees"),
+    ("petrol", "Fuel"), ("fuel", "Fuel"), ("van", "Vehicle Expense"),
+    ("fragrance", "Shop Supplies"), ("supplies", "Shop Supplies"),
+    ("tax", "Taxes & Government"), ("coins", "Bank Fees"), ("bank", "Bank Fees"),
+    ("utilities", "Utilities"), ("promoplan", "Utilities"), ("electric", "Utilities"), ("water", "Utilities"),
+    ("online", "Online Sales"),
+]
+
 
 def run_sql(sql):
     """Run SQL via the cc-sql helper (Management API). Returns parsed JSON rows."""
@@ -157,23 +172,49 @@ def main():
 
         # A row WITH money but a missing/typo'd date (e.g. "09..03.26") must NOT be dropped — that
         # silently loses cash and breaks the reconcile. Default it to the month start and flag it.
-        date = parse_date(cell(r, ci["date"]), year)
+        raw_date = cell(r, ci["date"])
+        date = parse_date(raw_date, year)
+        # The tab IS the month of record. A row with no date, or a date in a different month/year
+        # (a typo like "06.06.26" or a 2025 year in the 2026 tab), is coerced to this tab's month —
+        # keeping the day — so CC's date-grouping matches Michaela's tab-grouping. Flagged for review.
         if not date:
             date = f"{year:04d}-{month:02d}-01"
-            date_fixed.append((desc, income, expense, cell(r, ci["date"])))
+            date_fixed.append((desc, income, expense, raw_date))
+        elif (int(date[:4]), int(date[5:7])) != (year, month):
+            dd = date[8:10]
+            try:
+                __import__("datetime").date(year, month, int(dd)); date = f"{year:04d}-{month:02d}-{dd}"
+            except ValueError:
+                date = f"{year:04d}-{month:02d}-01"
+            date_fixed.append((desc, income, expense, raw_date))
 
-        cat = by_name.get((catname or "").lower())
-        if not cat and desc:  # auto-categorise from memory
+        # 1. sheet category (with name aliases for GA names the CC lacks)
+        cn = (catname or "").lower().strip()
+        cat = by_name.get(cn) or by_name.get(CAT_ALIAS.get(cn, ""))
+        # 2. learned memory (exact description)
+        if not cat and desc:
             mm = mem.get(desc.lower())
             if mm:
                 cat = next((c for c in cats if c["id"] == mm["categoryId"]), None)
+        # 3. keyword fallback on the description (handles the blank-category rows)
+        if not cat and desc:
+            dl = desc.lower()
+            for kw, target in KEYWORDS:
+                if kw in dl:
+                    cat = by_name.get(target.lower());
+                    if cat: break
+        # 4. last resort: Misc (keeps totals exact; flagged for review). Income with no match -> Online Sales.
+        defaulted = False
+        if not cat:
+            fallback = "online sales" if (income and not expense) else "misc"
+            cat = by_name.get(fallback); defaulted = True
         rec = {"date": date, "accountName": acct, "description": desc,
                "categoryId": cat["id"] if cat else None,
                "categoryName": cat["name"] if cat else catname,
                "income": income, "expense": expense,
                "isFin": bool(cat["isFin"]) if cat else False}
         parsed.append(rec)
-        if not cat:
+        if defaulted:
             unknown.append(rec)
 
     # --- summary --- (income counts regardless of isFin; FIN governs the paid-out/expense side only)
@@ -194,12 +235,13 @@ def main():
         for desc, inc, exp, raw in date_fixed:
             print(f"     {str(desc)[:40]:<40} in={inc} exp={exp}  raw-date={raw!r}")
     if unknown:
-        print(f"\n  ⚠ {len(unknown)} rows need a category (review before publish):")
+        print(f"\n  ℹ {len(unknown)} row(s) had no clear category → auto-assigned (Misc / Online Sales). "
+              f"Totals unaffected; review the category if the breakdown matters:")
         for r in unknown[:25]:
             print(f"     {r['date']}  {r['accountName']:<14} {str(r['description'])[:40]:<40} "
-                  f"in={r['income']} exp={r['expense']}  raw-cat={r['categoryName']!r}")
+                  f"in={r['income']} exp={r['expense']}  ->{r['categoryName']}")
     else:
-        print("\n  ✓ all rows categorised.")
+        print("\n  ✓ all rows categorised from the sheet/memory.")
 
     # --- reconcile vs Sabadell (report only) ---
     if args.sabadell:
@@ -218,12 +260,11 @@ def main():
         print(f"\n  NOTE: {year}-{month:02d} already has {n_existing} transactions in ea.")
 
     if not args.publish:
-        print("\n  DRY-RUN — nothing written. Re-run with --publish to commit "
-              "(resolve any ⚠ first).\n")
+        print("\n  DRY-RUN — nothing written. Re-run with --publish to commit.\n")
         return
 
-    if unknown:
-        sys.exit("\nRefusing to publish: resolve the uncategorised rows first.")
+    # Unknown rows are auto-assigned (Misc/Online Sales) so totals stay exact — they no longer
+    # block publish. The existing-month guard still protects already-loaded months (e.g. Feb).
     if n_existing and not args.replace:
         sys.exit(f"\nRefusing to publish: {year}-{month:02d} already has rows. Use --replace to overwrite.")
 
