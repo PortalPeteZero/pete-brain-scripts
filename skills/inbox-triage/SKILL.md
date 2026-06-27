@@ -195,7 +195,7 @@ When matched, **don't classify it as a generic `reply`/`task`** — route it to 
   `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <touch.json> --apply` (activity kind `reply`, stage move if it progressed; te-log closes the prior chase and sets the next).
 - In the ops table mark these `Ask = reply` but note **"→ Enquiry Engine"** so they're handled by the loop, not a generic Replies-tray label. (A booking forward — "Sent to Sue" — moves the contact to **Customer/won**.)
 
-This is the cross-skill hook the cockpit relies on: triage recognises the reply, the Engine owns the lifecycle + learning. Detection mirrors the daily `enquiries` sweep.
+This is the cross-skill hook the cockpit relies on: triage recognises the reply, the Engine owns the lifecycle + learning. Detection mirrors the manual `enquiries` sweep (Pete-triggered — there is NO cron).
 
 ### Step 5: Per-row Action verb selection (constrained by `Ask`)
 

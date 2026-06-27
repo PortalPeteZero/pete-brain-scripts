@@ -61,7 +61,7 @@ first; it ranks top when you semantic-search any enquiry. The lifecycle store is
 `vault_notes` tagged `training-enquiries`; chases land in `public.tasks`. Cockpit: **/m/enquiry-engine**.
 
 - **`enquiry`** — handle one new inbound enquiry: classify → RETRIEVE precedents → draft (Mode B) → capture.
-- **`enquiries`** — the sweep: reconcile replies on what we've sent, surface chases due, run the learn step.
+- **`enquiries`** — the **manual** sweep (Pete-triggered; NO cron): reconcile replies on what we've sent, surface chases due, run the learn step.
 - **`reply to enquiry in {course/company}`** — run the loop on ONE enquiry. **Never draft cold** — first
   `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py semantic "<course + scenario + people + location>" --limit 6`,
   read the closest 2–3 + the banked rules, then draft bespoke (NO fixed templates).
