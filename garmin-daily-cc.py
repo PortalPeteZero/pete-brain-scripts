@@ -37,6 +37,16 @@ _spec = importlib.util.spec_from_file_location("garmin_daily_pull", str(_p))
 gdp = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gdp)
 
+# Reuse the canonical Drive helper for the headless journal fetch (below). The full pull reads the PF
+# journal from a local Google Drive *mount* (DRIVE/My Drive/Passion Fit/journal) that exists only on
+# Pete's Mac — so on Railway the journal was always null and never reached the Health dashboard. We
+# read it straight from Drive via the API instead. Importing only defines functions (argparse main is
+# __main__-gated), no side effects.
+_dp = Path(__file__).resolve().parent / "drive-api.py"
+_dspec = importlib.util.spec_from_file_location("drive_api", str(_dp))
+_drive = importlib.util.module_from_spec(_dspec)
+_dspec.loader.exec_module(_drive)
+
 TZ = ZoneInfo("Atlantic/Canary")
 
 
@@ -65,6 +75,33 @@ def _preserve_local_fields(date_iso, snap):
     return snap
 
 
+def _fetch_journal_from_drive(date_iso):
+    """Headless journal fetch. The full pull reads the PF journal from a local Drive mount that only
+    exists on Pete's Mac, so on Railway the journal is always null and never reaches the dashboard.
+    Here we find the journal file in the CC `drive_files` index, download it from Drive via the API,
+    and return the same dict shape as gdp.load_journal_entry. Non-fatal: any error → None."""
+    import json as _j, urllib.request as _u, urllib.parse as _up, os as _o
+    try:
+        url = _o.environ.get("CC_SUPABASE_URL"); key = _o.environ.get("CC_SUPABASE_SERVICE_KEY")
+        if not (url and key):
+            kp = Path(_o.environ.get("VAULT", ".")) / "Library/processes/secrets/command-centre-supabase-keys.json"
+            kd = _j.loads(kp.read_text()); url, key = kd["url"], kd["service_role_key"]
+        ppath = f"Passion Fit/journal/{date_iso}.md"
+        q = (url.rstrip("/") + "/rest/v1/drive_files?select=drive_file_id&is_folder=eq.false&limit=1"
+             "&path=eq." + _up.quote(ppath))
+        rows = _j.loads(_u.urlopen(_u.Request(q, headers={"apikey": key, "Authorization": "Bearer " + key}), timeout=20).read())
+        if not rows:
+            return None
+        fid = rows[0]["drive_file_id"]
+        durl = f"https://www.googleapis.com/drive/v3/files/{fid}?alt=media&supportsAllDrives=true"
+        text = _u.urlopen(_u.Request(durl, headers={"Authorization": "Bearer " + _drive.get_token()}), timeout=30).read().decode("utf-8")
+        fm, body = gdp._parse_md_frontmatter(text)
+        return {"date": date_iso, "exists": True, "frontmatter": fm or {}, "body": body.strip()}
+    except Exception as e:
+        print(f"  (drive journal fetch skipped for {date_iso}: {e})", file=sys.stderr)
+        return None
+
+
 def main():
     g = gdp.garmin_mod.GarminAPI()
     gdp._persist_garmin_token(g)  # republish the live token to CC secrets each run so local boots never hit a stale copy
@@ -81,6 +118,13 @@ def main():
             # the dashboard needs and they all come from Garmin.
             snapshot = gdp.build_json_snapshot(day, g)
             snapshot = _preserve_local_fields(d, snapshot)
+            # Headless: the local Drive mount isn't on Railway, so pull the journal from Drive directly
+            # if neither the live snapshot nor a prior local pull supplied one. Keeps the dashboard's
+            # journal current Mac-independently (fixes "no journal showing").
+            if not snapshot.get("journal"):
+                j = _fetch_journal_from_drive(d)
+                if j:
+                    snapshot["journal"] = j
             gdp._upsert_garmin_daily(day, snapshot)
             has = (day.get("sleep") or {}).get("score") is not None or len(day.get("activities") or []) > 0
             print(f"garmin-daily-cc: {d} → garmin_daily upserted ({'data' if has else 'no-data'})")
