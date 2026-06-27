@@ -398,7 +398,7 @@ Read the appropriate template before generating the review.
 4. Business: Check OKR progress, department health
 5. Ask mode-appropriate questions:
    - Biggest win, OKR progress, blockers, focus for next week
-6. Save to `Daily/YYYY-MM-DD Weekly Review.md`
+6. Save to the CC `daily_log` (`INSERT … cron_name='weekly-review'` for today's date) — not a vault file.
 7. Plan top 3 priorities for next week; create CC tasks (`INSERT` into `public.tasks`) automatically
 8. Archive completed items if appropriate
 
