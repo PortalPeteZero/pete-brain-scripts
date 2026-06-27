@@ -232,7 +232,7 @@ Route the review results to the right places:
 | What | Where |
 |------|-------|
 | Full review report | `Properties/{project-name}/data/[date]-code-review.md` |
-| Session progress | `Daily/YYYY-MM-DD.md` |
+| Session progress | CC `daily_log` (`cron_name='session'`) |
 | Commit details | Note in property README if significant changes were made |
 
 If the review uncovered something that should be tracked as a task (e.g. "needs a bigger refactor later"), create a task in the CC task store (`public.tasks`) — Pete is off Asana. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`: `INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes) VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4>', NULL, '<entity>', '<project_slug NAME>', 'todo', 'claude', '<notes>');`

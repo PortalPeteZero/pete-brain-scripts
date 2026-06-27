@@ -123,7 +123,7 @@ This is a new property. Follow the intake workflow:
 3. **Create the vault structure**:
    - `Properties/{project-name}/README.md` (property card with whatever details we have)
    - `Projects/{project-name}/` for active project work (flat mirror of the project hierarchy)
-4. **Update MAP.md** with all new entries.
+4. **No MAP.md to update** — the cloud map (`cc_map`) regenerates automatically; register the property in the CC (Properties module / `projects`).
 5. **Remind Pete** to update [[GitHub-Repo-Property-Master.xlsx]] if appropriate.
 6. **Log in daily note**.
 
@@ -527,7 +527,7 @@ Remind Pete (only if relevant) to:
 ### 7a. Update property README and daily note
 
 - Update `Properties/{property-name}/README.md` with any new information discovered during the session (new tracking IDs, tech stack changes, status updates)
-- Log session work in `Daily/YYYY-MM-DD.md`
+- Log session work in the CC `daily_log` (`INSERT … cron_name='session'`) — not a vault file
 
 ### 7b. Route findings back to the vault
 
@@ -543,7 +543,7 @@ Follow vault-writer routing rules:
 | New GitHub repo added to property | Update property README Git Connection section + `Library/processes/github-configuration.md` |
 | New Supabase project added | Update property README + `Library/processes/supabase-access-token.md` if it's a new project ref |
 | Project status, decisions, specs | `Projects/{project-name}/files/` |
-| Session progress | `Daily/YYYY-MM-DD.md` |
+| Session progress | CC `daily_log` (`cron_name='session'`) |
 
 ### 7c. Capture new infrastructure
 
