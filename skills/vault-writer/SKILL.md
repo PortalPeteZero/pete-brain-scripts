@@ -1,19 +1,16 @@
 ---
 name: vault-writer
 description: >
-  The standard way to save information to Pete's Second Brain (Obsidian vault). Use this skill
-  whenever a session produces knowledge, research, decisions, project updates, or any information
-  that should persist beyond the current conversation. Triggers include: "save this to the brain",
-  "update the vault", "log this", "add this to Second Brain", end-of-session wrap-ups, or any
-  time meaningful work has been done that future sessions would benefit from knowing about. Also
-  use proactively at the END of any working session -- if useful information was produced, it
-  belongs in the vault. This skill handles discovery (finding where things already live), routing
-  (putting info in the right place), formatting (frontmatter, wikilinks, Obsidian markdown), and
-  verification (confirming what was saved). It also maintains the Vault Map so every session can
-  quickly understand what exists.
+  The standard way to persist what a session produced to the Command Centre — knowledge / lessons /
+  decisions / notes → `vault_notes`, files → Google Drive, tasks → `public.tasks`, the session log →
+  `daily_log`. Use whenever a session produces knowledge, research, decisions, or project updates that
+  should outlast the conversation. Triggers include: "save this to the brain", "log this",
+  end-of-session wrap-ups, or any time meaningful work has been done that future sessions would benefit
+  from. Handles discovery (finding where things already live in the cloud), routing (the right cloud
+  home), formatting, and verification (confirming what was saved).
 ---
 
-<!-- drive-cloudstorage-allowed: this skill documents the DC-required filesystem-shape sync pattern for the vault-drive-sync step. See [[external-service-routing]] for the marker convention. -->
+<!-- drive-cloudstorage-allowed: this skill writes directly to the Personal/Family Drive homes via Desktop Commander. See [[external-service-routing]] for the marker convention. -->
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Vision / Geocoding / Sentry operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 
@@ -39,7 +36,7 @@ The golden rule: **search first, then write**.
 
 ## Where things go (cloud)
 
-The vault is retired. Save to the cloud homes (full matrix: [[vault-routing]]):
+Save to the cloud homes (full matrix: [[vault-routing]]):
 - **Knowledge / decisions / notes / research** → CC `vault_notes`: write a `.md` to `/tmp`, then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`.
 - **Files / documents / data** → the entity's **Google Drive** folder (find it: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`).
 - **Live work** → the CC `tasks` engine (`public.tasks`). **Session log** → CC `daily_log`.
@@ -53,7 +50,7 @@ Before creating any file or adding any section, search for existing content.
 
 ### How to search
 
-Use the Grep tool to scan file contents. Use the Read tool to check specific files. Check MAP.md first.
+Query `vault_notes` (`cc-knowledge-api.py` — full-text + semantic) and the `drive_files` index (`cc-sql.py`) first.
 
 ### Where to search?
 
@@ -67,12 +64,12 @@ Run this at the end of every working session. Do not skip steps assuming the bra
 
 ### Step 1: Project tidy-up
 
-- Update the project README (status, next steps, any new context learned this session)
-- Consolidate working files in `files/` -- merge scratch notes or drafts that are now superseded
+- Update the project's CC record (status, next steps, any new context learned this session)
+- Consolidate working files in the project's Drive folder -- merge scratch notes or drafts that are now superseded
 - Mark completed session plans as `status: completed`
 - Don't delete old files -- keep history, just mark things as done
 
-### Step 2: Vault-wide reflection
+### Step 2: Whole-session reflection
 
 > [!important] First — the structured-home sweep (whole session, not just website work)
 > List **every distinct topic, entity, project, property, or piece of work** touched this session. For each, find its home and update it with what changed **+ the rationale**. Find homes by querying the cloud, never a local tree: knowledge → `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`); files/entities → the `drive_files` index (`cc-sql.py`). State of play lives in the entity's note / Drive folder, not the daily log. Generalised from the website lesson (in `vault_notes`).
@@ -82,9 +79,9 @@ Then scan everything discussed this session and route each category to its cloud
 - **Properties / property data** (hosting, stack, IDs, SEO, Surfer scores, audits) → the property's record in the **CC Properties module** + data files to its **Drive** folder.
 - **Customers / Suppliers** (new relationship, matter, contract, status) → the entity's **Drive** folder + a `vault_notes` record. For account-customers (e.g. Clancy) the CC `account_*` store is the live home.
 - **People / Businesses / operational areas** (roles, KPIs, SOPs, finance/insurance/vehicles) → the relevant **Drive** home + `vault_notes`. `vault-enricher.py` (called by triage/sync) still auto-pulls attachments — keep calling it.
-- **Personal / Family** → the **My Drive** / **Ashcroft Family** Drive home — write **direct to Drive** via Desktop Commander (no vault folder, and `vault-drive-sync` is retired). TitleCase folder names in the family Drive.
+- **Personal / Family** → the **My Drive** / **Ashcroft Family** Drive home — write **direct to Drive** via Desktop Commander. TitleCase folder names in the family Drive.
 - **Sygma owner-private** (salaries, payroll, pay-sensitive) → **Drive `Sygma Private/`** direct (never a shared/operational Sygma drive). [[shared-drives#sygma-solutions-private]]. Monthly payroll: [[file-wages-email]].
-- **Decisions / competitive intel / lessons / processes / connectors** → CC `vault_notes` (ingest a `.md`). API-config docs are the surviving `Library/processes/` skeleton reference; new ones go there too + ingest.
+- **Decisions / competitive intel / lessons / processes / connectors** → CC `vault_notes` (ingest a `.md`); a new connection → the connections registry ([[connections]]).
 - **Gmail labels** → Gmail is source of truth; only update `[[gmail-label-scheme]]` for a NEW category/colour/mode/rule.
 - **CLAUDE.md** → only on an explicit Pete correction he asks to be saved; structured rules → `vault_notes`.
 - **Vault-routing capture** → a new convention must be reflected in `[[vault-routing]]` (ingest the update) AND notify Pete.
@@ -124,7 +121,7 @@ Neither replaces actually closing the task — they're what make a *missed* clos
 
 Pete's task list drifts messy over time. At session end, surface a short digest of stale work in Step 6. **Surface-only — never bulk-close, delete, reassign, or re-section without Pete's explicit per-item confirmation** (CC tasks are Pete's).
 
-The old evidence-sweep (commit / daily-note scanning that auto-bucketed tasks AUTO/PROPOSE/PAYMENT) is **retired** — it relied on the local `/code` repos and the `Daily/` vault folder, both removed at the 24 Jun cutover. Stale-task review is now a light query against `public.tasks`, surfaced for Pete's per-item call:
+Stale-task review is a light query against `public.tasks`, surfaced for Pete's per-item call:
 
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_slug, due_on FROM tasks WHERE status!='done' AND due_on < current_date - interval '30 days' ORDER BY due_on LIMIT 30"
@@ -165,7 +162,7 @@ For every project **touched this session**, confirm `public.tasks` reflects what
 
 ### Step 8: Propagate to the cloud
 
-MAP is now **auto-generated** (a CC `config` row, regenerated daily) — there is no manual MAP.md to maintain and no MAP-drift check. The hourly `vault-drive-sync` is **retired**. Knowledge reaches the cloud when you **ingest it to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`); files reach the cloud by living in their **Drive** folder (captured automatically by the `drive-changes-watch` Railway cron). Confirm each thing you saved this session has landed in its cloud home before sign-off.
+The map is **auto-generated** (a CC `config` row, regenerated daily) — nothing to maintain by hand. Knowledge reaches the cloud when you **ingest it to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`); files reach the cloud by living in their **Drive** folder (captured automatically by the `drive-changes-watch` Railway cron). Confirm each thing you saved this session has landed in its cloud home before sign-off.
 
 ---
 
@@ -191,7 +188,7 @@ Every mention of a project, person, or vault note MUST be a `[[wikilink]]`. Weav
 Wrong: `The Google Ads account was fixed. Related: [[SY-Website/ads]]`
 Right: `The [[SY-Website/ads]] account issues from 12 March have been resolved.`
 
-### Obsidian-Flavored Markdown
+### Markdown formatting
 
 - **Callouts**: `> [!type] Title` -- use `important` for decisions, `todo` for action items, `tip` for wins, `warning` for blockers
 - **Highlights**: `==critical text==` (sparingly)
@@ -209,17 +206,17 @@ Right: `The [[SY-Website/ads]] account issues from 12 March have been resolved.`
 
 ## Automated Task Awareness
 
-Several scheduled tasks modify the vault. Always re-read a vault file before editing if time has passed since your last read — automated runs may have written to it.
+Several scheduled crons write to the CC (`daily_log`, `garmin_daily`, registries). Re-read the relevant CC table before editing if time has passed — an automated run may have written to it.
 
 **Do not embed cron lists in this skill — they drift.** The single sources of truth (locked 2026-06-06 after embedded copies went stale):
 
 - `[[scheduled-tasks]]` — narrative registry, entry per task with vault-touch lists. **Its header carries the dashboard 3-step routing rule.**
-- `Library/processes/automations-dashboard/automations.json` → live view at https://pete-automations.vercel.app
-- `mcp__scheduled-tasks__list_scheduled_tasks` — live Cowork cron state
+- the automations registry (`public.crons`) → live view at https://pete-automations.vercel.app
+- `cc-cron.py list` — live Railway cron state
 
 Any cron change this skill's session touches (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
 
-All crons now run on **Railway** (Business OS migration). The source of truth is the live `crons` table in the CC + the `# CRON-META` blocks inside each `.py` in `pete-brain-scripts`. The old Cowork scheduled-task model is retired — `~/Documents/Claude/Scheduled/` is empty, and `skills/scheduled/` holds legacy recovery mirrors pending cleanup (see [[cron-scheduled-task-audit-scope-2026-06-25]]).
+All crons run on **Railway**. The source of truth is the live `crons` table in the CC + the `# CRON-META` blocks inside each `.py` in `pete-brain-scripts`; manage them with `cc-cron.py`.
 
 ---
 
@@ -272,7 +269,7 @@ When in doubt, save it.
 - Skip the search -- always check if content exists before creating
 - Append blindly to end of file -- find the right section
 - Create orphan notes -- link from at least one existing file
-- Write to a retired vault folder (`Properties/`, `Customers/`, `Projects/`, `Library/lessons` …) — they're gone; route to Drive + `vault_notes`
+- Write to a local file tree — knowledge → `vault_notes`, files → Drive
 - Put operational data (keyword trackers, Surfer scores) anywhere but the property's Drive folder + its CC record
 - Auto-create tasks anywhere other than `public.tasks`
 - Skip the daily note after meaningful work
