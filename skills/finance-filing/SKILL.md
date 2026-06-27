@@ -9,7 +9,7 @@ description: >
   change (addition / edit / change / duplicate) and the entity (auto when clear, ASK when
   ambiguous, SPLIT when one email spans two), enforces the Sygma owner-private
   payroll/accounts carve-out, enriches with attachments + key facts, raises a CC task
-  (`public.tasks` — Pete is off Asana) if there's an action, and updates the entity's
+  (`public.tasks`) if there's an action, and updates the entity's
   finance ledger. Never dumps-and-files;
   never guesses the entity.
 ---
@@ -61,7 +61,7 @@ Open the entity's home (the relevant README + its `finance-ledger.md` + recent f
 - **Write/edit** the right file in the right home (Step 4's location), per Step 5's change type.
 - **Enrich**: run `vault-enricher.py` on the thread → attachments to the home's `source/`, body facts to `extracts/` (the same helper triage/sync use).
 - **Label** the Gmail thread with the entity label *after reading* — business finance → `Businesses/{SY,CD,EA}-Finance`; household → `Personal/PA-Finance` (both already exist; never create a duplicate). Don't auto-create a holding filter (filters are persistent config → Pete-gated).
-- **Task** (only if there's a real action — a deadline, a reply owed, a payment): raise a CC task (`public.tasks` — Pete is off Asana) with the correct project_slug/priority (P1=+2d / P2=+7d / P3=+30d)/due, Mimestream + Gmail links in notes. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`); set `project_slug`/`entity_slug` for the home entity (Sygma finance → `Team-Finances`/Sygma; CD → `Team-Finances`/Canary Detect; household → entity Personal). A reply-to-Pete-by-email shaped ask → the `Reply` verb (Replies tray) instead (per [[email-workflow]]). Pure filing with no action → **no task**.
+- **Task** (only if there's a real action — a deadline, a reply owed, a payment): raise a CC task (`public.tasks`) with the correct project_slug/priority (P1=+2d / P2=+7d / P3=+30d)/due, Mimestream + Gmail links in notes. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`); set `project_slug`/`entity_slug` for the home entity (Sygma finance → `Team-Finances`/Sygma; CD → `Team-Finances`/Canary Detect; household → entity Personal). A reply-to-Pete-by-email shaped ask → the `Reply` verb (Replies tray) instead (per [[email-workflow]]). Pure filing with no action → **no task**.
 - **Ledger**: append a dated line to the entity's `finance-ledger.md` under the right load-bearing header (`## Deadlines` / `## Latest decision` / `## Recent filings`), then run `VAULT=/tmp/pbs python3 /tmp/pbs/finance-ledger-publish.py <path-to-ledger>` so the entity's Command Centre surface refreshes **with no deploy**. The Ashcroft Finance ledger is `Personal/family/Finance/finance-ledger.md` → the "Latest from the ledger" panel on `/m/ashcroft-finance`. Static reference (advisers, the doc-map) stays in the home's README + the module.
 
 ### 7. Report

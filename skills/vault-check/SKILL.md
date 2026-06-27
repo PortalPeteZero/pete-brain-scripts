@@ -15,7 +15,7 @@ description: >
 ---
 
 <!-- drive-cloudstorage-allowed: this skill references the CloudStorage path for orientation when auditing Drive parity. The actual Drive parity check is delegated to drive-api.py via vault-drift-check.py. See [[external-service-routing]]. -->
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Vision / Geocoding / Sentry operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Vision / Geocoding / Sentry operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 
 # Vault Check
@@ -182,7 +182,6 @@ For each `Library/processes/*.md`:
 Particular attention:
 
 - `connections.md` -- against actual connected MCP servers + APIs
-- `asana-configuration.md` -- Asana GIDs (Jane's workspace only; Pete's own tasks are CC `public.tasks` now)
 - `gmail-label-scheme.md` -- sample a few labels; do they exist in Gmail?
 - `scheduled-tasks.md` -- list matches Phase 4's live cron registry
 - `vault-drive-sync.md` -- LaunchAgent loaded? `launchctl list | grep vault-drive` returns it?
@@ -211,8 +210,8 @@ Scan the **most recent 14 `daily_log` entries** in the CC. For each:
 
 1. Find every `> [!todo] Pending Tasks` block (a daily note may have several -- one per session log).
 2. For each open `[ ]` line:
-   - **If `(CC: <task-id>)` is referenced**: query the CC task store live (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT status FROM tasks WHERE id='<task-id>'"`). If the CC task is `status='done'` but the daily-note line still says `[ ]`, flag this as **closed-task / open-line drift**. (Pete is off Asana — his tasks are `public.tasks`.)
-   - **Regardless of Asana state**: grep the rest of the same-day daily note for matching evidence (commit hashes, "ba02060"-style 7-char SHA refs, README "recent commits" lines, decision-doc creation, "shipped as", "landed", "closed by"). If a later session log on the same date shows the task's underlying work shipped, flag this as **same-day shipped / line-not-struck drift**.
+   - **If `(CC: <task-id>)` is referenced**: query the CC task store live (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT status FROM tasks WHERE id='<task-id>'"`). If the CC task is `status='done'` but the daily-note line still says `[ ]`, flag this as **closed-task / open-line drift**.
+   - **Regardless**: grep the rest of the same-day daily note for matching evidence (commit hashes, "ba02060"-style 7-char SHA refs, README "recent commits" lines, decision-doc creation, "shipped as", "landed", "closed by"). If a later session log on the same date shows the task's underlying work shipped, flag this as **same-day shipped / line-not-struck drift**.
 3. **Report-only.** vault-check reports drift; it does NOT auto-strike or auto-close. (Auto-strike + auto-close belong in brain Compress Step 7 + vault-writer Step 3a, which run every session as prevention.)
 
 Output for Phase 9 in the audit report: one row per drift finding, with daily-note path, line number, task summary, evidence type (CC task-state mismatch / same-day shipped), and proposed fix. If brain Compress + vault-writer Step 3a are doing their job, this list should be empty most of the time -- non-empty means prevention silently failed and Pete should investigate why.

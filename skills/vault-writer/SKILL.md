@@ -14,7 +14,7 @@ description: >
 ---
 
 <!-- drive-cloudstorage-allowed: this skill documents the DC-required filesystem-shape sync pattern for the vault-drive-sync step. See [[external-service-routing]] for the marker convention. -->
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Vision / Geocoding / Sentry operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Vision / Geocoding / Sentry operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 
 # Vault Writer
@@ -42,7 +42,7 @@ The golden rule: **search first, then write**.
 The vault is retired. Save to the cloud homes (full matrix: [[vault-routing]]):
 - **Knowledge / decisions / notes / research** → CC `vault_notes`: write a `.md` to `/tmp`, then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`.
 - **Files / documents / data** → the entity's **Google Drive** folder (find it: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`).
-- **Live work** → the CC `tasks` engine (`public.tasks`; Asana is Jane's only). **Session log** → CC `daily_log`.
+- **Live work** → the CC `tasks` engine (`public.tasks`). **Session log** → CC `daily_log`.
 - **Tools** pull from GitHub to `/tmp/pbs`; run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`.
 
 ---
@@ -91,7 +91,7 @@ Then scan everything discussed this session and route each category to its cloud
 
 ### Step 3: CC task sync (auto-create, no asking)
 
-This step defers to the brain skill's Compress Step 4, the canonical authority on session-end task sync. Brain owns workflow orchestration; vault-writer follows the same auto-create model. **Pete is off Asana — his tasks live in the CC `public.tasks` table** (Asana is Jane's only; never route Pete's tasks there).
+This step defers to the brain skill's Compress Step 4, the canonical authority on session-end task sync. Brain owns workflow orchestration; vault-writer follows the same auto-create model. **His tasks live in the CC `public.tasks` table**.
 
 - Pull current `public.tasks` state for the relevant projects -- verify the CC reflects reality
 - Identify follow-up actions from the session (what's pending, what surfaced, what needs watching)
@@ -116,7 +116,7 @@ Before sign-off, re-read **every prior `> [!todo] Pending Tasks` block in today'
 - **Non-code ships you can't close immediately** (a cron, an email, a file): drop a `SHIPPED: <task-id> — <evidence>` line in today's daily note. The reconciler treats that explicit marker as closeable.
 Neither replaces actually closing the task — they're what make a *missed* close get caught instead of rotting.
 
-**Why:** before this step, each session log's pending-task block was treated as final. A morning session opens "Wire X" + creates Asana 1234; a 12:30 detour ships X as commit ABC; end-of-day vault-writer never re-read the morning's TODO block. Asana sat with a closed-but-still-open task; daily note still claimed `[ ] Wire X`. Pete spots it the next morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (Asana 1214496261050040, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
+**Why:** before this step, each session log's pending-task block was treated as final. A morning session opens "Wire X" + creates a task; a 12:30 detour ships X as commit ABC; end-of-day vault-writer never re-read the morning's TODO block. the task sat closed-but-still-open; daily note still claimed `[ ] Wire X`. Pete spots it the next morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
 
 **How to apply:** Runs end-of-session, before Verification. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence -- never strikes a line on assumption alone. Mirror logic also lives in brain Compress Step 7 (canonical orchestrator); vault-writer's copy is the cleanup-checklist guarantee that it actually runs.
 
@@ -124,7 +124,7 @@ Neither replaces actually closing the task — they're what make a *missed* clos
 
 Pete's task list drifts messy over time. At session end, surface a short digest of stale work in Step 6. **Surface-only — never bulk-close, delete, reassign, or re-section without Pete's explicit per-item confirmation** (CC tasks are Pete's).
 
-The old Asana evidence-sweep (commit / daily-note scanning that auto-bucketed tasks AUTO/PROPOSE/PAYMENT) is **retired** — it relied on the local `/code` repos and the `Daily/` vault folder, both removed at the 24 Jun cutover. Stale-task review is now a light query against `public.tasks`, surfaced for Pete's per-item call:
+The old evidence-sweep (commit / daily-note scanning that auto-bucketed tasks AUTO/PROPOSE/PAYMENT) is **retired** — it relied on the local `/code` repos and the `Daily/` vault folder, both removed at the 24 Jun cutover. Stale-task review is now a light query against `public.tasks`, surfaced for Pete's per-item call:
 
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_slug, due_on FROM tasks WHERE status!='done' AND due_on < current_date - interval '30 days' ORDER BY due_on LIMIT 30"
@@ -136,7 +136,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_sl
 
 #### Step 3c: CC task-state parity
 
-For every project **touched this session**, confirm `public.tasks` reflects what shipped — the task is closed (overlaps Step 3a); conversely a task marked done in the CC has its artefact updated in the cloud (Drive / `vault_notes` / CC). **Don't sprawl**: never create a new project/sub-project for 1-2 tasks; default to the parent's `{prefix}-General`; ask Pete before creating either. (The old Asana↔vault-folder parity check is retired — there are no vault project folders.)
+For every project **touched this session**, confirm `public.tasks` reflects what shipped — the task is closed (overlaps Step 3a); conversely a task marked done in the CC has its artefact updated in the cloud (Drive / `vault_notes` / CC). **Don't sprawl**: never create a new project/sub-project for 1-2 tasks; default to the parent's `{prefix}-General`; ask Pete before creating either. (The old task↔vault-folder parity check is retired — there are no vault project folders.)
 
 ### Step 4: Housekeeping
 

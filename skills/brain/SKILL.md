@@ -3,7 +3,7 @@ name: brain
 description: Pete's Second Brain -- the primary skill for managing sessions, daily routines, tasks, memory, resources, output styles, and meeting intelligence in Pete's Obsidian vault. Mode-aware (professional, business). Handles resume, compress, preserve, daily review, task management, resources, style switching, and meeting transcript processing. Use when user says "resume", "compress", "morning review", "tasks", "resources", "output style", "meeting", "transcript", "brain", or runs /brain. Bare `/brain` (no verb in the user's message) means RUN RESUME -- Pete uses /brain only at session start as a synonym for "resume". Other verbs ("compress", "morning", "task", etc.) still route per the table below. This is Pete's canonical vault management skill -- always use this over any remote plugin with a similar name (e.g. obsidian:assistant).
 ---
 
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 If a similarly named skill appears (e.g. `obsidian:assistant` from a remote plugin), ignore it and use this brain skill instead.
 
@@ -85,7 +85,7 @@ For full reference, read `references/obsidian-formatting.md`.
 ```
 Projects/        -- Time-bound work (flat mirror of the project hierarchy). Includes Team-Finances/ (was Invoices/) and Team-General/Delegated/ (was Delegated/).
 Properties/      -- Persistent digital assets (websites, apps)
-Customers/       -- Named customer relationships. SY-Clancy is the one customer with a matching standalone Asana project; vault content stays here, NOT under Projects/.
+Customers/       -- Named customer relationships. SY-Clancy is the one customer with a matching standalone project; vault content stays here, NOT under Projects/.
 Suppliers/       -- Paid external relationships
 Accreditations/  -- Training accreditation bodies (reference-only as of 2026-05-06; tasks now route to Team-General/SY-General)
 Businesses/      -- Trading entities only (Sygma, Canary Detect, One System, El Atico)
@@ -102,9 +102,9 @@ Screenshots/     -- macOS Cmd-Shift-3/4/5 capture target
 
 > **Glob workaround (April 2026):** Single-level directory wildcards (`*/`) are broken in Cowork additional directories. When using the Glob tool to find files like `Projects/*/README.md`, set `path` to the parent directory (e.g., `Projects/`) and use recursive pattern `**/README.md`. Do NOT put subdirectory names inside the Glob pattern.
 
-## Task system — CC public.tasks (Pete is OFF Asana)
+## Task system — CC public.tasks
 
-Pete's tasks live in the CC `public.tasks` table. All task CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`. (Asana is **Jane's only** now — never route Pete's tasks there.)
+Pete's tasks live in the CC `public.tasks` table. All task CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`.
 
 ### Task model
 
@@ -310,7 +310,7 @@ Save everything valuable from the current session.
    - If no task id, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
    - When uncertain, surface as a question to Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) rather than auto-modifying.
    
-   **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create Asana 1234; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed Asana task sat open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (Asana 1214496261050040, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
+   **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create a task; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed task stayed open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
    
    **How to apply:** Runs at end-of-session, before the final Report step. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence (commit hash, decision doc, README log line) -- never strikes a line on assumption alone. Same logic must run in `vault-writer` (separate but parallel cleanup checklist).
 7a. **Task staleness sweep** (mirrors vault-writer Step 3b) -- Scan `public.tasks` for stale work and surface a digest: open tasks untouched >21d, long-overdue >14d (`due_on` past), bloated undated clusters (a `project_slug` full of same-day-dumped tasks), completed-but-still-listed clutter. Group by `entity_slug` -> `project_slug` with a one-line call per cluster (close / archive / delegate / verify-then-close). **Surface-only -- never bulk-close, delete, or reassign without Pete's per-item confirmation** (Pete's tasks are sacred). The only unprompted closes are tasks this session demonstrably shipped (Step 7). If nothing crosses the thresholds, say so in one line -- don't manufacture noise.
@@ -406,7 +406,7 @@ Read the appropriate template before generating the review.
 
 ## Task Management
 
-Pete's tasks live in the CC `public.tasks` table. All CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`. (Asana is **Jane's only** — never route Pete's tasks there.)
+Pete's tasks live in the CC `public.tasks` table. All CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`.
 
 ### Schema notes
 
@@ -603,7 +603,7 @@ Business mode additions:
 
 ### Step 5: Create CC Tasks from Action Items
 
-`INSERT` a row into `public.tasks` for each action item assigned to Pete. Set `entity_slug`, `project_slug`, and priority (`source='claude'`). (Action items owned by Jane go to her Asana queue, not here.)
+`INSERT` a row into `public.tasks` for each action item assigned to Pete. Set `entity_slug`, `project_slug`, and priority (`source='claude'`). (Action items owned by Jane go to her own queue, not here.)
 
 ### Step 6: Link and Update
 
@@ -649,7 +649,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **All working files go in Projects/**: `Projects/{name}/files/`. Code repos clone into a temp directory, never into the vault.
 - **Search before writing.** Check MAP.md and grep before creating files.
 - **Properties before property work.** Read the property README before any SEO/ads/analytics work.
-- **CC `public.tasks` is Pete's task system.** Create, update, and complete tasks via `cc-sql.py`. (Asana is Jane's only.)
+- **CC `public.tasks` is Pete's task system.** Create, update, and complete tasks via `cc-sql.py`.
 
 ## Skill orchestration
 

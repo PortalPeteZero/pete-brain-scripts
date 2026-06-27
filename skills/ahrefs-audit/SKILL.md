@@ -4,7 +4,7 @@ description: >-
   Combined Ahrefs + Surfer SEO page audit and optimisation plan. Pulls data from both APIs,
   cross-references keyword intelligence with NLP content analysis, and builds a balanced
   optimisation plan where neither tool's score is gospel. Handles both new pages (full setup)
-  and re-runs on existing pages (skips what's already done, reports outstanding CC tasks — Pete is off Asana).
+  and re-runs on existing pages (skips what's already done, reports outstanding CC tasks).
   Use this skill whenever Pete says "audit this page", "ahrefs audit", "research this keyword",
   "set up a new page for SEO", "run the ahrefs report", "what's the competition for [keyword]",
   "gap analysis", "analyse this page", "SEO audit", "why isn't this ranking", "optimise this
@@ -13,7 +13,7 @@ description: >-
   doesn't yet have a vault plan file. One page, one keyword cluster, one property per run.
 ---
 
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 > **This skill runs in Claude Code.** If triggered in Cowork, stop and tell Pete.
 
@@ -43,7 +43,7 @@ Surfer's NLP recommendations often lean towards keyword stuffing -- hitting a te
 | Ahrefs API v3 | Direct API via bash curl. Config: [[ahrefs-api-configuration]] | Keywords, SERP, competitors, backlinks, positions, Rank Tracker writes |
 | Surfer SEO API | Direct API via bash curl. Config: [[surfer-api-configuration]] | Content editors, NLP terms, content scoring, competitor audits |
 | GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `/tmp/pbs/Library/processes/secrets/google-seo-service-account.json` | searchAnalytics/query for impressions, clicks, CTR, position -- true user behaviour |
-| CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Standing tasks (Pete is off Asana — his tasks are CC tasks) |
+| CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Standing tasks |
 | Vault (file tools) | Read/Write/Edit | Plan files, property READMEs, MAP.md |
 
 **Auth quick reference** (full details in config files):
@@ -106,7 +106,7 @@ From the SEO sub-project README, get: standing instructions, SEO Page Tracker, A
 | Pipebusters Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/pipebusters-lanzarote/` | 9613446 | Yes |
 | Leakbusters Lanzarote Website | CD-Other-Sites | `Projects/CD-Other-Sites/leakbusters/` | 9613448 | 1312143 |
 
-In the CC task store (`public.tasks`), SEO work is tracked by `project_slug` (Pete is off Asana — his tasks are CC tasks). Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. New tasks: INSERT with the right `project_slug` NAME (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
+In the CC task store (`public.tasks`), SEO work is tracked by `project_slug`. Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. New tasks: INSERT with the right `project_slug` NAME (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
 
 ### 0b. Page and Keyword
 
@@ -118,7 +118,7 @@ Before doing any research:
 
 1. **Vault plan file**: Look in `Projects/{Parent}/seo/files/` (e.g. `Projects/SY-Website/seo/files/`) for an existing `*-seo-plan.md` matching this page. For CD-Other-Sites, look in the per-site sub-project: `Projects/CD-Other-Sites/{site-slug}/files/`.
 2. **SEO Page Tracker**: Check the property README for an existing row
-3. **CC tasks**: Query the CC task store (`public.tasks`) for existing open tasks on this page (Pete is off Asana — his tasks are CC tasks). Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' AND name ILIKE '%<Page Name>%'"`. If found, report outstanding ones.
+3. **CC tasks**: Query the CC task store (`public.tasks`) for existing open tasks on this page. Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' AND name ILIKE '%<Page Name>%'"`. If found, report outstanding ones.
 
 If a plan file exists with Ahrefs research already done (from a previous run), ask Pete if he wants to skip to Phase 2 (Surfer) or re-run everything fresh.
 
@@ -373,7 +373,7 @@ Present the complete plan to Pete. Include the balanced view from Phase 3c so he
 
 ## Phase 5 -- CC Task Setup
 
-Pete is off Asana — his tasks live in the CC task store (`public.tasks`). Use the page's `project_slug` NAME (`SY-Website`, `CD-Website`, or `CD-Other-Sites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
+His tasks live in the CC task store (`public.tasks`). Use the page's `project_slug` NAME (`SY-Website`, `CD-Website`, or `CD-Other-Sites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 
 ### 5a. Check for Existing Tasks
 

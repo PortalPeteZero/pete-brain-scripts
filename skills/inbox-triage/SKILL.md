@@ -15,15 +15,15 @@ description: >
   triage NEVER calls or offers sweep.
 ---
 
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 # inbox-triage
 
 > [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> **Tasks → the CC, not Asana (Pete off Asana 24 Jun):** `Task`/`Hand to` create a row in **`public.tasks`** (via `cc-sql.py`), NOT an Asana task. **`Reply` is label-only — no task** (a task only in the overlap case, carrying `[no-sync-close]`). Asana = Jane's only. Anywhere a step reads/writes `Customers/`, `Suppliers/`, `Projects/`, `Personal/`, `Library/decisions`, or creates a new vault folder, do the **cloud equivalent**: entity content → the entity's **Drive** folder + a `vault_notes` record (account-customers → CC `account_*`); decisions/notes → **`vault_notes`** (ingest a `.md`). `vault-enricher.py` still runs (keep calling it). New customer/supplier onboarding creates a **Drive** folder + CC record, not a vault folder. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+> **Tasks → the CC:** `Task`/`Hand to` create a row in **`public.tasks`** (via `cc-sql.py`). **`Reply` is label-only — no task** (a task only in the overlap case, carrying `[no-sync-close]`). Anywhere a step reads/writes `Customers/`, `Suppliers/`, `Projects/`, `Personal/`, `Library/decisions`, or creates a new vault folder, do the **cloud equivalent**: entity content → the entity's **Drive** folder + a `vault_notes` record (account-customers → CC `account_*`); decisions/notes → **`vault_notes`** (ingest a `.md`). `vault-enricher.py` still runs (keep calling it). New customer/supplier onboarding creates a **Drive** folder + CC record, not a vault folder. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
 
 > [!important] Business OS migration — filing targets are Drive + the knowledge DB now
-> When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors retired 24 Jun 2026). Route per the new-world matrix in [[vault-routing]]. Gmail labels + Asana behaviour are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB ([[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
+> When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors retired 24 Jun 2026). Route per the new-world matrix in [[vault-routing]]. Gmail labels are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB ([[Projects/PA-Command-Centre/files/part-d-reference-repoint-ledger-2026-06-22|Part D ledger]]); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
 
 Interactive email triage walker. The verb `triage` runs this skill.
 
@@ -48,7 +48,7 @@ User says any of:
 - Gmail API helper: `/tmp/pbs/gmail-api.py` (always available via service account DWD)
 - **Triage action classifier helper: `/tmp/pbs/triage-action-classify.py`** (runs the History pre-pass, emits a draft `Ask` per thread)
 - Calendar API helper: `/tmp/pbs/calendar-api.py`
-- CC task store: `public.tasks`, CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (Pete off Asana 24 Jun; Asana is Jane's only — do NOT connect to it for Pete's work).
+- CC task store: `public.tasks`, CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 - Read/Write/Edit tools for vault operations
 - State file: `Library/processes/email-workflow-state.md`
 
@@ -148,7 +148,6 @@ Or call the equivalent function library-side. The output is a JSON file with one
   "pete_replied_since_last_external": false,
   "open_question_in_latest": true,
   "has_actions_label": false,
-  "has_linked_asana_task": false,
   "ask_classification": "review",          // see vocabulary below
   "ask_reason": "External party (Regan @ surveyequipment.uk) sent quote PDF and 'feel free to ask' -- review needed before any decision."
 }
@@ -379,9 +378,9 @@ Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primi
 | `Task Pn in {project}`     | `modify_thread(id, add=[X], remove=["INBOX"])` — **NO Replies label** | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with Mimestream + Gmail + Finder links + **`[no-sync-close]` marker line appended to notes** + **MUST run vault-enricher** on the thread → matching vault folder |
 | `Hand to {person}`          | `modify_thread(id, add=[Delegated_label])`            | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + Mimestream + Gmail + Finder links in notes + draft chaser + **MUST run vault-enricher** on the thread → matching vault folder |
 
-### CC task creation (replaces Asana — Pete off Asana 24 Jun)
+### CC task creation
 
-`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`), NOT an Asana task. **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). Asana is Jane's only — do NOT connect to it for Pete's work. The `project_slug` column carries the project NAME (e.g. `'Team-General'`, `'SY-General'`), never a GID.
+`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`). **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). The `project_slug` column carries the project NAME (e.g. `'Team-General'`, `'SY-General'`), never a GID.
 
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', '2026-07-01', 'SY-Clancy', 'Team-General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
@@ -425,7 +424,7 @@ Every CC task created by triage must include both (and for a **Reply + Task** co
    - SY-Clancy is the exception: maps to `Customers/SY-Clancy/`, not `Projects/SY-Clancy/`
    - If no matching vault folder exists, omit the Finder link rather than emit a broken one
 
-Reason: Mimestream opens the source thread in one click; Finder link opens the working folder in one click. Both eliminate the "find the right place" friction at the moment of action. See [[Library/lessons/2026-05-20-asana-tasks-include-mimestream-link]].
+Reason: Mimestream opens the source thread in one click; Finder link opens the working folder in one click. Both eliminate the "find the right place" friction at the moment of action.
 
 Vault and Calendar columns drive their own side-effects (see Step 5).
 
@@ -581,7 +580,6 @@ Suggested new structure for {entity}:
 
   CC TASKS (public.tasks)
     project_slug: {existing NAME | NEW NAME | NONE -- tasks go in Team-General with entity_slug={prefix}-General}
-                  (Pete off Asana 24 Jun — no Asana project/GID; tasks are public.tasks rows. Asana is Jane's only.)
 
   MAP.md update: {new line description}
 

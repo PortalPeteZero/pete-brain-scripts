@@ -12,14 +12,13 @@ description: >
   `[no-sync-close]` marker + the Team-Finances blanket; every closure leaves an
   audit note. Idempotent — safe to run repeatedly. Triggered by "sync" / "sync
   tasks" / any reconcile request, and offered (opt-in) at the end of every triage.
-  (Asana belongs to Jane and her work only — this skill never touches it.)
 ---
 
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 # email-task-sync
 
-Reconciliation engine for the email workflow: a bidirectional sync between Gmail labels (`Replies`, `Delegated`) and Command Centre task state in **`public.tasks`**. All task CRUD is a `cc-sql.py` INSERT / SELECT / UPDATE against `public.tasks` (`name`, `priority`, `due_on`, `entity_slug`, `project_slug`, `notes`, `status`). **Asana is Jane's, for her work only — this skill never connects to it.**
+Reconciliation engine for the email workflow: a bidirectional sync between Gmail labels (`Replies`, `Delegated`) and Command Centre task state in **`public.tasks`**. All task CRUD is a `cc-sql.py` INSERT / SELECT / UPDATE against `public.tasks` (`name`, `priority`, `due_on`, `entity_slug`, `project_slug`, `notes`, `status`).
 
 > **Operating manual**: `[[email-workflow]]` (full system — verbs, decision lines, sweep behaviour, delegation flow).
 > **Routing rules**: `[[vault-routing]]`. Gmail-side rules: `[[gmail-label-scheme]]`. **Version history**: `[[CHANGELOG]]`.
@@ -166,7 +165,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, du
 - **Task notes** (Mimestream first):
   1. Mimestream: `https://links.mimestream.com/g/pete.ashcroft@sygma-solutions.com/t/{thread_id}`
   2. Gmail web: `https://mail.google.com/mail/u/0/#all/{thread_id}`
-  3. Finder link to the entity's working folder (when tied to a project/customer/supplier) via `/tmp/pbs/vault-finder-link.py {entity} [section]`; omit if there's no matching folder. Then a brief summary + which fallback step matched + "priority defaulted to P2 — edit the `priority` column if needed". Reason: one-click to the source thread + the working folder. See [[Library/lessons/2026-05-20-asana-tasks-include-mimestream-link]].
+  3. Finder link to the entity's working folder (when tied to a project/customer/supplier) via `/tmp/pbs/vault-finder-link.py {entity} [section]`; omit if there's no matching folder. Then a brief summary + which fallback step matched + "priority defaulted to P2 — edit the `priority` column if needed". Reason: one-click to the source thread + the working folder.
 - **MUST run vault-enricher on the source thread** as part of creating the task (when Pete asks), not an afterthought:
   ```bash
   VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{routed-entity-home}"

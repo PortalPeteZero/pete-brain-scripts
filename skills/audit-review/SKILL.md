@@ -10,11 +10,11 @@ description: >-
   "fortnightly review", "check the positions", "how's the page doing", "run the review",
   "what's due for review", "check the SEO", "has it moved", "position check", "rescan",
   or any request to check progress on a page that's already been optimised. Also triggers
-  from CC "Fortnightly review" tasks (`public.tasks` — Pete is off Asana). One property at a time, but can cover multiple
+  from CC "Fortnightly review" tasks (`public.tasks`). One property at a time, but can cover multiple
   pages in a single session.
 ---
 
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 # AuditReview
 
@@ -34,7 +34,7 @@ Version history: [[CHANGELOG]].
 | Ahrefs API v3 | Direct API via bash curl. Config: [[ahrefs-api-configuration]] | Rank Tracker positions, keyword data, traffic changes |
 | Surfer SEO API | Direct API via bash curl. Config: [[surfer-api-configuration]] | Re-audit scores, NLP term comparison, content scoring |
 | GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `/tmp/pbs/Library/processes/secrets/google-seo-service-account.json` | Primary source for impression/click/CTR movement and true average position per query |
-| CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Complete review tasks, create follow-up tasks (Pete is off Asana — his tasks are CC tasks) |
+| CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Complete review tasks, create follow-up tasks |
 | Vault (file tools) | Read/Write/Edit | SEO Page Tracker, plan files, daily log |
 
 **Auth quick reference** (full details in config files):
@@ -95,7 +95,7 @@ Ask Pete which property, or infer from context. Read the property README from `P
 | Pipebusters Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/pipebusters-lanzarote/` | 9613446 | Yes |
 | Leakbusters Lanzarote Website | CD-Other-Sites | `Projects/CD-Other-Sites/leakbusters/` | 9613448 | 1312143 |
 
-In the CC task store (`public.tasks`): SEO work is tracked by `project_slug` (Pete is off Asana — his tasks are CC tasks). Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. File review tasks by inserting with the right `project_slug` NAME via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
+In the CC task store (`public.tasks`): SEO work is tracked by `project_slug`. Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. File review tasks by inserting with the right `project_slug` NAME via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
 
 ### 0b. Find What's Due for Review
 
@@ -118,7 +118,7 @@ If Pete came in asking about a specific page, skip the scan and go straight to t
 
 ### 0c. Check the CC for Review Tasks
 
-Query the CC task store (`public.tasks`) for the page's open tasks by `project_slug` (Pete is off Asana). Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on, status FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' ORDER BY due_on"` to find:
+Query the CC task store (`public.tasks`) for the page's open tasks by `project_slug`. Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on, status FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' ORDER BY due_on"` to find:
 
 - The "Fortnightly review" task -- is it due? Overdue?
 - Any other outstanding tasks for the page that might affect the review
@@ -313,7 +313,7 @@ Investigate immediately:
 4. Algorithm update (check SEO news)
 5. Content overwritten (compare current page to implementation commit)
 
-Create urgent tasks in the CC task store (`public.tasks`) for the root cause — Pete is off Asana. INSERT with `priority='P1'`, the page's `project_slug` NAME, `status='todo'`, `source='claude'`.
+Create urgent tasks in the CC task store (`public.tasks`) for the root cause. INSERT with `priority='P1'`, the page's `project_slug` NAME, `status='todo'`, `source='claude'`.
 
 ### Scenario 5: Implementation not done yet
 
@@ -359,7 +359,7 @@ For subsequent reviews, add "Review 2", "Review 3", etc. This builds a longitudi
 
 ### 4c. CC Tasks
 
-Pete is off Asana — his tasks live in the CC task store (`public.tasks`). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
+His tasks live in the CC task store (`public.tasks`). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 
 - **Complete** the "Fortnightly review" task if it exists and is due: `UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'`
 - **Create** a new "Fortnightly review -- [Page Name] (due [date])" task if ongoing monitoring is needed (due date = today + 14 days): `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Fortnightly review -- [Page Name] (due [date])','P2',(current_date+14),'<entity>','<project_slug>','todo','claude','<notes>')`
@@ -400,7 +400,7 @@ This gives Pete a single-glance view of how all tracked pages are performing.
 
 **Property has no pages tracked yet**: Tell Pete there's nothing to review. Suggest running the ahrefs-audit skill to set up the first page.
 
-**Ahrefs Rank Tracker tags not set up**: The skill can still pull data from `site-explorer-organic-keywords`, but note that proper tracking isn't in place. Create a CC task (`public.tasks`, Pete is off Asana) to set up tags.
+**Ahrefs Rank Tracker tags not set up**: The skill can still pull data from `site-explorer-organic-keywords`, but note that proper tracking isn't in place. Create a CC task (`public.tasks`) to set up tags.
 
 **No Surfer editor ID in plan file**: The page was set up before Surfer API integration. Run the audit (2b) for a live score, but skip the editor check (2c). Suggest running a fresh ahrefs-audit to create the editor for future reviews.
 

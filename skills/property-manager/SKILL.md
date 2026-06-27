@@ -3,7 +3,7 @@ name: property-manager
 description: "Use this skill whenever Pete wants to work on any website, app, or digital property -- connecting to repos, analysing code, making changes, running audits, or setting up new properties. Triggers include: 'connect to my site', 'look at my app', 'analyse my site', 'check the SEO', 'review my code', 'make changes', 'edit the repo', 'set up a new project', 'I just created a new site', or any mention of a specific property or project name. Replaces the old lovable-site-manager and lovable-no-prerender skills with a single unified workflow that adapts to any tech stack."
 ---
 
-<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Asana / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
+<!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 # Property Manager — Universal Workflow Skill
 
@@ -553,7 +553,7 @@ But never nag about missing fields. Some properties deliberately don't have repo
 
 ### 7d. Create follow-up CC tasks
 
-If the session produced actionable property updates (e.g., SEO fixes, content refreshes, design changes, new repos to set up), create tasks for them in the CC task store (`public.tasks`). Pete is off Asana — his tasks live in the CC. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
+If the session produced actionable property updates (e.g., SEO fixes, content refreshes, design changes, new repos to set up), create tasks for them in the CC task store (`public.tasks`). His tasks live in the CC. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
 
 ```sql
 INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes)
