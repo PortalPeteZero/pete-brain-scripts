@@ -4,8 +4,8 @@ Command Centre (Pete's "I need the relevant pages to see these"): public.helpers
 public.connectors. Same idea as public.crons for crons, but for the code/connectors a session uses.
 
 Scans (read-only):
-  • helpers     ← Library/processes/scripts/*.py        (name · path · kind · what · runs_where · secrets_used)
-  • skills      ← Library/skills/*/SKILL.md              (name · path · what)
+  • helpers     ← *.py (repo root, flat layout)         (name · path · kind · what · runs_where · secrets_used)
+  • skills      ← skills/*/SKILL.md                      (name · path · what)
   • connectors  ← the *-api.py helpers (direct-API)      (service · kind · what · secret)
 
 Re-runnable (upsert on name). The /m/process-library page reads these (page wiring = a later
@@ -27,9 +27,14 @@ def upsert(table, rows):
     urllib.request.urlopen(req, timeout=60)
     return len(rows)
 
-# cron script basenames (these run on Railway) — for the runs_where tag
-man = json.load(open(os.path.join(VAULT, "Library/processes/crons-manifest.json")))
-cron_bn = {os.path.basename(c.get("script_file", "")) for c in man["crons"] if c.get("script_file")}
+# cron script basenames (these run on Railway) — for the runs_where tag.
+# Read from public.crons (the live registry); crons-manifest.json was retired with the Railway cutover.
+try:
+    _cr = urllib.request.Request(f"{URL}/rest/v1/crons?select=script_file",
+        headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
+    cron_bn = {os.path.basename(c["script_file"]) for c in json.load(urllib.request.urlopen(_cr, timeout=30)) if c.get("script_file")}
+except Exception:
+    cron_bn = set()
 
 def first_doc(text):
     m = re.search(r'"""(.+?)(?:\n|""")', text, re.S)
@@ -54,7 +59,7 @@ for p in sorted(glob.glob(os.path.join(HERE, "*.py"))):
     is_api = name.endswith("-api.py")
     kind = "api" if is_api else ("cron" if name in cron_bn else "tool")
     runs = "railway" if name in cron_bn else ("both" if is_api else "local")
-    helpers.append({"name": name, "path": f"Library/processes/scripts/{name}", "kind": kind,
+    helpers.append({"name": name, "path": name, "kind": kind,
                     "what": what, "runs_where": runs, "secrets_used": sec})
     if is_api:
         svc = name[:-7].replace("-", " ")
@@ -62,7 +67,7 @@ for p in sorted(glob.glob(os.path.join(HERE, "*.py"))):
 
 # 2. skills
 skills = []
-for sk in sorted(glob.glob(os.path.join(VAULT, "Library/skills/*/SKILL.md"))):
+for sk in sorted(glob.glob(os.path.join(VAULT, "skills/*/SKILL.md"))):
     txt = open(sk, encoding="utf-8", errors="replace").read()
     nm = re.search(r'^name:\s*(.+)$', txt, re.M)
     desc = re.search(r'^description:\s*(.+)$', txt, re.M)
