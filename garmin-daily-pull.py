@@ -1261,11 +1261,29 @@ def main():
                          "needed to surface the data.")
     ap.add_argument("--set-signoff", nargs=2, metavar=("DATE", "HHMM"),
                     help="Set Pete-confirmed sign-off (HH:MM) for a day; the brain calls this on correction. No Garmin pull.")
+    ap.add_argument("--force-local", action="store_true",
+                    help="RETIRED PATH ESCAPE HATCH. This script's Mac-coupled data-move flow is disabled by "
+                         "default (thin-client / SSOT). Only pass this for a deliberate local debug session.")
     args = ap.parse_args()
 
     if args.set_signoff:
         set_signoff(args.set_signoff[0], args.set_signoff[1])
         return
+
+    # ── Structural guard (thin-client / SSOT) ───────────────────────────────────────────────────
+    # This local full pull reads/writes the Mac Google Drive *mount* and pushes a dashboard repo —
+    # the exact Mac-coupled path the Business OS cutover retired. Its reusable functions (pull_day,
+    # _upsert_garmin_daily, build_json_snapshot, _parse_md_frontmatter, …) stay importable — the
+    # headless cloud cron garmin-daily-cc.py uses them. But running THIS file as a standalone
+    # data-mover is disabled so it can never silently re-introduce a second data path. A "manual
+    # pull" goes through the cloud: `cc-cron.py deploy garmin-daily-pull --run` (reads source from
+    # Drive via the API, writes the CC — single source of truth). See the SSOT lesson in vault_notes.
+    if not args.force_local:
+        print("REFUSED: garmin-daily-pull.py is the retired Mac-coupled pull and will not run standalone.\n"
+              "  A manual pull runs the CLOUD cron (data flows Drive→CC, SSOT intact):\n"
+              "    VAULT=/tmp/pbs python3 /tmp/pbs/cc-cron.py deploy garmin-daily-pull --run\n"
+              "  (--force-local overrides only for a deliberate local debug session.)", file=sys.stderr)
+        sys.exit(2)
 
     if args.publish_only:
         # No Garmin fetch — regenerate the vault-derived JSON the PF processes

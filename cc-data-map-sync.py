@@ -42,7 +42,7 @@ MAP = [
     ("Email", "Cross", "Gmail (Google Workspace)", "gmail-api.py", "Triage / sync / sweep workflows; Gmail is source of truth."),
     ("Finance — Canary Detect", "Canary Detect", "Drive: CD Private/finance + Odoo", "odoo-api.py / Drive mount", "Camello Blanco S.L. entity; Stripe live."),
     ("Finance — family/personal", "Personal", "Drive: Ashcroft Family/Finance", "Drive mount", "Joint Pete + Michaela, family-private."),
-    ("Health / Garmin", "Personal", "Drive: My Drive/Health/garmin", "garmin-daily-pull.py", "Sleep/HRV/readiness/activities; the one re-pointed cron."),
+    ("Health / Garmin", "Personal", "CC: public.garmin_daily (snapshot) ← Drive via API", "garmin-daily-cc.py (Railway cron)", "Sleep/HRV/readiness/activities + journal; headless, reads Drive via API → CC. Manual refresh: cc-cron.py deploy garmin-daily-pull --run. Local garmin-daily-pull.py is retired (refuses standalone)."),
     ("Passion Fit (journal/training)", "Personal", "Drive: My Drive/Passion Fit", "Drive mount (Desktop Commander)", "Personal PF — stays in Personal, NOT One System."),
     ("Screenshots & captures", "Personal", "Drive: My Drive/Screenshots", "Drive mount (~/Library/CloudStorage/GoogleDrive-…/My Drive/Screenshots) + drive_files index", "macOS Cmd-Shift screenshot save location (`defaults read com.apple.screencapture location`). Where Pete drops booking/account/site captures for Claude to read. Newest first by filename `Screenshot YYYY-MM-DD at HH.MM.SS.png`."),
     ("Daily notes", "CC", "CC Supabase vault_notes (type=daily) + vault Daily/ skeleton", "CC Daily Notes page (/m/daily)", "Session logs; the most-read memory."),
