@@ -39,6 +39,7 @@ CAT_ALIAS = {"income - online": "online sales", "online sales for april": "onlin
 # before 'promoplan' -> Utilities). Categorisation never affects month TOTALS (those are
 # income/expense-column driven); it only shapes the FIN flag + the breakdown views.
 KEYWORDS = [
+    ("insurance", "Insurance"),  # before 'van' so "Van Insurance" -> Insurance, not Vehicle Expense
     ("wage", "Wages"), ("rent", "Rent"), ("accountant", "Accountant Fees"),
     ("petrol", "Fuel"), ("fuel", "Fuel"), ("van", "Vehicle Expense"),
     ("fragrance", "Shop Supplies"), ("supplies", "Shop Supplies"),
