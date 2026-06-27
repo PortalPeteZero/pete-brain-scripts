@@ -180,6 +180,23 @@ Or call the equivalent function library-side. The output is a JSON file with one
 
 **Without `/tmp/triage-ask.json` (or equivalent in-memory equivalent) populated for every thread, the round cannot be built.** Step 5 refuses to render. Step 6.0 validates that every row carries a non-empty `Ask` cell with a value from the vocabulary.
 
+### Step 4.6: Enquiry-reply recognition (NEW — hand tracked enquiries to the Engine)
+
+A reply to a training enquiry we already sent is NOT a generic inbox row — it's the next turn of a tracked enquiry, and it belongs to the **[[workflow-design|Enquiry Engine]]** (lifecycle in the Portal CRM, learning in `vault_notes`). Before Action-verb selection, flag each thread that is an enquiry reply. A thread is a tracked enquiry reply if ANY of:
+
+1. **Thread id match** — the Gmail `thread_id` appears in an enquiry note's frontmatter:
+   `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "select title from vault_notes where type='enquiry' and frontmatter->>'thread_id' = '<thread_id>'"`
+2. **Sender is a CRM contact** — the from-address matches a Portal CRM contact (esp. one at stage New/Quoted). Quick check via the Portal REST (`contacts?email=eq.<addr>`), or it carries the `Projects/SY-Training-Enquiries` Gmail label.
+3. **Subject/content** is clearly a reply on a course enquiry we're handling (cross-check the corpus).
+
+When matched, **don't classify it as a generic `reply`/`task`** — route it to the Engine:
+- Run the loop (`reply to enquiry in {company}`): RETRIEVE precedents (`cc-knowledge-api.py semantic …`), read this contact's timeline, draft the next reply **Mode B** (Pete signs off).
+- Log the inbound reply + advance the contact + (re)set/close the chase in ONE write:
+  `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <touch.json> --apply` (activity kind `reply`, stage move if it progressed; te-log closes the prior chase and sets the next).
+- In the ops table mark these `Ask = reply` but note **"→ Enquiry Engine"** so they're handled by the loop, not a generic Replies-tray label. (A booking forward — "Sent to Sue" — moves the contact to **Customer/won**.)
+
+This is the cross-skill hook the cockpit relies on: triage recognises the reply, the Engine owns the lifecycle + learning. Detection mirrors the daily `enquiries` sweep.
+
 ### Step 5: Per-row Action verb selection (constrained by `Ask`)
 
 Once `Ask` is set, the Action verb is constrained:

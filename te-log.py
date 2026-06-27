@@ -207,14 +207,23 @@ def log_enquiry(p, apply, manifest):
             manifest and manifest.write(json.dumps({"kind": "activity", "id": aid, "contact_id": cid}) + "\n")
     # knowledge note
     rel = write_knowledge(p, cid, apply)
-    # chase task (CC public.tasks) when a follow-up is due
+    # chase task lifecycle (CC public.tasks): the LATEST touch defines the current chase. First close any
+    # open chase for this contact (so they never pile up stale / never more than one open per enquiry), then
+    # set a fresh one only if a follow-up is due. Tasks carry [no-sync-close] so email-task-sync leaves them
+    # to the Engine (they're work-chases, not email-Reply-tray items) — avoids double-handling.
+    if apply and cid not in ("(new)", None):
+        closed = cc_sql(f"""update tasks set status='done', completed_at=now()
+                            where source='enquiry-engine' and status='todo' and notes like {lit('%CRM contact '+str(cid)+'%')}
+                            returning id""")
+        if isinstance(closed, list) and closed:
+            print(f"   • closed {len(closed)} prior open chase(s) for this enquiry")
     if a.get("follow_up_at"):
         tname = f"Chase enquiry — {name} ({a.get('subject','')})".replace("'", "")[:120]
         print(f"   • chase task → public.tasks (due {a['follow_up_at']}, project {PROJECT_SLUG}/{BUCKET})")
         if apply:
             cc_sql(f"""insert into tasks (id,name,priority,due_on,entity_slug,project_slug,bucket,status,source,tags,notes)
                        values (gen_random_uuid(),{lit(tname)},'P3',{lit(a['follow_up_at'])},'Sygma',{lit(PROJECT_SLUG)},{lit(BUCKET)},
-                       'todo','enquiry-engine',array['enquiry']::text[],{lit('CRM contact '+str(cid))})""")
+                       'todo','enquiry-engine',array['enquiry']::text[],{lit('[no-sync-close] CRM contact '+str(cid))})""")
     return rel
 
 def main():
