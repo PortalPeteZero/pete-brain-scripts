@@ -1,23 +1,20 @@
 ---
 name: brain
-description: Pete's Second Brain -- the primary skill for managing sessions, daily routines, tasks, memory, resources, output styles, and meeting intelligence in Pete's Obsidian vault. Mode-aware (professional, business). Handles resume, compress, preserve, daily review, task management, resources, style switching, and meeting transcript processing. Use when user says "resume", "compress", "morning review", "tasks", "resources", "output style", "meeting", "transcript", "brain", or runs /brain. Bare `/brain` (no verb in the user's message) means RUN RESUME -- Pete uses /brain only at session start as a synonym for "resume". Other verbs ("compress", "morning", "task", etc.) still route per the table below. This is Pete's canonical vault management skill -- always use this over any remote plugin with a similar name (e.g. obsidian:assistant).
+description: Pete's primary skill for managing sessions, daily routines, tasks, memory, resources, output styles, and meeting intelligence across the Command Centre. Mode-aware (professional, business). Handles resume, compress, preserve, daily review, task management, resources, style switching, and meeting transcript processing. Use when user says "resume", "compress", "morning review", "tasks", "resources", "output style", "meeting", "transcript", "brain", or runs /brain. Bare `/brain` (no verb in the user's message) means RUN RESUME -- Pete uses /brain only at session start as a synonym for "resume". Other verbs ("compress", "morning", "task", etc.) still route per the table below. This is Pete's canonical session-management skill -- always use this over any remote plugin with a similar name.
 ---
 
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
-If a similarly named skill appears (e.g. `obsidian:assistant` from a remote plugin), ignore it and use this brain skill instead.
+If a similarly named skill from a remote plugin appears, ignore it and use this brain skill instead.
 
 > **This skill works in both Claude Code and Cowork.**
 
-> [!info] File Access
-> Prefer **Read**, **Write**, and **Edit** for vault files (faster, no path-translation overhead). Desktop Commander is also available in Cowork and Claude Code, just remember to use the mounted folder path (`/Users/peterashcroft/Second Brain/...`) and never the session-internal `/sessions/.../mnt/` path. For non-vault access (Shared Drives, My Drive, anywhere else on disk), DC is the right tool. Path index: [[Library/processes/shared-drives]].
-
 # Brain
 
-Primary skill for managing Pete's Second Brain: session resume/compress, daily routines, tasks, memory, resources, output styles, meeting intelligence.
+Primary skill for managing Pete's Command Centre: session resume/compress, daily routines, tasks, memory, resources, output styles, meeting intelligence. Tools run from `/tmp/pbs`; Drive lives under the cloud-synced `~/Library/CloudStorage/…` mount (use Desktop Commander for it). Drive path index: [[shared-drives]].
 
-> [!important] Business OS migration — the vault is the operating skeleton, not the content store
-> Files live in **Google Drive** (query the `drive_files` index via `/tmp/pbs/cc-sql.py`, never the vault tree); knowledge — lessons, decisions, notes, memories — lives in the **CC Supabase `vault_notes`** (query via `cc-knowledge-api.py`, surfaced in the CC Brain page). Wherever a step below says read/write a vault content folder (`Projects/` other than PA-*, `Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, `Library/lessons|decisions|audits|competitors|market|meetings|ip-trademark|archive|templates`), those are **retired 24 Jun 2026 (now in Drive + vault_notes)** — the real home is Drive / the knowledge DB per `MAP.md`. **`[[wikilinks]]` still work**: they resolve against `vault_notes` by name now, not by file path (decision #12 — link by stable ID, not path), so links don't need rewriting. The minimal boot kernel (~/.config/pete-cc): `CLAUDE.md`, `MAP.md`, `Library/processes`, `Library/skills`, `Daily/`, `Projects/PA-Command-Centre` + `Projects/PA-General`.
+> [!important] Where things live
+> Files → **Google Drive** (query the `drive_files` index via `/tmp/pbs/cc-sql.py`). Knowledge — lessons, decisions, notes, memories — → the **CC `vault_notes`** (`cc-knowledge-api.py`, surfaced in the CC Brain page). Tasks → **`public.tasks`**. Session log → **`daily_log`**. A `[[wikilink]]` links a knowledge note by its name in `vault_notes`.
 
 > **Routing rules, per-section structure, onboarding rituals, lifecycle rules, multi-system reading-order protocol**: `[[vault-routing]]` (loaded by Resume workflow when invoked). Do not duplicate routing here.
 >
@@ -27,9 +24,9 @@ Primary skill for managing Pete's Second Brain: session resume/compress, daily r
 
 ## Pre-flight Check
 
-1. Check `./CLAUDE.md` exists in vault root
-2. If missing: tell Pete "CLAUDE.md is missing -- the vault probably isn't mounted as the working folder. Mount it and re-run." -- then stop
-3. If present: continue
+1. Confirm the boot kernel ran: `~/.config/pete-cc/CLAUDE.cache.md` exists and `/tmp/pbs` is present.
+2. If either is missing: run `python3 ~/.config/pete-cc/pete-session-bootstrap.py` (clones tools to `/tmp/pbs`, materialises secrets, refreshes the caches). If the clone still fails and no cache exists, STOP and tell Pete — never boot blind.
+3. If present: continue.
 
 ## Routing
 
@@ -54,53 +51,15 @@ Match the user's intent to the right section:
 | "draft an email", "write a blog post", "outbound", customer reply | [Output Styles](#output-styles) + Pete's Preferences (read [[voice-principles]] first) |
 | "invoice", "Soldo", "Dext", "Odoo", "Xero", "payroll", "VAT" | [[finance-workflow]] |
 
-## Vault Interaction
+## Markdown formatting
 
-### File Access
+Notes use lightweight markdown: `[[wikilinks]]` (link a knowledge note by its name in `vault_notes`), `> [!type] Title` callouts (tip / warning / important / question / todo / success), `==highlights==`, `%%comments%%`.
 
-The vault is the working directory. Use Read/Write/Edit tools for all file operations. All paths are vault-relative (e.g. `Properties/Sygma Solutions Website/README.md`).
+## Projects + buckets
 
-If the vault isn't mounted as the working folder, ask Pete to mount it. Do not use hardcoded paths.
-
-Use Read/Write/Edit tools for all vault file operations.
-
-### Obsidian Flavored Markdown
-
-All vault notes MUST use OFM syntax. Key rules:
-
-- **Wikilinks**: `[[Note]]`, `[[Note|Display Text]]`, `[[Note#Heading]]` -- never markdown links for internal notes
-- **Callouts**: `> [!type] Title` -- use for visual structure (tip, warning, important, question, todo, success)
-- **Embeds**: `![[Note]]`, `![[image.png|300]]`
-- **Highlights**: `==text==`
-- **Comments**: `%%hidden%%`
-
-For full reference, read `references/obsidian-formatting.md`.
-
-## Vault Structure
-
-> [!note] Business OS: this describes the LEGACY vault layout (retired 24 Jun 2026). Content now lives in Drive + the knowledge DB (see the banner at the top + `MAP.md`). Kept only as a taxonomy reference.
-
-10 top-level sections (Invoices/ and Delegated/ folded 2026-05-06). Full subfolder breakdown + per-section rules: `[[vault-routing#vault-structure]]`.
-
-```
-Projects/        -- Time-bound work (flat mirror of the project hierarchy). Includes Team-Finances/ (was Invoices/) and Team-General/Delegated/ (was Delegated/).
-Properties/      -- Persistent digital assets (websites, apps)
-Customers/       -- Named customer relationships. SY-Clancy is the one customer with a matching standalone project; vault content stays here, NOT under Projects/.
-Suppliers/       -- Paid external relationships
-Accreditations/  -- Training accreditation bodies (reference-only as of 2026-05-06; tasks now route to Team-General/SY-General)
-Businesses/      -- Trading entities only (Sygma, Canary Detect, One System, El Atico)
-Personal/        -- Pete's non-business world (finance, scouts, los-claveles, passion-fit, freemasonry, family, general). Three sync tiers per [[shared-drives#pete--mic]]
-Library/         -- Permanent knowledge (competitors, market, decisions, processes, meetings, skills, lessons, audits)
-Daily/           -- Session logs (YYYY-MM-DD.md)
-Screenshots/     -- macOS Cmd-Shift-3/4/5 capture target
-```
-
-**Project / bucket pattern (B1/B2, updated 2026-06-25 — Business OS):**
-- A **project** is a row in the CC `public.projects` table (own `slug` + `entity_slug` + Drive folder + knowledge home) — projects live in the CC + Drive now, **not** a vault folder.
+- A **project** is a row in the CC `public.projects` table (own `slug` + `entity_slug` + Drive folder + knowledge home).
 - A **bucket** is a sub-grouping within a project (CC `public.buckets`: `project_slug` + name); every project has a default **General** bucket.
-- **To create one, don't hand-roll it — run the full build-out helper:** `VAULT=/tmp/pbs python3 /tmp/pbs/cc-project-api.py "Name" --entity "<Sygma|Canary Detect|Personal|One System|El Atico>" [--desc "…"] [--gmail]`. It creates the `projects` row + General bucket + the Drive folder in the entity's correct drive + a seeded `vault_notes` knowledge home (tagged with the slug → links on the CC project page) and reports every link. The CC "New project" button writes the same row + bucket. **Resume reads the `projects` table (Step 3c)** so you already know what exists — propose-then-confirm, default to an existing project's General bucket, and don't create a project for 1-2 tasks.
-
-> **Glob workaround (April 2026):** Single-level directory wildcards (`*/`) are broken in Cowork additional directories. When using the Glob tool to find files like `Projects/*/README.md`, set `path` to the parent directory (e.g., `Projects/`) and use recursive pattern `**/README.md`. Do NOT put subdirectory names inside the Glob pattern.
+- **To create one, run the build-out helper:** `VAULT=/tmp/pbs python3 /tmp/pbs/cc-project-api.py "Name" --entity "<Sygma|Canary Detect|Personal|One System|El Atico>" [--desc "…"] [--gmail]`. It creates the `projects` row + General bucket + the Drive folder in the entity's drive + a seeded `vault_notes` knowledge home (tagged with the slug) and reports every link. The CC "New project" button writes the same row + bucket. **Resume reads the `projects` table (Step 3c)** so you already know what exists — propose-then-confirm, default to an existing project's General bucket, don't create a project for 1-2 tasks.
 
 ## Task system — CC public.tasks
 
@@ -119,13 +78,13 @@ Pete's tasks live in the CC `public.tasks` table. All task CRUD runs via `VAULT=
 - **List Pete's open tasks**: `SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST`
 - **Reprioritise / reschedule**: `UPDATE tasks SET priority=…/due_on=… WHERE id=…`
 
-### Auto-Create Vault Folders — RETIRED
+### Where project state lives
 
-Working projects map to **Drive homes + the CC** now, not `Projects/{name}/` vault folders. **Do NOT auto-create vault folders** for projects (the vault is retired). Project state lives in the CC + the entity's Drive folder; new customer/supplier/property records are created in the **CC** (Properties module / account store) or their **Drive** home, never as a vault folder.
+Working projects map to **Drive homes + the CC** — never a local folder. Project state lives in the CC `projects` table + the entity's Drive folder; new customer / supplier / property records are created in the **CC** (Properties module / account store) or their **Drive** home. Don't auto-create any local project scaffolding.
 
 ### Demand-driven project Gmail labels
 
-Project Gmail labels are NOT created blanket. They are created when (a) `triage` surfaces an email matching an existing `Projects/{prefix}-{slug}/` folder, or (b) Pete asks explicitly. Parity rule: label-folder pair always created together (label + auto-filter + README `gmail_label`/`gmail_url` frontmatter + `## Email` callout, all in one operation). Full rule: `[[vault-routing#demand-driven-project-gmail-labels]]`.
+Project Gmail labels are NOT created blanket. They are created when (a) `triage` surfaces an email matching an existing project, or (b) Pete asks explicitly. Parity rule: label + auto-filter + the CC project's `gmail_label`/`gmail_url` are always set together in one operation. Full rule: `[[vault-routing#demand-driven-project-gmail-labels]]`.
 
 ### Calendar integration
 
@@ -141,11 +100,7 @@ The full step-by-step protocol lives in vault-routing -- this skill defers there
 
 ## Session Plan Requirement
 
-Every session that involves real work (not casual chat) MUST have a session plan written to the vault BEFORE any real work starts.
-
-**Where the plan lives:**
-- Project work: `Projects/{name}/files/session-plan-YYYY-MM-DD.md`
-- General work: `Daily/session-plan-YYYY-MM-DD.md`
+Every session that involves real work (not casual chat) MUST have a session plan recorded BEFORE any real work starts. The plan is a `vault_notes` record (`type: session-plan`), ingested via `cc-knowledge-api.py`, tagged with the project slug it belongs to. Surfaced on the CC Brain page.
 
 **Template:**
 ```yaml
@@ -170,7 +125,7 @@ status: in-progress
 - [path] -- [what changed]
 ```
 
-At session end, update `status: completed` or `partial`. The plan stays in `files/` as permanent history.
+At session end, update `status: completed` or `partial`. The plan stays in `vault_notes` as permanent history.
 
 ---
 
@@ -181,10 +136,10 @@ Reconstruct full context so Pete picks up where he left off.
 ### Steps
 
 0. **⚡ BOOT KERNEL — DO THIS FIRST; nothing below works without it.** Run `python3 ~/.config/pete-cc/pete-session-bootstrap.py`. It clones the tools to `/tmp/pbs`, materialises all secrets, and refreshes `~/.config/pete-cc/CLAUDE.cache.md` + `MAP.cache.md`. **Then verify `/tmp/pbs` exists — if it does NOT (clone failed), STOP and tell Pete; never proceed half-booted.** Then read your FULL operating instructions + MAP from `~/.config/pete-cc/CLAUDE.cache.md` + `~/.config/pete-cc/MAP.cache.md` (the harness injects only the tiny bootstrap `CLAUDE.md`). Every tool below runs as `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`.
-1. **Load core memory** -- the full `CLAUDE` + `MAP` came from the Step 0 caches (fallback: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM config WHERE key='claude-md'"` / `'map-md'`); pull routing from `vault_notes` (`/tmp/pbs/cc-knowledge-api.py "vault-routing"`). **Do NOT glob the vault's content folders** (`Projects/` other than `PA-Command-Centre`/`PA-General`, `Businesses/`, `Customers/`, `Suppliers/`, `Properties/`, `Personal/`, `Accreditations/`) — those are retired 24 Jun 2026 (now in Drive + vault_notes) (Business OS migration; see the banner at the top of this skill). Project / entity / customer / property context lives in the live homes now: query the **file-index** for "what exists / where is X" (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`/tmp/pbs/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
+1. **Load core memory** -- the full `CLAUDE` + `MAP` came from the Step 0 caches (fallback: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM config WHERE key='claude-md'"` / `'map-md'`); pull routing from `vault_notes` (`/tmp/pbs/cc-knowledge-api.py "vault-routing"`). Project / entity / customer / property context lives in the live homes: query the **file-index** for "what exists / where is X" (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`/tmp/pbs/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
 2. **Load recent daily notes** -- the last 3 entries from the CC `daily_log` (`cc-sql.py "SELECT date, content FROM daily_log WHERE cron_name='session' ORDER BY date DESC LIMIT 3"`; if it's empty, the log is fresh — skip, no error). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against `public.tasks` (something in narrative but missing from `public.tasks`, or something in `public.tasks` whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-task live-state cross-check against `public.tasks` — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. The full Garmin data lives in the CC `garmin_daily` table (populated twice-daily by the `garmin-daily-pull` Railway cron — the rich `training` block: status, ACWR, training-effect, HR zones); query it via `cc-sql.py`. ([[garmin-api-configuration]].) The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/tmp/pbs/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
 2a. **Surface yesterday's PF journal lesson** -- Read `My Drive/Passion Fit/journal/{yesterday-YYYY-MM-DD}.md` **via Desktop Commander** (the journal moved to Drive; the old vault `Personal/passion-fit/journal/` is deleted — mount root `~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/My Drive/Passion Fit/journal/`). Grep for the `## One lesson for tomorrow` heading; extract the line(s) that follow (cut at next `## ` heading or end-of-file). Surface in the Resume briefing as its own line: `**Yesterday's lesson:** {extracted text}`. If the file is missing or the heading is absent, skip silently — no nag from Resume; the 6pm `pf-journal-reminder` cron is the only nagger. Same source-of-truth + same extraction logic as the morning briefing's "Lesson from yesterday" section (canonical process: [[pf-journal#Lesson-flow]]).
-3. **Pull task state from public.tasks** -- list Pete's open tasks: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST"`. (Do NOT auto-create vault folders — retired; project/entity context lives in the CC + Drive.)
+3. **Pull task state from public.tasks** -- list Pete's open tasks: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST"`. (Project/entity context lives in the CC + Drive.)
 3a. **Detect manually-added tasks** -- Surface tasks added to `public.tasks` since the last session, so Claude absorbs their context before settling on the day's focus.
 
 **Mechanic:**
@@ -210,7 +165,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
      - Notes: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, left(body,80) AS body, created_at FROM notes WHERE created_at > <cutoff> AND status='open' ORDER BY created_at"`
      - Projects: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name, entity_slug, created_at FROM projects WHERE created_at > <cutoff> AND status='active' ORDER BY created_at"`
      Surface as its own briefing line `**New since last session**: {N} note(s) — {title} · …  ·  {M} project(s) — {name} ({entity}) · …` (skip the line if both are zero). **List only; don't auto-action** — same rule as Step 3a (Pete decides what needs talking through).
-4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home — not the legacy `Businesses/` vault folder.
+4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home.
 5. **Check session plans** -- Look for incomplete session plans:
    - Query `vault_notes` for plan notes still open: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, frontmatter->>'status' FROM vault_notes WHERE type ILIKE '%plan%' AND frontmatter->>'status' IN ('in-progress','ready') ORDER BY source_updated DESC"` (note: there is no `public.plans` table — plans are notes in `vault_notes`).
    - If found, mention them so Pete can pick up where he left off.
@@ -249,13 +204,13 @@ When the most recent daily note covers today (rare edge case where Claude resume
    6. If the Pending block is empty after cross-check, skip the line entirely. Don't pad with stale narrative just to fill space.
 
    The Δ block being current does not exempt the Pending block. Same source-of-truth rule applies to both.
-9. **File-index freshness (replaces the old MAP-drift pre-flight)** -- MAP.md no longer mirrors the file tree (it points at the live index), so there is no per-session MAP drift to reconcile. The `drive_files` index is kept current automatically by the **`drive-changes-watch`** capture cron (every 15 min) — anything Pete or staff add/move in Drive is already captured. No action needed at resume. Belt-and-braces: check its status in the CC Automations registry (`/m/automations-log`) or `public.crons`; a manual catch-up run is `VAULT=/tmp/pbs python3 /tmp/pbs/drive-changes-watch.py`.
+9. **File-index freshness** -- the `drive_files` index is kept current automatically by the **`drive-changes-watch`** capture cron (every 15 min) — anything Pete or staff add/move in Drive is already captured. No action needed at resume. Belt-and-braces: check its status in the CC Automations registry (`/m/automations-log`) or `public.crons`; a manual catch-up run is `VAULT=/tmp/pbs python3 /tmp/pbs/drive-changes-watch.py`.
 10. **Update the daily log** -- append this session's summary to the CC `daily_log` (`date`=today, `cron_name`=`'session'`, `content`=a concise summary: decisions, what shipped, what's pending) via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (dollar-quote the content to avoid escaping). **This is what populates the cloud last-session that Resume Step 2 reads** — don't skip it.
 
 ### Guidelines
 - Keep it short -- like a quick standup, not a data dump
 - Prioritize: P1/P2 tasks (from public.tasks), deadlines this week, unfinished work
-- If memory files are empty (new vault): "This is your first session. What would you like to work on?"
+- If there's no prior history (fresh setup): "This is your first session. What would you like to work on?"
 
 ---
 
@@ -270,7 +225,7 @@ Save everything valuable from the current session.
 ### Steps
 
 1. **Save everything** -- Don't ask what to preserve. Automatically save all learnings, decisions, solutions, files modified, pending tasks, and errors.
-2. **Create session log** -- INSERT a row into the CC `daily_log` table (this is the canonical home — the same table Resume Step 2/10 read and the CC **Daily** page (`/m/daily`) renders; the old `Daily/YYYY-MM-DD.md` vault file is retired): `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO daily_log (date, cron_name, content) VALUES ('<today>', 'session', \$\$<the log below>\$\$)"` (dollar-quote `content` to avoid escaping). One row per session; the CC Daily page groups them by day. Body:
+2. **Create session log** -- INSERT a row into the CC `daily_log` table (the canonical home — the same table Resume Step 2/10 read and the CC **Daily** page (`/m/daily`) renders): `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO daily_log (date, cron_name, content) VALUES ('<today>', 'session', \$\$<the log below>\$\$)"` (dollar-quote `content` to avoid escaping). One row per session; the CC Daily page groups them by day. Body:
    ```markdown
    ## Session Log: HH:MM -- [Topic Summary]
 
@@ -304,7 +259,7 @@ Save everything valuable from the current session.
    - If all steps complete, update `status: completed`
    - If steps incomplete, note pending items in the daily note
    - If an execution plan exists and ALL phases complete, set the project README `status: completed`
-6. **Onboarding-ritual completeness check** -- For any new project, customer, supplier, or property folder created this session, run the verification checklist from `[[vault-routing#new-project--new-property]]` (Step 5) or `[[vault-routing#new-customer--new-supplier]]` (Step 7). If any item is incomplete (e.g. README missing, frontmatter missing required field, MAP.md not updated, files/ subfolder missing), complete it before closing the session. The 2026-05-03 audit found 29+12 README-less folders accumulated over weeks because this completeness check didn't exist; do not let that recur.
+6. **Onboarding-ritual completeness check** -- For any new project, customer, supplier, or property created this session, run the verification checklist from `[[vault-routing#new-project--new-property]]` (Step 5) or `[[vault-routing#new-customer--new-supplier]]` (Step 7). If any item is incomplete (e.g. CC record missing a required field, Drive home not created, knowledge note not ingested), complete it before closing the session.
 7. **Same-day reconciliation pass** -- Before writing the new session log's `Pending Tasks` block, re-read **every prior `> [!todo] Pending Tasks` block in today's daily note** plus any pending entries in same-day session plans. For each open `[ ]` task:
    - If it has a `(CC: <task-id>)` reference, query `public.tasks` live (`cc-sql.py "SELECT status FROM tasks WHERE id='<uuid>'"`) and read the rest of today's daily note + any commits / READMEs / decision docs touched today for matching evidence (commit hash, README "recent commits" line, decision file, etc.). If shipped: **close the task** (`UPDATE tasks SET status='done', completed_at=now() WHERE id=…`), and **replace the `[ ]` line in-place** with `[x]` + ~~strikethrough~~ + a `**SHIPPED same-day as <evidence>**` marker.
    - If no task id, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
@@ -332,7 +287,7 @@ Save durable knowledge that persists indefinitely.
 1. **Save immediately** -- Don't ask what to remember. Just save it to the right file.
 2. **Search before writing** -- query `vault_notes` (`cc-knowledge-api.py`) / the `drive_files` index to see if content on this topic already exists. Update the existing record rather than creating duplicates.
 3. **Route to the right home** -- consult `[[vault-routing#master-routing-matrix]]` for the canonical routing. Knowledge → `vault_notes`; files → Drive; tasks → `public.tasks`.
-4. **No MAP.md to update** -- the map is the cloud `cc_map` (regenerated by the `cc-map` cron) + the `config.map-md` orientation doc; new knowledge/files are auto-discoverable via `vault_notes` + the `drive-changes-watch` index.
+4. **Map upkeep is automatic** -- the map is the cloud `cc_map` (regenerated by the `cc-map` cron) + the `config.map-md` orientation doc; new knowledge/files are auto-discoverable via `vault_notes` + the `drive-changes-watch` index.
 5. **Report** -- After saving, tell Pete what was saved and where.
 
 ### Teaching Loop
@@ -340,11 +295,11 @@ Save durable knowledge that persists indefinitely.
 When Pete corrects you, save the correction. Don't ask. **Where you save it depends on shape:**
 
 - **One-liner sticky rule** (no Why, no How, just a fact or preference) -> append to `CLAUDE.md` under the Rules section.
-- **Anything with structure** (rule + Why + How to apply, or a recurring pattern with reasoning) -> write as `Library/lessons/{YYYY-MM-DD}-{slug}.md` using the lesson template, and add a single-line pointer in CLAUDE.md (`- **Short title.** One-line summary. See [[{slug}]].`).
+- **Anything with structure** (rule + Why + How to apply, or a recurring pattern with reasoning) -> write as a `vault_notes` lesson (`type: lesson`, ingested via `cc-knowledge-api.py`) using the lesson template, and add a single-line pointer in CLAUDE.md (`- **Short title.** One-line summary. See [[{slug}]].`).
 
-**CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `Library/lessons/` as a standalone file with no pointer in CLAUDE.md. The `[[README]]` index is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes. The 2026-05-03 audit trimmed CLAUDE.md from 43KB to 33KB precisely because non-correction pointers had drifted in; do not re-introduce that drift.
+**CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `vault_notes` as a standalone lesson with no pointer in CLAUDE.md. Knowledge-DB search is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes — keep CLAUDE.md a navigable index of corrections only.
 
-Default to lessons/ when in doubt. Routing corrections inline into CLAUDE.md is what bloated it past 40KB before the 2026-05-03 audit; lessons exist precisely to absorb structured corrections so CLAUDE.md stays a navigable index of corrections only.
+Default to a `vault_notes` lesson when in doubt. Routing structured corrections inline into CLAUDE.md bloats it; lessons exist precisely to absorb them so CLAUDE.md stays a navigable index of corrections only.
 
 Confirm what was saved and where after the fact.
 
@@ -536,7 +491,7 @@ USE WHEN Pete:
 
 ### Step 1: Identify Meeting Type and Save Location
 
-Meeting notes are **knowledge → `vault_notes`**: write the note (`type: meeting`, a `meeting_type` tag — standup / client-call / one-on-one / board-review / all-hands / cross-team / general — + entity tags) and ingest it (`cc-knowledge-ingest.py` → null embedding → `cc-knowledge-embed-backfill.py`). Client-call notes wikilink to the customer's CC record. (The old `Library/meetings/*` folders are retired.)
+Meeting notes are **knowledge → `vault_notes`**: write the note (`type: meeting`, a `meeting_type` tag — standup / client-call / one-on-one / board-review / all-hands / cross-team / general — + entity tags) and ingest it (`cc-knowledge-ingest.py` → null embedding → `cc-knowledge-embed-backfill.py`). Client-call notes wikilink to the customer's CC record.
 
 Filename: `YYYY-MM-DD Meeting Title.md`.
 
@@ -569,7 +524,7 @@ status: processed
 ---
 ```
 
-Body uses Obsidian callouts:
+Body uses callouts:
 
 ```markdown
 ## Participants
@@ -609,7 +564,7 @@ Business mode additions:
 
 - Add `project:` and `department:` to frontmatter where applicable
 - Use [[wikilinks]] for all project and person references
-- The meeting note lives in `vault_notes` (ingested) — no MAP.md to update; the cloud map auto-regenerates
+- The meeting note lives in `vault_notes` (ingested); the cloud map auto-regenerates
 
 ### Fireflies Sync
 
@@ -633,22 +588,22 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 
 ## General Guidelines
 
-- **MAP.md is your index.** Check before creating any file. Update after creating new files.
-- **Memory protocol**: Load context files at session start. Route new knowledge per `[[vault-routing]]`.
+- **The cloud map is your index.** The `config.map-md` orientation doc + the generated `cc_map` (the `/m/map` page) tell you what exists and where; the `drive_files` + `vault_notes` indexes are the live "what's where" lookups. Search them before creating anything.
+- **Memory protocol**: Load the cached `CLAUDE` + `MAP` at session start. Route new knowledge per `[[vault-routing]]`.
 - **Sweep verb**: `sweep` is a single deliberate verb, manual trigger only. No skill should auto-offer it. Email-workflow operating manual: `[[email-workflow]]`.
 - **Email-workflow verbs**: `triage`, `sync`, `hand to`, `reply` (tray: Replies label, **no task**), `task` (CC task: no Replies label, `[no-sync-close]`), `reply + task` (the combo — a Reply with a prep task), `replies` / `my replies` (tray walker; legacy `actions`), `de-tray this`, `file`, `file all emails`, `add to calendar`. One-sentence rule: **Replies = waiting on Pete to respond by email; a task only when work is required** (decoupled 2026-06-25). See `[[email-workflow]]` -- handled by `inbox-triage` and `email-task-sync` skills.
-- **Wikilinks everywhere**: Every mention of a project, person, or vault note MUST be a `[[wikilink]]`.
-- **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> `Library/lessons/{date}-{slug}.md` + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
-- **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[README]]`.
+- **Wikilinks everywhere**: Every mention of a project, person, or knowledge note MUST be a `[[wikilink]]`.
+- **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> a `vault_notes` lesson (`type: lesson`) + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
+- **Lessons**: lessons live in `vault_notes` (`type: lesson`) — behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know — those carry NO pointer in CLAUDE.md; knowledge-DB search (`cc-knowledge-api.py`) is their discovery surface.
 - **Outbound text drafting**: read `[[voice-principles]]` before drafting any outbound text on Pete's behalf (customer email, supplier email, internal email, blog, article, ad copy).
 - **Finance / invoicing / Soldo / Dext / Odoo / Xero / payroll / VAT**: read `[[finance-workflow]]` first.
 - **Helper scripts**: in GitHub `pete-brain-scripts`, pulled to `/tmp/pbs` by the boot kernel — run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`. Don't reinvent; check the CC Helpers registry (`/m/process-library`).
 - **Connectors and APIs**: registry at `[[connections]]` -- don't guess what's connected or how it auths.
-- **Sygma Hub mirror**: `Library/sy-*/` folders are local mirrors of designated Sygma Hub Drive folders. When Pete asks about Sygma policies / training reference / company info / HR / sales pipeline, check `Library/sy-*/` first. See `[[hub-content-index]]`.
+- **Sygma Hub content**: lives in the **Sygma Hub** Google Drive folder (indexed in `drive_files`). When Pete asks about Sygma policies / training reference / company info / HR / sales pipeline, query the Drive index first. See `[[hub-content-index]]`.
 - **Daily notes**: the CC `daily_log` table (one row per session, `cron_name='session'`) is the session diary + most-read memory — keep it current; the CC **Daily** page (`/m/daily`) renders it.
-- **All working files go in Projects/**: `Projects/{name}/files/`. Code repos clone into a temp directory, never into the vault.
-- **Search before writing.** Check MAP.md and grep before creating files.
-- **Properties before property work.** Read the property README before any SEO/ads/analytics work.
+- **Working files live in Drive + the CC.** Project artefacts go in the entity's Drive home; knowledge goes in `vault_notes`; code repos clone into a temp directory (`/tmp/...`). Nothing permanent is written to local disk.
+- **Search before writing.** Query the `drive_files` / `vault_notes` indexes (and grep `/tmp/pbs`) before creating anything.
+- **Properties before property work.** Read the property's CC record before any SEO/ads/analytics work.
 - **CC `public.tasks` is Pete's task system.** Create, update, and complete tasks via `cc-sql.py`.
 
 ## Skill orchestration
@@ -668,25 +623,21 @@ Brain owns workflow orchestration. Hand off to specialised skills when their ver
 
 ## Auto-Save Rule
 
-**Never ask permission to save.** When meaningful info comes up, save it to the right vault file immediately. Report what was saved and where.
+**Never ask permission to save.** When meaningful info comes up, save it to the right home immediately (knowledge → `vault_notes`, files → Drive, tasks → `public.tasks`). Report what was saved and where.
 
 ## Anti-Patterns
 
 Do NOT:
 - Ask "should I save this?" -- just save it
 - Write project names or people as plain text -- use `[[wikilinks]]`
-- Use `[markdown](links)` for internal vault notes -- use `[[wikilinks]]`
-- Put a `# Title` heading that duplicates the filename
+- Use `[markdown](links)` for internal knowledge notes -- use `[[wikilinks]]`
+- Put a `# Title` heading that duplicates the note title
 - Create orphan notes
 - Read entire files when scanning many -- use `grep`
-- Update vault files on casual chat
+- Record knowledge on casual chat
 - Start real work without writing a session plan first
 - Create tasks anywhere other than CC `public.tasks` (Pete's tasks)
-- Put project working files in Properties/ -- they go in Projects/
-- Put SEO/ads data in Projects/ -- operational data goes in Properties/{Name}/data/
-- Cram all project info into README.md -- use files/ for working content
-- Store business-specific SOPs in Library/processes/ -- use Businesses/{name}/sops/
-- Create SITE-HISTORY.md or PROJECT_REFERENCE.md files
+- Write any permanent file to local disk -- it belongs in one of the four homes (Drive / `vault_notes` / `public.tasks` / the CC)
 - Duplicate routing rules into this skill -- they live in [[vault-routing]] only
 
 ## Pete's Preferences for Written Content
