@@ -3,8 +3,8 @@ import os
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC=f"{VAULT}/Library/processes/secrets"; REF="zhexcaflgahdcbzvbyfq"
 k=json.load(open(f"{SEC}/command-centre-supabase-keys.json")); URL=k["url"]; SR=k["service_role_key"]
-tok=(os.environ.get("SUPABASE_TOKEN") or open(f"{SEC}/supabase-token").read().strip())
-VKEY=(os.environ.get("VOYAGE_API_KEY") or open(f"{SEC}/voyage-api-key").read().strip())
+tok=(os.environ.get("SUPABASE_TOKEN") or open(f"{SEC}/supabase-token").read()).strip()
+VKEY=(os.environ.get("VOYAGE_API_KEY") or open(f"{SEC}/voyage-api-key").read()).strip()
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
 HR={"apikey":SR,"Authorization":f"Bearer {SR}","Content-Type":"application/json"}
 def _post_embed(texts):  # direct Voyage — the Supabase edge fn /functions/v1/embed 400s, so bypass it
