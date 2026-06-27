@@ -70,18 +70,27 @@ def esc(s):
 
 # ─────────────────────────── section data ───────────────────────────
 def pf_lesson(today):
-    """Best-effort yesterday's PF lesson (local vault only; skipped on cloud)."""
+    """Yesterday's PF 'one lesson for tomorrow' from the CC `health_journal` table (the journal lives
+    in the CC now — no Drive/Mac file). Returns None if unreachable/absent."""
+    import json as _j, urllib.request as _u
     yest = (today - datetime.timedelta(days=1)).isoformat()
-    for p in [os.path.join(VAULT, f"Personal/passion-fit/journal/{yest}.md")]:
-        if os.path.exists(p):
-            t = open(p).read()
-            if "## One lesson for tomorrow" in t:
-                after = t.split("## One lesson for tomorrow", 1)[1].strip()
-                for cut in ("\n## ", "\n---"):
-                    i = after.find(cut)
-                    if i > 0:
-                        after = after[:i]
-                return after.strip() or None
+    try:
+        url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+        if not (url and key):
+            kp = os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")
+            kd = _j.loads(open(kp).read()); url, key = kd["url"], kd["service_role_key"]
+        q = url.rstrip("/") + f"/rest/v1/health_journal?date=eq.{yest}&select=body"
+        rows = _j.loads(_u.urlopen(_u.Request(q, headers={"apikey": key, "Authorization": "Bearer " + key}), timeout=20).read())
+        t = (rows[0].get("body") if rows else None) or ""
+        if "## One lesson for tomorrow" in t:
+            after = t.split("## One lesson for tomorrow", 1)[1].strip()
+            for cut in ("\n## ", "\n#", "\n---"):
+                i = after.find(cut)
+                if i > 0:
+                    after = after[:i]
+            return after.strip() or None
+    except Exception:
+        return None
     return None
 
 
