@@ -7,18 +7,15 @@ description: "Use this skill whenever Pete wants to work on any website, app, or
 
 # Property Manager — Universal Workflow Skill
 
-> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> Anywhere a step reads/writes `Properties/`, `Projects/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Daily/`, do the **cloud equivalent**: property card / SEO tracker → **CC Properties module**, property data → the property's **Drive** folder · customer/supplier/business → the entity's **Drive** folder + a `vault_notes` record · decisions/notes/plans → **`vault_notes`** (ingest a `.md`) · session log → CC `daily_log`. Find files via `drive_files` (`cc-sql.py`), knowledge via `vault_notes` (`cc-knowledge-api.py`). Code repos still clone to `/tmp/<repo>`; tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+> [!important] Where property state lives
+> A property's **card** (domain, tech stack, tracking IDs, live-state block) lives in the **CC Properties module** (Part E). Its **reference data** (SEO crawl, audit results, ads/analytics exports) lives in the property's **Google Drive** folder (find via `drive_files`: `/tmp/pbs/cc-sql.py`). **Decisions / notes / plans** → **`vault_notes`** (`cc-knowledge-api.py`). **Session log** → CC `daily_log`. Customer/supplier/business context → the entity's Drive folder + a `vault_notes` record. Code repos clone to `/tmp/<repo>` (a fresh working copy each session); tools run from `/tmp/pbs`; a `[[wikilink]]` links a note by its name in `vault_notes`. Route per the matrix in [[vault-routing]].
 
-> [!important] Business OS migration — content lives in Drive + the knowledge DB, not the vault tree
-> A property's working files (`Projects/{name}/files/`) and reference data (`Properties/{Name}/data/`) are migrating to **Google Drive** (find via `drive_files`: `/tmp/pbs/cc-sql.py`) and the property cards into the **CC Properties module** (Part E). The vault `Properties/` + `Projects/` content folders are **retired 24 Jun 2026 (now in Drive + vault_notes)**. Route new content per the new-world matrix in [[vault-routing]]; `[[wikilinks]]` resolve against `vault_notes` (no rewriting). Code repos still clone to a temp dir (never the vault). Full picture: `MAP.md`.
+Single workflow for connecting to any of Pete's digital properties, understanding architecture, making changes safely, and keeping the CC property cards up to date.
 
-Single workflow for connecting to any of Pete's digital properties, understanding architecture, making changes safely, and keeping the vault up to date.
-
-Properties carry a `property_type:` frontmatter field on their README (vocabulary at [[vault-routing#property-type-vocabulary]]: `marketing-site`, `saas-app`, `internal-tool`, `external-data-source`, `microsite`). Read the type when opening a property and adapt the workflow lens accordingly. Style rules for outbound communications live in [[voice-principles]] only — PRs, commit messages, README writes, audit reports, and code comments are internal artefacts and not subject to those rules.
+Properties carry a `property_type:` field on their CC card (vocabulary at [[vault-routing#property-type-vocabulary]]: `marketing-site`, `saas-app`, `internal-tool`, `external-data-source`, `microsite`). Read the type when opening a property and adapt the workflow lens accordingly. Style rules for outbound communications live in [[voice-principles]] only — PRs, commit messages, card writes, audit reports, and code comments are internal artefacts and not subject to those rules.
 
 > [!important] Live state is machine-maintained — don't re-derive it by hand
-> Each property card carries a `<!-- LIVE-STATE -->` block (host, deployed commit vs repo head, DNS, Supabase, GSC/GA4/Ahrefs/GTM) refreshed every night by the [[property-state-and-capability-system-plan|property-state system]] (`property-live-state.py`). **Read that block for current state; don't manually curl/check what's already verified there.** The §E service-declaration frontmatter (`domains`, `hosting`, `github`, `vercel_project`, `gsc_property`, `ga4_property`, …) drives it — keep it filled on every card. The whole estate is on the dashboard at `properties-dashboard-xi.vercel.app`; in Claude Code, mentioning a property auto-injects its verified state via the `property-context-hook`.
+> Each property card carries a `<!-- LIVE-STATE -->` block (host, deployed commit vs repo head, DNS, Supabase, GSC/GA4/Ahrefs/GTM) refreshed every night by the [[property-state-and-capability-system-plan|property-state system]] (`property-live-state.py`). **Read that block for current state; don't manually curl/check what's already verified there.** The §E service-declaration fields (`domains`, `hosting`, `github`, `vercel_project`, `gsc_property`, `ga4_property`, …) drive it — keep them filled on every card. The whole estate is on the dashboard at `properties-dashboard-xi.vercel.app`; in Claude Code, mentioning a property auto-injects its verified state via the `property-context-hook`.
 
 Version history: [[CHANGELOG]].
 
@@ -26,7 +23,7 @@ Version history: [[CHANGELOG]].
 
 ## Overview
 
-Pete owns ~30 digital properties -- websites, apps, dashboards, tools -- built with various tech stacks (Lovable, React+Vite, Manus, static HTML, etc.). This skill is the single workflow for connecting to any of them, understanding the architecture, making changes safely, and keeping the vault up to date.
+Pete owns ~30 digital properties -- websites, apps, dashboards, tools -- built with various tech stacks (Lovable, React+Vite, Manus, static HTML, etc.). This skill is the single workflow for connecting to any of them, understanding the architecture, making changes safely, and keeping the CC property cards up to date.
 
 **Read this skill in full before taking any action.**
 
@@ -64,11 +61,11 @@ Every code step ends with a STOP. The assistant:
 
 ## Step 0 -- Identify the Property
 
-Before doing anything, find out what you're working with. The vault already knows most of this.
+Before doing anything, find out what you're working with. The CC already knows most of this.
 
-### 0a. Find the property README
+### 0a. Find the property card
 
-Read `Properties/{property-name}/README.md`. This contains:
+Read the property's card in the **CC Properties module** (`/m/properties`, or query `cc-sql.py`). It contains:
 
 - Domain and live URL
 - Tech stack (Lovable, React+Vite, Manus, static, etc.)
@@ -114,18 +111,18 @@ If Pete hasn't already said:
 
 Only ask for details the brain doesn't already have. **Never ask for information that's in the property README.**
 
-### 0d. If the property doesn't exist in the vault yet
+### 0d. If the property doesn't have a CC card yet
 
 This is a new property. Follow the intake workflow:
 
 1. **Agree the project name** -- ask Pete. This becomes `{project-name}` everywhere.
 2. **Gather what Pete knows** -- domain (or "none yet"), tech stack, GitHub repo (or "not yet"), which GitHub account, hosting, department, Supabase (or "none"), description. Don't push for fields that don't apply -- not everything has a repo or database and that's fine.
-3. **Create the vault structure**:
-   - `Properties/{project-name}/README.md` (property card with whatever details we have)
-   - `Projects/{project-name}/` for active project work (flat mirror of the project hierarchy)
-4. **No MAP.md to update** — the cloud map (`cc_map`) regenerates automatically; register the property in the CC (Properties module / `projects`).
+3. **Register it in the cloud**:
+   - Create the property's **card** in the CC Properties module (`projects` / Properties module) with whatever details we have.
+   - Create the property's **Google Drive** folder for active project work + reference data.
+4. **Map upkeep is automatic** — the cloud map (`cc_map`) regenerates on its own.
 5. **Remind Pete** to update [[GitHub-Repo-Property-Master.xlsx]] if appropriate.
-6. **Log in daily note**.
+6. **Log in the daily log**.
 
 Then continue with the rest of this workflow.
 
@@ -133,7 +130,7 @@ Then continue with the rest of this workflow.
 
 FIRST action after understanding what Pete wants:
 
-1. **Vault session plan**: Write to `Projects/{project-name}/files/session-plan-YYYY-MM-DD.md` with goal, steps, and status: in-progress. Update this plan as work progresses. This is the permanent record.
+1. **Recorded session plan**: Write a `vault_notes` session-plan record (`type: session-plan`, tagged with the project slug) with goal, steps, and status: in-progress. Update it as work progresses. This is the permanent record.
 2. **Claude Code built-in plan**: Also use Claude Code's built-in plan mode for live session tracking. This is ephemeral (lives in the UI, not saved) but gives Pete a live progress view.
 
 ---
@@ -142,7 +139,7 @@ FIRST action after understanding what Pete wants:
 
 ### 1a. Look up the PAT
 
-The PAT is stored in `Library/processes/github-configuration.md`. Pete has two master PATs (classic, no expiry, repo scope) -- one per GitHub account. Use them directly.
+The PAT comes from the CC `secrets` table (materialised to `/tmp/pbs` by the boot kernel — `github-pat`). Pete has two master PATs (classic, no expiry, repo scope) -- one per GitHub account. Use them directly.
 
 > [!important] Do NOT generate a new PAT per session
 > Never generate a new token unless Pete tells you the stored one has been revoked.
@@ -157,7 +154,7 @@ cd /tmp/<repo-name>
 git status
 ```
 
-The repo clone lives in `/tmp/`, not in the vault. This is a fresh working copy every session.
+The repo clone lives in `/tmp/`. This is a fresh working copy every session.
 
 **The repo is the single source of truth for code.** Always clone and read live. Never work from memory of what the code "should" look like.
 
@@ -194,10 +191,10 @@ git push origin main
 
 ### 2a. Read property context
 
-Read the property folder to understand current state:
+Read the property's home to understand current state:
 
-- `ls Properties/{property-name}/` -- see what subdirs exist (data/ for operational data)
-- Read `Properties/{property-name}/README.md` for domain, tech stack, tracking IDs
+- List the property's **Google Drive** folder (`drive_files` via `cc-sql.py`) -- see what reference data exists
+- Read the property's **CC card** for domain, tech stack, tracking IDs
 
 ### 2b. Read any active projects
 
@@ -269,7 +266,7 @@ If the property README shows a stack you don't have specific rules for, apply co
 This step depends on the session goal. Some common patterns:
 
 ### SEO audit (technical only)
-This covers technical SEO checks on the codebase: `index.html`, `public/robots.txt`, `public/sitemap.xml`, schema markup, meta tags, redirect chains. Load the relevant SEO reference file based on whether the site has pre-rendering or not. Route findings to `Properties/{property-name}/data/`.
+This covers technical SEO checks on the codebase: `index.html`, `public/robots.txt`, `public/sitemap.xml`, schema markup, meta tags, redirect chains. Load the relevant SEO reference file based on whether the site has pre-rendering or not. Route findings to the property's **Google Drive** folder.
 
 For **page-level keyword and content SEO** (keyword research, Surfer NLP analysis, Ahrefs position tracking, content optimisation plans), use the **ahrefs-audit** skill instead -- not this one. Property-manager handles the technical infrastructure; ahrefs-audit handles the strategic content work.
 
@@ -524,30 +521,30 @@ Remind Pete (only if relevant) to:
 
 ## Step 7 -- Clean Up and Persist
 
-### 7a. Update property README and daily note
+### 7a. Update the property card and daily log
 
-- Update `Properties/{property-name}/README.md` with any new information discovered during the session (new tracking IDs, tech stack changes, status updates)
-- Log session work in the CC `daily_log` (`INSERT … cron_name='session'`) — not a vault file
+- Update the property's **CC card** with any new information discovered during the session (new tracking IDs, tech stack changes, status updates)
+- Log session work in the CC `daily_log` (`INSERT … cron_name='session'`)
 
-### 7b. Route findings back to the vault
+### 7b. Route findings back to their homes
 
-Follow vault-writer routing rules:
+Follow the routing rules:
 
 | What you found | Where it goes |
 |---|---|
-| SEO crawl data, audit results | `Properties/{property-name}/data/` |
-| SEO page optimisation (which pages, keywords, scores, rescans) | Update the SEO Page Tracker table in `Properties/{property-name}/README.md` (see ahrefs-audit skill for format) |
-| Google Ads data | `Properties/{property-name}/data/` |
-| Analytics / traffic data | `Properties/{property-name}/data/` |
-| Tech stack changes, new domain, new tracking ID | Update `Properties/{property-name}/README.md` |
-| New GitHub repo added to property | Update property README Git Connection section + `Library/processes/github-configuration.md` |
-| New Supabase project added | Update property README + `Library/processes/supabase-access-token.md` if it's a new project ref |
-| Project status, decisions, specs | `Projects/{project-name}/files/` |
+| SEO crawl data, audit results | the property's **Google Drive** folder |
+| SEO page optimisation (which pages, keywords, scores, rescans) | Update the SEO Page Tracker on the property's **CC card** (see ahrefs-audit skill for format) |
+| Google Ads data | the property's **Google Drive** folder |
+| Analytics / traffic data | the property's **Google Drive** folder |
+| Tech stack changes, new domain, new tracking ID | Update the property's **CC card** |
+| New GitHub repo added to property | Update the property's **CC card** Git Connection section |
+| New Supabase project added | Update the property's **CC card** |
+| Project status, decisions, specs | **`vault_notes`** (ingest a `.md`) |
 | Session progress | CC `daily_log` (`cron_name='session'`) |
 
 ### 7c. Capture new infrastructure
 
-If during the session Pete mentions adding something new to the property -- a repo, a database, a domain, a Vercel deployment, tracking IDs -- update the property README immediately. Don't ask permission, just save it and confirm what was recorded.
+If during the session Pete mentions adding something new to the property -- a repo, a database, a domain, a Vercel deployment, tracking IDs -- update the property's **CC card** immediately. Don't ask permission, just save it and confirm what was recorded.
 
 But never nag about missing fields. Some properties deliberately don't have repos, databases, or domains. Accept what's there.
 
@@ -570,7 +567,7 @@ Use the property's `project_slug` NAME (e.g. `SY-Website`, `CD-Website`, `CD-Oth
 
 | Do | Don't |
 |---|---|
-| Read the property README before starting | Ask Pete for info the vault already has |
+| Read the property's CC card before starting | Ask Pete for info the CC already has |
 | Clone the repo fresh every session | Work from memory of the code |
 | Check tech stack rules before editing | Edit `src/` directly on a Lovable site |
 | Write Lovable prompts for `src/` changes | Commit `src/` changes that will be overwritten |
