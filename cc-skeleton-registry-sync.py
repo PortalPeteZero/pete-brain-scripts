@@ -11,7 +11,7 @@ Scans (read-only):
 Re-runnable (upsert on name). The /m/process-library page reads these (page wiring = a later
 website-careful step). Env-first CC keys so it also runs on Railway.
 """
-import os, re, json, glob, urllib.request
+import os, re, json, glob, datetime, subprocess, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 CC = json.load(open(os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")))
@@ -49,6 +49,50 @@ def secrets_in(text):
     found = {s.strip('"\'/ ') for s in found if len(s) > 2 and not s.startswith(".")}
     return ", ".join(sorted(found)[:8])
 
+# Pre-build version map from skills/README.md (canonical version source)
+_ver_map = {}
+try:
+    _readme = open(os.path.join(VAULT, "skills/README.md"), encoding="utf-8", errors="replace").read()
+    for _row in re.finditer(r'\|\s*`([^/`]+)/`[^|]*\|\s*([v\d][^\|]+)\|', _readme):
+        _ver_map[_row.group(1).strip()] = _row.group(2).strip()
+except Exception:
+    pass
+
+def parse_frontmatter_description(txt):
+    """Parse description from SKILL.md frontmatter, handling YAML block scalars (>, >-, |, etc.)."""
+    fm_match = re.match(r'^---\s*\n(.*?)\n---', txt, re.S)
+    if not fm_match:
+        return first_doc(txt)
+    fm = fm_match.group(1)
+    desc_match = re.search(r'^description:\s*(.*)$', fm, re.M)
+    if not desc_match:
+        return first_doc(txt)
+    inline = desc_match.group(1).strip()
+    if inline and inline not in ('>', '>-', '|-', '|', '>+', '|+'):
+        return inline[:400]
+    # Block scalar: collect indented continuation lines
+    after = fm[fm.index(desc_match.group(0)) + len(desc_match.group(0)):]
+    lines = []
+    for line in after.split('\n'):
+        if not line:
+            continue
+        if line[0] in (' ', '\t'):
+            lines.append(line.strip())
+        else:
+            break
+    return (' '.join(lines) if lines else first_doc(txt))[:400]
+
+def git_last_commit(path):
+    """Return ISO datetime of the last git commit for path, or None."""
+    try:
+        rel = os.path.relpath(path, HERE)
+        r = subprocess.run(['git', '-C', HERE, 'log', '-1', '--format=%cI', '--', rel],
+                           capture_output=True, text=True, timeout=10)
+        dt = r.stdout.strip()
+        return dt if dt else None
+    except Exception:
+        return None
+
 # 1. helpers
 helpers, connectors = [], []
 for p in sorted(glob.glob(os.path.join(HERE, "*.py"))):
@@ -67,15 +111,47 @@ for p in sorted(glob.glob(os.path.join(HERE, "*.py"))):
 
 # 2. skills
 skills = []
+live_names = set()
 for sk in sorted(glob.glob(os.path.join(VAULT, "skills/*/SKILL.md"))):
     txt = open(sk, encoding="utf-8", errors="replace").read()
     nm = re.search(r'^name:\s*(.+)$', txt, re.M)
-    desc = re.search(r'^description:\s*(.+)$', txt, re.M)
     folder = os.path.basename(os.path.dirname(sk))
     name = (nm.group(1).strip().strip('"\'') if nm else folder)[:120]
-    what = (desc.group(1).strip().strip('"\'') if desc else first_doc(txt))[:400]
+    live_names.add(name)
+    what = parse_frontmatter_description(txt)
     rel = os.path.relpath(sk, VAULT)
-    skills.append({"name": name, "path": rel, "what": what})
+    # version: README table is canonical; fall back to frontmatter `version:` if present
+    version = _ver_map.get(folder)
+    if not version:
+        vm = re.search(r'^version:\s*(.+)$', txt, re.M)
+        version = vm.group(1).strip() if vm else None
+    # last_edited: git log preferred, fall back to file mtime
+    last_edited = git_last_commit(sk)
+    if not last_edited:
+        mtime = os.path.getmtime(sk)
+        last_edited = datetime.datetime.fromtimestamp(mtime, tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    row = {"name": name, "path": rel, "what": what, "content": txt, "last_edited": last_edited}
+    if version:
+        row["version"] = version
+    skills.append(row)
+
+# Prune deleted skills (guard: only when at least 5 found on disk)
+if live_names and len(live_names) >= 5:
+    try:
+        req = urllib.request.Request(f"{URL}/rest/v1/skills?select=name",
+            headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
+        db_names = {r["name"] for r in json.load(urllib.request.urlopen(req, timeout=30))}
+        stale = db_names - live_names
+        if stale:
+            stale_csv = ",".join(stale)
+            del_req = urllib.request.Request(
+                f"{URL}/rest/v1/skills?name=in.({stale_csv})",
+                headers={"apikey": KEY, "Authorization": f"Bearer {KEY}",
+                         "Prefer": "return=minimal"}, method="DELETE")
+            urllib.request.urlopen(del_req, timeout=30)
+            print(f"pruned: {stale}")
+    except Exception as e:
+        print(f"prune warning: {e}")
 
 # 3. a few known MCP/platform connectors not captured as *-api.py
 connectors += [
