@@ -19,7 +19,9 @@ whole reason Garmin moved to Railway. No Drive/vault/dashboard writes.
 # entity: canary-detect
 # schedule: 0 1,7,9,17,22 * * *
 # timezone: Atlantic/Canary
+# secrets: GARMIN_TOKENS_JSON, GOOGLE_SA_JSON
 # note: a list-hour schedule bypasses tz-conversion, so this is authored in UTC — 0,6,8,16,21 UTC = 1am / 7am / 9am / 5pm / 10pm Atlantic/Canary (summer). 5x/day, set by Pete 26 Jun 2026.
+# note: GOOGLE_SA_JSON materialises the Drive service-account key so the headless run can fetch the PF journal from Drive (Mac-independent).
 # CRON-META-END
 """
 import importlib.util
