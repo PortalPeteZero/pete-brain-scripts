@@ -50,6 +50,27 @@ Match the user's intent to the right section:
 | "triage", "sweep", "sync", "hand to", "reply", "task", "replies" / "my replies" (tray walker; legacy "actions"), "de-tray this", "file", "file all emails", "add to calendar" | see [[email-workflow]] -- handled by `inbox-triage` + `email-task-sync` skills |
 | "draft an email", "write a blog post", "outbound", customer reply | [Output Styles](#output-styles) + Pete's Preferences (read [[voice-principles]] first) |
 | "invoice", "Soldo", "Dext", "Odoo", "Xero", "payroll", "VAT" | [[finance-workflow]] |
+| "enquiry", "enquiries", "reply to enquiry in {X}", "Sent to Sue" (training enquiries) | [Enquiry Engine](#enquiry-engine) |
+
+## Enquiry Engine
+
+Sygma training-enquiry handling is a **living learning machine**, not a static SOP. The operating contract
++ banked rules live in the `vault_notes` note **[[workflow-design]]** (Enquiry reply workflow) — read it
+first; it ranks top when you semantic-search any enquiry. The lifecycle store is the **Portal CRM**
+(contacts · activities · tags · stages · bookings); the searchable knowledge + corrections live in
+`vault_notes` tagged `training-enquiries`; chases land in `public.tasks`. Cockpit: **/m/enquiry-engine**.
+
+- **`enquiry`** — handle one new inbound enquiry: classify → RETRIEVE precedents → draft (Mode B) → capture.
+- **`enquiries`** — the sweep: reconcile replies on what we've sent, surface chases due, run the learn step.
+- **`reply to enquiry in {course/company}`** — run the loop on ONE enquiry. **Never draft cold** — first
+  `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py semantic "<course + scenario + people + location>" --limit 6`,
+  read the closest 2–3 + the banked rules, then draft bespoke (NO fixed templates).
+- **`Sent to Sue`** — the booking handoff: move the contact to **Customer** (won) + log it.
+- **Capture (every send / every correction):** `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <enquiry.json> --apply`
+  triple-writes CRM + knowledge note (embedded immediately) + chase task. A correction not captured is a bug.
+- **Mode B** stays: the Engine drafts, Pete signs off every send. Live facts to apply: **£145pp+VAT + cert
+  fee** (£34 EUSR reg on Cat 1; none in-house), qualify-first when a must-have is missing, just-over-8
+  framing, "I'll check seats" not "I'll book you", Sue owns dates. Utility-mapping / L3–5 / PAS128 → Neal Sadd.
 
 ## Markdown formatting
 
