@@ -19,11 +19,8 @@ description: >
 
 # inbox-triage
 
-> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> **Tasks → the CC:** `Task`/`Hand to` create a row in **`public.tasks`** (via `cc-sql.py`). **`Reply` is label-only — no task** (a task only in the overlap case, carrying `[no-sync-close]`). Anywhere a step reads/writes `Customers/`, `Suppliers/`, `Projects/`, `Personal/`, `Library/decisions`, or creates a new vault folder, do the **cloud equivalent**: entity content → the entity's **Drive** folder + a `vault_notes` record (account-customers → CC `account_*`); decisions/notes → **`vault_notes`** (ingest a `.md`). `vault-enricher.py` still runs (keep calling it). New customer/supplier onboarding creates a **Drive** folder + CC record, not a vault folder. Tools run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
-
-> [!important] Business OS migration — filing targets are Drive + the knowledge DB now
-> When triage files a thread to a customer/supplier/project, the real home is the entity's **Google Drive** folder + the **CC `vault_notes`** record, not the legacy vault content folder (`Customers/`, `Suppliers/`, `Projects/` are mirrors retired 24 Jun 2026). Route per the new-world matrix in [[vault-routing]]. Gmail labels are unchanged. **Note for H/E:** `vault-enricher.py` (called on every filed/task-linked thread) still enriches the vault file — flagged for redesign to target Drive/DB (); keep calling it for now. `[[wikilinks]]` resolve against `vault_notes`.
+> [!important] Where triage files things
+> **Tasks → the CC:** `Task`/`Hand to` create a row in **`public.tasks`** (via `cc-sql.py`). **`Reply` is label-only — no task** (a task only in the overlap case, carrying `[no-sync-close]`). **Entity content** (customer / supplier / project / personal) → the entity's **Google Drive** folder + a **`vault_notes`** record (account-customers → CC `account_*`). **Decisions / notes** → **`vault_notes`** (ingest a `.md`). New customer/supplier onboarding creates a **Drive** folder + CC record. `vault-enricher.py` runs on every filed/task-linked thread — keep calling it. Gmail labels are unchanged. Route per the matrix in [[vault-routing]]. Tools run from `/tmp/pbs`; a `[[wikilink]]` links a note by its name in `vault_notes`.
 
 Interactive email triage walker. The verb `triage` runs this skill.
 
@@ -238,12 +235,12 @@ Label-routing logic (which X to pick once verb is chosen):
 - P3 → today + 30 days
 - P4 → no due date
 
-**Vault** -- pull content into the durable layer (see Rule 13):
-- Attachments worth pulling (quotes, contracts, reports, invoices, certs, photos, specs, datasheets, signed forms) → matter's `source/{YYYY-MM-DD-slug}/`. Skip signature cruft.
-- Substantive body content → `extracts/`.
-- Decisions of strategic note → `Library/decisions/YYYY-MM-DD-{title}.md`.
-- **Personal-area attachments**: scout training certs / lodge summons + menus / Los Claveles utility bills / Passion Fit coaching docs / personal finance docs → `Personal/{area}/source/` or the appropriate sub-folder (`Personal/freemasonry/summons-and-menus/`, `Personal/los-claveles/accounts/`, etc.).
-- **Family attachments**: travel certs, vehicle docs, Spanish admin, school reports, medical → `Personal/family/{Sub Area}/` (**TitleCase With Spaces** -- e.g. `Travel/`, `Vehicles/`, `Spanish Admin/`, `Health/`). Family content auto-syncs to Drive Pete & Mic / Ashcroft Family/ via `vault-drive-sync` (hourly).
+**Durable layer** -- pull content into the entity's home (see Rule 13). `vault-enricher.py` does this on every filed/task-linked thread:
+- Attachments worth pulling (quotes, contracts, reports, invoices, certs, photos, specs, datasheets, signed forms) → the entity's **Google Drive** folder under a dated sub-folder. Skip signature cruft.
+- Substantive body content → a **`vault_notes`** record for the entity.
+- Decisions of strategic note → **`vault_notes`** (`type: decision`, ingested).
+- **Personal-area attachments**: scout training certs / lodge summons + menus / Los Claveles utility bills / Passion Fit coaching docs / personal finance docs → the matching **Personal** area folder in Google Drive.
+- **Family attachments**: travel certs, vehicle docs, Spanish admin, school reports, medical → **Ashcroft Family/** in Google Drive under the matching sub-area (**TitleCase With Spaces** -- e.g. `Travel/`, `Vehicles/`, `Spanish Admin/`, `Health/`).
 
 **Calendar** -- detect flights/hotels/cars/meetings; propose with default tz Atlantic/Canary, default calendar Pete's primary.
 
@@ -396,14 +393,14 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, du
 
 **Every triage row that applies a filing label (Customers/, Suppliers/, Projects/, General/, Personal/{area}/, Accreditations/, Businesses/) MUST call `vault-enricher.py` on the source thread immediately after the Gmail label is applied.** No exceptions other than the documented skip rules (PA-General, operational labels, signature-only auto-reply threads).
 
-The helper exists and is documented — what was missing in practice was the actual call during runs. Pete had to manually remind: "I don't see a lot of pulling context and files into the vault from either of these skills when they run." That's now closed by elevating the enricher call to a verb side-effect.
+The helper exists and is documented — what was missing in practice was the actual call during runs. The enricher call is a verb side-effect so context and files are always pulled into the durable layer when triage files a thread.
 
 ```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{target-vault-folder}"
+VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{target-entity}"
 ```
 
-- **target-vault-folder** = the filing label converted to a vault path (e.g. `Suppliers/SY-AppearOnline`, `Projects/Team-General/SY-General`)
-- **For supplier/customer with `source/` and `extracts/` subfolders**: enricher auto-pulls substantive attachments to `source/`, body extracts to `extracts/`, contacts to the customer-level README's Key contacts table
+- **target-entity** = the filing label converted to its entity slug (e.g. `SY-AppearOnline`, `SY-General`); the enricher resolves it to the entity's Drive home + `vault_notes` record
+- **For supplier/customer**: enricher auto-pulls substantive attachments to the entity's Drive folder, body extracts to its `vault_notes` record, contacts to the CC record's Key contacts
 - **Result is idempotent**: re-running on the same thread is safe (skips files that already exist)
 - **Skip rules baked in**: PA-General, operational labels, signature cruft, auto-reply threads
 
@@ -418,15 +415,14 @@ Every CC task created by triage must include both (and for a **Reply + Task** co
    - `https://mail.google.com/mail/u/0/#all/{thread_id}`
    - Same `{thread_id}` in both forms.
 
-2. **Finder link to the matching vault folder** if the task is tied to a project, customer, or supplier:
-   - Generated via `/tmp/pbs/vault-finder-link.py {project-name} [section-name]`
-   - Returns a `file:///Users/peterashcroft/Second%20Brain/Projects/{project}/[section]/` URL that opens the folder in macOS Finder
-   - SY-Clancy is the exception: maps to `Customers/SY-Clancy/`, not `Projects/SY-Clancy/`
-   - If no matching vault folder exists, omit the Finder link rather than emit a broken one
+2. **Drive link to the entity's home folder** if the task is tied to a project, customer, or supplier:
+   - Generated via `/tmp/pbs/vault-finder-link.py {entity-slug} [section-name]`
+   - Returns the Google Drive folder URL (or the cloud-synced mount path) for the entity's home
+   - If no matching home exists, omit the link rather than emit a broken one
 
-Reason: Mimestream opens the source thread in one click; Finder link opens the working folder in one click. Both eliminate the "find the right place" friction at the moment of action.
+Reason: Mimestream opens the source thread in one click; the Drive link opens the working folder in one click. Both eliminate the "find the right place" friction at the moment of action.
 
-Vault and Calendar columns drive their own side-effects (see Step 5).
+The filing and Calendar columns drive their own side-effects (see Step 5).
 
 ### Step 7: Move to next stage (or finish)
 
@@ -552,13 +548,12 @@ When Pete says yes to a discovery suggestion:
 1. Confirm name, prefix (SY/CD), relationship type, known contacts.
 2. Ensure Gmail parent label exists (`Customers` or `Suppliers` top-level must exist).
 3. Create Gmail label `{Category}/{prefix}-{slug}` with business colour (SY blue, CD yellow, etc).
-4. Create vault folder `{Category}/{prefix}-{slug}/` with `README.md` from template, frontmatter pre-filled.
+4. Create the entity's **Google Drive** home folder + a **CC record** (account-customer → CC `account_*`; otherwise a `vault_notes` record), key fields pre-filled.
 5. Create auto-filter (Mode A by default for customers/suppliers): `from:*@{domain} OR to:*@{domain}` → apply label, leave in inbox.
 6. Backfill: scan Gmail for messages from/to sender in last 6-12 months, apply label retroactively.
-7. **Matter analysis**: 5+ thread backfill → cluster by base subject, identify substantial matters, propose folders.
-8. **Pull attachments per matter**: download non-cruft attachments to `source/{YYYY-MM-DD-slug}/`.
-9. Update `MAP.md`.
-10. Report.
+7. **Matter analysis**: 5+ thread backfill → cluster by base subject, identify substantial matters, propose Drive sub-folders.
+8. **Pull attachments per matter**: download non-cruft attachments to the entity's Drive folder under a dated sub-folder.
+9. Report.
 
 ## Label creation -- full structure proposal pattern
 
@@ -573,29 +568,26 @@ Suggested new structure for {entity}:
     Colour:       {colour name + hex}
     Auto-filter:  {filter spec}  (Mode A | Mode B -- always confirmed)
 
-  VAULT
-    Folder:       {path}  (CREATE | EXISTS | NOT NEEDED -- workflow only)
-    Template:     {template file}
-    Subfolders:   {context/source/extracts or "lazy"}
+  DRIVE + CC
+    Drive home:   {Drive folder}  (CREATE | EXISTS | NOT NEEDED -- workflow only)
+    CC record:    {vault_notes | account_* -- CREATE | EXISTS}
 
   CC TASKS (public.tasks)
     project_slug: {existing NAME | NEW NAME | NONE -- tasks go in Team-General with entity_slug={prefix}-General}
 
-  MAP.md update: {new line description}
-
   Create all of the above? (y / edit / n)
 ```
 
-Vault decision per entity type (default proposal, Pete can override):
+Home decision per entity type (default proposal, Pete can override):
 
-| Entity type | Gmail label | Vault folder | CC project (`project_slug`) |
+| Entity type | Gmail label | Drive home + CC record | CC project (`project_slug`) |
 |---|---|---|---|
 | Customer | YES (parity hard) | YES (parity hard) | NO (route via Team-General + `entity_slug`) |
 | Supplier | YES (parity hard) | YES (parity hard) | NO (route via Team-General + `entity_slug`) |
 | Project | demand-driven | YES | YES (own `project_slug` NAME) |
 | Invoice batch | YES | YES | YES |
 | Accreditation body | YES | YES | YES |
-| Workflow tag (Replies, Delegated) | YES | NO (Delegated navigational) | YES if applicable |
+| Workflow tag (Replies, Delegated) | YES | NO (navigational only) | YES if applicable |
 | Personal hobby/cluster | optional | optional | NO |
 | One-off cluster (e.g. Travel) | maybe | NO | NO |
 
