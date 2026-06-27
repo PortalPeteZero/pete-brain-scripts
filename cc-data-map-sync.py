@@ -24,11 +24,32 @@ KEYS = json.load(open(f"{VAULT}/Library/processes/secrets/command-centre-supabas
 URL, SVC = KEYS["url"], KEYS["service_role_key"]
 DRY = "--dry" in sys.argv
 
+# LIVE COUNTS — the map must ALWAYS reflect the live DB, never a hard-coded number (Pete, 27 Jun 2026).
+# Every count below is queried fresh each run via PostgREST; if a count can't be fetched we ABORT rather
+# than write a stale/partial map. (Previously hard-coded as 1,909 notes / 84 process / 16 SOP / 6,730 edges /
+# 72 secrets — all drifted; this removes the whole class of bug.)
+def _cnt(table, filt=""):
+    url = f"{URL}/rest/v1/{table}?select=count" + (f"&{filt}" if filt else "")
+    r = urllib.request.Request(url, headers={"apikey": SVC, "Authorization": f"Bearer {SVC}"})
+    try:
+        with urllib.request.urlopen(r, timeout=30) as resp:
+            return json.loads(resp.read().decode())[0]["count"]
+    except Exception as e:
+        print(f"data-map: LIVE COUNT failed for {table} ({e}) — aborting, refusing to write a stale map", file=sys.stderr)
+        sys.exit(2)
+
+N_NOTES   = _cnt("vault_notes")
+N_PROCESS = _cnt("vault_notes", "type=eq.process")
+N_SOP     = _cnt("vault_notes", "type=eq.sop")
+N_EDGES   = _cnt("note_links")
+N_SECRETS = _cnt("secrets")
+N_FILES   = _cnt("drive_files")
+
 # domain · owner_system · home · access · notes
 MAP = [
-    ("Files & documents", "Cross", "Google Drive — 12 indexed drives (~150k files)", "drive_files index (cc-sql) + the synced Drive mount", "Any document/sheet/PDF/image/report. Find via the index, not the vault."),
-    ("Knowledge (lessons/decisions/notes/memory)", "Cross", "CC Supabase public.vault_notes", "cc-knowledge-api.py / CC Brain page", "1,909 notes + 6,730-edge link graph + semantic search."),
-    ("Processes / SOPs / workflows", "Cross", "CC vault_notes (type = process | sop | workflow)", "whereis.py / cc-knowledge-api.py / CC Process Library · the ONE write-path = cc-knowledge-ingest.py", "Every how-to procedure, SOP + workflow (84 process + 16 SOP notes). Write/change one by ingesting its note via cc-knowledge-ingest.py → vault_notes — NEVER a free-floating doc. Surfaced in the CC Process Library + semantic search."),
+    ("Files & documents", "Cross", f"Google Drive — 12 indexed drives ({N_FILES:,} indexed files)", "drive_files index (cc-sql) + the synced Drive mount", "Any document/sheet/PDF/image/report. Find via the index, not the vault."),
+    ("Knowledge (lessons/decisions/notes/memory)", "Cross", "CC Supabase public.vault_notes", "cc-knowledge-api.py / CC Brain page", f"{N_NOTES:,} notes + {N_EDGES:,}-edge link graph + semantic search."),
+    ("Processes / SOPs / workflows", "Cross", "CC vault_notes (type = process | sop | workflow)", "whereis.py / cc-knowledge-api.py / CC Process Library · the ONE write-path = cc-knowledge-ingest.py", f"Every how-to procedure, SOP + workflow ({N_PROCESS} process + {N_SOP} SOP notes). Write/change one by ingesting its note via cc-knowledge-ingest.py → vault_notes — NEVER a free-floating doc. Surfaced in the CC Process Library + semantic search."),
     ("Connections (APIs / MCP / integrations)", "Cross", "CC vault_notes — the [[connections]] Connections Registry + per-connection config notes (keys live separately in public.secrets)", "whereis.py / cc-knowledge-api.py · CC Process Library → Connectors tab · add via cc-knowledge-ingest.py", "Every API / MCP / service connection. To add or change one: write its config note + register it in [[connections]] (cc-knowledge-ingest.py). The secret/key itself lives in public.secrets, not here."),
     ("Automations & crons", "Cross", "CC Supabase public.crons (+ cron_events timeline)", "cc-cron.py (the ONE tool) · CC /m/automations-log · whereis.py", "All crons live on Railway. ONE tool = cc-cron.py (deploy / set-schedule / pause / resume / retire / status): author the schedule in each script's # CRON-META (Lanzarote-local), cc-cron.py converts to UTC + writes public.crons; the dashboard reads it live. crons-manifest.json, cc-cron-sync.py, railway-deploy.py + railway-sync-repo.py are RETIRED (hard-exit). public.processes is the older thin snapshot."),
     ("Pete's tasks", "CC", "CC Supabase public.tasks", "cc-sql / CC Tasks page (Stage-2)", "Priority engine, replacing Asana for Pete. ⚠ a CD-leak `tasks` shadows it."),
@@ -36,7 +57,7 @@ MAP = [
     ("Courses (catalogue)", "Sygma", "Sygma Portal public.courses (+ web-Hub /hub/courses)", "Portal (CC surfaces, never owns)", "From _course-map.yaml. Courses → the Sygma Platform, not the CC (Pete 22 Jun)."),
     ("Training delivery / utilisation / KPIs", "Sygma", "Sygma Portal (hub schema)", "Portal API / CC reads it (/m/sygma-training/utilisation)", "Bookings master sheet → Portal. Utilisation → Sygma Platform, not the CC."),
     ("Staff (Sygma)", "Sygma", "Sygma Staff System (Hub) + owner-private payroll", "see [[staff-data-routing]]", "Operational in the Hub; payroll/salary docs owner-private only."),
-    ("Secrets / API keys", "Cross", "CC Supabase public.secrets (+ local mirror ~/.config/pete-secrets)", "cc-sql / the mirror", "72, owner-gated; keys-in-Drive is fine (Pete)."),
+    ("Secrets / API keys", "Cross", "CC Supabase public.secrets (+ local mirror ~/.config/pete-secrets)", "cc-sql / the mirror", f"{N_SECRETS}, owner-gated; keys-in-Drive is fine (Pete)."),
     ("Property state (websites)", "CC", "CC Supabase property cards (property-state system)", "CC Properties page (/m/properties)", "Nightly property-live-state refresh across ~30 properties."),
     ("Calendar / schedule", "Personal", "Google Calendar", "calendar-api.py", "CC Schedule page = Stage-2 (CC-built on calendar-api.py)."),
     ("Email", "Cross", "Gmail (Google Workspace)", "gmail-api.py", "Triage / sync / sweep workflows; Gmail is source of truth."),

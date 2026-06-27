@@ -9,9 +9,12 @@ import json, subprocess
 import os
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-SQL = f"{VAULT}/Library/processes/scripts/cc-sql.py"
+SQL = f"{VAULT}/cc-sql.py"  # flat repo root (the old Library/processes/scripts/ path was retired — caused a crash, fixed 27 Jun 2026)
 def q(sql):
-    return json.loads(subprocess.run(["python3", SQL, sql], capture_output=True, text=True).stdout)
+    out = subprocess.run(["python3", SQL, sql], capture_output=True, text=True)
+    if not out.stdout.strip():
+        raise SystemExit(f"cc-module-inventory: cc-sql returned nothing for: {sql[:60]}…\n{out.stderr[:300]}")
+    return json.loads(out.stdout)
 
 # render rules read straight from app/m/[slug]/page.tsx + the app/m/<slug> custom routes (22 Jun)
 CUSTOM = {"ashcroft-finance","brain","canary-events","casas-del-sol-water","daily","el-atico-finances",
