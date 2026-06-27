@@ -65,7 +65,7 @@ def null_embeddings(paths):
     Uses the Management API SQL endpoint — paths contain spaces, so a PostgREST in.() URL can't carry them."""
     if not paths: return
     REF = "zhexcaflgahdcbzvbyfq"
-    tok = open(f"{SEC}/supabase-token").read().strip()
+    tok = (os.environ.get("SUPABASE_TOKEN") or open(f"{SEC}/supabase-token").read().strip())
     UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
     for i in range(0, len(paths), 200):
         batch = paths[i:i + 200]
