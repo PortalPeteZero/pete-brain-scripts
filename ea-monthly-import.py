@@ -139,14 +139,11 @@ def main():
     def cell(r, i):  # rows can be ragged (shorter than the header) — access safely
         return r[i] if (i is not None and i < len(r)) else None
 
-    parsed, unknown = [], []
+    parsed, unknown, date_fixed = [], [], []
     for r in rows[hdr_idx + 1:]:
         av = cell(r, ci["account"])
         acct = str(av).strip() if av else ""
         if not acct or acct.lower().startswith("total"):
-            continue
-        date = parse_date(cell(r, ci["date"]), year)
-        if not date:
             continue
         dv = cell(r, ci["desc"]); cv = cell(r, ci["cat"])
         desc = str(dv).strip() if dv else None
@@ -157,6 +154,13 @@ def main():
         # Skip note/comment rows that carry no money (e.g. "shop closed until 7th Jan").
         if income is None and expense is None:
             continue
+
+        # A row WITH money but a missing/typo'd date (e.g. "09..03.26") must NOT be dropped — that
+        # silently loses cash and breaks the reconcile. Default it to the month start and flag it.
+        date = parse_date(cell(r, ci["date"]), year)
+        if not date:
+            date = f"{year:04d}-{month:02d}-01"
+            date_fixed.append((desc, income, expense, cell(r, ci["date"])))
 
         cat = by_name.get((catname or "").lower())
         if not cat and desc:  # auto-categorise from memory
@@ -172,19 +176,23 @@ def main():
         if not cat:
             unknown.append(rec)
 
-    # --- summary ---
-    tot_inc = sum(r["income"] for r in parsed if r["income"] and not r["isFin"])
+    # --- summary --- (income counts regardless of isFin; FIN governs the paid-out/expense side only)
+    tot_inc = sum(r["income"] for r in parsed if r["income"])
     tot_exp = sum(r["expense"] for r in parsed if r["expense"] and not r["isFin"])
     tot_fin = sum(r["expense"] for r in parsed if r["expense"] and r["isFin"])
     bank_net = sum((r["income"] or 0) - (r["expense"] or 0)
                    for r in parsed if r["accountName"].lower() in BANK_ACCOUNTS)
     print(f"\n=== El Atico import — {args.tab}  ->  {year}-{month:02d} ===")
     print(f"  rows parsed:        {len(parsed)}")
-    print(f"  income (non-FIN):   €{tot_inc:,.2f}")
+    print(f"  total income:       €{tot_inc:,.2f}")
     print(f"  expense (non-FIN):  €{tot_exp:,.2f}")
     print(f"  FIN donations:      €{tot_fin:,.2f}")
     print(f"  net after FIN:      €{tot_inc - tot_exp - tot_fin:,.2f}")
     print(f"  bank-account net:   €{bank_net:,.2f}  (for the statement reconcile)")
+    if date_fixed:
+        print(f"\n  ⚠ {len(date_fixed)} row(s) had a missing/bad date — defaulted to {year}-{month:02d}-01 (verify):")
+        for desc, inc, exp, raw in date_fixed:
+            print(f"     {str(desc)[:40]:<40} in={inc} exp={exp}  raw-date={raw!r}")
     if unknown:
         print(f"\n  ⚠ {len(unknown)} rows need a category (review before publish):")
         for r in unknown[:25]:
