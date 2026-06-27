@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vault-finder-link.py -- Map an Asana project (and optional section) to a Finder file:/// URL
+vault-finder-link.py -- Map a project (and optional section) to a Finder file:/// URL
 pointing at the matching vault folder.
 
 Used by inbox-triage and email-task-sync skills when adding a Finder link to task notes.
