@@ -53,6 +53,7 @@ ACTIVITY_MAP = {"enquiry": "email", "reply": "email", "quote": "email", "email":
 PROJECT_SLUG = "SY-Training-Enquiries"
 BUCKET = "Enquiries"
 ENGINE = "Enquiry Engine"
+OWNER_USER_ID = "5ef48fbc-c60a-4079-ab34-ca80da89a502"  # Pete (Portal auth.users) — enquiries are owned by Pete
 
 def now_iso(): return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 def slugify(s): return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")[:60] or "enquiry"
@@ -176,7 +177,7 @@ def log_enquiry(p, apply, manifest):
             row = {"full_name": p.get("full_name"), "email": p.get("email"), "phone": p.get("phone"),
                    "mobile": p.get("mobile"), "company_name": p.get("company_name"), "job_title": p.get("job_title"),
                    "type": "lead", "source": p.get("source", "web-enquiry"), "stage_id": stage_id(p.get("stage", "New")),
-                   "marketing_consent": False, "notes": "Created by Enquiry Engine"}
+                   "marketing_consent": False, "owner_user_id": OWNER_USER_ID, "notes": "Created by Enquiry Engine"}
             cid = portal_insert("contacts", {k: v for k, v in row.items() if v is not None})[0]["id"]
             manifest and manifest.write(json.dumps({"kind": "contact", "id": cid, "name": name}) + "\n")
         else:
