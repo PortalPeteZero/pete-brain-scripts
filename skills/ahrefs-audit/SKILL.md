@@ -19,8 +19,8 @@ description: >-
 
 # AhrefAudit
 
-> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> The Ahrefs/Surfer/GSC API engine is unchanged. But anywhere a step reads/writes `Properties/{Name}/README.md`, the SEO Page Tracker, `Projects/{Parent}/seo/files/*-seo-plan.md`, or `Daily/`, do the **cloud equivalent**: property card / tracker → **CC Properties module**; SEO plans + review history → **`vault_notes`** (ingest a `.md`); session log → CC `daily_log`. The Ahrefs/Surfer project IDs in the tables stay valid. Tools + the GSC key run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+> [!important] Where things live
+> Property card / SEO Page Tracker → the **CC Properties module**. SEO plans + review history → **`vault_notes`** (ingest a `.md`). Session log → CC `daily_log`. Tools + the GSC key run from `/tmp/pbs`.
 
 Combined audit using Ahrefs (strategic intelligence), Surfer (content intelligence), and Google Search Console (impression/click truth) to produce a balanced optimisation plan. Neither tool's score is the target. Pete controls the editorial direction.
 
@@ -44,7 +44,7 @@ Surfer's NLP recommendations often lean towards keyword stuffing -- hitting a te
 | Surfer SEO API | Direct API via bash curl. Config: [[surfer-api-configuration]] | Content editors, NLP terms, content scoring, competitor audits |
 | GSC API | Direct via service account JWT. Config: [[google-api-credentials]]. Key file: `/tmp/pbs/Library/processes/secrets/google-seo-service-account.json` | searchAnalytics/query for impressions, clicks, CTR, position -- true user behaviour |
 | CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Standing tasks |
-| Vault (file tools) | Read/Write/Edit | Plan files, property READMEs, MAP.md |
+| Knowledge (CC) | `cc-knowledge-api.py` / `cc-knowledge-ingest.py` | SEO plans + property records in `vault_notes` |
 
 **Auth quick reference** (full details in config files):
 
@@ -90,7 +90,7 @@ Use for: real impressions, clicks, CTR, and average position at the query level 
 
 ### 0a. Property Discovery
 
-Ask Pete which property and page. Read the property README from `Properties/{Name}/README.md` and the parent project's `seo/` sub-project README from `Projects/{Parent}/seo/README.md` (post 2026-05-06 restructure -- SEO no longer has its own top-level project).
+Ask Pete which property and page. Read the property's CC record (Properties module) + its SEO plans in `vault_notes`.
 
 From the property README, get: domain, Ahrefs project ID, Surfer workspace ID, country/region.
 From the SEO sub-project README, get: standing instructions, SEO Page Tracker, API Quick Reference. The SEO Page Tracker is in the parent property README's `data/` folder, not the project.
@@ -116,7 +116,7 @@ Ask Pete which page URL and primary keyword. If he gives a keyword without a pag
 
 Before doing any research:
 
-1. **Vault plan file**: Look in `Projects/{Parent}/seo/files/` (e.g. `Projects/SY-Website/seo/files/`) for an existing `*-seo-plan.md` matching this page. For CD-Other-Sites, look in the per-site sub-project: `Projects/CD-Other-Sites/{site-slug}/files/`.
+1. **Existing SEO plan**: search `vault_notes` (`cc-knowledge-api.py "<page> seo plan"`) for an existing plan matching this page.
 2. **SEO Page Tracker**: Check the property README for an existing row
 3. **CC tasks**: Query the CC task store (`public.tasks`) for existing open tasks on this page. Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' AND name ILIKE '%<Page Name>%'"`. If found, report outstanding ones.
 
@@ -391,7 +391,7 @@ Query the CC task store for open tasks already covering this page: `VAULT=/tmp/p
 
 ### 6a. Write/Update Plan File
 
-Save to `Projects/{Parent}/seo/files/{page-slug}-seo-plan.md` (e.g. `Projects/SY-Website/seo/files/...`), or for CD-Other-Sites use `Projects/CD-Other-Sites/{site-slug}/files/{page-slug}-seo-plan.md`. Structure:
+Ingest the SEO plan to `vault_notes` (write a `.md` then `cc-knowledge-ingest.py`), tagged with the page slug + property. Structure:
 
 ```markdown
 ---
@@ -436,15 +436,7 @@ surfer-audit-id: [audit ID from Phase 2a]
 
 ### 6b. SEO Page Tracker
 
-Update the property README's SEO Page Tracker with baseline data.
-
-### 6c. Project README Working Files
-
-Update the SEO project README's Working Files section.
-
-### 6d. MAP.md
-
-Add new files if created.
+Update the property's SEO Page Tracker (in `vault_notes`) with baseline data.
 
 ### 6e. Summary for Pete
 

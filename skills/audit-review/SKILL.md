@@ -4,7 +4,7 @@ description: >-
   Fortnightly SEO review for any page on any property. Pulls live Ahrefs Rank Tracker
   positions via API, runs Surfer re-audits automatically via API (audit endpoint for
   competitor benchmark, PATCH + score for content score), compares to baseline, builds
-  a before/after comparison, updates the vault SEO Page Tracker, and decides next steps
+  a before/after comparison, updates the SEO Page Tracker, and decides next steps
   (close out, content top-up, shift to off-site). Can review a single page or scan all
   tracked pages on a property to find what's due. Use this skill whenever Pete says
   "fortnightly review", "check the positions", "how's the page doing", "run the review",
@@ -18,8 +18,8 @@ description: >-
 
 # AuditReview
 
-> [!important] POST-CUTOVER ROUTING — overrides any vault path below (vault retired 24 Jun 2026)
-> The Ahrefs/Surfer/GSC API engine is unchanged. But anywhere a step reads/writes `Properties/{Name}/README.md`, the SEO Page Tracker, `Projects/{Parent}/seo/files/*-seo-plan.md`, or `Daily/`, do the **cloud equivalent**: property card / tracker → **CC Properties module**; SEO plans + review history → **`vault_notes`** (ingest a `.md`); session log → CC `daily_log`. The Ahrefs/Surfer project IDs in the tables stay valid. Tools + the GSC key run from `/tmp/pbs`; `[[wikilinks]]` resolve against `vault_notes`.
+> [!important] Where things live
+> Property card / SEO Page Tracker → the **CC Properties module**. SEO plans + review history → **`vault_notes`** (ingest a `.md`). Session log → CC `daily_log`. Tools + the GSC key run from `/tmp/pbs`.
 
 Fortnightly check that closes the loop on page SEO work. Compares where we are now against where we started, decides what to do next.
 
@@ -82,7 +82,7 @@ Compare current 28-day window against the previous 28-day window on the same que
 
 ### 0a. Identify the Property
 
-Ask Pete which property, or infer from context. Read the property README from `Properties/{Name}/README.md` and the parent project's `seo/` sub-project README from `Projects/{Parent}/seo/README.md` (post 2026-05-06 restructure).
+Ask Pete which property, or infer from context. Read the property's CC record (Properties module) + its SEO plans in `vault_notes`.
 
 **Property-to-project mapping (post 2026-05-06 restructure):**
 
@@ -127,7 +127,7 @@ Report any outstanding tasks to Pete.
 
 ### 0d. Load the Existing Plan
 
-Read the page's plan file from `Projects/{Parent}/seo/files/{page-slug}-seo-plan.md` (e.g. `Projects/SY-Website/seo/files/...`), or for CD-Other-Sites use `Projects/CD-Other-Sites/{site-slug}/files/{page-slug}-seo-plan.md`. The plan has:
+Read the page's SEO plan from `vault_notes` (`cc-knowledge-api.py "<page> seo plan"`). The plan has:
 
 - Baseline positions from Ahrefs research
 - Target keywords and their volumes

@@ -34,7 +34,7 @@ Also: **offered at the end of every `triage` session** (opt-in y/n after the Rep
 - Gmail helper: `/tmp/pbs/gmail-api.py` · Calendar helper: `/tmp/pbs/calendar-api.py`
 - CC task store: `public.tasks`, CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 - State file: `Library/processes/email-workflow-state.md` (declined suggestions, sender→label observations).
-- Entity homes for parity/filing: the entity's **Google Drive** folder (`drive_files` via `cc-sql.py`) + its `vault_notes` record. (The old local `Customers/`/`Suppliers/`/`Projects/` vault tree is retired — match against Drive + `vault_notes`.)
+- Entity homes for parity/filing: the entity's **Google Drive** folder (`drive_files` via `cc-sql.py`) + its `vault_notes` record.
 
 ## Core principles
 

@@ -10,7 +10,7 @@ description: >
   home), formatting, and verification (confirming what was saved).
 ---
 
-<!-- drive-cloudstorage-allowed: this skill writes directly to the Personal/Family Drive homes via Desktop Commander. See [[external-service-routing]] for the marker convention. -->
+<!-- drive-cloudstorage-allowed: this skill writes directly to the personal & family Drive homes via Desktop Commander. See [[external-service-routing]] for the marker convention. -->
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Vision / Geocoding / Sentry operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
 

@@ -17,7 +17,7 @@ description: >
 # Finance filing — the reconciling finance verb
 
 > [!important] Finance homes (route per [[vault-routing#finance-routing-by-entity--sygma--canary-detect--personal]])
-> Each entity's finance home is a **Google Drive** folder + a `vault_notes` record: personal/family → **Ashcroft Family/Finance** (Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll, Pete + Michaela only) → **Sygma Private**; Canary Detect → **CD Private/finance**. The Ashcroft ledger → **Ashcroft Family/Finance/finance-ledger.md**. An action → `public.tasks`; session log → `daily_log`.
+> Each entity's finance home is a **Google Drive** folder + a `vault_notes` record: personal & family → **Ashcroft Family/Finance** (Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll, Pete + Michaela only) → **Sygma Private**; Canary Detect → **CD Private/finance**. The Ashcroft ledger → **Ashcroft Family/Finance/finance-ledger.md**. An action → `public.tasks`; session log → `daily_log`.
 
 The way to get **any** finance content into the right place: separated by entity, captured into its entity home, reconciled against what's already there — Claude **understands each item before it files it**, never just dumps it somewhere.
 
