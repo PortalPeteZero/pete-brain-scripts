@@ -136,18 +136,23 @@ def main():
     memory = run_sql('SELECT "descriptionKey", "categoryId", "categoryName" FROM ea.category_memory')
     mem = {m["descriptionKey"].strip().lower(): m for m in memory}
 
+    def cell(r, i):  # rows can be ragged (shorter than the header) — access safely
+        return r[i] if (i is not None and i < len(r)) else None
+
     parsed, unknown = [], []
     for r in rows[hdr_idx + 1:]:
-        acct = (str(r[ci["account"]]).strip() if ci["account"] is not None and r[ci["account"]] else "")
+        av = cell(r, ci["account"])
+        acct = str(av).strip() if av else ""
         if not acct or acct.lower().startswith("total"):
             continue
-        date = parse_date(r[ci["date"]], year)
+        date = parse_date(cell(r, ci["date"]), year)
         if not date:
             continue
-        desc = (str(r[ci["desc"]]).strip() if ci["desc"] is not None and r[ci["desc"]] else None)
-        catname = (str(r[ci["cat"]]).strip() if ci["cat"] is not None and r[ci["cat"]] else None)
-        income = num(r[ci["income"]]) if ci["income"] is not None else None
-        expense = num(r[ci["expense"]]) if ci["expense"] is not None else None
+        dv = cell(r, ci["desc"]); cv = cell(r, ci["cat"])
+        desc = str(dv).strip() if dv else None
+        catname = str(cv).strip() if cv else None
+        income = num(cell(r, ci["income"]))
+        expense = num(cell(r, ci["expense"]))
 
         # Skip note/comment rows that carry no money (e.g. "shop closed until 7th Jan").
         if income is None and expense is None:
