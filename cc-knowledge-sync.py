@@ -14,6 +14,16 @@ up-to-the-last-sync. Tracked in the master plan checklist. Until then, this cron
 
 Usage: python3 cc-knowledge-sync.py [--full]   (--full re-scans everything, ignoring the last-run stamp)
 """
+# CRON-META
+# what: Re-indexes the CC knowledge base — re-ingests changed docs and re-embeds any un-embedded vault_notes/notes so semantic search and the bot stay current with manual edits.
+# why: A manual CC edit (app / phone / bot / raw SQL) can land a row with no embedding; this is the self-healing safety net so nothing goes invisible to semantic search. (Was hand-run via cc-refresh; this is the deferred "Part H" Railway deployment.)
+# reads: vault .md file changes + vault_notes/notes rows with a null embedding
+# writes: vault_notes (ingest + embeddings), notes (embeddings)
+# entity: command-centre
+# secrets: VOYAGE_API_KEY, SUPABASE_TOKEN
+# schedule: 0 * * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
 import json, os, sys, subprocess, datetime, time, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))

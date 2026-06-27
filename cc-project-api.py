@@ -42,7 +42,9 @@ def rest(method, path, body=None, headers=None):
         return {"_error": f"{e.code} {e.read().decode()[:200]}"}
 
 def slugify(name):
-    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")[:60] or "project"
+    # Convention (enforced by DB CHECK projects_slug_eq_name): slug == name, verbatim. No lowercasing —
+    # that's what produced the `sy-cices-usmp` drift. Kept as a function so the call site is unchanged.
+    return (name or "").strip() or "project"
 
 def helper(script, *args):
     try:

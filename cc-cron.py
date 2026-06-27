@@ -157,7 +157,11 @@ def resolve_secret_env(name):
     """Map a CRON-META `# secrets:` token to the env value railway-bootstrap expects (it materialises the
     file from the env var). Known clean-name secrets + the generic SECRETFILE__<name> convention."""
     known = {"GOOGLE_SA_JSON": SEC / "google-seo-service-account.json",
-             "GARMIN_TOKENS_JSON": SEC / "garminconnect-tokens" / "garmin_tokens.json"}
+             "GARMIN_TOKENS_JSON": SEC / "garminconnect-tokens" / "garmin_tokens.json",
+             # plain-value env secrets (the script reads them env-first, file-fallback) — names have
+             # hyphens so SECRETFILE__ can't carry them; passed as clean env vars instead.
+             "VOYAGE_API_KEY": SEC / "voyage-api-key",
+             "SUPABASE_TOKEN": SEC / "supabase-token"}
     if name in known:
         f = known[name]
         if not f.exists(): raise SystemExit(f"secret source missing: {f}")
