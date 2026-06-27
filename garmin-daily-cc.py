@@ -37,16 +37,6 @@ _spec = importlib.util.spec_from_file_location("garmin_daily_pull", str(_p))
 gdp = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(gdp)
 
-# Reuse the canonical Drive helper for the headless journal fetch (below). The full pull reads the PF
-# journal from a local Google Drive *mount* (DRIVE/My Drive/Passion Fit/journal) that exists only on
-# Pete's Mac — so on Railway the journal was always null and never reached the Health dashboard. We
-# read it straight from Drive via the API instead. Importing only defines functions (argparse main is
-# __main__-gated), no side effects.
-_dp = Path(__file__).resolve().parent / "drive-api.py"
-_dspec = importlib.util.spec_from_file_location("drive_api", str(_dp))
-_drive = importlib.util.module_from_spec(_dspec)
-_dspec.loader.exec_module(_drive)
-
 TZ = ZoneInfo("Atlantic/Canary")
 
 
@@ -80,8 +70,15 @@ def _fetch_journal_from_drive(date_iso):
     exists on Pete's Mac, so on Railway the journal is always null and never reaches the dashboard.
     Here we find the journal file in the CC `drive_files` index, download it from Drive via the API,
     and return the same dict shape as gdp.load_journal_entry. Non-fatal: any error → None."""
-    import json as _j, urllib.request as _u, urllib.parse as _up, os as _o
+    import json as _j, urllib.request as _u, urllib.parse as _up, os as _o, importlib.util as _il
     try:
+        # Lazy + guarded: drive-api.py loads the Google service-account key AT IMPORT TIME, and that
+        # key isn't materialised on every Railway service. Import it inside the try so a missing key
+        # degrades the journal to null — it must NEVER crash the metrics pipeline.
+        _dp = Path(__file__).resolve().parent / "drive-api.py"
+        _dspec = _il.spec_from_file_location("drive_api", str(_dp))
+        _drive = _il.module_from_spec(_dspec); _dspec.loader.exec_module(_drive)
+
         url = _o.environ.get("CC_SUPABASE_URL"); key = _o.environ.get("CC_SUPABASE_SERVICE_KEY")
         if not (url and key):
             kp = Path(_o.environ.get("VAULT", ".")) / "Library/processes/secrets/command-centre-supabase-keys.json"
