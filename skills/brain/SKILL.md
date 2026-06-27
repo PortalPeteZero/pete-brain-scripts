@@ -270,7 +270,7 @@ Save everything valuable from the current session.
 ### Steps
 
 1. **Save everything** -- Don't ask what to preserve. Automatically save all learnings, decisions, solutions, files modified, pending tasks, and errors.
-2. **Create session log** -- Append to `Daily/YYYY-MM-DD.md`:
+2. **Create session log** -- INSERT a row into the CC `daily_log` table (this is the canonical home — the same table Resume Step 2/10 read and the CC **Daily** page (`/m/daily`) renders; the old `Daily/YYYY-MM-DD.md` vault file is retired): `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO daily_log (date, cron_name, content) VALUES ('<today>', 'session', \$\$<the log below>\$\$)"` (dollar-quote `content` to avoid escaping). One row per session; the CC Daily page groups them by day. Body:
    ```markdown
    ## Session Log: HH:MM -- [Topic Summary]
 
