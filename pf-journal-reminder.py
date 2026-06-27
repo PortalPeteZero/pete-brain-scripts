@@ -31,27 +31,28 @@ PETE = "pete.ashcroft@sygma-solutions.com"
 
 
 def _yesterday_lesson(yesterday):
-    """Best-effort read of yesterday's 'one lesson for tomorrow'. Returns None if unreachable."""
-    candidates = [
-        os.path.join(VAULT, f"Personal/passion-fit/journal/{yesterday}.md"),
-        os.path.expanduser(
-            f"~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/My Drive/Passion Fit/journal/{yesterday}.md"
-        ),
-    ]
-    for path in candidates:
-        if not os.path.exists(path):
-            continue
-        text = open(path).read()
+    """Read yesterday's 'one lesson for tomorrow' from the CC `health_journal` table (the journal lives
+    in the CC now, authored in the app — no Drive/Mac file). Returns None if unreachable/absent."""
+    import json as _j, urllib.request as _u
+    try:
+        url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+        if not (url and key):
+            kp = os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")
+            kd = _j.loads(open(kp).read()); url, key = kd["url"], kd["service_role_key"]
+        q = url.rstrip("/") + f"/rest/v1/health_journal?date=eq.{yesterday}&select=body"
+        rows = _j.loads(_u.urlopen(_u.Request(q, headers={"apikey": key, "Authorization": "Bearer " + key}), timeout=20).read())
+        text = (rows[0].get("body") if rows else None) or ""
         marker = "## One lesson for tomorrow"
         if marker not in text:
             return None
         after = text.split(marker, 1)[1].strip()
-        for cut in ("\n## ", "\n---"):
+        for cut in ("\n## ", "\n#", "\n---"):
             i = after.find(cut)
             if i > 0:
                 after = after[:i]
         return after.strip() or None
-    return None
+    except Exception:
+        return None
 
 
 def main():
