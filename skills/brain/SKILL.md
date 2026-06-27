@@ -206,6 +206,10 @@ When the most recent daily note covers today (rare edge case where Claude resume
 3c. **Projects + Quick Notes index (B1/B7, added 2026-06-25)** -- so Claude always knows where work lives + what's been jotted, without Pete re-explaining ("stop making me repeat myself"):
    - **Projects registry**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT slug, name, entity_slug, status, drive_folder_url FROM projects WHERE status='active' ORDER BY entity_slug, slug"` — the live CC `projects` table (backfilled from task `project_slug`s; the CC "New project" button + `cc-project-api.py` write here). When Pete says "the X project" / "new bucket" / "put this in Y", resolve against THIS list and its Drive homes — don't re-derive or ask. Buckets: `SELECT project_slug, name FROM buckets`.
    - **Quick Notes**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, title, left(body,80) AS body FROM notes WHERE status='open' ORDER BY pinned DESC, updated_at DESC LIMIT 20"` — the Keep-style scratchpad (CC `notes`, distinct from `vault_notes`). Surface in the briefing as its own line `**Quick notes**: {N} open — {title} · {title} …` (like the Replies tray; skip the line if empty). The **"check notes"** verb pulls them on demand; "note: …" creates one (insert into `notes`); promote-to-task/project/knowledge happens in the CC UI.
+   - **New since last session (mirrors 3a's manual-task detection)** — also flag NOTES and PROJECTS added while Claude was away, using the **same `<cutoff>` as Step 3a** (the most recent `daily_log` date's start-of-day in `Atlantic/Canary`, else yesterday). Pete edits the CC directly now, so a note he jots or a project he spins up between sessions must surface the same way a manual task does:
+     - Notes: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, left(body,80) AS body, created_at FROM notes WHERE created_at > <cutoff> AND status='open' ORDER BY created_at"`
+     - Projects: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name, entity_slug, created_at FROM projects WHERE created_at > <cutoff> AND status='active' ORDER BY created_at"`
+     Surface as its own briefing line `**New since last session**: {N} note(s) — {title} · …  ·  {M} project(s) — {name} ({entity}) · …` (skip the line if both are zero). **List only; don't auto-action** — same rule as Step 3a (Pete decides what needs talking through).
 4. **Check goals/strategy** -- Pull business/department status from the knowledge DB (`cc-knowledge-api.py`) or the relevant Drive home — not the legacy `Businesses/` vault folder.
 5. **Check session plans** -- Look for incomplete session plans:
    - Query `vault_notes` for plan notes still open: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT title, frontmatter->>'status' FROM vault_notes WHERE type ILIKE '%plan%' AND frontmatter->>'status' IN ('in-progress','ready') ORDER BY source_updated DESC"` (note: there is no `public.plans` table — plans are notes in `vault_notes`).
@@ -227,6 +231,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
    **Replies tray**: [N waiting (M aging >3d): item Xd · item Yd — say "actions" to walk them]
    **Task priorities**: [P1/P2 tasks from public.tasks]
    **Manual tasks since last session**: [N added to public.tasks -- list one-liners with entity/project + priority]
+   **New since last session**: [N notes · M projects added in the CC while away -- one-liners; skip if both zero]
    **From your iPhone** (Cowork-Inbox): [N requests pending -- list one-liners]
    **In Progress**: [[Project-A]] -- [task], [[Project-B]] -- [task]
    **Pending** (cross-checked, not narrative): [items from daily-note pending blocks that survive a live public.tasks check]

@@ -1,10 +1,14 @@
 ---
 type: changelog
 skill: brain
-updated: 2026-06-06
+updated: 2026-06-27
 ---
 
 # Brain skill changelog
+
+## 2026-06-27 (G6.3 — Resume surfaces manual notes/projects)
+- **Resume Step 3c extended**: now also flags NOTES and PROJECTS added in the CC since the last session (same `<cutoff>` as Step 3a's manual-task detection), with a new `**New since last session**` briefing line. Pete edits the CC directly, so jotted notes / spun-up projects surface the same way manual tasks do. List-only, no auto-action.
+- Context: also fixed `cc-skeleton-registry-sync.py` (was crashing + scanning dead `Library/skills`/`Library/processes/scripts` paths) so the `public.skills`/`public.helpers` registries self-heal; added `data_map` rows for skills + helpers. Skill source of truth = `skills/<name>/SKILL.md` in pete-brain-scripts, packaged via `package-skill.py`.
 
 ## 2026-06-06 (second edit today)
 - **Resume Step 3b: Actions tray check** — live Gmail `label:Actions` query in every Resume; briefing gains an `Actions tray` line (count + >3d agers, oldest first, cap 5, walker hook "say actions"). Tray is reply-shaped only per the Action/Task split (locked 2026-06-06).
