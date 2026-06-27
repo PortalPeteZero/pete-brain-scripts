@@ -183,6 +183,10 @@ class GarminWorkoutBuilder:
             sch = self.client.schedule_workout(wid, schedule_date)
             out["scheduleId"] = sch.get("workoutScheduleId") if isinstance(sch, dict) else None
             out["scheduled_for"] = schedule_date
+        # Record the built session in the CC so the training-feedback loop can reference what was
+        # prescribed when feedback is logged later (planned-vs-delivered). CC-only, non-fatal.
+        if wid:
+            _record_planned_session(wid, name, sport, spec, schedule_date)
         return out
 
     def verify(self, wid):
@@ -190,6 +194,33 @@ class GarminWorkoutBuilder:
         segs = back.get("workoutSegments", [])
         return {"name": back.get("workoutName"),
                 "steps": len(segs[0]["workoutSteps"]) if segs else 0}
+
+
+def _record_planned_session(wid, name, sport, spec, schedule_date):
+    """Upsert the built session into the CC `health_planned_session` table so the
+    [[training-feedback-loop]] can look up what was prescribed when feedback is logged later.
+    Keyed on the scheduled (activity) date. CC-only, Drive-free, non-fatal."""
+    if not schedule_date:
+        return  # no activity date → the feedback loop can't key to it; nothing to record
+    import urllib.request
+    try:
+        url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+        if not (url and key):
+            kp = Path(VAULT) / "Library/processes/secrets/command-centre-supabase-keys.json"
+            kd = json.loads(kp.read_text()); url, key = kd["url"], kd["service_role_key"]
+        base = url.rstrip("/")
+        hdr = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
+        q = base + f"/rest/v1/health_planned_session?date=eq.{schedule_date}&select=seq"
+        existing = json.loads(urllib.request.urlopen(urllib.request.Request(q, headers=hdr), timeout=20).read())
+        seq = max([r["seq"] for r in existing], default=0) + 1
+        row = {"date": schedule_date, "seq": seq, "source": "built-workout",
+               "spec": {"name": name, "sport": sport, "steps": spec},
+               "garmin_workout_id": wid, "scheduled_date": schedule_date}
+        urllib.request.urlopen(urllib.request.Request(base + "/rest/v1/health_planned_session",
+            data=json.dumps(row).encode(), headers={**hdr, "Prefer": "return=minimal"}, method="POST"), timeout=20)
+        print(f"  CC: planned-session recorded ({schedule_date} seq {seq}, workout {wid})")
+    except Exception as e:
+        print(f"  (planned-session CC record skipped: {e})", file=sys.stderr)
 
 
 def main():
