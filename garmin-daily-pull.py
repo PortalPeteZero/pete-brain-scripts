@@ -694,10 +694,9 @@ def build_json_snapshot(day: dict, g=None) -> dict:
     except Exception:
         dow = ""
 
-    # Embed the PF journal for this calendar day if it exists. Pete journals
-    # in the evening for the day just lived, so journal/{date}.md is the right
-    # match for Garmin file /{date}.json — same calendar-day mental model.
-    journal = load_journal_entry(day["date"])
+    # Journal is CC-native (the `health_journal` table, authored in the app) — NOT read from Drive here.
+    # The dashboard merges it from health_journal; the snapshot carries no journal.
+    journal = None
 
     return {
         "date": day["date"],
