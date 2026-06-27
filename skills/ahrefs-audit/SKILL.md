@@ -183,7 +183,7 @@ Capture for the plan file: top 10 queries by impressions, click-through rate on 
 
 ## Phase 2 -- Surfer Content Intelligence
 
-All calls use the Surfer API directly. Audits + editors via API. **Full audit signal breakdown requires Chrome MCP** -- the `/v1/audits/{id}` endpoint returns only content score + competitors. The per-signal breakdown (word count, H2-H6 count, exact/partial keyword distribution per element, strong/b counts, title/meta chars, terms-to-use) lives only in the Surfer UI. After kicking off the audit via API, also navigate to the audit's permalink in Chrome MCP and `get_page_text` to capture every signal. **Don't propose changes off the headline score alone** -- the signals beneath are what move it. See `[[Library/lessons/2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]`.
+All calls use the Surfer API directly. Audits + editors via API. **Full audit signal breakdown requires Chrome MCP** -- the `/v1/audits/{id}` endpoint returns only content score + competitors. The per-signal breakdown (word count, H2-H6 count, exact/partial keyword distribution per element, strong/b counts, title/meta chars, terms-to-use) lives only in the Surfer UI. After kicking off the audit via API, also navigate to the audit's permalink in Chrome MCP and `get_page_text` to capture every signal. **Don't propose changes off the headline score alone** -- the signals beneath are what move it. See `[[2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]`.
 
 **Dual-keyword pages** -- for any page targeting a "X training" / "X course" pair (the standard Sygma course-page shape per `seo-targeting-principles` section 1d, also applies to other paired commercial intents), run **TWO audits** in Step 2a, one per phrase. Reconcile the full signal sets side-by-side -- they often disagree on word-count trim, exact-keyword distribution in H1/title, body density. Surface conflicts explicitly before proposing edits.
 
@@ -511,11 +511,11 @@ If Pete says "rescan" or "check how it's doing", trigger audit-review, not this 
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[Library/audits/2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 
-- [[Library/lessons/2026-05-07-surfer-rewards-curriculum-detail]]
-- [[Library/lessons/2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]
-- [[Library/lessons/2026-05-17-bulk-h1-audit-must-respect-do-not-touch-flags]] — bulk H1 trims must read per-page "DO NOT touch" flags before rewriting; respect approved-H1 status
-- [[Library/lessons/2026-05-17-surfer-audit-score-is-competitor-mix-dependent]] — Surfer Content Score = competitor-pool dependent; before/after needs same-day parallel audits
-- [[Library/lessons/2026-05-19-surfer-optimise-to-csv-not-audit-trim-recommendations]]
+- [[2026-05-07-surfer-rewards-curriculum-detail]]
+- [[2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]
+- [[2026-05-17-bulk-h1-audit-must-respect-do-not-touch-flags]] — bulk H1 trims must read per-page "DO NOT touch" flags before rewriting; respect approved-H1 status
+- [[2026-05-17-surfer-audit-score-is-competitor-mix-dependent]] — Surfer Content Score = competitor-pool dependent; before/after needs same-day parallel audits
+- [[2026-05-19-surfer-optimise-to-csv-not-audit-trim-recommendations]]
 

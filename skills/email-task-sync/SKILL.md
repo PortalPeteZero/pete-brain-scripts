@@ -62,7 +62,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/email-task-sync.py --json     # raw JSON (for LL
 2. The Step 6 surfaced threads are the EXPECTED state — the Replies label is the record. Do NOT create tasks for them. Only if Pete explicitly asks to track one as work (the overlap/de-tray case) create a `Task`-style task with `[no-sync-close]` (route it like inbox-triage's `Task`).
 3. Report the consolidated outcome to Pete in the format at the bottom of this file.
 
-Why the wrapper is mandatory: [[Library/lessons/2026-05-20-sync-must-call-wrapper-not-re-derive-steps]].
+Why the wrapper is mandatory: [[2026-05-20-sync-must-call-wrapper-not-re-derive-steps]].
 
 ## The full sync algorithm (reference — implemented by the wrapper)
 
@@ -81,7 +81,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, notes, status, updat
 
 For each task, extract Gmail thread IDs from `notes` (both `mail.google.com/mail/u/0/#[a-z]+/{thread_id}` and `links.mimestream.com/g/{email}/t/{thread_id}` forms). Carry forward `id`, `name`, `status`, `due_on`, `entity_slug`, `project_slug`, the thread IDs, and `priority`.
 
-**Both-sides query is non-negotiable.** If Step 1 only pulls open tasks, Step 3 has no done tasks to act on — the Gmail label persists after CC-side closure, so the thread wrongly lingers in the Replies tray after its task is done. See [[Library/lessons/2026-05-20-sync-must-query-both-open-and-closed-tasks]].
+**Both-sides query is non-negotiable.** If Step 1 only pulls open tasks, Step 3 has no done tasks to act on — the Gmail label persists after CC-side closure, so the thread wrongly lingers in the Replies tray after its task is done. See [[2026-05-20-sync-must-query-both-open-and-closed-tasks]].
 
 ### Step 2: Priority reconciliation — no-op
 
@@ -109,7 +109,7 @@ For each linked task still open (`status != 'done'`), check the linked thread's 
 
 **Closure audit note** — every task Step 4 closes gets a note appended: *"Closed by sync — Replies/Delegated label removed in Gmail, {date}. If this was a tray clear-out rather than completion, reopen (`status='open'`) and ask Claude to mark it [no-sync-close]."* Closures are also listed in the run's daily-note block.
 
-**The rule: Replies = waiting on Pete to respond by email; a task is created only when work is required.** Record: [[Library/decisions/2026-06-06-actions-label-reply-only]].
+**The rule: Replies = waiting on Pete to respond by email; a task is created only when work is required.** Record: [[2026-06-06-actions-label-reply-only]].
 
 **Multi-thread tasks**: a task can link multiple threads (parsed from notes). Close only when ALL linked threads have lost BOTH `Replies` AND `Delegated`.
 
@@ -170,7 +170,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, du
   ```bash
   VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{routed-entity-home}"
   ```
-  Report attachments pulled + extract path + contacts added in Step 8. See [[Library/lessons/2026-05-20-must-call-vault-enricher-not-just-reference]].
+  Report attachments pulled + extract path + contacts added in Step 8. See [[2026-05-20-must-call-vault-enricher-not-just-reference]].
 - **Due date** (`due_on`), Atlantic/Canary: P1 → +2d · P2 → +7d (default) · P3 → +30d · P4 → none · `Delegated`-only → none (Step 5 handles timing). Pete can edit `due_on` after creation.
 - **Owner**: always Pete — the table is Pete's.
 
@@ -265,7 +265,7 @@ User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-syn
 
 ## Related lessons
 
-- [[Library/lessons/2026-04-25-email-mutation-pre-action-checklist]] — every Gmail mutation pre-flight.
-- [[Library/lessons/2026-04-28-actions-label-proposed-not-auto-applied]] — the Replies label is surfaced, never auto-tasked.
-- [[Library/lessons/2026-05-20-sync-must-call-wrapper-not-re-derive-steps]] — always run the deterministic wrapper.
-- [[Library/lessons/2026-05-20-sync-must-query-both-open-and-closed-tasks]] — Step 1 must pull BOTH open and recently-done.
+- [[2026-04-25-email-mutation-pre-action-checklist]] — every Gmail mutation pre-flight.
+- [[2026-04-28-actions-label-proposed-not-auto-applied]] — the Replies label is surfaced, never auto-tasked.
+- [[2026-05-20-sync-must-call-wrapper-not-re-derive-steps]] — always run the deterministic wrapper.
+- [[2026-05-20-sync-must-query-both-open-and-closed-tasks]] — Step 1 must pull BOTH open and recently-done.

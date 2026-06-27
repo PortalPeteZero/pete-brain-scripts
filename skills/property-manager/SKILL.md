@@ -657,22 +657,22 @@ These are specific lessons from incidents where this skill was followed incomple
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[Library/audits/2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 
-- [[Library/lessons/2026-05-13-migration-redirect-prefix-exclusion-bug]]
-- [[Library/lessons/2026-05-14-nextjs-instrumentation-must-be-in-src]]
-- [[Library/lessons/2026-05-16-supabase-concurrent-component-row-creation]]
-- [[Library/lessons/2026-05-06-google-ads-pre-filled-mccid-trap]]
-- [[Library/lessons/2026-05-07-server-side-mp-paid-attribution-gap]]
-- [[Library/lessons/2026-05-21-mergin-server-file-whitelist-and-input-app]] — Mergin server file-type whitelist, `.mergin-ignore` timing, Mergin Maps Input is the right tablet app (not QField)
-- [[Library/lessons/2026-05-21-monitoring-alerts-anchor-on-real-device-timing]] — Anchor delta checks on chronological reading order (`dtSeconds > 0`); silent/offline thresholds on the device's actual configurable transmit interval, not a flat constant
-- [[Library/lessons/2026-05-22-dont-swallow-conflict-then-insert]] — when applying a code change, if the surrounding context has drifted, fix the conflict before insert; don't silently swallow it.
-- [[Library/lessons/2026-05-22-new-pages-generic-images-crop-in-fixed-slots]] — generic stock-style images crop predictably in fixed slots; brief-specific images must be hand-cropped before commit.
-- [[Library/lessons/2026-06-01-cloudflare-worker-audit-bare-path-not-cache-buster]] — audit Worker output against the bare canonical URL, not a `?_cb=` cache-buster (CF can serve the variant without invoking the Worker → false negatives).
-- [[Library/lessons/2026-06-05-no-chip-done-without-chrome-side-by-side]] — no "done" on any Pete-site chip/page without a Chrome screenshot pass (desktop 1280×800 + mobile 390×844) vs the live source; grep+build+200 are necessary, not sufficient.
-- [[Library/lessons/2026-06-07-vercel-retired-apex-ip]] — Vercel decommissioned legacy apex IP `76.76.21.21` (`216.198.79.1` also dead); pull current apex IPs from the live Vercel API, never from notes.
-- [[Library/lessons/2026-05-22-sygma-new-toplevel-page-catchall-redirect-allowlist]] — new top-level Sygma pages must be added to the catch-all redirect allowlist or the catch-all blackholes them.
-- [[Library/lessons/2026-05-24-built-page-must-be-linked-not-orphaned]] — building a page is half the job; if no nav/footer/internal link points at it, it's invisible to users + search engines.
-- [[Library/lessons/2026-05-29-supabase-management-api-write-access]] — when writing to a Supabase project: service_role + PostgREST, NOT the Management `/database/query` endpoint. Also: Cloudflare WAF blocks Python-urllib UA on `api.supabase.com`, set a browser UA.
-- [[Library/lessons/2026-05-29-wp-xmlrpc-writes-yoast-meta-bypass-rest]] — when WordPress REST API rejects Yoast meta-key writes, XML-RPC `wp.editPost` writes the same meta-keys directly without the REST restriction.
+- [[2026-05-13-migration-redirect-prefix-exclusion-bug]]
+- [[2026-05-14-nextjs-instrumentation-must-be-in-src]]
+- [[2026-05-16-supabase-concurrent-component-row-creation]]
+- [[2026-05-06-google-ads-pre-filled-mccid-trap]]
+- [[2026-05-07-server-side-mp-paid-attribution-gap]]
+- [[2026-05-21-mergin-server-file-whitelist-and-input-app]] — Mergin server file-type whitelist, `.mergin-ignore` timing, Mergin Maps Input is the right tablet app (not QField)
+- [[2026-05-21-monitoring-alerts-anchor-on-real-device-timing]] — Anchor delta checks on chronological reading order (`dtSeconds > 0`); silent/offline thresholds on the device's actual configurable transmit interval, not a flat constant
+- [[2026-05-22-dont-swallow-conflict-then-insert]] — when applying a code change, if the surrounding context has drifted, fix the conflict before insert; don't silently swallow it.
+- [[2026-05-22-new-pages-generic-images-crop-in-fixed-slots]] — generic stock-style images crop predictably in fixed slots; brief-specific images must be hand-cropped before commit.
+- [[2026-06-01-cloudflare-worker-audit-bare-path-not-cache-buster]] — audit Worker output against the bare canonical URL, not a `?_cb=` cache-buster (CF can serve the variant without invoking the Worker → false negatives).
+- [[2026-06-05-no-chip-done-without-chrome-side-by-side]] — no "done" on any Pete-site chip/page without a Chrome screenshot pass (desktop 1280×800 + mobile 390×844) vs the live source; grep+build+200 are necessary, not sufficient.
+- [[2026-06-07-vercel-retired-apex-ip]] — Vercel decommissioned legacy apex IP `76.76.21.21` (`216.198.79.1` also dead); pull current apex IPs from the live Vercel API, never from notes.
+- [[2026-05-22-sygma-new-toplevel-page-catchall-redirect-allowlist]] — new top-level Sygma pages must be added to the catch-all redirect allowlist or the catch-all blackholes them.
+- [[2026-05-24-built-page-must-be-linked-not-orphaned]] — building a page is half the job; if no nav/footer/internal link points at it, it's invisible to users + search engines.
+- [[2026-05-29-supabase-management-api-write-access]] — when writing to a Supabase project: service_role + PostgREST, NOT the Management `/database/query` endpoint. Also: Cloudflare WAF blocks Python-urllib UA on `api.supabase.com`, set a browser UA.
+- [[2026-05-29-wp-xmlrpc-writes-yoast-meta-bypass-rest]] — when WordPress REST API rejects Yoast meta-key writes, XML-RPC `wp.editPost` writes the same meta-keys directly without the REST restriction.
 

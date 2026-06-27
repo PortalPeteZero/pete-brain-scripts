@@ -446,11 +446,11 @@ All calls: `curl -s -H "API-KEY: [key]" "https://app.surferseo.com/api/v1/[endpo
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[Library/audits/2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 
-- [[Library/lessons/2026-05-07-surfer-rewards-curriculum-detail]]
-- [[Library/lessons/2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]
-- [[Library/lessons/2026-05-17-bulk-h1-audit-must-respect-do-not-touch-flags]] — fortnightly audits that touch H1 must respect per-page "DO NOT touch" flags
-- [[Library/lessons/2026-05-17-surfer-audit-score-is-competitor-mix-dependent]] — re-audit content scores can swing 75↔83 with no content change; trust direction, not absolute score
-- [[Library/lessons/2026-05-19-surfer-optimise-to-csv-not-audit-trim-recommendations]]
+- [[2026-05-07-surfer-rewards-curriculum-detail]]
+- [[2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]
+- [[2026-05-17-bulk-h1-audit-must-respect-do-not-touch-flags]] — fortnightly audits that touch H1 must respect per-page "DO NOT touch" flags
+- [[2026-05-17-surfer-audit-score-is-competitor-mix-dependent]] — re-audit content scores can swing 75↔83 with no content change; trust direction, not absolute score
+- [[2026-05-19-surfer-optimise-to-csv-not-audit-trim-recommendations]]
 

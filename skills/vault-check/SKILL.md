@@ -38,7 +38,7 @@ Version history: [[CHANGELOG]].
 >
 > 1. Start from scratch. Do a full audit. Read every md file and create a report.
 > 2. Audit every single skill and every scheduled task.
-> 3. Ensure crons are properly saved (canonical at `~/Documents/Claude/Scheduled/{taskId}/SKILL.md` matches vault mirror at `Library/skills/scheduled/{taskId}/SKILL.md`, and the live cron is using the canonical not an old version).
+> 3. Ensure crons are properly saved (canonical at `~/Documents/Claude/Scheduled/{taskId}/SKILL.md` matches vault mirror at `skills/scheduled/{taskId}/SKILL.md`, and the live cron is using the canonical not an old version).
 > 4. Ensure Sygma Hub linking is working and hasn't been undone.
 > 5. Present a report on it all and a plan to fix any issues.
 > 6. **No deferring to another session. No "this is minor leave it for another session". Fix everything in the same session.**
@@ -63,14 +63,14 @@ The skill runs phase-by-phase, sets a task per phase, fixes issues as it goes, a
 
 - Vault: `/Users/peterashcroft/Second Brain/`
 - Scheduled-task canonical: `~/Documents/Claude/Scheduled/{taskId}/SKILL.md` (Pete's Mac, NOT vault)
-- Scheduled-task vault mirror: `Library/skills/scheduled/{taskId}/SKILL.md` (recovery copy)
+- Scheduled-task vault mirror: `skills/scheduled/{taskId}/SKILL.md` (recovery copy)
 - Pete & Mic Drive: `/Users/peterashcroft/Library/CloudStorage/.../Shared drives/Pete & Mic/`
 - Sygma Hub Drive: same parent, `Sygma Hub/`
 - My Drive: `/Users/peterashcroft/My Drive (pete.ashcroft@sygma-solutions.com)/`
 
 ## Execution, READ THIS FIRST
 
-**Use Desktop Commander (`mcp__Desktop_Commander__*`), not workspace bash.** The workspace bash sandbox has a 45-second cap, which kills any vault-wide find / grep / read walk. The cron-vs-SKILL trap is documented at `[[Library/lessons/2026-05-02-scheduled-task-skill-md-uses-dc]]`; vault-check has the same problem.
+**Use Desktop Commander (`mcp__Desktop_Commander__*`), not workspace bash.** The workspace bash sandbox has a 45-second cap, which kills any vault-wide find / grep / read walk. The cron-vs-SKILL trap is documented at `[[2026-05-02-scheduled-task-skill-md-uses-dc]]`; vault-check has the same problem.
 
 Concretely, for every long-running step in this skill:
 - Inventory walks (Phase 1) → write a Python script to `/tmp/`, run via `mcp__Desktop_Commander__start_process`, capture results to a temp JSON / txt for parsing.
@@ -118,18 +118,18 @@ Read every file. Don't sample, don't skim. The skill description's contract dema
 
 ### Phase 3 -- Skill audit (vault SKILL.md ↔ .skill archive ↔ install location)
 
-For each directory under `Library/skills/` (excluding `scheduled/` and `_previous/`):
+For each directory under `skills/` (excluding `scheduled/` and `_previous/`):
 
 1. **SKILL.md must be valid** -- has frontmatter (`name:`, `description:`), parseable YAML, non-empty body.
-2. **`.skill` archive must exist as a sibling** -- `Library/skills/{name}.skill` is a zip with `{name}/SKILL.md` inside.
+2. **`.skill` archive must exist as a sibling** -- `skills/{name}.skill` is a zip with `{name}/SKILL.md` inside.
 3. **Lockstep check** -- byte count + content of vault `SKILL.md` matches what's inside the `.skill` archive (`unzip -p {name}.skill {name}/SKILL.md`). Repackage if drifted.
-4. **References folder** -- if `Library/skills/{name}/references/` exists, every reference file should be in the archive too.
+4. **References folder** -- if `skills/{name}/references/` exists, every reference file should be in the archive too.
 5. **Description quality** -- description in frontmatter triggers the skill correctly. Check it includes meaningful trigger phrases (not just "this skill does X").
 6. **Cross-skill references** -- skill mentions another skill name? Confirm that other skill exists.
 
 Future-proof: this is a directory walk. Add a new skill -- it gets audited automatically. No code change needed.
 
-For each issue, fix in same session: rebuild archive, fix references, repackage. Update `Library/skills/README.md` if a version has shifted unrecorded.
+For each issue, fix in same session: rebuild archive, fix references, repackage. Update `skills/README.md` if a version has shifted unrecorded.
 
 ### Phase 4 -- Scheduled-task audit (the cron-vs-SKILL trap)
 
@@ -137,7 +137,7 @@ This is the trap from 2026-04-27 (Pete's IP portfolio cron ran a stale path for 
 
 1. **Live cron registry** -- run `mcp__scheduled-tasks__list_scheduled_tasks` to get the current list of cron jobs. Each has a `taskId`.
 2. **Canonical SKILL.md** at `~/Documents/Claude/Scheduled/{taskId}/SKILL.md` -- THE source the cron actually runs.
-3. **Vault recovery mirror** at `Library/skills/scheduled/{taskId}/SKILL.md` -- read-only mirror for vault search + recovery.
+3. **Vault recovery mirror** at `skills/scheduled/{taskId}/SKILL.md` -- read-only mirror for vault search + recovery.
 
 Per cron job:
 
@@ -216,7 +216,7 @@ Scan the **most recent 14 `daily_log` entries** in the CC. For each:
 
 Output for Phase 9 in the audit report: one row per drift finding, with daily-note path, line number, task summary, evidence type (CC task-state mismatch / same-day shipped), and proposed fix. If brain Compress + vault-writer Step 3a are doing their job, this list should be empty most of the time -- non-empty means prevention silently failed and Pete should investigate why.
 
-**Why this phase exists:** prevention can fail silently (a session that didn't run vault-writer at the end, a vault-writer step that errored, an updated SKILL.md that wasn't installed). Phase 9 is the periodic catch -- surfaced 2026-05-04, lesson [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
+**Why this phase exists:** prevention can fail silently (a session that didn't run vault-writer at the end, a vault-writer step that errored, an updated SKILL.md that wasn't installed). Phase 9 is the periodic catch -- surfaced 2026-05-04, lesson [[2026-05-04-same-day-reconciliation-gap]].
 
 ### Phase 10 -- Compile report + fix plan + execute remaining fixes
 
@@ -259,16 +259,16 @@ Concise, factual, no preamble. Numbers, paths, GIDs. The report is a working doc
 - Sync helper: [[vault-drive-sync]]
 - Hub sync helper: `/tmp/pbs/hub-sync.py` + [[hub-sync-registry]]
 - Vault routing rules: [[vault-routing]]
-- Pre-skill-install audit example: [[Library/audits/2026-05-03-pre-skill-install-audit]]
-- Full vault audit example: [[Library/audits/2026-05-03-full-vault-audit]]
-- The IP portfolio cron-vs-SKILL trap that motivated Phase 4: [[Library/lessons/2026-05-02-scheduled-task-skill-md-uses-dc]]
+- Pre-skill-install audit example: [[2026-05-03-pre-skill-install-audit]]
+- Full vault audit example: [[2026-05-03-full-vault-audit]]
+- The IP portfolio cron-vs-SKILL trap that motivated Phase 4: [[2026-05-02-scheduled-task-skill-md-uses-dc]]
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[Library/audits/2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 
-- [[Library/lessons/2026-05-03-header-name-lookups-for-resilient-scripts]]
-- [[Library/lessons/2026-05-04-skill-md-canonical-and-mirror-not-hardlinked]]
-- [[Library/lessons/2026-05-05-sheet-migration-via-values-update-is-wrong]]
-- [[Library/lessons/2026-05-06-vault-bookkeeping-with-artefacts]]
+- [[2026-05-03-header-name-lookups-for-resilient-scripts]]
+- [[2026-05-04-skill-md-canonical-and-mirror-not-hardlinked]]
+- [[2026-05-05-sheet-migration-via-values-update-is-wrong]]
+- [[2026-05-06-vault-bookkeeping-with-artefacts]]
 

@@ -17,7 +17,7 @@ If a similarly named skill appears (e.g. `obsidian:assistant` from a remote plug
 Primary skill for managing Pete's Second Brain: session resume/compress, daily routines, tasks, memory, resources, output styles, meeting intelligence.
 
 > [!important] Business OS migration — the vault is the operating skeleton, not the content store
-> Files live in **Google Drive** (query the `drive_files` index via `/tmp/pbs/cc-sql.py`, never the vault tree); knowledge — lessons, decisions, notes, memories — lives in the **CC Supabase `vault_notes`** (query via `cc-knowledge-api.py`, surfaced in the CC Brain page). Wherever a step below says read/write a vault content folder (`Projects/` other than PA-*, `Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, `Library/lessons|decisions|audits|competitors|market|meetings|ip-trademark|archive|templates`), those are **retired 24 Jun 2026 (now in Drive + vault_notes)** — the real home is Drive / the knowledge DB per `MAP.md`. **`[[wikilinks]]` still work**: they resolve against `vault_notes` by name now, not by file path (decision #12 — link by stable ID, not path), so links don't need rewriting. The minimal boot kernel (~/.config/pete-cc): `CLAUDE.md`, `MAP.md`, `Library/processes`, `Library/skills`, `Daily/`, `Projects/PA-Command-Centre` + `Projects/PA-General`. Migration state: [[Projects/PA-Command-Centre/files/business-os-master-plan-2026-06-20|master plan]].
+> Files live in **Google Drive** (query the `drive_files` index via `/tmp/pbs/cc-sql.py`, never the vault tree); knowledge — lessons, decisions, notes, memories — lives in the **CC Supabase `vault_notes`** (query via `cc-knowledge-api.py`, surfaced in the CC Brain page). Wherever a step below says read/write a vault content folder (`Projects/` other than PA-*, `Properties/`, `Customers/`, `Suppliers/`, `Businesses/`, `Personal/`, `Accreditations/`, `Library/lessons|decisions|audits|competitors|market|meetings|ip-trademark|archive|templates`), those are **retired 24 Jun 2026 (now in Drive + vault_notes)** — the real home is Drive / the knowledge DB per `MAP.md`. **`[[wikilinks]]` still work**: they resolve against `vault_notes` by name now, not by file path (decision #12 — link by stable ID, not path), so links don't need rewriting. The minimal boot kernel (~/.config/pete-cc): `CLAUDE.md`, `MAP.md`, `Library/processes`, `Library/skills`, `Daily/`, `Projects/PA-Command-Centre` + `Projects/PA-General`.
 
 > **Routing rules, per-section structure, onboarding rituals, lifecycle rules, multi-system reading-order protocol**: `[[vault-routing]]` (loaded by Resume workflow when invoked). Do not duplicate routing here.
 >
@@ -310,7 +310,7 @@ Save everything valuable from the current session.
    - If no task id, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
    - When uncertain, surface as a question to Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) rather than auto-modifying.
    
-   **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create a task; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed task stayed open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`). See [[Library/lessons/2026-05-04-same-day-reconciliation-gap]].
+   **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create a task; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed task stayed open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`). See [[2026-05-04-same-day-reconciliation-gap]].
    
    **How to apply:** Runs at end-of-session, before the final Report step. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence (commit hash, decision doc, README log line) -- never strikes a line on assumption alone. Same logic must run in `vault-writer` (separate but parallel cleanup checklist).
 7a. **Task staleness sweep** (mirrors vault-writer Step 3b) -- Scan `public.tasks` for stale work and surface a digest: open tasks untouched >21d, long-overdue >14d (`due_on` past), bloated undated clusters (a `project_slug` full of same-day-dumped tasks), completed-but-still-listed clutter. Group by `entity_slug` -> `project_slug` with a one-line call per cluster (close / archive / delegate / verify-then-close). **Surface-only -- never bulk-close, delete, or reassign without Pete's per-item confirmation** (Pete's tasks are sacred). The only unprompted closes are tasks this session demonstrably shipped (Step 7). If nothing crosses the thresholds, say so in one line -- don't manufacture noise.
@@ -340,9 +340,9 @@ Save durable knowledge that persists indefinitely.
 When Pete corrects you, save the correction. Don't ask. **Where you save it depends on shape:**
 
 - **One-liner sticky rule** (no Why, no How, just a fact or preference) -> append to `CLAUDE.md` under the Rules section.
-- **Anything with structure** (rule + Why + How to apply, or a recurring pattern with reasoning) -> write as `Library/lessons/{YYYY-MM-DD}-{slug}.md` using the lesson template, and add a single-line pointer in CLAUDE.md (`- **Short title.** One-line summary. See [[Library/lessons/{slug}]].`).
+- **Anything with structure** (rule + Why + How to apply, or a recurring pattern with reasoning) -> write as `Library/lessons/{YYYY-MM-DD}-{slug}.md` using the lesson template, and add a single-line pointer in CLAUDE.md (`- **Short title.** One-line summary. See [[{slug}]].`).
 
-**CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `Library/lessons/` as a standalone file with no pointer in CLAUDE.md. The `[[Library/lessons/README]]` index is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes. The 2026-05-03 audit trimmed CLAUDE.md from 43KB to 33KB precisely because non-correction pointers had drifted in; do not re-introduce that drift.
+**CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `Library/lessons/` as a standalone file with no pointer in CLAUDE.md. The `[[README]]` index is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes. The 2026-05-03 audit trimmed CLAUDE.md from 43KB to 33KB precisely because non-correction pointers had drifted in; do not re-introduce that drift.
 
 Default to lessons/ when in doubt. Routing corrections inline into CLAUDE.md is what bloated it past 40KB before the 2026-05-03 audit; lessons exist precisely to absorb structured corrections so CLAUDE.md stays a navigable index of corrections only.
 
@@ -629,7 +629,7 @@ Crons modify vault files before sessions start — **always Read a daily note be
 - `Library/processes/automations-dashboard/automations.json` → live view at https://pete-automations.vercel.app
 - `mcp__scheduled-tasks__list_scheduled_tasks` — live Cowork cron state
 
-Any cron change (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[Library/lessons/2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
+Any cron change (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
 
 ## General Guidelines
 
@@ -639,7 +639,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **Email-workflow verbs**: `triage`, `sync`, `hand to`, `reply` (tray: Replies label, **no task**), `task` (CC task: no Replies label, `[no-sync-close]`), `reply + task` (the combo — a Reply with a prep task), `replies` / `my replies` (tray walker; legacy `actions`), `de-tray this`, `file`, `file all emails`, `add to calendar`. One-sentence rule: **Replies = waiting on Pete to respond by email; a task only when work is required** (decoupled 2026-06-25). See `[[email-workflow]]` -- handled by `inbox-triage` and `email-task-sync` skills.
 - **Wikilinks everywhere**: Every mention of a project, person, or vault note MUST be a `[[wikilink]]`.
 - **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> `Library/lessons/{date}-{slug}.md` + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
-- **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[Library/lessons/README]]`.
+- **Lessons folder**: `Library/lessons/` holds behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know -- those lessons live in `Library/lessons/` only, with NO pointer in CLAUDE.md. The lessons README is the discovery surface for non-correction lessons. Index: `[[README]]`.
 - **Outbound text drafting**: read `[[voice-principles]]` before drafting any outbound text on Pete's behalf (customer email, supplier email, internal email, blog, article, ad copy).
 - **Finance / invoicing / Soldo / Dext / Odoo / Xero / payroll / VAT**: read `[[finance-workflow]]` first.
 - **Helper scripts**: in GitHub `pete-brain-scripts`, pulled to `/tmp/pbs` by the boot kernel — run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`. Don't reinvent; check the CC Helpers registry (`/m/process-library`).
@@ -698,14 +698,14 @@ Do NOT:
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[Library/audits/2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 
-- [[Library/lessons/2026-05-06-vault-bookkeeping-with-artefacts]]
-- [[Library/lessons/2026-05-24-mirror-source-system-dating-not-a-cleverer-model]] — for any data Pete also reads in a source app (Garmin, bank, console), match that app's own dating/labels; don't invent a smarter scheme that contradicts their screen.
-- [[Library/lessons/2026-05-24-gcal-updated-timestamp-race-after-create]] — calendar/sync race-condition pattern; Resume reads gcal-twice-daily-sync output.
-- [[Library/lessons/2026-05-25-calendar-sync-window-mismatch-births-past-event-dupes]] — Resume reads gcal cron line; understand window-mismatch failure mode.
-- [[Library/lessons/2026-05-25-garmin-daily-pull-must-rebase-before-push]] — Resume Step 2 reads Garmin pull line; PUSH FAILED warning is part of that line.
-- [[Library/lessons/2026-05-19-ip-takedown-attribution-vs-speed-trade-off]] — IP enforcement methodology; fires when brain handles IP-portfolio / takedown tasks.
-- [[Library/lessons/2026-05-26-enforcement-campaigns-surface-counter-attack-vectors-at-planning]] — surface counter-attack + personal-liability vectors at planning; fires on any IP / regulatory / public-callout campaign brain orchestrates.
-- [[Library/lessons/2026-05-27-pptx-image-pass-build-from-pristine-backup-and-match-logo-to-bg]] — deck/document image-placement work; build from pristine backup, match each logo to its slide background.
+- [[2026-05-06-vault-bookkeeping-with-artefacts]]
+- [[2026-05-24-mirror-source-system-dating-not-a-cleverer-model]] — for any data Pete also reads in a source app (Garmin, bank, console), match that app's own dating/labels; don't invent a smarter scheme that contradicts their screen.
+- [[2026-05-24-gcal-updated-timestamp-race-after-create]] — calendar/sync race-condition pattern; Resume reads gcal-twice-daily-sync output.
+- [[2026-05-25-calendar-sync-window-mismatch-births-past-event-dupes]] — Resume reads gcal cron line; understand window-mismatch failure mode.
+- [[2026-05-25-garmin-daily-pull-must-rebase-before-push]] — Resume Step 2 reads Garmin pull line; PUSH FAILED warning is part of that line.
+- [[2026-05-19-ip-takedown-attribution-vs-speed-trade-off]] — IP enforcement methodology; fires when brain handles IP-portfolio / takedown tasks.
+- [[2026-05-26-enforcement-campaigns-surface-counter-attack-vectors-at-planning]] — surface counter-attack + personal-liability vectors at planning; fires on any IP / regulatory / public-callout campaign brain orchestrates.
+- [[2026-05-27-pptx-image-pass-build-from-pristine-backup-and-match-logo-to-bg]] — deck/document image-placement work; build from pristine backup, match each logo to its slide background.
 

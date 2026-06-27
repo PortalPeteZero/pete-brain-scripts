@@ -36,9 +36,9 @@ It complements the revenue-side `cd-monthly-finance-email` cron — which is tur
 
 ## Files this skill owns
 
-- `Library/skills/cd-cost-report/SKILL.md` — this file
-- `Library/skills/cd-cost-report/scripts/build_data.py` — pulls Odoo + applies manual data → writes `/tmp/ytd_data.json`
-- `Library/skills/cd-cost-report/scripts/render_html.py` — reads `/tmp/ytd_data.json` → writes the HTML report
+- `skills/cd-cost-report/SKILL.md` — this file
+- `skills/cd-cost-report/scripts/build_data.py` — pulls Odoo + applies manual data → writes `/tmp/ytd_data.json`
+- `skills/cd-cost-report/scripts/render_html.py` — reads `/tmp/ytd_data.json` → writes the HTML report
 - `Businesses/canary-detect/finance/cost-base-reports/baseline-config.md` — locked baseline definition
 - `Businesses/canary-detect/finance/cost-base-reports/2026-cost-base-YTD.html` — local rendered output
 - Live mirror: **commandcentre.info/m/cd-finance** Cost base tab (`reports.snapshots` key `cd-cost-base`) — the Vercel project was retired 11 Jun 2026
