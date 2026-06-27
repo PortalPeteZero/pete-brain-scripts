@@ -1221,28 +1221,34 @@ def push_dashboard(commit_msg=None):
 
 
 def set_signoff(date_iso: str, hhmm: str):
-    """Write Pete's confirmed sign-off for a day (brain skill calls this when Pete
-    corrects the morning estimate). Updates the vault JSON's signoff.confirmed,
-    mirrors to the dashboard clone, pushes so Vercel redeploys. No Garmin auth."""
-    json_path = JSON_DIR / f"{date_iso}.json"
-    if not json_path.exists():
-        print(f"  No Garmin file for {date_iso} — nothing to set.", file=sys.stderr)
+    """Write Pete's confirmed sign-off for a day straight into the CC
+    (garmin_daily.snapshot.signoff.confirmed). The brain calls this when Pete corrects the morning
+    estimate. CC-ONLY — no Drive / dashboard-repo / git-push / Mac coupling — so it works headless and
+    reaches the live Health dashboard (which reads garmin_daily). The headless cron's
+    _preserve_local_fields keeps `confirmed` across later re-runs. SSOT: the CC is the only home."""
+    import urllib.request, urllib.error
+    url = os.environ.get("CC_SUPABASE_URL"); key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+    if not (url and key):
+        kp = (Path(os.environ["VAULT"]) if os.environ.get("VAULT") else VAULT) / "Library/processes/secrets/command-centre-supabase-keys.json"
+        kd = json.loads(kp.read_text()); url, key = kd["url"], kd["service_role_key"]
+    hdr = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    # 1. read the current snapshot
+    q = url.rstrip("/") + f"/rest/v1/garmin_daily?date=eq.{date_iso}&select=snapshot"
+    rows = json.loads(urllib.request.urlopen(urllib.request.Request(q, headers=hdr), timeout=30).read())
+    if not rows:
+        print(f"  No garmin_daily row for {date_iso} in the CC — run the cloud pull first "
+              f"(cc-cron.py deploy garmin-daily-pull --run).", file=sys.stderr)
         return
-    data = json.loads(json_path.read_text())
-    so = data.get("signoff") or {"detected": None, "detected_iso": None,
-                                  "source": "claude-session-activity"}
+    snap = rows[0].get("snapshot") or {}
+    so = snap.get("signoff") or {"detected": None, "detected_iso": None, "source": "pete-confirmed"}
     so["confirmed"] = hhmm
-    data["signoff"] = so
-    json_path.write_text(json.dumps(data, indent=2, default=str))
-    if DASHBOARD_REPO_DATA.parent.exists():
-        try:
-            DASHBOARD_REPO_DATA.mkdir(parents=True, exist_ok=True)
-            (DASHBOARD_REPO_DATA / f"{date_iso}.json").write_text(
-                json.dumps(data, indent=2, default=str))
-        except Exception as e:
-            print(f"  Warning: mirror failed: {e}", file=sys.stderr)
-    push_dashboard(commit_msg=f"signoff: {date_iso} confirmed {hhmm}")
-    print(f"  Sign-off for {date_iso} set to {hhmm} (confirmed).")
+    snap["signoff"] = so
+    # 2. patch it back into the CC
+    body = json.dumps({"snapshot": snap}, default=str).encode()
+    req = urllib.request.Request(url.rstrip("/") + f"/rest/v1/garmin_daily?date=eq.{date_iso}",
+                                 data=body, headers={**hdr, "Prefer": "return=minimal"}, method="PATCH")
+    urllib.request.urlopen(req, timeout=30)
+    print(f"  Sign-off for {date_iso} set to {hhmm} (confirmed) — written to the CC.")
 
 
 def main():
