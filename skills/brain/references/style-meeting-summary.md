@@ -42,7 +42,7 @@ status: raw | processed
 
 ## Discussion Summary
 ### [Topic 1]
-[2-3 sentence summary — use [[wikilinks]] for projects, people, vault notes]
+[2-3 sentence summary — use [[wikilinks]] for projects, people, knowledge notes]
 
 ### [Topic 2]
 [2-3 sentence summary]
@@ -64,4 +64,4 @@ status: raw | processed
 4. Flag any conflicting statements or unclear commitments
 5. Link to relevant project files using [[wiki links]] if applicable
 6. After creating the summary, offer to create tasks in TaskNotes for each action item
-7. Save summaries to `Library/meetings/` with filename format: `YYYY-MM-DD Meeting Title.md`
+7. Ingest summaries as `vault_notes` records (`type: meeting`) via `cc-knowledge-ingest.py`

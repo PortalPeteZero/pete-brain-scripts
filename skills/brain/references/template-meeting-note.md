@@ -24,7 +24,7 @@ status: raw
 
 ## Discussion Summary
 ### [Topic 1]
-[Summary — use [[wikilinks]] for any projects, people, or vault notes mentioned]
+[Summary — use [[wikilinks]] for any projects, people, or knowledge notes mentioned]
 
 ## Open Questions
 - [Question 1 — who follows up: [[Person]]]

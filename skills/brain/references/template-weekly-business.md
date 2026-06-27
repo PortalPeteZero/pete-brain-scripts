@@ -30,7 +30,7 @@ week_number:
 <!-- What's stuck or at risk — link [[projects]] and [[people]] -->
 
 ## Decisions Made
-<!-- Link to [[Library/decisions/]] entries -->
+<!-- Link to decision notes in [[vault_notes]] -->
 
 ## Key Meetings
 <!-- Important meetings this week — link [[meeting notes]] -->
