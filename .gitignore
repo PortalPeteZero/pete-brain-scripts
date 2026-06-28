@@ -4,6 +4,22 @@
 # (secrets + helper symlinks) — the repo tracks no Library/ content, so ignore it all.
 Library/
 
+# Knowledge / plan / data TRANSPORT files. Plans, lessons, notes etc. are authored as a throwaway
+# .md UNDER these logical paths inside the working tree (e.g. Projects/<proj>/files/<plan>.md) only so
+# cc-knowledge-ingest.py records a clean vault_path; the real home is the CC `vault_notes` DB row and
+# the file is discarded. They must NEVER be committed: the hourly `knowledge-reindex` cron re-ingests
+# any .md it finds under these roots, so a committed transport file RESURRECTS a plan you deleted from
+# the DB an hour later (the Xhale incident, 28 Jun 2026 — swept in by a catch-all `git add` on 26 Jun).
+# The repo tracks no content under any of these roots — same rule as Library/ above.
+Projects/
+Daily/
+Personal/
+Businesses/
+Customers/
+Suppliers/
+Properties/
+Accreditations/
+
 # Python bytecode
 __pycache__/
 *.pyc
