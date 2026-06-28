@@ -153,6 +153,12 @@ status: in-progress
 
 At session end, update `status: completed` or `partial`. The plan stays in `vault_notes` as permanent history.
 
+> [!important] Plan lifecycle — a finished plan must not look live; a dead plan must not look active
+> Plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` (open = "verify live" · done = "historical" · scrapped = "⛔ dead"), driven by the frontmatter `status`. So whenever a plan's state changes, **change its status** (and re-ingest / fix the banner so it re-stamps):
+> - **Executed / shipped** → set `status: completed`. NEVER leave a shipped plan as `ready`/`in-progress` — that is exactly what makes a future grep mistake it for live state.
+> - **Scrapped / abandoned** → EITHER **hard-delete the plan note** (snapshot first — the default when it is pure noise with no lasting value) **OR** set `status: scrapped` (the banner becomes ⛔ "do not use"). Choose: delete if it should leave no trace; stamp if the *decision not to do it* is worth keeping. Never leave a dead plan looking active.
+> - To re-stamp after a status change: re-ingest the plan (`cc-knowledge-ingest.py` → re-embed), or if editing the `vault_notes` row directly, update the banner at the top of the body too.
+
 ---
 
 ## Resume Session

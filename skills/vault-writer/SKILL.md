@@ -66,8 +66,10 @@ Run this at the end of every working session. Do not skip steps assuming the bra
 
 - Update the project's CC record (status, next steps, any new context learned this session)
 - Consolidate working files in the project's Drive folder -- merge scratch notes or drafts that are now superseded
-- Mark completed session plans as `status: completed`
-- Don't delete old files -- keep history, just mark things as done
+- **Plan lifecycle (keep plans honest — a shipped plan must not look live, a dead one must not look active):** plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` driven by frontmatter `status`. Whenever a plan's state changed this session, update its status and re-ingest so the banner re-stamps:
+  - **Executed / shipped** → `status: completed` (banner → ✅ historical). Never leave a shipped plan `ready`/`in-progress` — that's what makes a future grep treat it as live state.
+  - **Scrapped / abandoned** → EITHER **hard-delete the plan note** (snapshot first; the default for pure noise) **OR** set `status: scrapped` (banner → ⛔ "do not use"). Delete if it should leave no trace; stamp if the *decision not to do it* is worth keeping.
+- Don't delete old *knowledge/files* on a whim -- keep history; but a scrapped *plan* should be deleted or clearly stamped dead (above), never left looking active
 
 ### Step 2: Whole-session reflection
 

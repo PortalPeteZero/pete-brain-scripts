@@ -74,8 +74,11 @@ def row_for(path):
     # ingest gets it. The live state is the orientation map + cc-sql, never a plan doc.
     if "plan" in ty.lower() and "<!-- PLAN-LIFECYCLE-BANNER -->" not in body:
         _st=str(fm.get("status","")).lower()
+        _scrapped=any(w in _st for w in ("scrap","abandon","dropped","dead","killed","cancel","binned","rejected"))
         _done=any(w in _st for w in ("complete","done","shipped","built","execut","implement","merged","applied","superseded","retired","final"))
-        if _done:
+        if _scrapped:
+            _ban=("<!-- PLAN-LIFECYCLE-BANNER -->\n> [!danger] ⛔ SCRAPPED / ABANDONED PLAN (status: %s). This was NOT built and will NOT be — do NOT use, act on, or revive it without Pete's explicit say-so. Kept only as a record of a decision not taken.\n\n" % (fm.get("status") or "scrapped"))
+        elif _done:
             _ban=("<!-- PLAN-LIFECYCLE-BANNER -->\n> [!success] ✅ COMPLETED / HISTORICAL PLAN (status: %s). A record of intent — NOT the live state. "
                   "For what is built/live now, query the LIVE SYSTEM (the orientation map + `cc-sql` over the live tables), never this document.\n\n" % (fm.get("status") or "done"))
         else:
