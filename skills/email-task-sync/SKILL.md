@@ -94,7 +94,7 @@ For each linked task whose `status = 'done'`, strip the `Replies` or `Delegated`
 **`[no-sync-close]` keeps the label (the marker is symmetric).** If the done task carries `[no-sync-close]`, do NOT strip its Gmail label — the label/tray item is independent of the task (an overlap reply still owed, or a task closed under the label-only migration where the Replies label is now the record). The same marker that stops a label-removal from closing a task (Step 4) symmetrically stops a task-closure from stripping the label here.
 
 When completion strips the last workflow label:
-- Thread still has a filing label (`Customers/*`, `Suppliers/*`, `Projects/*`, `Invoices/*` (legacy → re-route to Team-Finances at sync time), `Accreditations/*` (legacy → re-route to Team-General/SY-General), or any Mode-A top-level): no further action — it stays archived under its home.
+- Thread still has a filing label (`Customers/*`, `Suppliers/*`, `Projects/*`, `Invoices/*` (legacy → re-route to Team-Finances at sync time), `Accreditations/*` (legacy → re-route to General), or any Mode-A top-level): no further action — it stays archived under its home.
 - Thread has NO filing label: don't silently orphan. Add to the Step 8 report: "{subject} has no filing home — file X, archive, or bin?". Pete decides.
 
 ### Step 4: Bidirectional close (Gmail → CC)
@@ -122,10 +122,10 @@ Report: "Closed X via Gmail-side completion: {task name list}".
 
 ### Step 5: Delegation reply check
 
-For each open task on the Delegated track — `project_slug='Team-General'` with a `[delegated]` marker in notes:
+For each open task on the Delegated track — `project_slug='General'` with a `[delegated]` marker in notes:
 
 ```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, notes FROM tasks WHERE status != 'done' AND project_slug = 'Team-General' AND notes LIKE '%[delegated]%'"
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, notes FROM tasks WHERE status != 'done' AND project_slug = 'General' AND notes LIKE '%[delegated]%'"
 ```
 
 1. Extract `delegatee` email + `forwarded_at` (or fall back to `created_at`) from notes.
@@ -148,19 +148,16 @@ Find Gmail threads labelled `Replies` or `Delegated` with NO matching task in `p
 VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, tags, notes, status) VALUES ('<action verb + WHO + WHAT>', 'P2', '<today+7d>', '<entity_slug>', '<project_slug NAME>', '{reply}', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary + routing trail\n[no-sync-close]', 'open')"
 ```
 
-- **Routing discipline**: the chain below implements the decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project first, else `{prefix}-General`; project escalation only ever by proposal to Pete, never auto-created.
+- **Routing discipline**: the chain below implements the decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project first, else the single `General` project; escalation only ever by proposal to Pete, never auto-created.
 - **Priority**: no Gmail priority signal → default **P2**. Pete can edit the row. `Delegated`-only orphans → leave `priority` unset.
 - **Smart-routing fallback chain (Gmail label → `entity_slug` + `project_slug`):**
   1. `Projects/*` label → `project_slug` = the project NAME (e.g. `'CD-Website'`); `entity_slug` = the same. (Demand-driven sub-project labels → the parent project NAME.)
-  2. `Customers/*` or `Suppliers/*` only → `entity_slug` = the customer/supplier slug; `project_slug` = the matching `{prefix}-General`:
-     - SY / CD / EA → `project_slug='Team-General'`
-     - AT (Ashcroft Family) → `project_slug='AT-General'`
-     - **SY-Clancy exception**: `Customers/SY-Clancy` → `project_slug='SY-Clancy'`, `entity_slug='SY-Clancy'` (its own project NAME, not Team-General).
+  2. `Customers/*` or `Suppliers/*` only → `entity_slug` = the customer/supplier slug; `project_slug='General'` (the entity_slug carries the business). **SY-Clancy exception**: `Customers/SY-Clancy` → `project_slug='SY-Clancy'`, `entity_slug='SY-Clancy'` (its own project NAME).
   3. `Invoices/*` (legacy label) → `project_slug='Team-Finances'`; `entity_slug` = the invoice owner (`CD-Invoices` / `SY-Invoices` / `EA-Payments`). Record To-Pay/Overdue/Awaiting in `notes`; default "To Pay". (Auto-paid items route to `Receipts`, not Invoices — see CLAUDE.md.)
-  4. `Accreditations/*` → `project_slug='Team-General'`, `entity_slug` = the accreditation slug (e.g. `'SY-ProQual'`, `'SY-EUSR'`).
-  5. `Personal/PA-{area}` → `project_slug='PA-General'`; `entity_slug` = the area slug (`PA-Scouts`, `PA-Los-Claveles`, `PA-Freemasonry`, `PA-Finance`, `PA-PassionFit`); record the area in `notes`.
-  6. **Demand-driven label suggestion**: no filing label but sender domain / subject keyword matches an existing entity home (a Drive folder or `vault_notes` entity) with no Gmail label → surface in Step 8 as a "create label?" suggestion (check the declined list first). **For project labels especially, ASK before creating** unless sustained volume is clear — default to routing through `{prefix}-General`. Sender hints: BSO/scouts.org.uk/"Jamborette" → `PA-Scouts`; Provincial Grand Master/"Tyldesley Lodge"/"Sincerely & Fraternally" → `PA-Freemasonry`; Los Claveles utility codes (LPLIR/LPLR)/committee → `PA-Los-Claveles`; HSBC/pension/HMRC Self Assessment → `PA-Finance`.
-  7. No filing label and no match → default `project_slug='PA-General'` (no `entity_slug`). Pete cleans up periodically — the trade for zero friction.
+  4. `Accreditations/*` → `project_slug='General'`, `entity_slug` = the accreditation slug (e.g. `'SY-ProQual'`, `'SY-EUSR'`).
+  5. `Personal/PA-{area}` → `project_slug='General'`; `entity_slug` = the area slug (`PA-Scouts`, `PA-Los-Claveles`, `PA-Freemasonry`, `PA-Finance`, `PA-PassionFit`); record the area in `notes`.
+  6. **Demand-driven label suggestion**: no filing label but sender domain / subject keyword matches an existing entity home (a Drive folder or `vault_notes` entity) with no Gmail label → surface in Step 8 as a "create label?" suggestion (check the declined list first). **For project labels especially, ASK before creating** unless sustained volume is clear — default to routing through `General`. Sender hints: BSO/scouts.org.uk/"Jamborette" → `PA-Scouts`; Provincial Grand Master/"Tyldesley Lodge"/"Sincerely & Fraternally" → `PA-Freemasonry`; Los Claveles utility codes (LPLIR/LPLR)/committee → `PA-Los-Claveles`; HSBC/pension/HMRC Self Assessment → `PA-Finance`.
+  7. No filing label and no match → default `project_slug='General'` (the entity_slug carries the business). Pete cleans up periodically — the trade for zero friction.
 - **Task name**: action verb + WHO + WHAT (e.g. "Reply to Wayne (Clancy) about UKPN DSR meeting time", "Pay Suministros Pantera invoice 26P15531"). Don't dump the raw subject.
 - **Task notes** (Mimestream first):
   1. Mimestream: `https://links.mimestream.com/g/pete.ashcroft@sygma-solutions.com/t/{thread_id}`
@@ -228,7 +225,7 @@ CALENDAR revisit:
 - 1 closed thread had a flight mention not on the calendar: ✈ {summary} — propose adding? (y / n)
 
 STRATEGIC PATTERNS (vault-routing > observed):
-- "Insurance docs from AXA" → Team-General (entity_slug=CD-General) × 4 — promote to Master matrix? (y / n)
+- "Insurance docs from AXA" → General (entity_slug=Canary Detect) × 4 — promote to Master matrix? (y / n)
 
 Any decisions needed? (list pending y/n questions)
 ```
