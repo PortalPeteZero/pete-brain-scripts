@@ -135,7 +135,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_sl
 
 #### Step 3c: CC task-state parity
 
-For every project **touched this session**, confirm `public.tasks` reflects what shipped — the task is closed (overlaps Step 3a); conversely a task marked done in the CC has its artefact updated in the cloud (Drive / `vault_notes` / CC). **Don't sprawl**: never create a new project/sub-project for 1-2 tasks; default to the parent's `{prefix}-General`; ask Pete before creating either. (The old task↔vault-folder parity check is retired — there are no vault project folders.)
+For every project **touched this session**, confirm `public.tasks` reflects what shipped — the task is closed (overlaps Step 3a); conversely a task marked done in the CC has its artefact updated in the cloud (Drive / `vault_notes` / CC). **Don't sprawl**: never create a new project/sub-project for 1-2 tasks; default to the single `General`; ask Pete before creating either. (The old task↔vault-folder parity check is retired — there are no vault project folders.)
 
 ### Step 4: Housekeeping
 

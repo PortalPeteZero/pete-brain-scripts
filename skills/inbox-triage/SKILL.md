@@ -205,10 +205,10 @@ Once `Ask` is set, the Action verb is constrained:
 |---|---|---|
 | `none` | File / Keep in inbox / Clear | File home label |
 | `info-only` | File / Clear | File home label (or Clear for pure marketing) |
-| `reply` | **Reply or Hand to {person}** | Reply (tray) in General/{prefix}-General section (or AT-General/PA-General if explicitly Family/Personal) |
+| `reply` | **Reply or Hand to {person}** | Reply (tray) — label-only, no task (the entity tag carries Sygma/CD/Family/Personal) |
 | `decision` | **Reply / Task / Hand to** | Pay/process/build → Task P2 (CC only); executed-by-replying → Reply (tray). P1 if deadline tight |
 | `review` | **Reply / Task / Hand to** | Portal/code/finance review → Task P3 (CC only); review-then-reply-to-sender → Reply (tray). P2 if recipient waiting |
-| `rsvp` | **Reply** + calendar event proposal | Reply (tray) in PA-General + calendar |
+| `rsvp` | **Reply** + calendar event proposal | Reply (tray) + calendar event |
 
 **The combo (Reply + Task):** when a `reply`/`decision`/`review` needs work done *before* Pete can reply (e.g. build the quote, check with the accountant, then reply), propose **Reply + Task** — a `Reply` with a Task cell holding the prep work. The `Replies` label tracks the reply; the `reply`-tagged task tracks the work; they're independent. This is the third outcome — don't force it into "either reply or task."
 
@@ -229,7 +229,7 @@ Bare `Label: X` is **forbidden** in proposals.
 
 **Transition guard (bed-in period):** if Pete types `task` on a row whose Ask is clearly reply-shaped (reply/rsvp), honour the verb but flag once: "looks reply-shaped — Action instead?". Never silently substitute one verb for the other.
 
-**Task routing (which project/section):** follow the task-routing decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project/bucket first, else `{prefix}-General`, bucket/project escalation only by proposal.
+**Task routing (which project/section):** follow the task-routing decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project/bucket first, else the single `General` project, bucket/project escalation only by proposal.
 
 Label-routing logic (which X to pick once verb is chosen):
 - Sender domain matches a known customer/supplier/project label → propose that label
@@ -394,7 +394,7 @@ Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primi
 
 ### CC task creation
 
-`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`). **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). The `project_slug` column carries the project NAME (e.g. `'General'`, `'SY-General'`), never a GID.
+`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`). **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). The `project_slug` column carries the project NAME (e.g. `'General'`, `'SY-Website'`), never a GID.
 
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', '2026-07-01', 'SY-Clancy', 'General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
@@ -591,7 +591,7 @@ Suggested new structure for {entity}:
     CC record:    {vault_notes | account_* -- CREATE | EXISTS}
 
   CC TASKS (public.tasks)
-    project_slug: {existing NAME | NEW NAME | NONE -- tasks go in General with entity_slug={prefix}-General}
+    project_slug: {existing NAME | NEW NAME | NONE -- defaults to General; the entity_slug carries the business (Sygma / Canary Detect / Personal)}
 
   Create all of the above? (y / edit / n)
 ```
