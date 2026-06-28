@@ -92,6 +92,7 @@ def main():
             print("  ingest:", run("cc-knowledge-ingest.py", *changed[i:i + 80]))
         null_embeddings(changed)      # so edited notes get a fresh embedding, not a stale one
     print("  embed:", run("cc-knowledge-embed-backfill.py"))
+    print("  embed tasks:", run("cc-tasks-embed.py"))   # embed any new/edited public.tasks → semantic task search + Ask
     st["last_run_epoch"] = now
     st["last_run_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     st["last_changed"] = len(changed)
