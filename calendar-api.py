@@ -171,6 +171,11 @@ class CalendarAPI:
                 event["end"] = {"dateTime": kwargs["end"], "timeZone": tz}
             if "attendees" in kwargs:
                 event["attendees"] = [{"email": e} for e in kwargs["attendees"]]
+        # Standing rule (Pete, 2026-06-28 — ADHD, misses calendar): every event gets a 45-min popup
+        # reminder unless the caller set its own. Belt-and-braces with the primary calendar's
+        # default reminder (also 45-min popup). See [[diary-conventions]].
+        if isinstance(event, dict) and "reminders" not in event:
+            event["reminders"] = {"useDefault": False, "overrides": [{"method": "popup", "minutes": 45}]}
         return self._call("POST", f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events",
                           body=event)
 
