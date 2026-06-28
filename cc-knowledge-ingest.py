@@ -75,7 +75,10 @@ def row_for(path):
     if "plan" in ty.lower() and "<!-- PLAN-LIFECYCLE-BANNER -->" not in body:
         _st=str(fm.get("status","")).lower()
         _scrapped=any(w in _st for w in ("scrap","abandon","dropped","dead","killed","cancel","binned","rejected"))
-        _done=any(w in _st for w in ("complete","done","shipped","built","execut","implement","merged","applied","superseded","retired","final"))
+        # in-progress execution states ("in-execution", "execution-starting") must NOT count as done —
+        # match "executed"/"execution-complete", never bare "execut" (Pete, 28 Jun 2026).
+        _inprog=any(w in _st for w in ("in-execution","execution-starting","executing","starting","in-progress","in progress","phase 1","phase-1"))
+        _done=(not _inprog) and any(w in _st for w in ("complete","done","shipped","built","executed","implement","merged","applied","superseded","retired","final"))
         if _scrapped:
             _ban=("<!-- PLAN-LIFECYCLE-BANNER -->\n> [!danger] ⛔ SCRAPPED / ABANDONED PLAN (status: %s). This was NOT built and will NOT be — do NOT use, act on, or revive it without Pete's explicit say-so. Kept only as a record of a decision not taken.\n\n" % (fm.get("status") or "scrapped"))
         elif _done:
