@@ -6,6 +6,9 @@ updated: 2026-06-27
 
 # Brain skill changelog
 
+## 2026-06-28 (Step 2a — PF journal reads from CC, not local Drive mount)
+- **Resume Step 2a fixed**: PF journal lesson now read from CC `health_journal` table via `cc-sql.py`. Removed stale instruction to read from `~/Library/CloudStorage/.../My Drive/Passion Fit/journal/` via Desktop Commander. Journal migrated to CC on 2026-06-27; the skill hadn't been updated. Added hard prohibition: never read a local Drive mount for this step.
+
 ## 2026-06-27 (G6.3 — Resume surfaces manual notes/projects)
 - **Resume Step 3c extended**: now also flags NOTES and PROJECTS added in the CC since the last session (same `<cutoff>` as Step 3a's manual-task detection), with a new `**New since last session**` briefing line. Pete edits the CC directly, so jotted notes / spun-up projects surface the same way manual tasks do. List-only, no auto-action.
 - Context: also fixed `cc-skeleton-registry-sync.py` (was crashing + scanning dead `Library/skills`/`Library/processes/scripts` paths) so the `public.skills`/`public.helpers` registries self-heal; added `data_map` rows for skills + helpers. Skill source of truth = `skills/<name>/SKILL.md` in pete-brain-scripts, packaged via `package-skill.py`.
