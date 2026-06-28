@@ -61,7 +61,7 @@ def _req(method, url, body=None, ctype=None, raw=False):
         else:
             data = json.dumps(body).encode(); h["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, method=method, headers=h)
-    with urllib.request.urlopen(req) as r:
+    with urllib.request.urlopen(req, timeout=30) as r:
         b = r.read()
         return b if raw else (json.loads(b) if b else {})
 
