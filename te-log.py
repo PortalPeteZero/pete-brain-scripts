@@ -26,7 +26,8 @@ Payload shape (one enquiry):
   "activity": {                                  # the touch to log
      "kind": "enquiry",                          # enquiry|reply|quote|chase|handoff|correction|note (mapped to CRM vocab)
      "subject": "EUSR Cat 1 & 2 enquiry",
-     "body": "What we sent / what happened ...",
+     "body": "What we sent / what happened ...", # OPTIONAL: if omitted and thread_id is set, te-log auto-pulls
+                                                 #   the latest outbound reply off the Gmail thread (--no-gmail disables)
      "outcome": "sent",                          # optional
      "occurred_at": "2026-06-26T09:00:00Z",      # optional; default now
      "follow_up_at": "2026-07-01"                # optional; sets CRM follow_up + a CC chase task
@@ -90,6 +91,57 @@ def lit(s):
     if s is None: return "NULL"
     return "'" + str(s).replace("'", "''") + "'"
 
+# ---- Gmail reply auto-capture -------------------------------------------------------------
+# Fixes the silent "we forgot to paste the reply" knowledge-loss: when a touch carries a
+# thread_id but no body, pull the latest OUTBOUND message off the thread and bank THAT.
+NO_GMAIL = False
+_GMAIL = None
+def _gmail():
+    global _GMAIL
+    if _GMAIL is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("gmail_api_mod", f"{VAULT}/gmail-api.py")
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        _GMAIL = mod.GmailAPI()
+    return _GMAIL
+
+_QUOTE_MARKERS = re.compile(
+    r"(^On .+ wrote:\s*$)|(^From: )|(^-----Original Message-----)|(^________+)|(^\s*>)|(^Sent from my )",
+    re.MULTILINE)
+
+def fetch_reply_body(thread_id, sender_match="sygma-solutions"):
+    """Latest OUTBOUND message body on the thread, quoted-history/footer stripped.
+    Fail-soft: returns '' on any error so the triple-write never breaks."""
+    import base64, email as _email, html as _html
+    try:
+        g = _gmail()
+        t = g.get_thread(thread_id)
+        def _from(m):
+            return next((h["value"] for h in m.get("payload", {}).get("headers", []) if h["name"].lower() == "from"), "")
+        outbound = [m for m in t.get("messages", []) if sender_match in _from(m).lower()]
+        if not outbound:
+            return ""
+        raw = base64.urlsafe_b64decode(g.get_message(outbound[-1]["id"], fmt="raw")["raw"].encode())
+        msg = _email.message_from_bytes(raw)
+        txt = ""
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                txt = part.get_payload(decode=True).decode(part.get_content_charset() or "utf8", "ignore"); break
+        if not txt:
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    h = part.get_payload(decode=True).decode(part.get_content_charset() or "utf8", "ignore")
+                    txt = _html.unescape(re.sub(r"<[^>]+>", " ", h)); break
+        cut = _QUOTE_MARKERS.search(txt)
+        if cut and cut.start() > 20:          # keep the reply, drop the quoted tail (guard against a marker at the very top)
+            txt = txt[:cut.start()]
+        txt = re.sub(r"[ \t]+", " ", txt)
+        txt = re.sub(r"\n\s*\n+", "\n\n", txt).strip()
+        return txt
+    except Exception as e:
+        print(f"   ⚠ Gmail auto-pull failed ({type(e).__name__}: {e}) — proceeding without it")
+        return ""
+
 # ---- stages / tags cache ------------------------------------------------------------------
 _STAGES = None
 def stage_id(name):
@@ -125,9 +177,14 @@ def find_contact(p):
 
 # ---- knowledge note (CC vault_notes via md -> ingest -> embed) -----------------------------
 def write_knowledge(p, contact_id, apply):
-    slug = f"enquiry-{slugify(p.get('company_name') or p.get('full_name') or p.get('email'))}-{slugify(p.get('activity',{}).get('kind','touch'))}"
-    rel = f"Library/projects/SY-Training-Enquiries/enquiries/{slug}.md"
     a = p.get("activity", {})
+    # 🟠 date-stamp the slug so repeat touches never overwrite (each touch = its own searchable note)
+    date = (a.get("occurred_at") or now_iso())[:10]
+    slug = f"enquiry-{slugify(p.get('company_name') or p.get('full_name') or p.get('email'))}-{slugify(a.get('kind','touch'))}-{date}"
+    rel = f"Library/projects/SY-Training-Enquiries/enquiries/{slug}.md"
+    # 🟡 nudge: a distilled takeaway makes the note far more useful to future retrieval than the raw reply
+    if not p.get("knowledge"):
+        print("   ⚠ no distilled 'knowledge' takeaway passed — banking the reply verbatim; add a one-line lesson for better retrieval")
     tags = ["SY-Training-Enquiries", "training-enquiries", "enquiry"] + [slugify(t) for t in p.get("tags", [])]
     body = (f"# Enquiry — {p.get('full_name') or p.get('company_name') or p.get('email')}\n\n"
             f"- **Contact:** {p.get('full_name','')} · {p.get('company_name','')} · {p.get('email','')} · {p.get('phone') or p.get('mobile') or ''}\n"
@@ -194,8 +251,16 @@ def log_enquiry(p, apply, manifest):
     # stage move (on an existing contact, if specified and different)
     if existing and p.get("stage") and apply:
         portal_patch("contacts", {"stage_id": stage_id(p["stage"])}, id=f"eq.{cid}")
-    # activity
+    # 🔴 auto-pull the reply body from Gmail when we didn't pass one (removes "forgot to paste" knowledge-loss)
     a = p.get("activity", {})
+    if a and not a.get("body") and p.get("thread_id") and not NO_GMAIL:
+        pulled = fetch_reply_body(p["thread_id"])
+        if pulled:
+            a["body"] = pulled; p["activity"] = a
+            print(f"   ↳ auto-pulled reply body from Gmail thread ({len(pulled)} chars)")
+        else:
+            print(f"   ⚠ no body passed and nothing auto-pulled from thread {p['thread_id']}")
+    # activity
     if a:
         at = ACTIVITY_MAP.get(a.get("kind", "note"), "note")
         print(f"   • activity [{a.get('kind')}→{at}] {a.get('subject','')}" + (f"  ⏰follow-up {a['follow_up_at']}" if a.get("follow_up_at") else ""))
@@ -228,8 +293,10 @@ def log_enquiry(p, apply, manifest):
     return rel
 
 def main():
+    global NO_GMAIL
     args = sys.argv[1:]
     apply = "--apply" in args
+    NO_GMAIL = "--no-gmail" in args
     inpath = None; manpath = None
     for i, x in enumerate(args):
         if x == "--in": inpath = args[i + 1]

@@ -68,6 +68,11 @@ first; it ranks top when you semantic-search any enquiry. The lifecycle store is
 - **`Sent to Sue`** — the booking handoff: move the contact to **Customer** (won) + log it.
 - **Capture (every send / every correction):** `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <enquiry.json> --apply`
   triple-writes CRM + knowledge note (embedded immediately) + chase task. A correction not captured is a bug.
+  Two banked behaviours (2026-06-28): (1) **the reply body auto-pulls from Gmail** — pass the `thread_id` and
+  leave `activity.body` empty, te-log fetches the latest outbound message off the thread (quoted tail stripped);
+  `--no-gmail` disables. (2) **Always pass a one-line `knowledge` takeaway** — without it te-log banks the reply
+  verbatim and warns; the distilled lesson is what makes future retrieval sharp. Notes are date-stamped per touch
+  (`enquiry-{company}-{kind}-{date}.md`) so repeat touches never overwrite.
 - **Mode B** stays: the Engine drafts, Pete signs off every send. Live facts to apply: **£145pp+VAT + cert
   fee** (£34 EUSR reg on Cat 1; none in-house), qualify-first when a must-have is missing, just-over-8
   framing, "I'll check seats" not "I'll book you", Sue owns dates. Utility-mapping / L3–5 / PAS128 → Neal Sadd.

@@ -192,7 +192,7 @@ A reply to a training enquiry we already sent is NOT a generic inbox row — it'
 When matched, **don't classify it as a generic `reply`/`task`** — route it to the Engine:
 - Run the loop (`reply to enquiry in {company}`): RETRIEVE precedents (`cc-knowledge-api.py semantic …`), read this contact's timeline, draft the next reply **Mode B** (Pete signs off).
 - Log the inbound reply + advance the contact + (re)set/close the chase in ONE write:
-  `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <touch.json> --apply` (activity kind `reply`, stage move if it progressed; te-log closes the prior chase and sets the next).
+  `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <touch.json> --apply` (activity kind `reply`, stage move if it progressed; te-log closes the prior chase and sets the next). Pass the `thread_id` and leave `activity.body` empty — te-log **auto-pulls the sent reply off the Gmail thread**; add a one-line `knowledge` takeaway (te-log warns if missing).
 - In the ops table mark these `Ask = reply` but note **"→ Enquiry Engine"** so they're handled by the loop, not a generic Replies-tray label. (A booking forward — "Sent to Sue" — moves the contact to **Customer/won**.)
 
 This is the cross-skill hook the cockpit relies on: triage recognises the reply, the Engine owns the lifecycle + learning. Detection mirrors the manual `enquiries` sweep (Pete-triggered — there is NO cron).
