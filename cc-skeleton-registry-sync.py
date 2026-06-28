@@ -7,8 +7,7 @@
 # entity: personal
 # schedule: 0 9 * * *
 # timezone: Atlantic/Canary
-# secrets: SECRETFILE__command-centre-supabase-keys.json
-# note: idempotent / re-runnable; safe to run on demand after editing a skill.
+# note: needs no extra secret — cc-cron injects CC_SUPABASE_URL/KEY env on the service. Idempotent / re-runnable; safe on demand after editing a skill.
 # CRON-META-END
 """cc-skeleton-registry-sync.py — populate the CC registries that SURFACE the skeleton in the
 Command Centre (Pete's "I need the relevant pages to see these"): public.helpers · public.skills ·
@@ -25,8 +24,13 @@ website-careful step). Env-first CC keys so it also runs on Railway.
 import os, re, json, glob, datetime, subprocess, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
-CC = json.load(open(os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")))
-URL, KEY = CC["url"].rstrip("/"), CC["service_role_key"]
+# Env-first (cc-cron injects CC_SUPABASE_URL/KEY on every Railway cron); fall back to the local key file.
+URL = os.environ.get("CC_SUPABASE_URL")
+KEY = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+if not (URL and KEY):
+    CC = json.load(open(os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")))
+    URL, KEY = CC["url"], CC["service_role_key"]
+URL = URL.rstrip("/")
 
 def upsert(table, rows):
     if not rows:
