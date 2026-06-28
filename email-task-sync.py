@@ -248,14 +248,14 @@ def step4_close_tasks_from_gmail(open_tasks, dry_run=False):
     return closures, exempt
 
 def step5_delegation_check(dry_run=False):
-    """List open Delegated-track tasks (project_slug='Team-General' + [delegated] marker).
+    """List open Delegated-track tasks (project_slug='General' + [delegated] marker).
 
     The reply-detection + chaser-draft logic is LLM-side per the skill; the wrapper surfaces
     the open delegated set so the skill can act on it.
     """
     rows = cc_sql(
         "SELECT id, name, notes, due_on FROM tasks "
-        "WHERE status != 'done' AND project_slug = 'Team-General' AND notes LIKE '%[delegated]%'")
+        "WHERE status != 'done' AND project_slug = 'General' AND notes LIKE '%[delegated]%'")
     return {"open_delegated_count": len(rows),
             "details": [{"id": r["id"], "name": r["name"], "due": r.get("due_on")} for r in rows]}
 
