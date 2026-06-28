@@ -205,7 +205,7 @@ Once `Ask` is set, the Action verb is constrained:
 |---|---|---|
 | `none` | File / Keep in inbox / Clear | File home label |
 | `info-only` | File / Clear | File home label (or Clear for pure marketing) |
-| `reply` | **Reply or Hand to {person}** | Reply (tray) in Team-General/{prefix}-General section (or AT-General/PA-General if explicitly Family/Personal) |
+| `reply` | **Reply or Hand to {person}** | Reply (tray) in General/{prefix}-General section (or AT-General/PA-General if explicitly Family/Personal) |
 | `decision` | **Reply / Task / Hand to** | Pay/process/build → Task P2 (CC only); executed-by-replying → Reply (tray). P1 if deadline tight |
 | `review` | **Reply / Task / Hand to** | Portal/code/finance review → Task P3 (CC only); review-then-reply-to-sender → Reply (tray). P2 if recipient waiting |
 | `rsvp` | **Reply** + calendar event proposal | Reply (tray) in PA-General + calendar |
@@ -223,7 +223,7 @@ Once `Ask` is set, the Action verb is constrained:
 | `Reply in {project}` | add filing label + add `Replies` + remove INBOX (one atomic call). **NO task** — the Replies label IS the record. | **Tray items only**: Pete owes a response via the email (reply / RSVP / sign-and-return). No `Pn` — the Replies walker is oldest-first. |
 | `Reply in {project}` **+ a Task cell** (the combo) | the `Reply` primitive above **AND** a CC task for the prep work: `INSERT INTO tasks (…, tags, notes)` into `public.tasks` with `tags` containing `'reply'`, the **Mimestream + Gmail link** in notes (mandatory), and `[no-sync-close]` | **The overlap** — a reply gated on doing work first (e.g. *build the quote, then reply*). The `Replies` label tracks the reply; the `reply`-tagged task tracks the work. They're independent: closing the task does NOT clear the reply, and clearing the reply does NOT close the task. |
 | `Task Pn in {project}` | add filing label + remove INBOX (NO Replies label), plus a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) whose notes carry `[no-sync-close]` | **CC-only items**: bills, cert batches, work items — the doing happens outside the email. Sync never couples these to label state. |
-| `Hand to {person}` | add `Delegated`, plus a CC task — `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + draft chaser | Separate flow. Tasks carry the `project_slug` NAME (e.g. `'Team-General'`), never a GID. |
+| `Hand to {person}` | add `Delegated`, plus a CC task — `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='General'` (Delegated track) + draft chaser | Separate flow. Tasks carry the `project_slug` NAME (e.g. `'General'`), never a GID. |
 
 Bare `Label: X` is **forbidden** in proposals.
 
@@ -390,14 +390,14 @@ Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primi
 | `Skip` / `-`                    | (no Gmail call)                                       | -                                                      |
 | `Reply in {project}`   | `modify_thread(id, add=[X, Replies_label], remove=["INBOX"])` (atomic) | **NO task** — the Replies label IS the record. **MUST run vault-enricher** on the thread → matching vault folder. *Combo only* (the Reply+Task prep task): `INSERT INTO tasks (…, tags, notes)` with `tags` containing `'reply'`, the **Mimestream + Gmail + Finder links (Mimestream mandatory)**, and `[no-sync-close]` (so the label and task stay independent). |
 | `Task Pn in {project}`     | `modify_thread(id, add=[X], remove=["INBOX"])` — **NO Replies label** | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with Mimestream + Gmail + Finder links + **`[no-sync-close]` marker line appended to notes** + **MUST run vault-enricher** on the thread → matching vault folder |
-| `Hand to {person}`          | `modify_thread(id, add=[Delegated_label])`            | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='Team-General'` (Delegated track) + Mimestream + Gmail + Finder links in notes + draft chaser + **MUST run vault-enricher** on the thread → matching vault folder |
+| `Hand to {person}`          | `modify_thread(id, add=[Delegated_label])`            | `INSERT INTO tasks (…, project_slug, …)` into `public.tasks` with `project_slug='General'` (Delegated track) + Mimestream + Gmail + Finder links in notes + draft chaser + **MUST run vault-enricher** on the thread → matching vault folder |
 
 ### CC task creation
 
-`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`). **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). The `project_slug` column carries the project NAME (e.g. `'Team-General'`, `'SY-General'`), never a GID.
+`Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`). **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). The `project_slug` column carries the project NAME (e.g. `'General'`, `'SY-General'`), never a GID.
 
 ```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', '2026-07-01', 'SY-Clancy', 'Team-General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', '2026-07-01', 'SY-Clancy', 'General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
 ```
 
 - `priority` = the Pn from the verb (`'P1'`/`'P2'`/`'P3'`/`'P4'`).
@@ -591,7 +591,7 @@ Suggested new structure for {entity}:
     CC record:    {vault_notes | account_* -- CREATE | EXISTS}
 
   CC TASKS (public.tasks)
-    project_slug: {existing NAME | NEW NAME | NONE -- tasks go in Team-General with entity_slug={prefix}-General}
+    project_slug: {existing NAME | NEW NAME | NONE -- tasks go in General with entity_slug={prefix}-General}
 
   Create all of the above? (y / edit / n)
 ```
@@ -600,8 +600,8 @@ Home decision per entity type (default proposal, Pete can override):
 
 | Entity type | Gmail label | Drive home + CC record | CC project (`project_slug`) |
 |---|---|---|---|
-| Customer | YES (parity hard) | YES (parity hard) | NO (route via Team-General + `entity_slug`) |
-| Supplier | YES (parity hard) | YES (parity hard) | NO (route via Team-General + `entity_slug`) |
+| Customer | YES (parity hard) | YES (parity hard) | NO (route via General + `entity_slug`) |
+| Supplier | YES (parity hard) | YES (parity hard) | NO (route via General + `entity_slug`) |
 | Project | demand-driven | YES | YES (own `project_slug` NAME) |
 | Invoice batch | YES | YES | YES |
 | Accreditation body | YES | YES | YES |
@@ -635,10 +635,10 @@ Pete can invoke specific actions without full triage:
 - "label {thread} as X" -- just label, keep in inbox
 - "file {thread} under X" -- label + archive
 - "reply in {project}" -- apply `Replies` Gmail label + filing label + archive thread (atomic). **NO task** — the Replies label is the record; Pn is urgency only. Tray items only: Pete owes a response via the email. *Overlap only* (reply gated on work first): add a `Task` alongside (that task carries `[no-sync-close]`).
-- "task Pn in {project}" -- create a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) at priority Pn (`[no-sync-close]` in notes) + filing label + archive thread. **No Replies label** — CC-only work item. Same due-date defaults/overrides. (`project_slug` carries the NAME, e.g. `'Team-General'`; SY-General / CD-General / EA-General are routing names, not GIDs.)
+- "task Pn in {project}" -- create a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) at priority Pn (`[no-sync-close]` in notes) + filing label + archive thread. **No Replies label** — CC-only work item. Same due-date defaults/overrides. (`project_slug` carries the NAME, e.g. `'General'`; SY-General / CD-General / EA-General are routing names, not GIDs.)
 - "replies" / "my replies" (or legacy "actions") -- run the Step 8a walker standalone against the current tray.
 - "de-tray this" -- convert a reply-item into CC-only work: if a task is linked, append `[no-sync-close]` to it then strip the Replies label; if it's label-only, make it a `Task` first, then strip the Replies label. Reverse ("tray this") = remove marker (or the task) + re-apply Replies.
-- "hand to {person}" -- `Delegated` Gmail label + CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`, `project_slug='Team-General'`) + draft chaser
+- "hand to {person}" -- `Delegated` Gmail label + CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`, `project_slug='General'`) + draft chaser
 - "add to calendar" -- detect from email + create event on confirmation (Atlantic/Canary tz default)
 - "pull the attachments into {customer}" -- download + wikilink into matter README
 - **"sweep"** (single deliberate verb -- accidental-trigger guard) -- archive every inbox thread with at least one user-applied label. No protect list. **NEVER auto-invoked by any skill, including triage.**
@@ -656,3 +656,11 @@ Pete can invoke specific actions without full triage:
 - History classifier helper: `/tmp/pbs/triage-action-classify.py`
 - Validator helper: `/tmp/pbs/triage-validator.py`
 - Build history (archived): `[[email-workflow-plan-2026-04-24]]`
+
+
+## Tasks ↔ project backlog (operating model, 28 Jun 2026)
+Canonical rule: [[ways-of-working-tasks-vs-backlog]]; gate lives at the top of [[vault-routing#task-routing-decision-tree]].
+- **SUGGEST, never auto-create.** No explicit verb → propose "task (P+date) or park to {project} backlog?" and wait.
+- Verbs literal: word "backlog" → backlog; word "task" → task.
+- **Park to {project}** = `VAULT=/tmp/pbs python3 /tmp/pbs/cc-park.py park --task <id> --project <slug> --section "<S>"` (appends to the project's `{slug}-backlog` note, deletes the task, keeps ONE P4 pointer `Work through {Project} backlog`). Complete = `cc-park.py done`; promote back = `cc-park.py promote`.
+- **General** is now ONE entity-agnostic project (the per-entity Team/PA/CD/SY/AT-General were consolidated). Tasks keep their own `entity_slug`. The Delegated track lives under `General`.

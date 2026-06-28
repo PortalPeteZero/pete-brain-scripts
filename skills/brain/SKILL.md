@@ -95,7 +95,7 @@ Pete's tasks live in the CC `public.tasks` table. All task CRUD runs via `VAULT=
 
 - **Priority** is manual P1–P4 (P1 highest). PD forces a date.
 - **`entity_slug`** ∈ Sygma / Canary Detect / Personal / One System / El Atico.
-- **`project_slug`** groups tasks (e.g. `Team-General`, `PA-Command-Centre`).
+- **`project_slug`** groups tasks (e.g. `General`, `PA-Command-Centre`).
 
 ### Key Operations
 
@@ -399,7 +399,7 @@ Pete's tasks live in the CC `public.tasks` table. All CRUD runs via `VAULT=/tmp/
 
 - **Priority** is manual P1–P4 (P1 highest). PD forces a date.
 - **`entity_slug`** ∈ Sygma / Canary Detect / Personal / One System / El Atico.
-- **`project_slug`** groups tasks (e.g. `Team-General`, `PA-Command-Centre`).
+- **`project_slug`** groups tasks (e.g. `General`, `PA-Command-Centre`).
 - **`source`** = `'claude'` for tasks Claude creates.
 
 ### Creating a Task
@@ -693,3 +693,10 @@ Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 - [[2026-05-26-enforcement-campaigns-surface-counter-attack-vectors-at-planning]] — surface counter-attack + personal-liability vectors at planning; fires on any IP / regulatory / public-callout campaign brain orchestrates.
 - [[2026-05-27-pptx-image-pass-build-from-pristine-backup-and-match-logo-to-bg]] — deck/document image-placement work; build from pristine backup, match each logo to its slide background.
 
+
+## Tasks ↔ project backlog (operating model, 28 Jun 2026)
+Canonical rule: [[ways-of-working-tasks-vs-backlog]]; gate lives at the top of [[vault-routing#task-routing-decision-tree]].
+- **SUGGEST, never auto-create.** No explicit verb → propose "task (P+date) or park to {project} backlog?" and wait.
+- Verbs literal: word "backlog" → backlog; word "task" → task.
+- **Park to {project}** = `VAULT=/tmp/pbs python3 /tmp/pbs/cc-park.py park --task <id> --project <slug> --section "<S>"` (appends to the project's `{slug}-backlog` note, deletes the task, keeps ONE P4 pointer `Work through {Project} backlog`). Complete = `cc-park.py done`; promote back = `cc-park.py promote`.
+- **General** is now ONE entity-agnostic project (the per-entity Team/PA/CD/SY/AT-General were consolidated). Tasks keep their own `entity_slug`. The Delegated track lives under `General`.

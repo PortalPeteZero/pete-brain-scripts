@@ -285,3 +285,10 @@ Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
 - [[2026-05-05-sheet-migration-via-values-update-is-wrong]]
 - [[2026-05-06-vault-bookkeeping-with-artefacts]]
 
+
+## Tasks ↔ project backlog (operating model, 28 Jun 2026)
+Canonical rule: [[ways-of-working-tasks-vs-backlog]]; gate lives at the top of [[vault-routing#task-routing-decision-tree]].
+- **SUGGEST, never auto-create.** No explicit verb → propose "task (P+date) or park to {project} backlog?" and wait.
+- Verbs literal: word "backlog" → backlog; word "task" → task.
+- **Park to {project}** = `VAULT=/tmp/pbs python3 /tmp/pbs/cc-park.py park --task <id> --project <slug> --section "<S>"` (appends to the project's `{slug}-backlog` note, deletes the task, keeps ONE P4 pointer `Work through {Project} backlog`). Complete = `cc-park.py done`; promote back = `cc-park.py promote`.
+- **General** is now ONE entity-agnostic project (the per-entity Team/PA/CD/SY/AT-General were consolidated). Tasks keep their own `entity_slug`. The Delegated track lives under `General`.
