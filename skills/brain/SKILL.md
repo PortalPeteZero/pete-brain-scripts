@@ -280,7 +280,7 @@ Save everything valuable from the current session.
    [Condensed summary -- use [[wikilinks]] for every project, person, and vault note mentioned]
    ```
 3. **Update memory files (structured-home sweep)** -- Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its home in the cloud — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`) for knowledge + the `drive_files` index (`cc-sql.py`) for the entity's Drive folder — and update it with what changed + the rationale.** Knowledge / decisions / lessons → ingest a `.md` to `vault_notes`; files → the Drive folder; the session log → CC `daily_log`. The daily log is a pointer only; nothing of substance ends its life there. Operator prefs → CLAUDE.md Rules **only on an explicit Pete correction he asks to be saved**; structured rules → `vault_notes`. See the website-work lesson (in `vault_notes`).
-4. **Create CC tasks** -- For any follow-up actions identified during the session, `INSERT` into `public.tasks` with correct `entity_slug`, `project_slug`, and priority (`source='claude'`). Also mark any completed items done via `UPDATE tasks SET status='done', completed_at=now() WHERE id=…`.
+4. **Follow-up tasks -- PROPOSE, never auto-create.** Surface follow-up actions from the session as a short *suggested* list in the Report step. **Create a CC task ONLY when Pete explicitly asks** ("make a task for that" / "add those"). Auto-creating follow-ups is forbidden -- they pile up as clutter (Pete, 28 Jun 2026). Marking *completed* items done (`UPDATE tasks SET status='done', completed_at=now() WHERE id=…`) when work demonstrably shipped is still fine -- it is *creating* new tasks unprompted that is banned.
 5. **Check session plans** -- Look for session plan files created this session:
    - If all steps complete, update `status: completed`
    - If steps incomplete, note pending items in the daily note
@@ -360,7 +360,7 @@ Read the appropriate template before generating the review.
 5. Ask mode-appropriate questions:
    - Main focus, key meetings, blockers
 6. Record to the CC `daily_log` (append morning section) with frontmatter
-7. Create 1-3 CC tasks (`INSERT` into `public.tasks`) based on energy and deadlines. Report what was created.
+7. **Suggest** 1-3 focus actions based on energy and deadlines; create CC tasks only if Pete asks.
 
 ### Evening Routine
 
@@ -380,7 +380,7 @@ Read the appropriate template before generating the review.
 5. Ask mode-appropriate questions:
    - Biggest win, OKR progress, blockers, focus for next week
 6. Save to the CC `daily_log` (`INSERT … cron_name='weekly-review'` for today's date) — not a vault file.
-7. Plan top 3 priorities for next week; create CC tasks (`INSERT` into `public.tasks`) automatically
+7. Plan + **propose** top 3 priorities for next week; create CC tasks only if Pete asks
 8. Archive completed items if appropriate
 
 ---
@@ -423,7 +423,7 @@ Filter by entity or project with `AND entity_slug='…'` / `AND project_slug='�
 
 ### Guidelines
 - Always set `entity_slug`, `project_slug`, and priority when creating tasks
-- At session end, create CC tasks for follow-up actions
+- At session end, **propose** follow-up actions in the report; create a CC task only if Pete explicitly asks (never auto-create)
 - Present task lists as clean markdown tables
 - For bulk operations, confirm with Pete first
 
@@ -582,9 +582,9 @@ Business mode additions:
 - All-hands: `> [!info] Company Announcements` callout
 - Cross-team: `> [!todo] Department Dependencies` callout
 
-### Step 5: Create CC Tasks from Action Items
+### Step 5: Propose CC Tasks from Action Items (create only if Pete asks)
 
-`INSERT` a row into `public.tasks` for each action item assigned to Pete. Set `entity_slug`, `project_slug`, and priority (`source='claude'`). (Action items owned by Jane go to her own queue, not here.)
+**Propose** a task for each action item assigned to Pete (name + suggested priority/project) in your summary; **create them in `public.tasks` only if Pete asks**. (Action items owned by Jane go to her own queue, not here.)
 
 ### Step 6: Link and Update
 

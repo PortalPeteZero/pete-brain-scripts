@@ -86,13 +86,13 @@ Then scan everything discussed this session and route each category to its cloud
 - **CLAUDE.md** → only on an explicit Pete correction he asks to be saved; structured rules → `vault_notes`.
 - **Vault-routing capture** → a new convention must be reflected in `[[vault-routing]]` (ingest the update) AND notify Pete.
 
-### Step 3: CC task sync (auto-create, no asking)
+### Step 3: CC task sync (PROPOSE follow-ups; create only if Pete asks)
 
-This step defers to the brain skill's Compress Step 4, the canonical authority on session-end task sync. Brain owns workflow orchestration; vault-writer follows the same auto-create model. **His tasks live in the CC `public.tasks` table**.
+This step defers to the brain skill's Compress Step 4, the canonical authority on session-end task sync. Brain owns workflow orchestration; vault-writer follows the same model. **His tasks live in the CC `public.tasks` table**.
 
 - Pull current `public.tasks` state for the relevant projects -- verify the CC reflects reality
 - Identify follow-up actions from the session (what's pending, what surfaced, what needs watching)
-- **Auto-create those tasks in `public.tasks`**: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source) VALUES (gen_random_uuid(),'<name>','<P1|P2|P3|P4>','<due or NULL>','<entity>','<project_slug>','todo','claude')"` — correct `project_slug`, `entity_slug`, priority and due date (P1+2d / P2+7d / P3+30d / P4 none). No "shall I send these?" gate.
+- **PROPOSE the follow-ups -- do NOT auto-create them.** List them in the Step 6 report as a short *suggested* set (name + suggested priority/project). **Create in `public.tasks` ONLY when Pete explicitly asks** -- then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source) VALUES (gen_random_uuid(),'<name>','<P1|P2|P3|P4>','<due or NULL>','<entity>','<project_slug>','todo','claude')"`. Never auto-insert -- auto-created follow-ups pile up as clutter (Pete, 28 Jun 2026).
 - Mark any completed tasks as done: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'"`
 - Report what was created in Step 6
 
@@ -271,7 +271,7 @@ When in doubt, save it.
 - Create orphan notes -- link from at least one existing file
 - Write to a local file tree — knowledge → `vault_notes`, files → Drive
 - Put operational data (keyword trackers, Surfer scores) anywhere but the property's Drive folder + its CC record
-- Auto-create tasks anywhere other than `public.tasks`
+- Create tasks unprompted -- propose them, create only when Pete asks; and never anywhere other than `public.tasks`
 - Skip the daily note after meaningful work
 
 ## Related lessons (auto-surfaced by deployment matrix)
