@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# CRON-META
+# what: Sync skills/helpers/connectors from pete-brain-scripts into the CC registries (public.skills/helpers/connectors) so the Process Library reflects the live code.
+# why: SKILL.md and helper edits only appear in the CC after this runs — keeps the Process Library current with the actual code (Pete: the CC is a view, this keeps the view fresh).
+# reads: skills/*/SKILL.md, *.py (repo root), public.crons (script_file), skills/README.md (versions)
+# writes: CC public.skills, public.helpers, public.connectors (upsert on name; prunes deleted skills, guarded >=5 on disk)
+# entity: personal
+# schedule: 0 9 * * *
+# timezone: Atlantic/Canary
+# secrets: SECRETFILE__command-centre-supabase-keys.json
+# note: idempotent / re-runnable; safe to run on demand after editing a skill.
+# CRON-META-END
 """cc-skeleton-registry-sync.py — populate the CC registries that SURFACE the skeleton in the
 Command Centre (Pete's "I need the relevant pages to see these"): public.helpers · public.skills ·
 public.connectors. Same idea as public.crons for crons, but for the code/connectors a session uses.
