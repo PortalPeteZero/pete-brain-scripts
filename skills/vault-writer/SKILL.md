@@ -162,7 +162,7 @@ For every project **touched this session**, confirm `public.tasks` reflects what
 
 ### Step 8: Propagate to the cloud
 
-The map is **auto-generated** (a CC `config` row, regenerated daily) — nothing to maintain by hand. Knowledge reaches the cloud when you **ingest it to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`); files reach the cloud by living in their **Drive** folder (captured automatically by the `drive-changes-watch` Railway cron). Confirm each thing you saved this session has landed in its cloud home before sign-off.
+The map is **auto-generated** — `cc_map` (the `/m/map` page) from the `modules` table, and the `config.map-md` orientation doc rendered twice daily by `cc-orientation-map-sync.py` from the live tables (counts + the `data_map` routing) — nothing to maintain by hand. Knowledge reaches the cloud when you **ingest it to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null its embedding → `cc-knowledge-embed-backfill.py`); files reach the cloud by living in their **Drive** folder (captured automatically by the `drive-changes-watch` Railway cron). Confirm each thing you saved this session has landed in its cloud home before sign-off.
 
 ---
 
