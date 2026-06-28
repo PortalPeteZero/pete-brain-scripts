@@ -68,8 +68,22 @@ def row_for(path):
     su=fm.get("updated") or fm.get("date") or None
     md=re.match(r'(\d{4}-\d{2}-\d{2})',str(su)) if su else None
     su=md.group(1) if md else datetime.datetime.fromtimestamp(os.path.getmtime(path),datetime.timezone.utc).strftime("%Y-%m-%d")
+    ty=type_of(rel,fm)
+    # Plans are intent/history, NEVER live state. Stamp a lifecycle banner so a future grep can't
+    # mistake a plan for the current build state (Pete, 28 Jun 2026). Self-sustaining: every plan
+    # ingest gets it. The live state is the orientation map + cc-sql, never a plan doc.
+    if "plan" in ty.lower() and "<!-- PLAN-LIFECYCLE-BANNER -->" not in body:
+        _st=str(fm.get("status","")).lower()
+        _done=any(w in _st for w in ("complete","done","shipped","built","execut","implement","merged","applied","superseded","retired","final"))
+        if _done:
+            _ban=("<!-- PLAN-LIFECYCLE-BANNER -->\n> [!success] ✅ COMPLETED / HISTORICAL PLAN (status: %s). A record of intent — NOT the live state. "
+                  "For what is built/live now, query the LIVE SYSTEM (the orientation map + `cc-sql` over the live tables), never this document.\n\n" % (fm.get("status") or "done"))
+        else:
+            _ban=("<!-- PLAN-LIFECYCLE-BANNER -->\n> [!warning] \U0001F4CB THIS IS A PLAN — intent (status: %s), NOT the live state. "
+                  "Before acting on or reporting anything here, VERIFY against the LIVE SYSTEM (the orientation map + `cc-sql`). Never assume what is described here is currently built.\n\n" % (fm.get("status") or "no-status"))
+        body=_ban+body
     return {
-        "vault_path":rel, "slug":fm.get("slug") or stem, "type":type_of(rel,fm),
+        "vault_path":rel, "slug":fm.get("slug") or stem, "type":ty,
         "entity":entity_of(rel,fm), "title":fm.get("title") or h1(body) or stem,
         "body":body.replace("\x00","")[:200000], "frontmatter":fm, "tags":tags[:40], "links":links_of(body)[:60],
         "word_count":len(body.split()), "source_updated":str(su)
