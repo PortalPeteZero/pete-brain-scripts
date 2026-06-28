@@ -150,19 +150,26 @@ def main():
     L.append("_By area → subsection, in nav order (`sort`). tier · slug · status. Generated 100% from the "
              "live `modules` table — any new area/page appears automatically; a coverage self-check fails "
              "the run if a module is ever missed._")
-    cur_sec = cur_sub = object()
+    # Group by area → subsection so each header prints ONCE, matching the live nav/page.
+    # `live` is already in global `sort` order, so areas appear in nav order (first
+    # appearance) and modules stay sort-ordered within each subsection. Fixes the
+    # repeated-header bug: the old code walked the global sort and REPRINTED the header
+    # on every area flip — and areas share `sort` values (many are sort 10/12/15 across
+    # different areas), so they interleaved and "Ops Centre" printed 7×, "Personal" 6×.
+    structure = {}
     for m in live:
-        sec, sub = m.get("section"), m.get("subsection")
-        if sec != cur_sec:
-            cur_sec = sec; cur_sub = object()
-            L.append(f"\n### {sec or '(no area)'}")
-        if sub != cur_sub:
-            cur_sub = sub
-            L.append(f"\n**{sub or '(flat)'}**")
-        grp = (" · groups: " + ", ".join(f"`{g}`" for g in m["groups"])) if m.get("groups") else ""
-        pc = f" · code `{m['passcode']}`" if m.get("tier") == "passcode" and m.get("passcode") else ""
-        L.append(f"- **{m.get('title')}** (`{m.get('slug')}`) — {m.get('tier')}{pc}{grp}")
-        rendered.add(mkey(m))
+        sec = m.get("section") or "(no area)"
+        sub = m.get("subsection") or "(flat)"
+        structure.setdefault(sec, {}).setdefault(sub, []).append(m)
+    for sec, subs in structure.items():
+        L.append(f"\n### {sec}")
+        for sub, mods in subs.items():
+            L.append(f"\n**{sub}**")
+            for m in mods:
+                grp = (" · groups: " + ", ".join(f"`{g}`" for g in m["groups"])) if m.get("groups") else ""
+                pc = f" · code `{m['passcode']}`" if m.get("tier") == "passcode" and m.get("passcode") else ""
+                L.append(f"- **{m.get('title')}** (`{m.get('slug')}`) — {m.get('tier')}{pc}{grp}")
+                rendered.add(mkey(m))
     if hidden:
         L.append("\n### (hidden / disabled — not live tiles)")
         for m in sorted(hidden, key=lambda m: (m.get("title") or "")):
