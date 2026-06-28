@@ -24,7 +24,7 @@ Safety rails (this writes Claude's own boot context):
 # schedule: 0 6,13 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
-import json, sys, os, urllib.request, urllib.error, datetime
+import json, sys, os, urllib.request, urllib.error, urllib.parse, datetime
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 KEYS = json.load(open(f"{VAULT}/Library/processes/secrets/command-centre-supabase-keys.json"))
@@ -68,9 +68,6 @@ def clear_fail_task():
     _, ex = rest("GET", "tasks?select=id&status=eq.todo&source=eq.cc-orientation-map-sync&name=eq." + urllib.parse.quote(name))
     for t in ex:
         rest("PATCH", f"tasks?id=eq.{t['id']}", {"status": "done", "completed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "notes": "auto-cleared: render healthy"})
-
-
-import urllib.parse
 
 
 def cnt(table, filt=""):
