@@ -1,10 +1,15 @@
 ---
 type: changelog
 skill: brain
-updated: 2026-06-27
+updated: 2026-06-29
 ---
 
 # Brain skill changelog
+
+## 2026-06-29 (Plan/note lifecycle — verify-before-surface + context-switch close-out)
+- **Resume Step 5 (plans)** no longer reports an in-progress/ready plan as live. It now VERIFIES each against the live system first; a plan whose work demonstrably shipped is surfaced as "Looks shipped — close this plan? {title}" for Pete to confirm (never auto-stamped at resume), not announced as in-progress. Fixes the recurring "a fresh session tells Pete a plan's still in progress when it actually shipped".
+- **Resume Step 3 (tasks)** gains a shipped-evidence sanity-check before presenting an open task as a priority; looks-done tasks are surfaced as "Looks shipped — close? {task}" for confirmation (never auto-closed — tasks are Pete's).
+- **New context-switch close-out** (Compress closing-nudge): on a mid-session pivot to a different project, stamp the left project's finished plans, fence its state notes, reconcile its tasks — inline, no nag. The prevention half, so abandoned plans don't survive to the next Resume even when no end-of-session Compress runs. (Pete-directed: stop having to manually remind Claude to close/stamp plans every session.)
 
 ## 2026-06-28 (Step 2a — PF journal reads from CC, not local Drive mount)
 - **Resume Step 2a fixed**: PF journal lesson now read from CC `health_journal` table via `cc-sql.py`. Removed stale instruction to read from `~/Library/CloudStorage/.../My Drive/Passion Fit/journal/` via Desktop Commander. Journal migrated to CC on 2026-06-27; the skill hadn't been updated. Added hard prohibition: never read a local Drive mount for this step.

@@ -60,13 +60,13 @@ See `[[vault-routing#master-routing-matrix]]`. That table is the canonical map o
 
 ## End-of-Session Checklist
 
-Run this at the end of every working session. Do not skip steps assuming the brain skill's Compress ran -- it often doesn't during heavy sessions.
+Run this at the end of every working session — **and run the lifecycle steps (Step 1 plan-sweep + the Step 2 note-fencing rule) ALSO on a mid-session context-switch**, when Pete pivots to a different project/app. Do not skip steps assuming the brain skill's Compress ran -- it often doesn't during heavy sessions, and a context-switch may never reach an end-of-session at all.
 
 ### Step 1: Project tidy-up
 
 - Update the project's CC record (status, next steps, any new context learned this session)
 - Consolidate working files in the project's Drive folder -- merge scratch notes or drafts that are now superseded
-- **Plan lifecycle (keep plans honest — a shipped plan must not look live, a dead one must not look active):** plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` driven by frontmatter `status`. Whenever a plan's state changed this session, update its status and re-ingest so the banner re-stamps:
+- **Plan lifecycle (keep plans honest — a shipped plan must not look live, a dead one must not look active):** plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` driven by frontmatter `status`. **Sweep every plan you touched OR that relates to work done this session — not only ones you think changed**, and verify each against the live system (does the thing it planned now exist? is its task done?) before leaving it `ready`/`in-progress`. Stamp the shipped ones and re-ingest so the banner re-stamps — even if an earlier session did the actual shipping (a plan left `in-progress` is exactly what the next Resume mis-reads as live):
   - **Executed / shipped** → `status: completed` (banner → ✅ historical). Never leave a shipped plan `ready`/`in-progress` — that's what makes a future grep treat it as live state.
   - **Scrapped / abandoned** → EITHER **hard-delete the plan note** (snapshot first; the default for pure noise) **OR** set `status: scrapped` (banner → ⛔ "do not use"). Delete if it should leave no trace; stamp if the *decision not to do it* is worth keeping.
 - Don't delete old *knowledge/files* on a whim -- keep history; but a scrapped *plan* should be deleted or clearly stamped dead (above), never left looking active
@@ -75,6 +75,8 @@ Run this at the end of every working session. Do not skip steps assuming the bra
 
 > [!important] First — the structured-home sweep (whole session, not just website work)
 > List **every distinct topic, entity, project, property, or piece of work** touched this session. For each, find its home and update it with what changed **+ the rationale**. Find homes by querying the cloud, never a local tree: knowledge → `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`); files/entities → the `drive_files` index (`cc-sql.py`). State of play lives in the entity's note / Drive folder, not the daily log. Generalised from the website lesson (in `vault_notes`).
+>
+> **Fence state-bearing notes like plans.** Any note that records *current state* (what's built / broken / pending, balances, config, "as of now") gets the note-equivalent of the plan banner: set `status: snapshot` + `as_of: YYYY-MM-DD` in frontmatter, AND open the state block with `> [!warning] Point-in-time snapshot as of {date} — VERIFY live before treating as current.` A state note with no fence is read by a future session as live truth — the same failure as an unstamped plan. If it's now obsolete, hard-delete (snapshot first) or set `status: superseded`; never leave a stale state note looking current.
 
 Then scan everything discussed this session and route each category to its cloud home (full matrix: [[vault-routing]]):
 
@@ -178,7 +180,8 @@ type: project | meeting | decision | sop | market-intel-report | ip-portfolio-re
 date: YYYY-MM-DD
 department: sygma-solutions | sygma-training | sygma-gpr | canary-detect | one-system | el-atico
 project: Project-Name
-status: active | planning | on-hold | completed
+status: active | planning | on-hold | in-progress | ready | completed | scrapped | snapshot | superseded
+as_of: YYYY-MM-DD          # REQUIRED when status: snapshot — the date the state was true
 tags: [relevant, tags]
 ---
 ```
