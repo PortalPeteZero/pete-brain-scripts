@@ -143,8 +143,7 @@ POSTCODE = re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", re.I)
 ADMIN_OVERRIDE = re.compile(
     r"\b("
     r"assist(ing)?\s+with|"
-    r"observe\s+for\s+own\s+qual|observation|observing|shadowing|"
-    r"sitting\s+in|sit\s+in\s+on|"
+    r"observe\s+for\s+own\s+qual|observation|"
     r"equipment\s+(service|repair|pickup|drop\s*off|drop-off)|"
     r"pick(\s|-)?up|drop(\s|-)?off|collect|"
     r"travel(ling|ing)?(\s+to|\s+back|\s+home)?|drive\s+to|drive\s+back|"
@@ -178,7 +177,7 @@ ADMIN_OVERRIDE = re.compile(
 # fails when the pattern ends in a hyphen (non-word char). Sync with utilisation's
 # classifier. Added 2026-05-18 after widening audit window to T+90.
 NON_TRAINING_PREFIXES = re.compile(
-    r"^\s*(internal|provisional|possible|poss)\b\s*[-:]?",
+    r"^\s*(internal|provisional|possible)\b\s*[-:]?",
     re.I,
 )
 
@@ -739,79 +738,6 @@ def fetch_audit_exceptions():
     return out
 
 
-def fetch_orphan_ignores():
-    """Read the 'Ignore patterns (diary orphans)' section of the same Audit
-    Exceptions Doc. Pete-/Sue-editable, takes effect next cron run -- no code
-    change. Each rule line:  phrase | trainer | reason
-
-      - phrase: matched case-insensitively against the event title. Use '+' to
-        require several words in any order, e.g. 'mala+sales'.
-      - trainer: first name to scope the rule to one trainer; blank = everyone.
-      - reason: free text, for humans.
-
-    Returns list of {"parts": [tok, ...], "trainer": first_name_lower, "reason": str}.
-    These suppress a would-be diary orphan so the audit stops nagging about
-    internal/admin/observation diary notes that merely contain a course keyword.
-    """
-    try:
-        spec = importlib.util.spec_from_file_location("docs_api", os.path.join(SCRIPTS_DIR, "docs-api.py"))
-        d_mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(d_mod)
-        doc = d_mod.api("GET", f"{d_mod.DOCS_BASE}/{EXCEPTIONS_DOC_ID}")
-        text = d_mod.extract_text(doc)
-    except Exception as e:
-        print(f"  [warn] could not fetch orphan ignores from doc {EXCEPTIONS_DOC_ID}: {e}", file=sys.stderr)
-        return []
-    if not text:
-        return []
-    out = []
-    in_section = False
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        low = line.lower()
-        if low.startswith("ignore patterns"):
-            in_section = True
-            continue
-        if not in_section:
-            continue
-        if line.startswith("#"):
-            # comment within the section -- keep scanning (mirrors exceptions parser)
-            continue
-        if "|" not in line:
-            continue
-        parts = [p.strip() for p in line.split("|")]
-        phrase = parts[0].lower()
-        if not phrase or phrase == "phrase":   # header row
-            continue
-        # Guard against prose lines that happen to contain pipes (e.g. the
-        # explanatory paragraph): a real ignore phrase is short and has no
-        # sentence punctuation.
-        if len(phrase) > 40 or any(c in phrase for c in (":", ".")):
-            continue
-        toks = [t.strip() for t in phrase.split("+") if t.strip()]
-        if not toks:
-            continue
-        trainer = (parts[1].split()[0].lower() if len(parts) > 1 and parts[1].strip() else "")
-        reason = parts[2] if len(parts) > 2 else ""
-        out.append({"parts": toks, "trainer": trainer, "reason": reason})
-    print(f"Orphan ignore rules loaded: {len(out)}", file=sys.stderr)
-    return out
-
-
-def orphan_is_ignored(summary, trainer_name, ignores):
-    """True if a would-be diary orphan matches a Pete-taught ignore rule.
-    Returns the matching rule dict (truthy) or None."""
-    blob = _squash_ws(summary)
-    tname = (trainer_name or "").split()[0].lower() if trainer_name else ""
-    for rule in ignores:
-        if rule["trainer"] and rule["trainer"] != tname:
-            continue
-        if all(_squash_ws(tok) in blob for tok in rule["parts"]):
-            return rule
-    return None
-
-
 def _exc_matches_row(exc, mr, d):
     """Does an exception entry apply to master row `mr` on date `d`?
     Matches on date + trainer-first-name + customer-substring + course-substring."""
@@ -881,9 +807,6 @@ def audit_window(start_date, end_date):
     download_master()
     # live-only: fetch audit-exception oddballs from the canonical Doc; no prior-report fallback
     exceptions = fetch_audit_exceptions()
-    # Pete-/Sue-taught ignore patterns for diary orphans (same Doc, separate section)
-    orphan_ignores = fetch_orphan_ignores()
-    orphans_ignored = 0
     wb = openpyxl.load_workbook(TMP_XLSX, data_only=True)
 
     # Pull master rows for the months overlapping the window (+1 buffer)
@@ -1348,13 +1271,6 @@ def audit_window(start_date, end_date):
                 # Paul's day-4 UST rule -- if the date is inside a master 5-day UST window, skip
                 if trainer_name == "Paul" and d in ust_master_dates and re.search(r"\bust\b|gpr.*ust|day\s*4|level\s*5|utility\s*(mapping|survey|trail)", ev_summary, re.I):
                     continue
-                # Pete-taught ignore layer -- internal/admin/observation diary notes that
-                # merely contain a course keyword. Edited live in the Audit Exceptions Doc.
-                ig = orphan_is_ignored(ev_summary, trainer_name, orphan_ignores)
-                if ig:
-                    orphans_ignored += 1
-                    print(f"  [ignore] {d.isoformat()} {trainer_name}: '{ev_summary}' -- rule {ig['parts']} ({ig['reason']})", file=sys.stderr)
-                    continue
                 diary_orphans.append({
                     "type": "DIARY_ORPHAN",
                     "trainer": trainer_name,
@@ -1428,7 +1344,6 @@ def audit_window(start_date, end_date):
         "master_clean_dates": clean,
         "master_issues_count": len(issues),
         "diary_orphans_count": len(diary_orphans),
-        "orphans_ignored": orphans_ignored,
         "bf_total_in_window": len(bfs),
         "bf_matched": bf_matched,
         "bf_orphans_count": len(bf_orphans),
@@ -1595,11 +1510,11 @@ def render_email_html(start, end, summary, issues, orphans, bf_orphans, bf_dates
 
     # Status banner
     if n_loud:
-        banner = ("#dc2626", "🛑", "URGENT", f"{n_loud} booking-form date mismatch{'es' if n_loud!=1 else ''} -- trainer-on-wrong-day risk")
+        banner = ("#dc2626", "&#x1F6D1;", "URGENT", f"{n_loud} booking-form date mismatch{'es' if n_loud!=1 else ''} -- trainer-on-wrong-day risk")
     elif n_issues or n_orphans or n_bf_orph:
-        banner = ("#d97706", "⚠️", "Discrepancies", f"{n_issues} issue{'s' if n_issues!=1 else ''}, {n_orphans} orphan{'s' if n_orphans!=1 else ''}, {n_bf_orph} BF without master row")
+        banner = ("#d97706", "&#x26A0;&#xFE0F;", "Discrepancies", f"{n_issues} issue{'s' if n_issues!=1 else ''}, {n_orphans} orphan{'s' if n_orphans!=1 else ''}, {n_bf_orph} BF without master row")
     else:
-        banner = ("#16a34a", "✅", "All clean", "No discrepancies in the window")
+        banner = ("#16a34a", "&#x2705;", "All clean", "No discrepancies in the window")
 
     def escape(s):
         return (str(s or "")
@@ -1614,7 +1529,7 @@ def render_email_html(start, end, summary, issues, orphans, bf_orphans, bf_dates
     html.append('<div style="background:#ffffff;border-radius:10px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">')
     html.append('<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#71717a;margin-bottom:6px;">Sygma weekly training audit</div>')
     html.append(f'<div style="font-size:22px;font-weight:600;color:#18181b;margin-bottom:4px;">Week commencing {start.strftime("%a %d %b %Y")}</div>')
-    html.append(f'<div style="font-size:13px;color:#71717a;">Window {start.isoformat()} → {end.isoformat()} &nbsp;·&nbsp; Run on {today_iso}</div>')
+    html.append(f'<div style="font-size:13px;color:#71717a;">Window {start.isoformat()} &rarr; {end.isoformat()} &nbsp;&middot;&nbsp; Run on {today_iso}</div>')
     html.append('</div>')
 
     # Banner
@@ -1677,11 +1592,11 @@ def render_email_html(start, end, summary, issues, orphans, bf_orphans, bf_dates
             '<tr style="border-bottom:1px solid #f4f4f5;">'
             f'<td style="padding:8px 8px 8px 0;width:90px;color:#71717a;white-space:nowrap;">{escape(date_s)}</td>'
             f'<td style="padding:8px 4px;"><div style="color:#18181b;font-weight:500;">{escape(company)}</div>'
-            f'<div style="color:#71717a;font-size:12px;">{escape(course)} · {escape(trainer)}</div></td>'
+            f'<div style="color:#71717a;font-size:12px;">{escape(course)} &middot; {escape(trainer)}</div></td>'
             f'<td style="padding:8px 0 8px 8px;width:130px;text-align:right;"><span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap;">{escape(type_label)}</span></td>'
             '</tr>'
         )
-    section(f"⚠️ Master issues - {len(issues)}", "#d97706", issues, issue_row)
+    section(f"&#x26A0;&#xFE0F; Master issues - {len(issues)}", "#d97706", issues, issue_row)
 
     # Diary orphans
     def orphan_row(o):
@@ -1693,27 +1608,24 @@ def render_email_html(start, end, summary, issues, orphans, bf_orphans, bf_dates
             f'<td style="padding:8px 0 8px 8px;width:130px;text-align:right;"><span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;white-space:nowrap;">{escape(o.get("reason",""))}</span></td>'
             '</tr>'
         )
-    section(f"📅 Diary orphans - {len(orphans)} (events with no master row)", "#2563eb", orphans, orphan_row)
+    section(f"&#x1F4C5; Diary orphans - {len(orphans)} (events with no master row)", "#2563eb", orphans, orphan_row)
 
     # Booking-form orphans
     def bforph_row(b):
         return (
             '<tr style="border-bottom:1px solid #f4f4f5;">'
             f'<td style="padding:8px 0;"><div style="color:#18181b;font-weight:500;">{escape(b.get("customer",""))}</div>'
-            f'<div style="color:#71717a;font-size:12px;">{escape(b.get("first",""))} → {escape(b.get("last",""))} · {escape(b.get("name",""))}</div></td>'
+            f'<div style="color:#71717a;font-size:12px;">{escape(b.get("first",""))} &rarr; {escape(b.get("last",""))} &middot; {escape(b.get("name",""))}</div></td>'
             '</tr>'
         )
-    section(f"📄 Booking forms without master row - {len(bf_orphans)}", "#7c3aed", bf_orphans, bforph_row)
+    section(f"&#x1F4C4; Booking forms without master row - {len(bf_orphans)}", "#7c3aed", bf_orphans, bforph_row)
 
     # Footer
     html.append('<div style="background:#ffffff;border-radius:10px;padding:16px 24px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">')
     html.append('<div style="font-size:12px;color:#71717a;line-height:1.6;">')
-    html.append(f'<div><strong>Full report:</strong> <a href="{escape(drive_link)}" style="color:#2563eb;text-decoration:none;">Open in Drive →</a></div>')
-    n_ignored = summary.get("orphans_ignored", 0)
-    if n_ignored:
-        html.append(f'<div style="margin-top:6px;color:#71717a;">{n_ignored} diary event{"s" if n_ignored!=1 else ""} suppressed by ignore rules (internal/admin/observation notes that aren\'t deliveries).</div>')
-    html.append('<div style="margin-top:6px;"><strong>How to handle oddballs:</strong> for a <em>master-row</em> oddball add a row to the <a href="https://docs.google.com/document/d/1s_dcI8RSJCjHlyHCeIEdNN-bnLSUZS3NNeSpND0k070/edit" style="color:#2563eb;text-decoration:none;">Audit Exceptions doc</a> (rescheduled / reseller / cover-confirmed / cancelled-keep-master). To stop a <em>diary orphan</em> being flagged, add a line to the same doc\'s "Ignore patterns (diary orphans)" section. New rows take effect on the next cron fire.</div>')
-    html.append('<div style="margin-top:6px;color:#a1a1aa;">Generated by <code>training-audit.py</code> · runs Monday 07:08 Atlantic/Canary · source of truth: live master Sheet + live trainer diaries + live booking-form folder.</div>')
+    html.append(f'<div><strong>Full report:</strong> <a href="{escape(drive_link)}" style="color:#2563eb;text-decoration:none;">Open in Drive &rarr;</a></div>')
+    html.append('<div style="margin-top:6px;"><strong>How to handle oddballs:</strong> add a row to the <a href="https://docs.google.com/document/d/1s_dcI8RSJCjHlyHCeIEdNN-bnLSUZS3NNeSpND0k070/edit" style="color:#2563eb;text-decoration:none;">Audit Exceptions doc</a> (rescheduled / reseller / cover-confirmed / cancelled-keep-master). New rows take effect on the next cron fire.</div>')
+    html.append('<div style="margin-top:6px;color:#a1a1aa;">Generated by <code>training-audit.py</code> &middot; runs Monday 07:08 Atlantic/Canary &middot; source of truth: live master Sheet + live trainer diaries + live booking-form folder.</div>')
     html.append('</div></div>')
 
     html.append('</div></body></html>')
