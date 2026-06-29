@@ -55,11 +55,16 @@ def _req(method, url, body=None, ctype=None, raw=False):
     h = {"Authorization": f"Bearer {_tok()}"}
     data = None
     if body is not None:
-        if ctype == "media" or raw:
-            data = body if isinstance(body, bytes) else body.encode()
-            h["Content-Type"] = ctype or "text/plain"
-        else:
+        # Only JSON-encode genuine JSON payloads (dict/list). A str/bytes body is sent
+        # VERBATIM -- never json.dumps'd -- so file CONTENT is never quote-escaped.
+        # (Root-cause of the README corruption: a text/markdown body fell through to
+        #  json.dumps, so the update path re-escaped its own output every run -> 6.8MB
+        #  of \\\" soup. Deciding on body TYPE, not a ctype sentinel, kills the bug class.)
+        if isinstance(body, (dict, list)):
             data = json.dumps(body).encode(); h["Content-Type"] = "application/json"
+        else:
+            data = body if isinstance(body, bytes) else body.encode()
+            h["Content-Type"] = ctype if (ctype and ctype != "media") else "text/plain"
     req = urllib.request.Request(url, data=data, method=method, headers=h)
     with urllib.request.urlopen(req, timeout=30) as r:
         b = r.read()
@@ -148,9 +153,28 @@ def find_readme(folder_id):
 def read_file(file_id):
     return _req("GET", f"{DRIVE}/files/{file_id}?alt=media&supportsAllDrives=true", raw=True).decode("utf-8", "replace")
 
+def looks_corrupt(text):
+    """True if text shows the escaped-quote corruption signature or is implausibly large
+    for a folder-index README. A clean README never has 4+ consecutive backslashes nor a
+    leading JSON-string-literal wrapper."""
+    if not text:
+        return False
+    head = text[:200]
+    if "\\\\\\\\" in text:                      # 4+ backslashes in a row -> escaped soup
+        return True
+    if head[:2] in ('"\\', '\\"') or (text.lstrip()[:1] == '"' and "\\\\\\" in head):
+        return True
+    return False
+
 def update_file_content(file_id, content):
+    # SANITY GUARD (output validation, not just exit code): never write content that itself
+    # looks corrupted or is implausibly large for a folder index. Refuses + the run loop logs
+    # it as an ERR (surfaced to Pete) instead of silently re-corrupting the file.
+    if looks_corrupt(content) or len(content) > 20000:
+        raise ValueError(f"sanity guard refused write to {file_id} "
+                         f"(len={len(content)}, corrupt_sig={looks_corrupt(content)})")
     _req("PATCH", f"{UPLOAD}/files/{file_id}?uploadType=media&supportsAllDrives=true",
-         body=content, ctype="text/markdown")
+         body=content, ctype="text/markdown", raw=True)
 
 def create_readme(folder_id, content):
     # multipart create
@@ -311,10 +335,67 @@ def do_run():
     save_state(s)
     print(f"run complete: {len(latest)} changed items, {len(readme_results)} READMEs touched, token advanced")
 
+def _hub_readmes():
+    """Every README.md in the Hub shared drive: list of {id, parents, size}."""
+    out, page = [], None
+    while True:
+        q = urllib.parse.quote("name='README.md' and trashed=false")
+        extra = f"&pageToken={page}" if page else ""
+        url = (f"{DRIVE}/files?q={q}&fields=files(id,parents,size),nextPageToken"
+               f"&pageSize=200&corpora=drive&driveId={HUB_DRIVE_ID}"
+               f"&supportsAllDrives=true&includeItemsFromAllDrives=true{extra}")
+        r = _req("GET", url)
+        out.extend(r.get("files", []))
+        page = r.get("nextPageToken")
+        if not page:
+            break
+    return out
+
+def regen_all():
+    """Recovery: FULL-OVERWRITE every Hub folder README with a freshly-rendered clean index.
+    Discards the existing body entirely (must NOT use upsert_readme's splice -- that would
+    preserve any corrupted pre/post around the markers)."""
+    rms = _hub_readmes()
+    print(f"regen: {len(rms)} READMEs in Hub")
+    ok = err = 0
+    for i, f in enumerate(rms):
+        pid = (f.get("parents") or [None])[0]
+        if not pid:
+            print(f"  skip {f['id']} (no parent)"); err += 1; continue
+        try:
+            name = folder_name(pid)
+            content = (f"# {name}\n\n_Auto-indexed by hub-reconcile. See [[hub-maintenance]]._\n\n"
+                       + render_block(pid) + "\n")
+            update_file_content(f["id"], content)
+            ok += 1
+        except Exception as e:
+            print(f"  ERR {f['id']}: {e}"); err += 1
+        if i % 50 == 0:
+            print(f"  {i}/{len(rms)} (ok={ok} err={err})", flush=True)
+    print(f"regen complete: {ok} rewritten, {err} errors")
+
+def do_health():
+    """Self-policing scan: flag any Hub README that looks corrupted (oversize -> confirm by signature)."""
+    rms = _hub_readmes()
+    big = [f for f in rms if int(f.get("size") or 0) > 20000]
+    print(f"health: {len(rms)} READMEs, {len(big)} oversized (>20KB)")
+    flagged = []
+    for f in big:
+        try:
+            if looks_corrupt(read_file(f["id"])):
+                flagged.append((f["id"], int(f.get("size") or 0)))
+        except Exception as e:
+            print(f"  read ERR {f['id']}: {e}")
+    for fid, sz in sorted(flagged, key=lambda x: -x[1]):
+        print(f"  CORRUPT {sz}b {fid}")
+    print(f"health complete: {len(flagged)} corrupt READMEs")
+    return flagged
+
 def do_status():
     s = load_state()
     print(json.dumps(s, indent=2))
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "run"
-    {"init": do_init, "run": do_run, "status": do_status}.get(mode, do_run)()
+    {"init": do_init, "run": do_run, "status": do_status,
+     "regen-all": regen_all, "health": do_health}.get(mode, do_run)()
