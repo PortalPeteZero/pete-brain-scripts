@@ -426,16 +426,68 @@ class GmailAPI:
         msg["Subject"] = subject
         return _b64u(msg.as_bytes())
 
-    def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None):
+    def _signature_html(self, from_=None):
+        """The HTML signature configured in Gmail settings for a send-as alias (the DEFAULT alias when
+        from_ is None). Cached per alias. Returns '' if none configured / on any error — Gmail's web app
+        inserts this at compose time, but the API never does, so we add it ourselves (else API-made drafts
+        + sends go out unsigned)."""
+        if not hasattr(self, "_sig_cache"):
+            self._sig_cache = {}
+        key = from_ or "__default__"
+        if key in self._sig_cache:
+            return self._sig_cache[key]
+        sig = ""
+        try:
+            for sa in self.list_send_as():
+                if (from_ and sa.get("sendAsEmail") == from_) or (not from_ and sa.get("isDefault")):
+                    sig = sa.get("signature") or ""
+                    break
+        except Exception:
+            sig = ""
+        self._sig_cache[key] = sig
+        return sig
+
+    @staticmethod
+    def _sig_fingerprint(s):
+        import re as _re
+        return _re.sub(r"[^a-z0-9]", "", _re.sub(r"<[^>]+>", " ", s or "").lower())
+
+    def _apply_signature(self, body, html, from_):
+        """Append the alias's Gmail signature to the body, unless it's already present (re-run, or the
+        caller embedded it) — so it never double-signs. Forces HTML output when appending, converting a
+        plain-text body so its line breaks survive. Best-effort: any failure returns the body untouched."""
+        try:
+            sig = self._signature_html(from_)
+            if not sig:
+                return body, html
+            fp = self._sig_fingerprint(sig)
+            if fp and fp in self._sig_fingerprint(body):   # already signed -> leave it
+                return body, html
+            is_html = html if html is not None else self._looks_like_html(body)
+            if is_html:
+                return body + "<br><br>" + sig, True
+            import html as _h   # plain body -> minimal HTML so the signature renders + line breaks survive
+            return _h.escape(body).replace("\n", "<br>") + "<br><br>" + sig, True
+        except Exception:
+            return body, html
+
+    def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True):
         """Send an email. `html` defaults to None = auto-detect from body content.
-        Pass html=True to force HTML, html=False to force plain text."""
+        Pass html=True to force HTML, html=False to force plain text. `signature=True` (default) appends the
+        sender alias's Gmail signature (never double-signs); pass signature=False to omit it."""
+        if signature:
+            body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html)
         body_obj = {"raw": raw}
         if thread_id: body_obj["threadId"] = thread_id
         return self._call("POST", "/messages/send", body=body_obj)
 
-    def create_draft(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None):
-        """Create a draft. `html` defaults to None = auto-detect from body content."""
+    def create_draft(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True):
+        """Create a draft. `html` defaults to None = auto-detect from body content. `signature=True`
+        (default) appends the sender alias's Gmail signature (never double-signs) so a draft opened + sent
+        from Gmail looks the same as one you composed yourself; pass signature=False to omit it."""
+        if signature:
+            body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html)
         msg_obj = {"raw": raw}
         if thread_id: msg_obj["threadId"] = thread_id
