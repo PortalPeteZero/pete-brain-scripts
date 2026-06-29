@@ -37,7 +37,7 @@ SOP: Businesses/sygma-solutions/training/sops/weekly-training-audit.md
 # what: Weekly Sygma training audit (calendars vs master sheet vs exceptions)
 # why: catches diary/master mismatches, orphans + BF-date errors before they bite; weekly office digest
 # reads: 11 trainer Google calendars, master training sheet (Drive), audit-exceptions doc (Drive)
-# writes: audit report (Drive + local vault copy) -> Management chat -> HTML email (office team, AUDIT_LIVE-gated)
+# writes: audit report (Drive + local vault copy) -> Management chat (CHAT_LIVE-gated) -> HTML email (Pete + Sue, live; AUDIT_TEST=1 routes to Pete only)
 # entity: sygma
 # report: weekly-training-audit
 # schedule: 0 8 * * 1
@@ -1721,17 +1721,15 @@ def render_email_html(start, end, summary, issues, orphans, bf_orphans, bf_dates
 
 
 AUDIT_EMAIL_RECIPIENTS = [
-    "sue.owens@sygma-solutions.com",
-    "karen.ryan@sygma-solutions.com",
-    "michaela.ashcroft@sygma-solutions.com",
     "pete.ashcroft@sygma-solutions.com",
+    "sue.owens@sygma-solutions.com",
 ]
 
 
 def send_audit_email(start, end, summary, issues, orphans, bf_orphans, bf_dates, drive_link):
-    """Send the weekly audit summary as a polished HTML email to Sue / Karen /
-    Michaela / Pete. Uses gmail-api.py helper. Returns the send response or
-    raises on failure -- caller decides whether to swallow."""
+    """Send the weekly audit summary as a polished HTML email to Pete + Sue.
+    Uses gmail-api.py helper. Returns the send response or raises on failure --
+    caller decides whether to swallow."""
     spec = importlib.util.spec_from_file_location("gmail_api", os.path.join(SCRIPTS_DIR, "gmail-api.py"))
     g_mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(g_mod)
     g = g_mod.GmailAPI()
@@ -1746,13 +1744,13 @@ def send_audit_email(start, end, summary, issues, orphans, bf_orphans, bf_dates,
     else:
         subject_prefix = "[CLEAN] "
     subject = f"{subject_prefix}Sygma weekly training audit -- w/c {start.strftime('%a %d %b')}"
-    # Send-gate: AUDIT_LIVE must be "1" to email the office (Sue/Karen/Michaela). Until it's flipped
-    # on, the audit routes to Pete only, so a migration/verification run never reaches the office team.
-    if os.environ.get("AUDIT_LIVE", "") == "1":
-        recips = AUDIT_EMAIL_RECIPIENTS
-    else:
+    # Live by default: emails AUDIT_EMAIL_RECIPIENTS (Pete + Sue) every week.
+    # For a pre-flight verification run that must NOT reach Sue, set AUDIT_TEST=1
+    # to route to Pete only (no subject change — quietly narrows the recipients).
+    if os.environ.get("AUDIT_TEST", "") == "1":
         recips = ["pete.ashcroft@sygma-solutions.com"]
-        subject = "[TEST -> Pete only] " + subject
+    else:
+        recips = AUDIT_EMAIL_RECIPIENTS
     return g.send(to=recips[0], subject=subject, body=body_html, cc=recips[1:], html=True)
 
 
