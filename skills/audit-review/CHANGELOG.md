@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-29
+- Phase 1e — close the loop: write the position-movement verdict back to the Work Log row's outcome (unknown/too-early → worked / no-change / regressed). See [[work-log]].
+
 ## 2026-05-20
 - SKILL.md slim-down: stripped v2.1-v2.4 version banners + trailing v2.0 footer. Lifted v2.2's `property_type` + property-README pre-read guidance into the body intro where it belongs operationally.
 

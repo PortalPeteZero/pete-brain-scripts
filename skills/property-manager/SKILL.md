@@ -497,6 +497,26 @@ VAULT=/tmp/pbs python3 /tmp/pbs/browser-api.py check https://<domain>/<path> --e
 
 Complements curl + Preview, does not replace them. Config + all verbs: [[browser-api-configuration]].
 
+### 6f². Log the work (MANDATORY -- the Work Log row)
+
+The moment 6f passes you have everything the [[work-log]] needs: the commit hash, the property, and live-URL evidence. Write the row now -- this is the gate that ended the "we did on-page work and it vanished from every store" problem (the EUSR word-reduction class of change). One call per shipped change:
+
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/worklog.py \
+  --property "<exact property name>" --area <seo|content|dev|design> \
+  --title "<what shipped, plain English>" \
+  --evidence "<before->after -- words 1,180->840 / pos 18->1 / N files +adds/-dels>" \
+  --outcome <worked|no-change|regressed|too-early|unknown> \
+  --link "https://github.com/<owner>/<repo>/commit/<sha>" \
+  --source-ref "git:<owner>/<repo>@<sha>"
+```
+
+- `--evidence` + `--outcome` are **required for seo / dev / ads** (the helper refuses without them -- the same rule as the DB CHECK). For a fresh change you can't yet measure, `--outcome too-early` (or `unknown`) is honest; the audit-review fills the real outcome later.
+- Cross-cutting work with no single property (a cron, a shared script) -> drop `--property`, pass `--entity` + `--area ops`.
+- Idempotent on `--source-ref`, so re-running a step never double-logs.
+
+**Verification-checklist gate:** a code step is NOT "done" -- and 6g must not report it done -- until its Work Log row exists. Treat a missing row exactly like a missing commit.
+
 ### 6g. Stop-and-Report
 
 After 6f passes, produce a plain-English report following the evidence template from the Non-Technical User Protocol:
@@ -505,6 +525,7 @@ After 6f passes, produce a plain-English report following the evidence template 
 - How it was verified (fresh clone ✓, build ✓, curl live ✓, etc.)
 - What Pete can do to see it working
 - Commit hash and PR number as references
+- Confirm the Work Log row was written (Step 6f²) -- name it in the report
 
 **Then STOP.** Wait for Pete to say "next" (or "go", or similar) before starting the next code step.
 
@@ -532,6 +553,7 @@ Follow the routing rules:
 
 | What you found | Where it goes |
 |---|---|
+| **Any change that shipped** (commit on main, live page edit) | a **Work Log** row via `worklog.py` -- see Step 6f² (mandatory, not optional; this is the cross-property "what did we do / did it work" index at /m/work-log) |
 | SEO crawl data, audit results | the property's **Google Drive** folder |
 | SEO page optimisation (which pages, keywords, scores, rescans) | Update the SEO Page Tracker on the property's **CC card** (see ahrefs-audit skill for format) |
 | Google Ads data | the property's **Google Drive** folder |
@@ -575,6 +597,7 @@ Use the property's `project_slug` NAME (e.g. `SY-Website`, `CD-Website`, `CD-Oth
 | Use normal Git CLI for all pushes | Use sub-agents for pushing (they rewrite files) |
 | Use `vercel-api.py` for deployment checks | Rely on Vercel MCP connector |
 | Classify the platform before any code work | Guess the tech stack or edit method |
+| Log every shipped change to the Work Log (6f²) | Mark a code step "done" without its Work Log row |
 | Use Preview for UI changes before committing | Rely only on grep for visual correctness |
 | Update the session plan after every step | Batch plan updates or "update later" |
 | Stage specific files only | Use `git add .` or `git add -A` |

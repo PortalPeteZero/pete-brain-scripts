@@ -6,6 +6,9 @@ updated: 2026-06-29
 
 # Brain skill changelog
 
+## 2026-06-29
+- Compress Step 7c — log-on-ship to the Work Log (`worklog.py`), mirroring vault-writer so it runs whichever skill closes the session. See [[work-log]].
+
 ## 2026-06-29 (Plan/note lifecycle — verify-before-surface + context-switch close-out)
 - **Resume Step 5 (plans)** no longer reports an in-progress/ready plan as live. It now VERIFIES each against the live system first; a plan whose work demonstrably shipped is surfaced as "Looks shipped — close this plan? {title}" for Pete to confirm (never auto-stamped at resume), not announced as in-progress. Fixes the recurring "a fresh session tells Pete a plan's still in progress when it actually shipped".
 - **Resume Step 3 (tasks)** gains a shipped-evidence sanity-check before presenting an open task as a priority; looks-done tasks are surfaced as "Looks shipped — close? {task}" for confirmation (never auto-closed — tasks are Pete's).

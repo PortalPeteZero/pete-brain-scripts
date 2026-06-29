@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-29
+- Step 6f² — log every shipped change to the Work Log via `worklog.py` the moment 6f verification passes; Verification-checklist gate (no code step "done" without its row) + §7b routing-table & Dos/Don'ts rows. The EUSR-class fix. See [[work-log]].
+
 ## 2026-06-08
 - §6f Post-Merge Verification gains scripted live-verification via the new `browser-api.py` Playwright helper (`audit` / `check` against the deployed URL) alongside curl + Preview. "Read the console" safeguard + the UI-change checklist line now point at it too. See [[browser-api-configuration]] + [[Library/decisions/2026-06-08-playwright-direct-browser-helper]].
 

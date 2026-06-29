@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-29
+- Step 3a gains a log-on-ship peer to close-on-ship — write a Work Log row (`worklog.py`) for each discrete ship in the same end-of-session pass. See [[work-log]].
+
 ## 2026-06-29 — Plan/note lifecycle hardening (Pete-directed: stop the manual "close your plans" reminder)
 - **Step 1 plan-sweep** changed from "whenever a plan's state changed this session" to a positive SWEEP of every plan touched/related, verified live before being left `in-progress` — closes the "finished in an earlier session, never stamped" miss that the next Resume mis-reads as live.
 - **Step 2 note-fencing (new):** any note recording current state gets `status: snapshot` + `as_of:` + a "Point-in-time snapshot — VERIFY live before treating as current" banner, the note-equivalent of the plan banner. State notes now get the same do-not-read-as-live discipline as plans, not just plans.

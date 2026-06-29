@@ -189,6 +189,19 @@ If a drop > 5 positions is detected, run a quick investigation:
 2. Check `site-explorer-backlinks-stats` to see if backlinks were lost
 3. Check the SERP overview to see if a new competitor entered
 
+### 1e. Close the loop -- update the Work Log outcome
+
+This skill is the one that learns whether on-page work actually *worked* -- so feed that verdict back to the [[work-log]]. For the page just reviewed, find the recent `seo` / `content` Work Log row(s) for this property whose outcome is still `unknown` / `too-early`, and set the real outcome from the position movement:
+
+```bash
+# candidates: recent seo/content rows for this property, outcome not yet settled
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id,date,title,evidence,outcome FROM work_log WHERE property_slug='<slug>' AND area IN ('seo','content') AND outcome IN ('unknown','too-early') ORDER BY date DESC LIMIT 10"
+# set the verdict on the row(s) that drove this page
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "UPDATE work_log SET outcome='worked', evidence=evidence||' | review <date>: pos <before>-><after>' WHERE id=<id>"
+```
+
+Verdict rule: improved >= 3 positions (or entered top 10) -> `worked`; dropped > 5 -> `regressed`; flat -> `no-change`; too soon since the change to tell -> leave `too-early`. This is what turns the Work Log from "what we did" into "what actually worked".
+
 ---
 
 ## Phase 2 -- Surfer Re-Audit (if due)
