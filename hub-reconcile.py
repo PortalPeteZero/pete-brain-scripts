@@ -272,7 +272,7 @@ def do_run():
         f"- Files changed: {len(edited)} | New folders: {len(new_folders)} | Existing folders touched (move/share/structure): {len(touched_folders)} | Removed: {len(removed)} | READMEs touched: {len(readme_results)} | Noise excluded: {len(readme_self)} README self-refreshes + {len(acl_only)} ACL/move-only",
     ]
     if new_folders:
-        log_lines.append("- **New folders (review for the map):** " + ", ".join(sorted(new_folders)))
+        log_lines.append("- **New folders:** " + ", ".join(sorted(new_folders)))
     if removed:
         log_lines.append("- **Removed/trashed:** " + ", ".join(sorted(removed)[:30]))
     append_index_log(log_lines)
@@ -283,7 +283,7 @@ def do_run():
             f"<p>{len(edited)} files changed, {len(new_folders)} new folders, "
             f"{len(touched_folders)} existing folders touched (moved/shared/restructured, not new), "
             f"{len(removed)} removed. {len(readme_results)} folder READMEs refreshed automatically.</p>"
-            f"<h3>New folders (may need a line in the map)</h3>{ul(sorted(new_folders))}"
+            f"<h3>New folders (auto-indexed — no action needed)</h3>{ul(sorted(new_folders))}"
             f"<h3>Removed / trashed</h3>{ul(sorted(removed)[:50])}"
             f"<h3>Files added / edited</h3>{ul(sorted(edited)[:120])}"
             f"<p style='color:#888'>Noise excluded from this digest: {len(readme_self)} README auto-refreshes (this script's own writes) "
