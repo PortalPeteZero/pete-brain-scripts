@@ -290,10 +290,11 @@ def do_run():
             f"+ {len(acl_only)} ACL/share/move-only surfacings (no content change).</p>"
             f"<p style='color:#888'>READMEs + hub-content-index updated automatically. "
             f"Protocol: Library/processes/hub-maintenance.md</p>")
-    if edited or new_folders or removed:
-        send_digest(f"Sygma Hub reconcile - {today} - {len(edited)} changes", html)
-    else:
-        print(f"no human changes since last run -- no digest sent "
+    # Email digest disabled 2026-06-29 per Pete — the daily snapshot publishes to the
+    # Command Centre (hub-activity view) below; no inbox copy. send_digest() is retained
+    # for manual/ad-hoc use but is no longer called on the scheduled run.
+    if not (edited or new_folders or removed):
+        print(f"no human changes since last run "
               f"(excluded noise: {len(readme_self)} README self-refreshes, {len(acl_only)} ACL-only)")
     # Command Centre: publish the daily Hub-activity snapshot (additive; the digest email above is unchanged). Non-fatal.
     try:
