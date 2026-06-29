@@ -107,16 +107,16 @@ def refresh_state_of_play(customer):
     sop = f"{_VAULT}/Customers/SY-Clancy/state-of-play.md"
     if not os.path.exists(sop):
         return
-    tbl = ["account_deliverables", "account_actions", "account_meetings", "account_people",
-           "account_documents", "account_risks", "account_incidents"]
+    tbl = ["account_deliverables", "account_meetings", "account_people",
+           "account_documents", "account_risks"]
     c = {t: len(select(t, f"customer=eq.{customer}&select=id")) for t in tbl}
     gw = len(select("account_deliverables", f"customer=eq.{customer}&charge=eq.goodwill&select=id"))
     stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     block = ("<!-- LIVE-COUNTS (auto, do not edit) -->\n"
              f"> [!info] Live store (auto-refreshed {stamp})\n"
-             f"> {c['account_deliverables']} deliverables ({gw} goodwill) · {c['account_actions']} open actions · "
+             f"> {c['account_deliverables']} deliverables ({gw} goodwill) · "
              f"{c['account_meetings']} meetings · {c['account_people']} people · {c['account_documents']} documents · "
-             f"{c['account_risks']} risks · {c['account_incidents']} incidents. "
+             f"{c['account_risks']} risks. "
              "Source: the Command Centre `account_*` store ([cockpit](https://commandcentre.info/m/clancy-cockpit)).\n"
              "<!-- /LIVE-COUNTS -->")
     content = open(sop).read()

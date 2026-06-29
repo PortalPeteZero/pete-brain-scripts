@@ -67,9 +67,11 @@ def main():
                "source_ref": ref, "charge": a.charge, "created_by": "log-clancy"}
         st = store.insert("account_deliverables", [row])
     elif a.kind == "action":
-        row = {"customer": C, "title": a.title, "owner_side": a.owner_side, "owner": a.owner,
-               "due": a.due, "status": a.status or "open", "workstream": a.workstream, "contract": a.contract}
-        st = store.insert("account_actions", [row])
+        # Actions are public.tasks (SY-Clancy) now — account_actions retired in the Clancy rebuild.
+        row = {"name": a.title, "project_slug": "SY-Clancy", "entity_slug": "Sygma",
+               "bucket": a.contract or a.workstream or "General", "status": "todo", "source": "log-clancy",
+               "tags": (["side:clancy"] if a.owner_side == "clancy" else []), "due_on": a.due}
+        st = store.insert("tasks", [row])
     elif a.kind == "risk":
         row = {"customer": C, "title": a.title, "severity": a.severity, "category": a.category,
                "owner": a.owner, "mitigation": a.mitigation, "status": a.status or "open"}
@@ -83,10 +85,11 @@ def main():
                "phone": a.phone, "contract": a.contract, "is_key": a.key}
         st = store.insert("account_people", [row])
     elif a.kind == "incident":
-        row = {"customer": C, "date": a.date or today, "title": a.title, "contract": a.contract,
-               "location": a.location, "status": a.status or "open", "investigation": a.investigation,
-               "sygma_role": a.sygma_role}
-        st = store.insert("account_incidents", [row])
+        # Damages are the first-class clancy_damages table now — account_incidents retired.
+        row = {"customer": C, "job_ref": a.title, "damage_date": a.date or today, "contract": a.contract,
+               "location": a.location, "status": a.status or "New",
+               "summary": " · ".join(x for x in (a.investigation, a.sygma_role) if x) or None}
+        st = store.insert("clancy_damages", [row])
 
     store.set_state(C, "last_log", datetime.datetime.now(datetime.timezone.utc).isoformat())
     print(f"account-log: {a.kind} -> {C} (HTTP {st})")

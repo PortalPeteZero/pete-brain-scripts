@@ -53,7 +53,10 @@ def main():
     today = datetime.date.today()
     wk_ago = (today - datetime.timedelta(days=7)).isoformat()
     deliv = store.select("account_deliverables", f"customer=eq.{C}&select=date,title,charge,created_at,workstream&order=date.desc")
-    acts = store.select("account_actions", f"customer=eq.{C}&select=title,due,status,owner_side")
+    # Actions are now public.tasks (SY-Clancy) — account_actions retired in the Clancy rebuild.
+    _tasks = store.select("tasks", "project_slug=eq.SY-Clancy&status=neq.done&select=name,due_on,status,tags")
+    acts = [{"title": t.get("name"), "due": t.get("due_on"), "status": t.get("status"),
+             "owner_side": "clancy" if "side:clancy" in (t.get("tags") or []) else "sygma"} for t in _tasks]
     kpis = store.select("account_obligations", f"customer=eq.{C}&type=eq.kpi&select=label,deadline,status")
 
     new_deliv = [d for d in deliv if (d.get("created_at") or "")[:10] >= wk_ago or (d.get("date") or "") >= wk_ago]
@@ -66,7 +69,7 @@ def main():
 
     html = f"""<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:640px">
 <h2 style="color:#d97706">Clancy weekly review</h2>
-<p style="color:#555">Week to {today.strftime('%d %b %Y')}. Live record: <a href="https://commandcentre.info/m/clancy-cockpit">Cockpit</a> · <a href="https://commandcentre.info/m/clancy-delivery-log">Delivery log</a>.</p>
+<p style="color:#555">Week to {today.strftime('%d %b %Y')}. Live record: <a href="https://commandcentre.info/m/clancy-cockpit">Cockpit</a> · <a href="https://commandcentre.info/m/clancy-cockpit?tab=delivery">Delivery</a>.</p>
 <h3>Delivered this week ({len(new_deliv)})</h3>{ul([d['title'] for d in new_deliv])}
 <h3>Overdue actions ({len(overdue)})</h3>{ul([f"{a['title']} (due {a.get('due')})" for a in overdue])}
 <h3>Waiting on Clancy ({len(waiting_clancy)})</h3>{ul([a['title'] for a in waiting_clancy])}
