@@ -170,7 +170,10 @@ def update_file_content(file_id, content):
     # SANITY GUARD (output validation, not just exit code): never write content that itself
     # looks corrupted or is implausibly large for a folder index. Refuses + the run loop logs
     # it as an ERR (surfaced to Pete) instead of silently re-corrupting the file.
-    if looks_corrupt(content) or len(content) > 20000:
+    # 100KB cap: a clean folder index of even ~1000 children stays well under this, while
+    # the escaped-quote corruption blows past it into MB territory within a few runs.
+    # (looks_corrupt is the primary detector; the size cap is the belt.)
+    if looks_corrupt(content) or len(content) > 100_000:
         raise ValueError(f"sanity guard refused write to {file_id} "
                          f"(len={len(content)}, corrupt_sig={looks_corrupt(content)})")
     _req("PATCH", f"{UPLOAD}/files/{file_id}?uploadType=media&supportsAllDrives=true",
