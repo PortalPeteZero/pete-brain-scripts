@@ -27,7 +27,7 @@ from datetime import date, timedelta
 
 # VAULT path: env override (for Cowork sandbox) > host default (Pete's Mac)
 VAULT = os.environ.get("VAULT_ROOT", "/tmp/pbs")
-SCRIPTS = f"{VAULT}/Library/processes/scripts"
+SCRIPTS = VAULT  # helpers live at the pbs root (repo flattened 2026-06)
 
 # ----------------------------- CONFIG ---------------------------------------
 SITE_DOMAIN    = "sygma-solutions.com"
@@ -69,10 +69,9 @@ RESIDUE_DAYS = 14
 # ----------------------------- tokens / helpers -----------------------------
 def _ahrefs_token():
     try:
-        t = open(f"{VAULT}/Library/processes/ahrefs-api-configuration.md").read()
-        m = re.search(r"\*\*Token:\*\*\s*`([^`]+)`", t)
-        if m:
-            return m.group(1)
+        v = open(f"{VAULT}/Library/processes/secrets/ahrefs-token").read().strip()
+        if v:
+            return v
     except Exception:
         pass
     return "lGssv7YX4gEWyDhKaBhDLcmLfs14q-yqlZTzsMQa"
@@ -105,14 +104,23 @@ def gbp(micros):
     return int(micros or 0) / 1e6
 
 # ----------------------------- state-doc readers ----------------------------
+def _vault_note_body(key):
+    """Fetch a vault_notes body live (ledger/non-issues moved out of flat files 2026-06)."""
+    import subprocess
+    try:
+        out = subprocess.run([sys.executable, f"{VAULT}/cc-sql.py",
+            "SELECT body FROM vault_notes WHERE vault_path ILIKE '%%%s%%' OR title ILIKE '%%%s%%' ORDER BY length(body) DESC LIMIT 1" % (key, key)],
+            capture_output=True, text=True, timeout=30, env={**os.environ, "VAULT": VAULT})
+        rows = json.loads(out.stdout or "[]")
+        return rows[0]["body"] if rows else ""
+    except Exception:
+        return ""
+
 def read_ads_ledger(days=30):
     """Parse 'Recent changes ledger' section of google-ads-account.md.
     Returns list of {date, headline} for entries within the last `days` days, newest first."""
-    if not os.path.exists(ADS_LEDGER_PATH):
-        return []
-    try:
-        txt = open(ADS_LEDGER_PATH).read()
-    except Exception:
+    txt = _vault_note_body("google-ads-account")
+    if not txt:
         return []
     m = re.search(r"^## Recent changes ledger\s*\n(.*?)(?=\n## )", txt, re.S | re.M)
     if not m:
@@ -404,7 +412,7 @@ def main():
 
     md = build_md(A, G, GA, ADS)
     today = date.today().isoformat()
-    out_path = f"{VAULT}/Properties/Sygma Solutions Website/data/health-report-{today}.md"
+    out_path = f"/tmp/health-report-{today}.md"
     with open(out_path, "w") as f:
         f.write(md)
 
