@@ -56,6 +56,33 @@ def save_tokens(tokens):
     os.makedirs(SECRETS_DIR, exist_ok=True)
     with open(TOKENS_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
+    _sync_tokens_to_cc(tokens)
+
+def _sync_tokens_to_cc(tokens):
+    """Persist the (rotated) tokens BACK to the CC `secrets` table so they survive across sessions.
+    Root cause of the recurring 'refresh token has been consumed' error: /tmp/pbs is ephemeral (wiped /
+    re-cloned each session), so without this the CC keeps the OLD refresh token; the next session
+    materialises it, refreshes (consuming it), saves only locally, loses the new one — and breaks again.
+    Best-effort: a CC write failure must never break the local save, so everything is wrapped."""
+    try:
+        tok_path = os.path.join(SECRETS_DIR, "supabase-token")
+        if not os.path.exists(tok_path):
+            return
+        mgmt_tok = open(tok_path).read().strip()
+        payload = json.dumps(tokens, indent=2)
+        # dollar-quote the JSON so no escaping is needed (the payload can't contain this random tag)
+        sql = ("UPDATE secrets SET value = $xtok$" + payload +
+               "$xtok$, updated_at = now() WHERE name = 'xero-tokens.json'")
+        req = urllib.request.Request(
+            "https://api.supabase.com/v1/projects/zhexcaflgahdcbzvbyfq/database/query",
+            data=json.dumps({"query": sql}).encode(),
+            headers={"Authorization": f"Bearer {mgmt_tok}", "Content-Type": "application/json",
+                     "User-Agent": "Mozilla/5.0"},
+            method="POST")
+        urllib.request.urlopen(req, timeout=30).read()
+        print("Xero tokens synced back to the CC secrets store.", file=sys.stderr)
+    except Exception as e:
+        print(f"(warn) could not sync Xero tokens to the CC: {e}", file=sys.stderr)
 
 def get_access_token():
     tokens = load_tokens()
