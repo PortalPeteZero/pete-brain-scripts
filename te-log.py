@@ -33,7 +33,8 @@ Payload shape (one enquiry):
      "follow_up_at": "2026-07-01"                # optional; sets CRM follow_up + a CC chase task
   },
   "knowledge": "Free-text thread summary + corrections to learn from (optional; defaults to activity.body)",
-  "thread_id": "gmail-thread-id",                # optional; stored for triage reply-recognition
+  "thread_id": "gmail-thread-id",                # optional; reply auto-pulled + thread auto-FILED on --apply
+                                                 #   (out of Replies tray + archived; --no-file opts out)
   "drive_url": "https://drive..."                # optional; sent collateral
 }
 """
@@ -95,6 +96,7 @@ def lit(s):
 # Fixes the silent "we forgot to paste the reply" knowledge-loss: when a touch carries a
 # thread_id but no body, pull the latest OUTBOUND message off the thread and bank THAT.
 NO_GMAIL = False
+NO_FILE = False
 _GMAIL = None
 def _gmail():
     global _GMAIL
@@ -104,6 +106,20 @@ def _gmail():
         mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
         _GMAIL = mod.GmailAPI()
     return _GMAIL
+
+def file_dealt_thread(thread_id):
+    """Once an enquiry is dealt with (reply sent + logged), FILE its Gmail thread:
+    drop the Replies/Actions tray label and archive (remove INBOX). The chase task is
+    the follow-up tracker — a dealt-with thread must not linger in the Replies tray.
+    Keeps any home label (Customers/… etc.) applied at send time. Fail-soft; --no-file opts out."""
+    try:
+        g = _gmail()
+        names = {l["name"]: l["id"] for l in g.list_labels()}
+        remove = [names[n] for n in ("Replies", "Actions") if n in names] + ["INBOX"]
+        g.modify_thread(thread_id, remove=remove)
+        print(f"   • filed Gmail thread {thread_id} (out of Replies tray + archived)")
+    except Exception as e:
+        print(f"   ⚠ could not file thread {thread_id}: {e}")
 
 _QUOTE_MARKERS = re.compile(
     r"(^On .+ wrote:\s*$)|(^From: )|(^-----Original Message-----)|(^________+)|(^\s*>)|(^Sent from my )",
@@ -290,13 +306,18 @@ def log_enquiry(p, apply, manifest):
             cc_sql(f"""insert into tasks (id,name,priority,due_on,entity_slug,project_slug,bucket,status,source,tags,notes)
                        values (gen_random_uuid(),{lit(tname)},'P3',{lit(a['follow_up_at'])},'Sygma',{lit(PROJECT_SLUG)},{lit(BUCKET)},
                        'todo','enquiry-engine',array['enquiry']::text[],{lit('[no-sync-close] CRM contact '+str(cid))})""")
+    # File the thread now the enquiry's been dealt with — out of the Replies tray + archived. The chase
+    # task above is the follow-up tracker; the tray entry is now redundant. --no-file opts out.
+    if apply and p.get("thread_id") and not NO_FILE:
+        file_dealt_thread(p["thread_id"])
     return rel
 
 def main():
-    global NO_GMAIL
+    global NO_GMAIL, NO_FILE
     args = sys.argv[1:]
     apply = "--apply" in args
     NO_GMAIL = "--no-gmail" in args
+    NO_FILE = "--no-file" in args
     inpath = None; manpath = None
     for i, x in enumerate(args):
         if x == "--in": inpath = args[i + 1]
