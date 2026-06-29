@@ -3,11 +3,11 @@
 
 The "log clancy ..." session verb and the Command Centre quick-add both write
 through here, so anything Pete (or a session) does with a customer lands in the
-live record without waiting for a cron. Asana-derived rows are owned by
-account-sync; this writes session/manual rows only.
+live record without waiting for a cron. Actions write to public.tasks (SY-Clancy)
+and incidents to clancy_damages; deliverables/risks/documents to the account_* store.
 
 Examples:
-  account-log.py deliverable --title "Reviewed Wayne's Q2 strike data" --workstream "Cable strikes & investigations" --contract UKPN
+  account-log.py deliverable --title "Reviewed Wayne's Q2 damage data" --workstream "Cable damage investigations" --contract UKPN
   account-log.py deliverable --title "Built the clamp poster" --charge goodwill --evidence https://...
   account-log.py action --title "Send Rebecca the KPI burn-down" --owner-side sygma --due 2026-06-20
   account-log.py risk --title "Trainer availability around jury duty" --severity Medium
@@ -17,11 +17,11 @@ Examples:
 import sys
 import argparse
 import datetime
-
-sys.path.insert(0, f"{VAULT}/Library/processes/scripts/account")
-import account_store as store
 import os
+
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import account_store as store
 
 
 def main():
