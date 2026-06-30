@@ -1,10 +1,13 @@
 ---
 type: changelog
 skill: brain
-updated: 2026-06-29
+updated: 2026-06-30
 ---
 
 # Brain skill changelog
+
+## 2026-06-30
+- Compress Step 7c gains a **deterministic reconcile gate**: for every repo committed this session, run `worklog.py reconcile` and log any flagged commit. Diffs git vs `work_log.source_ref` so a forgotten ship can't slip — replaces sole reliance on recall. Scope broadened to **any product repo** (a separate app like LeakGuard), not just website/CC. Added after a full day of LeakGuard deploys reached no work_log row until Pete asked. See [[work-log]].
 
 ## 2026-06-29
 - Compress Step 7c — log-on-ship to the Work Log (`worklog.py`), mirroring vault-writer so it runs whichever skill closes the session. See [[work-log]].
