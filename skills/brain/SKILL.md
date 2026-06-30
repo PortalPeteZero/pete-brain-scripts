@@ -60,9 +60,10 @@ first; it ranks top when you semantic-search any enquiry. The lifecycle store is
 (contacts · activities · tags · stages · bookings); the searchable knowledge + corrections live in
 `vault_notes` tagged `training-enquiries`; chases land in `public.tasks`. Cockpit: **/m/enquiry-engine**.
 
-- **`enquiry`** — handle one new inbound enquiry: classify → RETRIEVE precedents → draft (Mode B) → capture.
+- **⚠️ STEP 0 — READ THE ENTIRE THREAD FIRST (hard gate on EVERY enquiry/reply/chase, non-negotiable).** Before anything else, pull the full Gmail thread (`gmail-api.py get-thread {tid}`) and read **every message, both directions, oldest to newest**. Establish: what we've ALREADY sent (never re-send it), what they asked, what WE last asked, and **whose court the ball is in**. Drafting off the latest message alone is the cause of redundant/wrong replies — and it's what makes the chase rules (3-day floor; don't chase when we're awaiting their answer) enforceable. No draft until the full history is read. (Pete, 30 Jun 2026: "you really need to ensure that part of this process is to read all previous emails… its key we get this right so it can run on auto pilot".)
+- **`enquiry`** — handle one inbound enquiry: **read full thread (Step 0)** → classify → RETRIEVE precedents → draft (Mode B) → capture.
 - **`enquiries`** — the **manual** sweep (Pete-triggered; NO cron): reconcile replies on what we've sent, surface chases due, run the learn step.
-- **`reply to enquiry in {course/company}`** — run the loop on ONE enquiry. **Never draft cold** — first
+- **`reply to enquiry in {course/company}`** — run the loop on ONE enquiry. **Read the full thread first (Step 0), then never draft cold** — 
   `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py semantic "<course + scenario + people + location>" --limit 6`,
   read the closest 2–3 + the banked rules, then draft bespoke (NO fixed templates).
 - **`Sent to Sue`** — the booking handoff: move the contact to **Customer** (won) + log it.
