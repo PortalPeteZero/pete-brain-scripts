@@ -196,6 +196,9 @@ Read the property's home to understand current state:
 - List the property's **Google Drive** folder (`drive_files` via `cc-sql.py`) -- see what reference data exists
 - Read the property's **CC card** for domain, tech stack, tracking IDs
 
+> [!warning] The Work Log is HISTORY, not current state
+> The [[work-log]] (`/m/work-log`) answers *"what did we last do here, and did it work?"* -- it is an append-only record of past changes, NOT a description of the page as it is now. ALWAYS read current state from the **live source first** (the freshly-cloned repo, the live page via `browser-api.py` / curl, the CC card, Ahrefs). Use the Work Log to orient ("we de-optimised this page on 19 Jun -- did it move?"), never as the source of truth for what's on the page today. Same discipline as [[feedback_verify_agent_and_plan_facts_live]] + [[feedback_done_plans_must_be_binned_never_live_source]].
+
 ### 2b. Read any active projects
 
 Check for active project work related to this property (per the parent + sub-projects pattern). Project structure is **parent + sub-projects direct under parent**. For website properties, look at the parent (e.g. `SY-Website`, `CD-Website`) AND walk the sub-projects. Actual SY-Website sub-folders: `seo/ articles/ improvements/ youtube/ ads/ backlinks/`. CD-Website: `seo/ articles/ migration/`. CD-LeakGuard: `crm/ tiered/ communities/`. CD-Other-Sites: `the-leaky-finders/ leakguard-lanzarote/ pipebusters-lanzarote/ leakbusters/`.

@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- Step 2a guard: the Work Log is HISTORY, not current state — always read current state from the live source first (repo / live page / CC card / Ahrefs); use the Work Log only to orient on what we last did + whether it worked. See [[work-log]].
+
 ## 2026-06-29
 - Step 6f² — log every shipped change to the Work Log via `worklog.py` the moment 6f verification passes; Verification-checklist gate (no code step "done" without its row) + §7b routing-table & Dos/Don'ts rows. The EUSR-class fix. See [[work-log]].
 
