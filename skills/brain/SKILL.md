@@ -54,29 +54,11 @@ Match the user's intent to the right section:
 
 ## Enquiry Engine
 
-Sygma training-enquiry handling is a **living learning machine**, not a static SOP. The operating contract
-+ banked rules live in the `vault_notes` note **[[workflow-design]]** (Enquiry reply workflow) — read it
-first; it ranks top when you semantic-search any enquiry. The lifecycle store is the **Portal CRM**
-(contacts · activities · tags · stages · bookings); the searchable knowledge + corrections live in
-`vault_notes` tagged `training-enquiries`; chases land in `public.tasks`. Cockpit: **/m/enquiry-engine**.
+Sygma training-enquiry handling is a **living learning machine**. The full operating contract — process steps, pricing, te-log capture, routing (e.g. Neal Sadd for L3–5/mapping), and all banked rules — lives in the `vault_notes` note **[[workflow-design]]**. **On ANY enquiry verb, load that note first and follow it** (it ranks top on an enquiry semantic-search); never work an enquiry from this summary alone. Lifecycle = Portal CRM; knowledge = `vault_notes` `training-enquiries`; chases = `public.tasks`; cockpit **/m/enquiry-engine**.
 
-- **⚠️ STEP 0 — READ THE ENTIRE THREAD FIRST (hard gate on EVERY enquiry/reply/chase, non-negotiable).** Before anything else, pull the full Gmail thread (`gmail-api.py get-thread {tid}`) and read **every message, both directions, oldest to newest**. Establish: what we've ALREADY sent (never re-send it), what they asked, what WE last asked, and **whose court the ball is in**. Drafting off the latest message alone is the cause of redundant/wrong replies — and it's what makes the chase rules (3-day floor; don't chase when we're awaiting their answer) enforceable. No draft until the full history is read. (Pete, 30 Jun 2026: "you really need to ensure that part of this process is to read all previous emails… its key we get this right so it can run on auto pilot".)
-- **`enquiry`** — handle one inbound enquiry: **read full thread (Step 0)** → classify → RETRIEVE precedents → draft (Mode B) → capture.
-- **`enquiries`** — the **manual** sweep (Pete-triggered; NO cron): reconcile replies on what we've sent, surface chases due, run the learn step.
-- **`reply to enquiry in {course/company}`** — run the loop on ONE enquiry. **Read the full thread first (Step 0), then never draft cold** — 
-  `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py semantic "<course + scenario + people + location>" --limit 6`,
-  read the closest 2–3 + the banked rules, then draft bespoke (NO fixed templates).
-- **`Sent to Sue`** — the booking handoff: move the contact to **Customer** (won) + log it.
-- **Capture (every send / every correction):** `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <enquiry.json> --apply`
-  triple-writes CRM + knowledge note (embedded immediately) + chase task. A correction not captured is a bug.
-  Two banked behaviours (2026-06-28): (1) **the reply body auto-pulls from Gmail** — pass the `thread_id` and
-  leave `activity.body` empty, te-log fetches the latest outbound message off the thread (quoted tail stripped);
-  `--no-gmail` disables. (2) **Always pass a one-line `knowledge` takeaway** — without it te-log banks the reply
-  verbatim and warns; the distilled lesson is what makes future retrieval sharp. Notes are date-stamped per touch
-  (`enquiry-{company}-{kind}-{date}.md`) so repeat touches never overwrite.
-- **Mode B** stays: the Engine drafts, Pete signs off every send. Live facts to apply: **£145pp+VAT + cert
-  fee** (£34 EUSR reg on Cat 1; none in-house), qualify-first when a must-have is missing, just-over-8
-  framing, "I'll check seats" not "I'll book you", Sue owns dates. Utility-mapping / L3–5 / PAS128 → Neal Sadd.
+Non-negotiable gates (detail in the note): **read the ENTIRE thread before drafting** (what we've sent / they asked / whose court the ball is in); **retrieve precedents before drafting** (never cold); **Mode B — Pete signs off every send, never auto-send**; chase only when ≥3 days *and* the ball is with them.
+
+Verbs: **`enquiry`** (handle one inbound) · **`enquiries`** (manual sweep, Pete-triggered, NO cron) · **`reply to enquiry in {X}`** (the loop on one) · **`Sent to Sue`** (booking handoff → Customer/won). All follow [[workflow-design]].
 
 ## Markdown formatting
 
