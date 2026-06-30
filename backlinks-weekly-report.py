@@ -69,17 +69,32 @@ def build(items, week_end):
             f"<tr style='background:#f8fafc'><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Publisher / article</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>DR</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Target</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Status</b></td></tr>{live_rows}</table>"
             f"<h3 style='margin:16px 0 4px;color:#1B2340'>New / changed this week</h3><ul style='margin:0'>{new_rows}</ul>"
             f"<p style='color:#94a3b8;font-size:12px;margin:14px 0 0'>From the bl.work_items ledger ({len(items)} actions). Baseline: 0 external backlinks to target pages at the 11 May audit.</p></div>")
-    return html
+    # Structured data so the Command Centre can render the Weekly tab NATIVELY (no iframe) with
+    # the shared status badges + app theme. The HTML above stays for the email; `data` powers the app.
+    def item_d(i):
+        return {"publisher": i["publisher"], "article_url": i.get("article_url"), "title": i.get("title"),
+                "dr": i.get("dr"), "target_page": i.get("target_page"), "status": i["status"],
+                "actor": i.get("actor"), "date": i.get("date")}
+    data = {
+        "week_end": week_end.isoformat(),
+        "summary": {"crawled": len(crawled), "live": len(live),
+                    "approved": by_status.get("approved", 0), "proposed": by_status.get("proposed", 0),
+                    "submitted": by_status.get("submitted", 0), "review": by_status.get("review", 0),
+                    "total": len(items)},
+        "live": [item_d(i) for i in live],
+        "new_this_week": [item_d(i) for i in new_this_week],
+    }
+    return html, data
 
 def main():
     items = _work_items()
     week_end = _week_ending()
-    html = build(items, week_end)
+    html, data = build(items, week_end)
     spec_path = SCRIPT_DIR / "cc_publish.py"
     import importlib.util
     spec = importlib.util.spec_from_file_location("cc_publish", str(spec_path))
     cc = importlib.util.module_from_spec(spec); spec.loader.exec_module(cc)
-    ok = cc.publish("backlinks-weekly", week_end.isoformat(), {"subject": f"Sygma backlinks — week ending {week_end:%-d %b %Y}", "html": html})
+    ok = cc.publish("backlinks-weekly", week_end.isoformat(), {"subject": f"Sygma backlinks — week ending {week_end:%-d %b %Y}", "html": html, "data": data})
     print(f"CC: backlinks-weekly {'published' if ok else 'FAILED'} (week ending {week_end}, {len(items)} work items)")
 
 if __name__ == "__main__":
