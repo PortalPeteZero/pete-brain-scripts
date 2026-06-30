@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- `Library/processes/odoo-api-configuration.md` (deleted) → the CC `odoo-api-configuration` note.
+
 ## 2026-05-20
 - **Fixed stale sandbox-path gap**: `render_html.py` had a hardcoded `/sessions/wizardly-blissful-cannon/...` path from a previous Cowork session (would have failed next run). Replaced with `VAULT_ROOT` env-var pattern (default `/Users/peterashcroft/Second Brain`; override via env in sandbox). Same fix applied to SKILL.md "How to run" code blocks. Found during skills audit pass.
 

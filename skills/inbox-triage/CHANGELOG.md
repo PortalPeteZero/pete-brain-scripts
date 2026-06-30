@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- De-staled: `email-workflow-state.md` → the CC `email-workflow-state` note; `Projects/{…}/`·`Personal/{area}/` folder matching → live CC projects/areas; archived `*-General` + `SY-AppearOnline` examples → live ones.
+
 ## 2026-06-06
 - **Action/Task verb split** (plan: Projects/PA-General/files/email-workflow-plan-2026-06-06-action-task-split.md). `Action this Pn` = tray (Actions label, reply-shaped only); `Task this Pn` = Asana-only (no Actions, `[no-sync-close]` marker). Reminder block extended with verb reference. Ask⇔verb matrix + validator updated. `(tray)` / `(Asana only)` rendering rule. Transition guard. Routing decision tree pointer → vault-routing.
 - **Step 8a Actions walker**: end-of-triage offer + standalone verbs ("actions" / "my actions"). Grouped by task, oldest first, suggested responses (voice-principles + dash grep mandatory), outcomes send / defer / already-done / de-tray. Old Step 8 → 8b.

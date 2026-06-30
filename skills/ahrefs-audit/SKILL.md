@@ -92,21 +92,15 @@ Use for: real impressions, clicks, CTR, and average position at the query level 
 
 Ask Pete which property and page. Read the property's CC record (Properties module) + its SEO plans in `vault_notes`.
 
-From the property README, get: domain, Ahrefs project ID, Surfer workspace ID, country/region.
-From the SEO sub-project README, get: standing instructions, SEO Page Tracker, API Quick Reference. The SEO Page Tracker is in the parent property README's `data/` folder, not the project.
+**Read the property's IDs + project from its LIVE card — never a table baked into this skill** (those rot; the card is the single source). See [[page-seo-workflow]].
 
-**Property-to-project mapping (post 2026-05-06 restructure):**
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-property-api.py --get "<Property Name>"
+```
 
-| Property | Parent Project | SEO sub-project path | Ahrefs Project | Surfer Workspace |
-|----------|------------|----------|----------------|------------------|
-| Sygma Solutions Website | SY-Website | `Projects/SY-Website/seo/` | 9613452 | 1312139 |
-| Canary Detect Main Website | CD-Website | `Projects/CD-Website/seo/` | 9613451 | 1312141 |
-| The Leaky Finders Website | CD-Other-Sites | `Projects/CD-Other-Sites/the-leaky-finders/` (sub-project covers all channels including SEO) | 9613450 | Yes |
-| LeakGuard Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/leakguard-lanzarote/` | 9613445 | 1330651 |
-| Pipebusters Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/pipebusters-lanzarote/` | 9613446 | Yes |
-| Leakbusters Lanzarote Website | CD-Other-Sites | `Projects/CD-Other-Sites/leakbusters/` | 9613448 | 1312143 |
+Take `ahrefs_project_id`, `surfer_workspace`, `project_slug`, `gsc_property`, `ga4_property_id` (+ domain/country). The page's SEO plan + tracker history live in `vault_notes` (the CC Brain page), not a local README. **If a field you need is null → STOP and ask Pete; never audit against a blank id.** Orientation only (the truth is each card's `project_slug`): Sygma → `SY-Website`, Canary Detect main → `CD-Website`, O'Connor's → `OS-OConnors-Website`, Lanzarote Lates → `PA-Lanzarote-Lates`, the CD Lanzarote microsites → `CD-Microsites`.
 
-In the CC task store (`public.tasks`), SEO work is tracked by `project_slug`. Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. New tasks: INSERT with the right `project_slug` NAME (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
+In the CC task store (`public.tasks`), SEO work is tracked by the card's `project_slug` (bucket `SEO`). New tasks: INSERT with that `project_slug` NAME after confirming it is active (`SELECT slug,status FROM projects WHERE slug='<X>'`) — `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,bucket,status,source,notes) VALUES (gen_random_uuid(),…,'<card project_slug>','SEO','todo','claude',…)`.
 
 ### 0b. Page and Keyword
 
@@ -118,7 +112,7 @@ Before doing any research:
 
 1. **Existing SEO plan**: search `vault_notes` (`cc-knowledge-api.py "<page> seo plan"`) for an existing plan matching this page.
 2. **SEO Page Tracker**: Check the property README for an existing row
-3. **CC tasks**: Query the CC task store (`public.tasks`) for existing open tasks on this page. Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' AND name ILIKE '%<Page Name>%'"`. If found, report outstanding ones.
+3. **CC tasks**: Query the CC task store (`public.tasks`) for existing open tasks on this page. Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on FROM tasks WHERE status='todo' AND project_slug='<card project_slug>' AND name ILIKE '%<Page Name>%'"`. If found, report outstanding ones.
 
 If a plan file exists with Ahrefs research already done (from a previous run), ask Pete if he wants to skip to Phase 2 (Surfer) or re-run everything fresh.
 
@@ -373,7 +367,7 @@ Present the complete plan to Pete. Include the balanced view from Phase 3c so he
 
 ## Phase 5 -- CC Task Setup
 
-His tasks live in the CC task store (`public.tasks`). Use the page's `project_slug` NAME (`SY-Website`, `CD-Website`, or `CD-Other-Sites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
+His tasks live in the CC task store (`public.tasks`). Use the page's `project_slug` NAME from its card (e.g. `SY-Website`, `CD-Website`, `OS-OConnors-Website`, `CD-Microsites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect, `OS-` → One System). Confirm it is active before inserting. CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 
 ### 5a. Check for Existing Tasks
 

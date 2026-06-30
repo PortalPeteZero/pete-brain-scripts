@@ -3,6 +3,7 @@
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
 ## 2026-06-30
+- §0d creates the card via the new `cc-property-api.py`; identify property + active project from the live card, not `ls Properties/` or a local README; removed CD-Other-Sites sub-folder refs; link [[page-seo-workflow]].
 - Step 2a guard: the Work Log is HISTORY, not current state — always read current state from the live source first (repo / live page / CC card / Ahrefs); use the Work Log only to orient on what we last did + whether it worked. See [[work-log]].
 
 ## 2026-06-29

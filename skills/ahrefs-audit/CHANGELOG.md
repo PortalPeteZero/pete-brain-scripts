@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- Same as audit-review — read the live card instead of the frozen property→project→ID table; removed all CD-Other-Sites / `Projects/.../seo/` refs; STOP-on-null contract.
+
 ## 2026-05-20
 - SKILL.md slim-down: stripped v2.1-v2.4 version banners + trailing "Skill version 2.0" footer. Lifted v2.2's property_type + page-seo-workflow guidance into the body where it belongs operationally. Stripped inline "(v2.1)" tag on the GSC API note. SKILL.md now reads as current state without historical commentary.
 

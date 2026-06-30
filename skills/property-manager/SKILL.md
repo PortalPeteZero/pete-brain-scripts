@@ -78,13 +78,13 @@ Read the property's card in the **CC Properties module** (`/m/properties`, or qu
 - Tracking IDs (GA, GTM, Ahrefs, etc.)
 - Department
 
-If you're not sure which property Pete means, search: `ls Properties/` or `grep -rl "domain" Properties/`. Property folder names use spaces (e.g. "Sygma Solutions Website"), project folder names use hyphens (e.g. "SY-Website" parent + sub-projects like "seo" / "articles" / "ads"; the old standalone "Sygma-Solutions-Website-SEO" project was folded into SY-Website/seo on 2026-05-06).
+If you're not sure which property Pete means, list the live cards: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name, f->'declared'->>'domain' FROM property_declarations ORDER BY name"` (or the CC Properties module). Each card carries the property's domain, stack, ids and active `project_slug` — never a local `Properties/` folder (the local tree is retired).
 
 ### 0b. Read the GitHub configuration
 
-Read `Library/processes/github-configuration.md` to get:
+Read the `github-configuration` note in `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py "github configuration"`) to get:
 
-- The PAT for the correct GitHub account
+- The PAT for the correct GitHub account (materialised at `/tmp/pbs/Library/processes/secrets/github-pat`)
 - The clone/push URL format
 - The pre-project checklist
 
@@ -118,8 +118,9 @@ This is a new property. Follow the intake workflow:
 1. **Agree the project name** -- ask Pete. This becomes `{project-name}` everywhere.
 2. **Gather what Pete knows** -- domain (or "none yet"), tech stack, GitHub repo (or "not yet"), which GitHub account, hosting, department, Supabase (or "none"), description. Don't push for fields that don't apply -- not everything has a repo or database and that's fine.
 3. **Register it in the cloud**:
-   - Create the property's **card** in the CC Properties module (`projects` / Properties module) with whatever details we have.
+   - Create the property's **card** with the card writer — `VAULT=/tmp/pbs python3 /tmp/pbs/cc-property-api.py --create "<Name>" --entity "<Sygma|Canary Detect|Personal|One System|El Atico>" [--domain <d>] [--github <owner/repo>]` — then set whatever SEO/infra ids we have: `cc-property-api.py --set "<Name>" ahrefs=<id> surfer=<id> project_slug=<slug> gsc=<…> ga4=<…>`. (This card is the single live source the SEO skills read — see [[page-seo-workflow]].)
    - Create the property's **Google Drive** folder for active project work + reference data.
+   - If SEO work is starting, follow the **standard wire-up** in [[page-seo-workflow]] (card → project + `SEO` bucket → Work Log).
 4. **Map upkeep is automatic** — the cloud map (`cc_map`) regenerates on its own.
 5. **Remind Pete** to update [[GitHub-Repo-Property-Master.xlsx]] if appropriate.
 6. **Log in the daily log**.
@@ -201,7 +202,7 @@ Read the property's home to understand current state:
 
 ### 2b. Read any active projects
 
-Check for active project work related to this property (per the parent + sub-projects pattern). Project structure is **parent + sub-projects direct under parent**. For website properties, look at the parent (e.g. `SY-Website`, `CD-Website`) AND walk the sub-projects. Actual SY-Website sub-folders: `seo/ articles/ improvements/ youtube/ ads/ backlinks/`. CD-Website: `seo/ articles/ migration/`. CD-LeakGuard: `crm/ tiered/ communities/`. CD-Other-Sites: `the-leaky-finders/ leakguard-lanzarote/ pipebusters-lanzarote/ leakbusters/`.
+Check for active project work related to this property. The property's active project is on its **card** (`project_slug`); confirm it live and read its open work: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT slug,status FROM projects WHERE slug='<card project_slug>'"` then `SELECT name,priority,due_on,bucket FROM tasks WHERE project_slug='<slug>' AND status='todo'`. Within a project, work is grouped into **buckets** (e.g. an `SEO` bucket), not on-disk sub-folders. The website properties map to: Sygma → `SY-Website`, Canary Detect main → `CD-Website`, O'Connor's → `OS-OConnors-Website`, Lanzarote Lates → `PA-Lanzarote-Lates`, the CD Lanzarote microsites → `CD-Microsites`.
 
 > [!note] Historical / changelog context — NOT an active instruction
 > The following old standalone projects were folded into the parent + sub-project pattern on 2026-05-06: CD-Canary-Detect-Website-SEO, SY-Solutions-Website-SEO, SY-Google-Ads, SY-Articles-and-Blogs, SY-Main-Site-Improvements, SY-YouTube, SY-Backlink-SEO, CD-Articles-and-Blogs, CD-Canary-Detect-Main-Site-Migration, CD-LeakGuard-CRM/Tiered/Communities, CD-Leakbusters-Migration. This list is kept only so that if you encounter one of those names referenced in an old document, you know it now maps to a sub-project under a parent — do not act on these names as live project folders.
@@ -584,7 +585,7 @@ VALUES (gen_random_uuid(), '<task name>', '<P1|P2|P3|P4>', '<due-date or NULL>',
         'todo', 'claude', '<notes>');
 ```
 
-Use the property's `project_slug` NAME (e.g. `SY-Website`, `CD-Website`, `CD-Other-Sites`, `OS-OConnors-Website`), not a GID. The entity follows the prefix: `SY-`/`Team-` → Sygma, `CD-` → Canary Detect, `OS-` → One System.
+Use the property's active `project_slug` NAME from its card (e.g. `SY-Website`, `CD-Website`, `OS-OConnors-Website`, `CD-Microsites`), not a GID, and confirm it is active first. The entity follows the prefix: `SY-`/`Team-` → Sygma, `CD-` → Canary Detect, `OS-` → One System.
 
 ---
 

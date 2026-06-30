@@ -156,7 +156,7 @@ Update `BASELINE_START` and `BASELINE_END` constants at the top of `build_data.p
 
 ### Odoo (camello-blanco-sl.odoo.com)
 
-Single-company instance. All CD bookkeeping. Helper: `/tmp/pbs/odoo-api.py`. JSON-RPC. Auth via API key in `Library/processes/odoo-api-configuration.md`.
+Single-company instance. All CD bookkeeping. Helper: `/tmp/pbs/odoo-api.py`. JSON-RPC. Auth via the API key in the CC `odoo-api-configuration` note (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py "odoo api configuration"`); the key is materialised at `/tmp/pbs/Library/processes/secrets/`.
 
 Key accounts:
 - 640000 Sueldos y Salarios

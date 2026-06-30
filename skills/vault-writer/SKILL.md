@@ -232,14 +232,14 @@ All crons run on **Railway**. The source of truth is the live `crons` table in t
 When running on claude.ai web without file access, produce vault-ready markdown blocks Pete can paste directly:
 
 ```markdown
-%% Save to: Projects/CD-Website/seo/files/keyword-research.md %%
+%% Route: ingest to CC vault_notes, tagged CD-Website (knowledge) — or the property's Google Drive folder if it's a file %%
 ---
 type: research
 date: 2026-05-06
 project: CD-Website
-sub_project: seo
+bucket: SEO
 department: canary-detect
-tags: [seo, research]
+tags: [seo, research, CD-Website]
 ---
 
 Content here with [[wikilinks]] to projects and people.

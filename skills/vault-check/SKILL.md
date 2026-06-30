@@ -22,7 +22,7 @@ description: >
 > [!important] What this skill audits
 > The Command Centre is a cloud system: tools in GitHub `pete-brain-scripts` (pulled to `/tmp/pbs`), secrets in the CC `secrets` table, knowledge in `vault_notes`, files in Google Drive (`drive_files` index), tasks in `public.tasks`, session logs in `daily_log`, crons on Railway. This audit checks all of it is coherent and points where it should:
 > 1. **Skeleton integrity** — the tiny `CLAUDE.md` bootstrap + `~/.config/pete-cc/` (kernel, caches, hooks).
-> 2. **Skills** — each SKILL.md is cloud-aligned (tool paths are `/tmp/pbs`, no inline secrets, no stale routing) and its `.skill` archive matches source.
+> 2. **Skills** — each SKILL.md is cloud-aligned (tool paths are `/tmp/pbs`, no inline secrets, no stale routing) and its `.skill` archive matches source. Run the anti-drift gate: `VAULT=/tmp/pbs python3 /tmp/pbs/skill-drift-check.py` — it flags any skill referencing an archived/nonexistent project (live `public.projects` lookup) or a retired local path, and reports the same rot in the property cards. Clean = exit 0.
 > 3. **Scheduled tasks / crons** — the live Railway estate (`public.crons` / `/m/automations-log`) matches intent.
 > 4. **Cloud-homes consistency** — `vault_notes` has 0 un-embedded notes; `drive_files` is fresh; secrets are complete in the CC table; the reconcile gate passes (`VAULT=/tmp/pbs python3 /tmp/pbs/vault-reconcile-gate.py`).
 > 5. **Processes / connections / APIs, Sygma Hub Drive, CLAUDE + MAP semantics, daily-log drift.**

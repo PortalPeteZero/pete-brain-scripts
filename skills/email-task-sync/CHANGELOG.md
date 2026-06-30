@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- `Library/processes/email-workflow-state.md` → the CC `email-workflow-state` note (all refs).
+
 ## 2026-06-06
 - **Action/Task split** (plan: Projects/PA-General/files/email-workflow-plan-2026-06-06-action-task-split.md): Step 4 documents both exemptions ([no-sync-close] marker — now also the Asana-only class; Team-Finances blanket) + closure audit comments (wrapper implements). Step 5 delegation closures get the same comment. Step 6: orphans are tray-class by definition (no marker) + routing chain now points at vault-routing#task-routing-decision-tree. New Cron-mode section (daily 07:15 run: no questions, suggestions → daily note, best-match routing only, 2-strike failure escalation).
 

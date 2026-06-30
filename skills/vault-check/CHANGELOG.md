@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- Phase 2 (Skills) runs the new `skill-drift-check.py` anti-drift gate (archived/nonexistent project refs + retired local paths, live-resolved; also scans property cards).
+
 ## 2026-05-20
 - SKILL.md slim-down: stripped v1.1-v1.5 version banner block (~25 lines). Stripped inline "(NEW v1.4)" tag from Phase 9 heading. SKILL.md reads as current operational state; banners moved here.
 

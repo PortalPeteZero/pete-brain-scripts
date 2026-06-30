@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- Read property Ahrefs/Surfer/project_slug from the LIVE card (`cc-property-api.py --get`), not a hardcoded mapping table; CD-Other-Sites → CD-Microsites; failure-contract (stop on a null id). See [[page-seo-workflow]].
+
 ## 2026-06-29
 - Phase 1e — close the loop: write the position-movement verdict back to the Work Log row's outcome (unknown/too-early → worked / no-change / regressed). See [[work-log]].
 

@@ -47,7 +47,7 @@ User says any of:
 - Calendar API helper: `/tmp/pbs/calendar-api.py`
 - CC task store: `public.tasks`, CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 - Read/Write/Edit tools for vault operations
-- State file: `Library/processes/email-workflow-state.md`
+- State file: `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`
 
 ## Mode A vs Mode B vs Mode C -- reminder block (printed at start of every triage)
 
@@ -233,8 +233,8 @@ Bare `Label: X` is **forbidden** in proposals.
 
 Label-routing logic (which X to pick once verb is chosen):
 - Sender domain matches a known customer/supplier/project label → propose that label
-- Sender domain matches an existing `Projects/{prefix}-{slug}/` vault folder BUT no Gmail label exists → demand-driven label rule
-- Sender domain matches a `Personal/{area}/` vault folder (scouts, los-claveles, passion-fit, freemasonry, finance, family) BUT no Gmail label exists → demand-driven label rule applies same way (propose `Personal/PA-{area}` or `Personal/AT-{family-area}` Gmail label creation in same operation as filing)
+- Sender domain matches an existing CC project (`public.projects`, active) BUT no Gmail label exists → demand-driven label rule
+- Sender domain matches a known Personal area (scouts, los-claveles, passion-fit, freemasonry, finance, family) BUT no Gmail label exists → demand-driven label rule applies same way (propose `Personal/PA-{area}` or `Personal/AT-{family-area}` Gmail label creation in same operation as filing)
 - Sender is a utility (Stripe, GitHub, Supabase, Vercel) → propose appropriate filing label
 - Sender is unknown → propose `Clear` or surface for discovery
 
@@ -416,7 +416,7 @@ The helper exists and is documented — what was missing in practice was the act
 VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{target-entity}"
 ```
 
-- **target-entity** = the filing label converted to its entity slug (e.g. `SY-AppearOnline`, `SY-General`); the enricher resolves it to the entity's Drive home + `vault_notes` record
+- **target-entity** = the filing label converted to its entity/project slug (e.g. `SY-Clancy`, `CD-LeakGuard`, or the bare entity `Sygma`); the enricher resolves it to the entity's Drive home + `vault_notes` record
 - **For supplier/customer**: enricher auto-pulls substantive attachments to the entity's Drive folder, body extracts to its `vault_notes` record, contacts to the CC record's Key contacts
 - **Result is idempotent**: re-running on the same thread is safe (skips files that already exist)
 - **Skip rules baked in**: PA-General, operational labels, signature cruft, auto-reply threads
@@ -513,13 +513,13 @@ During the round, watch for patterns and surface inline AT STAGE BOUNDARIES (not
 ### A. New customer/supplier discovery
 
 - 3+ emails from an unknown sender domain in rolling 30 days → suggest creating a customer/supplier folder + label + filter (full structure proposal -- see Label creation pattern)
-- Check `email-workflow-state.md` for declined suggestions BEFORE surfacing
+- Check the `email-workflow-state` note for declined suggestions BEFORE surfacing
 - If yes → onboarding ritual (canonical: `[[vault-routing#onboarding-rituals]]`)
 - If no → record decline
 
 ### B. Demand-driven project label
 
-When an email is unlabelled with no Customers/Suppliers/Projects label AND the sender domain (or subject keyword) matches an existing `Projects/{prefix}-{slug}/` vault folder, propose creating the matching Gmail label inline.
+When an email is unlabelled with no Customers/Suppliers/Projects label AND the sender domain (or subject keyword) matches an existing CC project (`public.projects`, active), propose creating the matching Gmail label inline.
 
 Cross-link: `[[vault-routing#demand-driven-project-gmail-labels]]`.
 
@@ -617,7 +617,7 @@ Home decision per entity type (default proposal, Pete can override):
 4. **Staged batches, 10-row hard cap.** Stages run in fixed order (1 noise → 2 relationships → 3 internal → 4 personal). Each stage gets its own go/cancel. No more 25-row tables.
 5. **Never auto-execute structural changes without confirmation.** Filters, labels, folders, new `project_slug` values -- all require Pete's y/edit before creation.
 6. **Apply existing labels to existing threads -- no confirmation needed.** The triage decision is the confirmation; the labelling itself is the action.
-7. **Respect "no" decisions.** Record declined suggestions in `Library/processes/email-workflow-state.md`. Never re-suggest.
+7. **Respect "no" decisions.** Record declined suggestions in `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`. Never re-suggest.
 8. **Pattern suggestions surface at stage boundaries, not mid-stage.** Keep stages clean; pattern proposals are the bridge between stages.
 9. **Handle sub-requests gracefully.** "Hold this stage, let's onboard Clancy first" → pause, run onboarding, then resume.
 10. **Calendar proposals never auto-create.** Always show event details (incl. tz + calendar) for confirmation.
@@ -635,7 +635,7 @@ Pete can invoke specific actions without full triage:
 - "label {thread} as X" -- just label, keep in inbox
 - "file {thread} under X" -- label + archive
 - "reply in {project}" -- apply `Replies` Gmail label + filing label + archive thread (atomic). **NO task** — the Replies label is the record; Pn is urgency only. Tray items only: Pete owes a response via the email. *Overlap only* (reply gated on work first): add a `Task` alongside (that task carries `[no-sync-close]`).
-- "task Pn in {project}" -- create a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) at priority Pn (`[no-sync-close]` in notes) + filing label + archive thread. **No Replies label** — CC-only work item. Same due-date defaults/overrides. (`project_slug` carries the NAME, e.g. `'General'`; SY-General / CD-General / EA-General are routing names, not GIDs.)
+- "task Pn in {project}" -- create a CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`) at priority Pn (`[no-sync-close]` in notes) + filing label + archive thread. **No Replies label** — CC-only work item. Same due-date defaults/overrides. (`project_slug` carries the NAME, e.g. `'General'` — the live catch-all; the old per-entity `SY-General`/`CD-General` projects were archived into it.)
 - "replies" / "my replies" (or legacy "actions") -- run the Step 8a walker standalone against the current tray.
 - "de-tray this" -- convert a reply-item into CC-only work: if a task is linked, append `[no-sync-close]` to it then strip the Replies label; if it's label-only, make it a `Task` first, then strip the Replies label. Reverse ("tray this") = remove marker (or the task) + re-apply Replies.
 - "hand to {person}" -- `Delegated` Gmail label + CC task (`INSERT INTO tasks (…, project_slug, …)` into `public.tasks`, `project_slug='General'`) + draft chaser
@@ -652,7 +652,7 @@ Pete can invoke specific actions without full triage:
 - Calendar API: `[[calendar-api-configuration]]`
 - Label scheme: `[[gmail-label-scheme]]`
 - Sister skill: `email-task-sync` (reconciliation engine; END-OF-TRIAGE OFFERS this, does not auto-chain)
-- State file: `Library/processes/email-workflow-state.md`
+- State file: `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`
 - History classifier helper: `/tmp/pbs/triage-action-classify.py`
 - Validator helper: `/tmp/pbs/triage-validator.py`
 - Build history (archived): `[[email-workflow-plan-2026-04-24]]`

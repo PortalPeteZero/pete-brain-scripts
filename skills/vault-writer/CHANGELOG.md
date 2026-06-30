@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-06-30
+- Web-Mode save-path example → cloud home (CC vault_notes / Drive), not the retired `Projects/.../seo/` local tree.
+
 ## 2026-06-29
 - Step 3a gains a log-on-ship peer to close-on-ship — write a Work Log row (`worklog.py`) for each discrete ship in the same end-of-session pass. See [[work-log]].
 

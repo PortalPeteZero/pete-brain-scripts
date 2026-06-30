@@ -84,18 +84,15 @@ Compare current 28-day window against the previous 28-day window on the same que
 
 Ask Pete which property, or infer from context. Read the property's CC record (Properties module) + its SEO plans in `vault_notes`.
 
-**Property-to-project mapping (post 2026-05-06 restructure):**
+**Read the property's IDs + project from its LIVE card — never a table baked into this skill** (those rot; the card is the single source). See [[page-seo-workflow]] for the full model.
 
-| Property | Parent Project | SEO sub-project path | Ahrefs Project | Surfer Workspace |
-|----------|------------|----------|----------------|------------------|
-| Sygma Solutions Website | SY-Website | `Projects/SY-Website/seo/` | 9613452 | 1312139 |
-| Canary Detect Main Website | CD-Website | `Projects/CD-Website/seo/` | 9613451 | 1312141 |
-| The Leaky Finders Website | CD-Other-Sites | `Projects/CD-Other-Sites/the-leaky-finders/` | 9613450 | Yes |
-| LeakGuard Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/leakguard-lanzarote/` | 9613445 | 1330651 |
-| Pipebusters Lanzarote | CD-Other-Sites | `Projects/CD-Other-Sites/pipebusters-lanzarote/` | 9613446 | Yes |
-| Leakbusters Lanzarote Website | CD-Other-Sites | `Projects/CD-Other-Sites/leakbusters/` | 9613448 | 1312143 |
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-property-api.py --get "<Property Name>"
+```
 
-In the CC task store (`public.tasks`): SEO work is tracked by `project_slug`. Main sites use the parent project_slug (`SY-Website`, `CD-Website`); CD-Other-Sites secondary sites use `CD-Other-Sites`. File review tasks by inserting with the right `project_slug` NAME via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`).
+Take `ahrefs_project_id`, `surfer_workspace`, `project_slug`, `gsc_property`, `ga4_property_id` from it. **If a field you need is null → STOP and ask Pete; never run an audit against a blank Ahrefs/Surfer id.** Orientation only (the truth is each card's `project_slug`): Sygma → `SY-Website`, Canary Detect main → `CD-Website`, O'Connor's → `OS-OConnors-Website`, Lanzarote Lates → `PA-Lanzarote-Lates`, the CD Lanzarote microsites (Leaky Finders, LeakGuard Lanzarote, Pipebusters, Leakbusters) → `CD-Microsites`.
+
+In the CC task store (`public.tasks`): SEO work is tracked by the card's `project_slug` (bucket `SEO`). File review tasks via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (`INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,bucket,status,source,notes) VALUES (gen_random_uuid(),…,'<card project_slug>','SEO','todo','claude',…)`). Verify the project is active first: `SELECT slug,status FROM projects WHERE slug='<X>'`.
 
 ### 0b. Find What's Due for Review
 
@@ -118,7 +115,7 @@ If Pete came in asking about a specific page, skip the scan and go straight to t
 
 ### 0c. Check the CC for Review Tasks
 
-Query the CC task store (`public.tasks`) for the page's open tasks by `project_slug`. Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on, status FROM tasks WHERE status='todo' AND project_slug='<SY-Website|CD-Website|CD-Other-Sites>' ORDER BY due_on"` to find:
+Query the CC task store (`public.tasks`) for the page's open tasks by `project_slug` (the value read from the property's card in 0a). Run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, due_on, status FROM tasks WHERE status='todo' AND project_slug='<card project_slug>' ORDER BY due_on"` to find:
 
 - The "Fortnightly review" task -- is it due? Overdue?
 - Any other outstanding tasks for the page that might affect the review
@@ -378,7 +375,7 @@ His tasks live in the CC task store (`public.tasks`). CRUD via `VAULT=/tmp/pbs p
 - **Create** a new "Fortnightly review -- [Page Name] (due [date])" task if ongoing monitoring is needed (due date = today + 14 days): `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Fortnightly review -- [Page Name] (due [date])','P2',(current_date+14),'<entity>','<project_slug>','todo','claude','<notes>')`
 - **Create** any follow-up tasks identified in the verdict (content top-up, backlink push, technical investigation) with the same INSERT pattern
 
-Use the page's `project_slug` NAME (`SY-Website`, `CD-Website`, `CD-Other-Sites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect).
+Use the page's `project_slug` NAME from its card (e.g. `SY-Website`, `CD-Website`, `OS-OConnors-Website`, `CD-Microsites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect, `OS-` → One System). Confirm it is active (`SELECT slug,status FROM projects WHERE slug='<X>'`) — never insert against an archived project.
 
 ### 4d. Daily Log
 

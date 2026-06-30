@@ -33,7 +33,7 @@ Also: **offered at the end of every `triage` session** (opt-in y/n after the Rep
 
 - Gmail helper: `/tmp/pbs/gmail-api.py` · Calendar helper: `/tmp/pbs/calendar-api.py`
 - CC task store: `public.tasks`, CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
-- State file: `Library/processes/email-workflow-state.md` (declined suggestions, sender→label observations).
+- State file: `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")` (declined suggestions, sender→label observations).
 - Entity homes for parity/filing: the entity's **Google Drive** folder (`drive_files` via `cc-sql.py`) + its `vault_notes` record.
 
 ## Core principles
@@ -175,7 +175,7 @@ Report: "N `Replies` threads have no task (expected — surfaced for awareness, 
 
 ### Step 7: Pattern detection
 
-**7a — Auto-filter suggestions** (compute fresh from Gmail each run; do NOT store in state). For each label of interest: `gmail-api.py search "label:{label} newer_than:90d"` grouped by sender domain; `gmail-api.py list_filters()` for senders already covered. For each domain→label pair with count ≥ 3, no existing filter, no recorded decline (check `email-workflow-state.md > Declined auto-filter suggestions`): surface in Step 8 with a proposed filter (`from:*@domain OR to:*@domain → apply {label}`, apply only, never remove INBOX). y → create + set `auto_filter: true`; n → record decline. **NEVER auto-create filters.**
+**7a — Auto-filter suggestions** (compute fresh from Gmail each run; do NOT store in state). For each label of interest: `gmail-api.py search "label:{label} newer_than:90d"` grouped by sender domain; `gmail-api.py list_filters()` for senders already covered. For each domain→label pair with count ≥ 3, no existing filter, no recorded decline (check `the `email-workflow-state` note > Declined auto-filter suggestions`): surface in Step 8 with a proposed filter (`from:*@domain OR to:*@domain → apply {label}`, apply only, never remove INBOX). y → create + set `auto_filter: true`; n → record decline. **NEVER auto-create filters.**
 
 **7b — Strategic routing patterns**: when sync sees a routing decision repeated, after 5 confirmed-without-override occurrences propose promotion into the Master routing matrix. Pete decides.
 
@@ -243,13 +243,13 @@ If nothing changed: `sync tasks complete — no changes (X linked tasks checked,
 7. **Calendar revisit on completion sweep.** A closed thread with a flight/hotel/car/meeting mention not on the calendar → flag it (don't auto-add). Default tz Atlantic/Canary, default calendar Pete's primary; "put this in {name}'s calendar" → resolve via `list_calendars()`. See [[calendar-api-configuration]].
 8. **Surface `Replies`/* threads with no task — NEVER auto-create.** The Replies label IS the record; a task is made only when Pete explicitly asks (overlap/de-tray), and then it carries `[no-sync-close]`.
 9. **Filters, labels, folders, new `project_slug` values — ALWAYS confirmed.** Pattern detection surfaces; Pete confirms; sync executes.
-10. **Respect the declined-suggestion list** in `email-workflow-state.md` before surfacing any suggestion.
+10. **Respect the declined-suggestion list** in `the `email-workflow-state` note` before surfacing any suggestion.
 11. **Re-prioritisation is not closure.** Close-on-label-removed fires only when NEITHER `Replies` NOR `Delegated` remains.
 12. **Trashed thread = action complete.** Close the task with a note.
 
 ## Typical run
 
-User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-sync.py` → reads `email-workflow-state.md` → executes the 8 steps → produces the consolidated report (incl. any `Replies`-without-task threads surfaced for awareness) → lists any y/n decisions. If Pete answers y/n, those execute and a short follow-up confirms.
+User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-sync.py` → reads `the `email-workflow-state` note` → executes the 8 steps → produces the consolidated report (incl. any `Replies`-without-task threads surfaced for awareness) → lists any y/n decisions. If Pete answers y/n, those execute and a short follow-up confirms.
 
 ## Related skills
 
@@ -258,7 +258,7 @@ User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-syn
 
 ## Design references
 
-- Operating manual: `[[email-workflow]]` · Routing: `[[vault-routing]]` · Gmail API: `[[gmail-api-configuration]]` · Calendar API: `[[calendar-api-configuration]]` · Label scheme: `[[gmail-label-scheme]]` · State file: `Library/processes/email-workflow-state.md`
+- Operating manual: `[[email-workflow]]` · Routing: `[[vault-routing]]` · Gmail API: `[[gmail-api-configuration]]` · Calendar API: `[[calendar-api-configuration]]` · Label scheme: `[[gmail-label-scheme]]` · State file: `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`
 
 ## Related lessons
 
