@@ -182,7 +182,7 @@ Or call the equivalent function library-side. The output is a JSON file with one
 
 ### Step 4.6: Enquiry-reply recognition (NEW — hand tracked enquiries to the Engine)
 
-A reply to a training enquiry we already sent is NOT a generic inbox row — it's the next turn of a tracked enquiry, and it belongs to the **[[workflow-design|Enquiry Engine]]** (lifecycle in the Portal CRM, learning in `vault_notes`). Before Action-verb selection, flag each thread that is an enquiry reply. A thread is a tracked enquiry reply if ANY of:
+A training enquiry — whether a **brand-new inbound** (website contact-form submission, cold course enquiry) OR a **reply** on one we already sent — is NOT a generic inbox row. It belongs to the **[[workflow-design|Enquiry Engine]]** (lifecycle in the Portal CRM, learning in `vault_notes`). Before Action-verb selection, flag each thread that is an enquiry. A thread is a tracked enquiry if ANY of:
 
 1. **Thread id match** — the Gmail `thread_id` appears in an enquiry note's frontmatter:
    `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "select title from vault_notes where type='enquiry' and frontmatter->>'thread_id' = '<thread_id>'"`
@@ -193,7 +193,8 @@ When matched, **don't classify it as a generic `reply`/`task`** — route it to 
 - Run the loop (`reply to enquiry in {company}`): RETRIEVE precedents (`cc-knowledge-api.py semantic …`), read this contact's timeline, draft the next reply **Mode B** (Pete signs off).
 - Log the inbound reply + advance the contact + (re)set/close the chase in ONE write:
   `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <touch.json> --apply` (activity kind `reply`, stage move if it progressed; te-log closes the prior chase and sets the next). Pass the `thread_id` and leave `activity.body` empty — te-log **auto-pulls the sent reply off the Gmail thread**; add a one-line `knowledge` takeaway (te-log warns if missing).
-- In the ops table mark these `Ask = reply` but note **"→ Enquiry Engine"** so they're handled by the loop, not a generic Replies-tray label. (A booking forward — "Sent to Sue" — moves the contact to **Customer/won**.)
+- **Apply BOTH the `Projects/SY-Training-Enquiries` filing label AND the `Replies` label** (in addition to the EE chase task in `public.tasks`). This is a deliberate exception to the "enquiries don't go in the generic Replies tray" idea — Pete corrected this 2026-06-30: **an EE enquiry MUST also carry `Replies` so it surfaces in his tray as in-flight / awaiting him.** The TE label + chase task + CRM stage are the Engine's lifecycle tracking; the `Replies` label is Pete's at-a-glance "this enquiry is picked up and waiting on my send" view. Without it, Pete cannot tell the enquiry has been dealt with. **Strip the `Replies` label only when the reply is actually sent** (the EE loop / Replies walker / a later `enquiries` sweep does this — same moment the chase advances/closes). This holds whether or not a draft exists yet: routed-to-deal-later still gets `Replies` so it stays visible.
+- In the ops table mark these `Ask = reply`, Action **"Reply (tray) → Enquiry Engine"**, and note both labels (`Replies` + `SY-Training-Enquiries`). (A booking forward — "Sent to Sue" — moves the contact to **Customer/won** and the `Replies` label comes off.)
 
 This is the cross-skill hook the cockpit relies on: triage recognises the reply, the Engine owns the lifecycle + learning. Detection mirrors the manual `enquiries` sweep (Pete-triggered — there is NO cron).
 
