@@ -36,17 +36,42 @@ def _login(c):
         return r.headers.get("Authorization").replace("Bearer ","")
 
 def _get(base, tok, path):
-    req = urllib.request.Request(base+path, headers={"Authorization":"Bearer "+tok,"Accept":"application/json"})
+    req = urllib.request.Request(base+path, headers={"Authorization":"Bearer "+tok,"Accept":"application/json","User-Agent":"curl/8"})
     with urllib.request.urlopen(req, context=_ctx, timeout=40) as r:
         return json.loads(r.read())
 
+def _put(base, tok, cid, path, body):
+    req = urllib.request.Request(base+path, data=json.dumps(body).encode(), method="PUT",
+        headers={"Authorization":"Bearer "+tok,"Accept":"application/json","Content-Type":"application/json","X-Company-Id":str(cid),"User-Agent":"curl/8"})
+    with urllib.request.urlopen(req, context=_ctx, timeout=40) as r:
+        return r.status, json.loads(r.read() or "{}")
+
+# WRITE: set the call-in interval in HOURS via countsThreshold (device transmits every N records;
+# with 15-min logging, 8h => 32 records). Keeps logging at <logging_min> MINUTES. Round-trips the
+# device's own config so nothing else changes. Applies on the device's next call-in.
+def _set_transmission(base, tok, cid, numbers, hours, logging_min=15):
+    for n in numbers:
+        cfg = _get(base, tok, f"/api/devices/{n}/config")
+        cfg["recordPeriod"]="MINUTES"; cfg["every"]=logging_min
+        cfg["countsThreshold"]=round(hours*60/logging_min)
+        st,_=_put(base, tok, cid, f"/api/devices/{n}/config", cfg)
+        chk=_get(base, tok, f"/api/devices/{n}/config")
+        ok = st==200 and chk.get("countsThreshold")==cfg["countsThreshold"] and chk.get("every")==logging_min
+        print(f"{n}: countsThreshold={chk.get('countsThreshold')} every={chk.get('every')}{chk.get('recordPeriod')} -> {'OK' if ok else 'FAIL '+str(st)}")
+
 def main():
-    c = _creds(); base = c.get("base_url",BASE_DEFAULT); tok = _login(c)
+    c = _creds(); base = c.get("base_url",BASE_DEFAULT); tok = _login(c); cid = c.get("company_id",1251)
     cmd = sys.argv[1] if len(sys.argv)>1 else "fleet"
     if cmd == "get":
         print(json.dumps(_get(base,tok,sys.argv[2]), indent=2)); return
     if cmd == "config":
         print(json.dumps(_get(base,tok,f"/api/devices/{sys.argv[2]}/config"), indent=2)); return
+    if cmd == "set-transmission":
+        # set-transmission <deviceNumber|all> <hours> [logging_minutes]
+        target=sys.argv[2]; hours=float(sys.argv[3]); lmin=int(sys.argv[4]) if len(sys.argv)>4 else 15
+        nums=[d["number"] for d in _get(base,tok,"/api/v2/devices").get("content",[])] if target=="all" else [target]
+        print(f"Setting {len(nums)} device(s) to {hours}h call-in + {lmin}-min logging (applies on next call-in):")
+        _set_transmission(base,tok,cid,nums,hours,lmin); return
     if cmd == "openapi":
         spec=_get(base,tok,"/v2/api-docs"); 
         for p,ms in sorted(spec.get("paths",{}).items()):
