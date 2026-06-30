@@ -521,7 +521,26 @@ class GmailAPI:
         if subject and not subject.lower().startswith("re:"):
             subject = "Re: " + subject
         if to is None:
-            to = _h(last, "Reply-To") or _h(last, "From")
+            # Derive the recipient from the latest message NOT sent by us — replying to
+            # msgs[-1].From blindly addresses our own last touch back to ourselves when the
+            # thread was forwarded/handled on our side (customer-facing bug, 30 Jun 2026).
+            import re as _re
+            own = set()
+            try:
+                own = {(sa.get("sendAsEmail") or "").lower() for sa in self.list_send_as()}
+            except Exception:
+                pass
+            def _addr(s):
+                mm = _re.search(r"[\w.+-]+@[\w.-]+", s or "")
+                return mm.group(0).lower() if mm else ""
+            to = ""
+            for msg in reversed(msgs):
+                cand = _h(msg, "Reply-To") or _h(msg, "From")
+                if cand and _addr(cand) not in own:
+                    to = cand
+                    break
+            if not to:  # whole thread is us — fall back to the latest sender
+                to = _h(last, "Reply-To") or _h(last, "From")
         fn = self.create_draft if as_draft else self.send
         return fn(to, subject, body, cc=cc, from_=from_, html=html, thread_id=thread_id,
                   signature=signature, in_reply_to=msg_id or None, references=references)
