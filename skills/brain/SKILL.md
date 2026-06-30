@@ -58,6 +58,8 @@ Sygma training-enquiry handling is a **living learning machine**. The full opera
 
 Non-negotiable gates (detail in the note): **read the ENTIRE thread before drafting** (what we've sent / they asked / whose court the ball is in); **retrieve precedents before drafting** (never cold); **Mode B — Pete signs off every send, never auto-send**; chase only when ≥3 days *and* the ball is with them.
 
+**⛔ Capture-on-send is a hard gate.** A send is NOT done until `te-log --apply` has run for it (CRM activity + stage, knowledge note, chase task) — this holds for EVERY exit path, including just sending a queued draft or a batch of signed-off drafts, not only the `enquiry` loop. **Never de-tray an enquiry by hand** — `te-log --apply` does de-tray + archive + CRM + knowledge + chase in one; manual label-stripping silently skips the capture (failure 30 Jun 2026). After capture, close any duplicate chase the triage routing already made.
+
 Verbs: **`enquiry`** (handle one inbound) · **`enquiries`** (manual sweep, Pete-triggered, NO cron) · **`reply to enquiry in {X}`** (the loop on one) · **`Sent to Sue`** (booking handoff → Customer/won). All follow [[workflow-design]].
 
 ## Markdown formatting
