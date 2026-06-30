@@ -22,8 +22,10 @@ Usage (CLI):
   python3 gmail-api.py get-thread THREAD_ID
   python3 gmail-api.py download-attachment MSG_ID ATT_ID /path/to/save.pdf
   python3 gmail-api.py modify-thread THREAD_ID --add LABEL_ID --remove INBOX
-  python3 gmail-api.py send to@example.com "Subject" "Body"
-  python3 gmail-api.py draft to@example.com "Subject" "Body"
+  python3 gmail-api.py send to@example.com "Subject" "Body" [THREAD_ID]
+  python3 gmail-api.py draft to@example.com "Subject" "Body" [THREAD_ID]
+  python3 gmail-api.py reply THREAD_ID "Body"          # threaded reply (To/Subject/In-Reply-To auto from thread)
+  python3 gmail-api.py reply-draft THREAD_ID "Body"    # same, saved as a draft on the thread
   python3 gmail-api.py sweep [--dry-run]      # inverted-design sweep (no protect list)
   python3 gmail-api.py audit-sent [DAYS]      # find sent items missing org labels (default 14 days)
   python3 gmail-api.py audit-sent [DAYS] --apply LABEL_ID    # apply label to all flagged threads (manual verify first!)
@@ -471,27 +473,58 @@ class GmailAPI:
         except Exception:
             return body, html
 
-    def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True):
+    def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,
+             in_reply_to=None, references=None):
         """Send an email. `html` defaults to None = auto-detect from body content.
         Pass html=True to force HTML, html=False to force plain text. `signature=True` (default) appends the
-        sender alias's Gmail signature (never double-signs); pass signature=False to omit it."""
+        sender alias's Gmail signature (never double-signs); pass signature=False to omit it.
+        For a threaded REPLY, prefer reply_thread() — it fills thread_id + in_reply_to + references for you."""
         if signature:
             body, html = self._apply_signature(body, html, from_)
-        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html)
+        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
         body_obj = {"raw": raw}
         if thread_id: body_obj["threadId"] = thread_id
         return self._call("POST", "/messages/send", body=body_obj)
 
-    def create_draft(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True):
+    def create_draft(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,
+                     in_reply_to=None, references=None):
         """Create a draft. `html` defaults to None = auto-detect from body content. `signature=True`
         (default) appends the sender alias's Gmail signature (never double-signs) so a draft opened + sent
-        from Gmail looks the same as one you composed yourself; pass signature=False to omit it."""
+        from Gmail looks the same as one you composed yourself; pass signature=False to omit it.
+        For a threaded REPLY draft, prefer reply_thread(..., as_draft=True)."""
         if signature:
             body, html = self._apply_signature(body, html, from_)
-        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html)
+        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
         msg_obj = {"raw": raw}
         if thread_id: msg_obj["threadId"] = thread_id
         return self._call("POST", "/drafts", body={"message": msg_obj})
+
+    def reply_thread(self, thread_id, body, as_draft=False, to=None, cc=None, from_=None, html=None, signature=True):
+        """Reply ON an existing thread — the safe way to answer an incoming email (never an orphan).
+        Derives recipient, 'Re:' subject and the In-Reply-To / References headers from the thread's
+        latest message, then sends (or drafts) with threadId set so it lands inside the conversation.
+        `to` defaults to the latest message's Reply-To/From. Returns the API response."""
+        th = self.get_thread(thread_id)
+        msgs = th.get("messages", [])
+        if not msgs:
+            raise ValueError(f"thread {thread_id} has no messages")
+        last = msgs[-1]
+        def _h(m, name):
+            for h in m.get("payload", {}).get("headers", []):
+                if h["name"].lower() == name.lower():
+                    return h["value"]
+            return ""
+        msg_id = _h(last, "Message-ID") or _h(last, "Message-Id")
+        prior_refs = _h(last, "References")
+        references = (prior_refs + " " + msg_id).strip() if msg_id else (prior_refs or None)
+        subject = _h(msgs[0], "Subject") or ""
+        if subject and not subject.lower().startswith("re:"):
+            subject = "Re: " + subject
+        if to is None:
+            to = _h(last, "Reply-To") or _h(last, "From")
+        fn = self.create_draft if as_draft else self.send
+        return fn(to, subject, body, cc=cc, from_=from_, html=html, thread_id=thread_id,
+                  signature=signature, in_reply_to=msg_id or None, references=references)
 
     def list_drafts(self, max_results=20, q=None):
         query = {"maxResults": max_results}
@@ -588,10 +621,19 @@ def _cli():
         print(json.dumps(g.download_attachment(msg_id, att_id, save_path), indent=2))
     elif cmd == "send":
         to, subject, body = args[0], args[1], args[2]
-        print(json.dumps(g.send(to, subject, body), indent=2))
+        thread_id = args[3] if len(args) > 3 else None   # optional: thread to attach to (sets threadId only)
+        print(json.dumps(g.send(to, subject, body, thread_id=thread_id), indent=2))
     elif cmd == "draft":
         to, subject, body = args[0], args[1], args[2]
-        print(json.dumps(g.create_draft(to, subject, body), indent=2))
+        thread_id = args[3] if len(args) > 3 else None
+        print(json.dumps(g.create_draft(to, subject, body, thread_id=thread_id), indent=2))
+    elif cmd == "reply":
+        # reply ON an incoming thread (recipient/subject/In-Reply-To/References auto-derived) -> never an orphan
+        thread_id, body = args[0], args[1]
+        print(json.dumps(g.reply_thread(thread_id, body), indent=2))
+    elif cmd == "reply-draft":
+        thread_id, body = args[0], args[1]
+        print(json.dumps(g.reply_thread(thread_id, body, as_draft=True), indent=2))
     elif cmd == "filters":
         print(json.dumps(g.list_filters(), indent=2))
     elif cmd == "send-as":
