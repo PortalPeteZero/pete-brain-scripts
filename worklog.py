@@ -25,8 +25,12 @@ Notes:
     fails fast with a clear message so a hook can't silently violate it).
   * --date defaults to today (Atlantic/Canary). --actor defaults to claude.
   * --source-ref is REQUIRED -- it is the idempotency / dedup key.
+
+Backstop mode (the GATE for raw main-session dev/deploy work the skill hooks don't cover):
+  VAULT=/tmp/pbs python3 /tmp/pbs/worklog.py reconcile --repo owner/repo --git-dir /path [--since YYYY-MM-DD]
+  -> lists that repo's commits NOT in work_log (exit 2 if any). Run at session/deploy close.
 """
-import os, sys, json, re, argparse, datetime, urllib.request, urllib.error
+import os, sys, json, re, argparse, datetime, subprocess, urllib.request, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 REF = "zhexcaflgahdcbzvbyfq"
@@ -142,5 +146,41 @@ def main():
         print(f"worklog: already logged (source_ref={a.source_ref}) — no-op")
 
 
+def reconcile():
+    """Backstop GATE: diff a repo's commits against work_log.source_ref and list any
+    that aren't logged. Covers the path the close-on-ship skill hooks miss -- raw
+    main-session dev/deploy work. Exit 2 if gaps exist (so a close routine can detect it).
+      worklog.py reconcile --repo owner/repo --git-dir /path/to/checkout [--since YYYY-MM-DD]"""
+    ap = argparse.ArgumentParser(prog="worklog.py reconcile")
+    ap.add_argument("--repo", required=True, help="owner/repo, matched against source_ref 'git:owner/repo@sha'")
+    ap.add_argument("--git-dir", dest="git_dir", required=True, help="local checkout to read commits from")
+    ap.add_argument("--since", default=None, help="default: today (Atlantic/Canary)")
+    a = ap.parse_args(sys.argv[2:])
+    since = a.since or datetime.datetime.now(
+        datetime.timezone(datetime.timedelta(hours=1))).strftime("%Y-%m-%d")
+    out = subprocess.run(
+        ["git", "-C", a.git_dir, "log", f"--since={since} 00:00:00", "--pretty=%H\t%s", "--no-merges"],
+        capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit(f"worklog reconcile: git log failed for {a.git_dir}: {out.stderr.strip()[:200]}")
+    commits = [l.split("\t", 1) for l in out.stdout.strip().splitlines() if "\t" in l]
+    res = ccq(f"SELECT source_ref FROM work_log WHERE source_ref LIKE 'git:{a.repo}@%'")
+    logged = {r["source_ref"].split("@", 1)[1] for r in (res or []) if r.get("source_ref") and "@" in r["source_ref"]}
+    missing = [(full[:9], subj) for full, subj in commits
+               if not any(full.startswith(s) or s.startswith(full[:9]) for s in logged)]
+    if not missing:
+        print(f"worklog reconcile: OK -- all {len(commits)} commit(s) in {a.repo} since {since} are logged.")
+        return
+    print(f"worklog reconcile: UNLOGGED -- {len(missing)} of {len(commits)} commit(s) in {a.repo} since {since} NOT in work_log:")
+    for short, subj in missing:
+        print(f"  {short}  {subj[:90]}")
+    print(f"Log each:  worklog.py --entity .. [--project ..] --area dev --title .. --evidence .. --outcome worked "
+          f"--link https://github.com/{a.repo}/commit/<sha> --source-ref git:{a.repo}@<sha>")
+    sys.exit(2)
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "reconcile":
+        reconcile()
+    else:
+        main()
