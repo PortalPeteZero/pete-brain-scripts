@@ -64,6 +64,20 @@ DEAD_MD = re.compile(r'Library/processes/([a-z0-9-]+)\.md')
 # retired LOCAL tree = at least two path segments under Projects/ or Personal/ (e.g. Projects/SY-Website/seo/)
 LOCAL_TREE = re.compile(r'\b(Projects|Personal)/[A-Za-z][\w{}-]*/[\w{}.-]+')
 CALLOUT = re.compile(r'^\s*>\s*\[!(note|warning|info)\]', re.I)
+# Retired 2026-07 task-model vocabulary — "the date is the switch" replaced the +N-day auto-date ladder,
+# the PD→dated-P1 stub, and the date-derived tier fallback. Any of these in a live instruction = drift.
+LADDER = [
+    (re.compile(r"\+2/\+7/\+30d"), "auto-date ladder"),
+    (re.compile(r"today\s*\+\s*2\s*days", re.I), "P1 +2d auto-date"),
+    (re.compile(r"today\s*\+\s*7\s*days", re.I), "P2 +7d auto-date"),
+    (re.compile(r"today\s*\+\s*30\s*days", re.I), "P3 +30d auto-date"),
+    (re.compile(r"<today\s*\+\s*\d+\s*d?>"), "<today+Nd> due placeholder"),
+    (re.compile(r"P1\s*[=→]\s*\+?\s*2d"), "P1=+2d ladder"),
+    (re.compile(r"P2\s*[=→]\s*\+?\s*7d"), "P2=+7d ladder"),
+    (re.compile(r"P3\s*[=→]\s*\+?\s*30d"), "P3=+30d ladder"),
+    (re.compile(r"PD stored as a dated P1"), "PD→dated-P1 stub"),
+    (re.compile(r"date-derived tier", re.I), "date-derived tier fallback"),
+]
 
 skill_drift, card_drift = [], []
 
@@ -90,6 +104,10 @@ for path in sorted(glob.glob(f"{SKILLS_DIR}/*/SKILL.md")):
         if not LABEL_CTX.search(line):
             for m in LOCAL_TREE.finditer(line):
                 skill_drift.append((name, i, "local-path", m.group(0), "retired tree", line.strip()[:90]))
+        # retired task-model ladder / stub vocabulary (2026-07 date-is-the-switch migration)
+        for rx, label in LADDER:
+            if rx.search(line):
+                skill_drift.append((name, i, "task-ladder", label, "retired model", line.strip()[:90]))
 
 # --- cards: declared.projects citing archived/nonexistent slugs or Projects/ wikilinks (report only) ---
 cards = ccq("""SELECT name, f->'declared'->>'projects' projects, f->'declared'->>'project_slug' slug

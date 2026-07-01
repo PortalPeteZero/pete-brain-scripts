@@ -247,11 +247,7 @@ Label-routing logic (which X to pick once verb is chosen):
 - Passion Fit coaching / befabulous.me → `Personal/PA-PassionFit` label (demand-driven), vault enrichment to `Personal/passion-fit/`
 - Family / school / household / Spanish admin / car insurance personal → AT- supplier or family matter, vault enrichment to `Personal/family/{Sub Area}/` (**TitleCase With Spaces** -- Family Members/, HMRC Personal/, Spanish Admin/, Vehicles/, Legal/, Property/, Travel/, Health/). Naming locked 2026-05-03 night to keep the 2-way sync from creating duplicates. **AT- prefix routes to `Personal/family/` (NOT the retired `Businesses/ashcroft-family/`).**
 
-**Default due date** by task priority (Atlantic/Canary tz):
-- P1 → today + 2 days
-- P2 → today + 7 days
-- P3 → today + 30 days
-- P4 → no due date
+**Due date — the date is the switch (2026-07):** triage tasks are **UNDATED by default** (`due_on` NULL) — P1–P4 carry no date; the P-tier is just an importance ranking. A date is only added when there's a **genuine hard deadline**, and a dated task automatically becomes a **PD** (a DB trigger enforces it). **Never auto-set an inferred date — flag it and confirm the date with Pete.** The one no-ask exception is a **bill**: set the invoice due date without asking, always PD, routed to `Team-Finances` (see [[finance-filing]]). A "chase later" nudge stays undated with the timing in `notes`.
 
 **Durable layer** -- pull content into the entity's home (see Rule 13). `vault-enricher.py` does this on every filed/task-linked thread:
 - Attachments worth pulling (quotes, contracts, reports, invoices, certs, photos, specs, datasheets, signed forms) → the entity's **Google Drive** folder under a dated sub-folder. Skip signature cruft.
@@ -398,11 +394,10 @@ Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primi
 `Task` and `Hand to` create a row in **`public.tasks`** (CRUD via `cc-sql.py`). **`Reply` does NOT create a task** — it's label-only (the Replies label is the record). It creates a task only in the **Reply + Task** combo (a reply gated on work first); that task is **tagged `reply`** (so it shows in the CC *Replies* filter — "what work is gating a reply"), carries the **Mimestream + Gmail link** (mandatory — it's how the to-do gets you back to the thread to reply, and keeps the sync's task↔thread tie), and `[no-sync-close]` (so the label and task stay independent). The `project_slug` column carries the project NAME (e.g. `'General'`, `'SY-Website'`), never a GID.
 
 ```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', '2026-07-01', 'SY-Clancy', 'General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, base_priority, due_on, entity_slug, project_slug, notes) VALUES ('Reply to Wayne (Clancy) about UKPN DSR meeting time', 'P2', 'P2', NULL, 'SY-Clancy', 'General', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary…')"
 ```
 
-- `priority` = the Pn from the verb (`'P1'`/`'P2'`/`'P3'`/`'P4'`).
-- `due_on` = derived from priority per the default-due-date schedule below.
+- `priority` = the Pn from the verb (`'P1'`/`'P2'`/`'P3'`/`'P4'`); set `base_priority` to the same. **Undated** — leave `due_on` NULL (a date would force a PD). A real deadline → PD, confirm the date with Pete (bills excepted).
 - `entity_slug` = the customer/supplier/project slug the thread filed under (e.g. `'SY-Clancy'`); `project_slug` = the routing project NAME.
 - For `Task`, append the `[no-sync-close]` marker line to `notes`.
 - For a **Reply + Task** combo, the task ALSO sets `tags` to include `'reply'` (additive — don't clobber existing tags) **and** carries `[no-sync-close]`; the Mimestream + Gmail link in `notes` is **mandatory** (it ties the to-do to the email you owe a reply to).

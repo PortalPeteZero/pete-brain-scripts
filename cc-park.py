@@ -121,9 +121,14 @@ def promote(project_slug, match, priority, due):
     if not line: sys.exit(f"no backlog line matching '{match}'")
     text = re.sub(r"^- \[.\]\s*", "", line.strip())
     pname, pentity = proj_meta(project_slug)
-    rest("POST", "tasks", {"name": text, "priority": priority, "due_on": due, "entity_slug": pentity,
+    # The date is the switch (2026-07 task model): a promoted item WITH a date becomes a PD, and the
+    # requested tier is recorded as base_priority so clearing the date later reverts to it. Without a date
+    # it stays the plain undated tier. Kills the old "dated P2" hole.
+    task_body = {"name": text, "priority": ("PD" if due else priority), "due_on": due, "entity_slug": pentity,
          "project_slug": project_slug, "status": "todo", "source": "claude",
-         "notes": f"Promoted from the {pname} backlog 28 Jun."}, prefer="return=minimal")
+         "notes": f"Promoted from the {pname} backlog."}
+    if due: task_body["base_priority"] = priority
+    rest("POST", "tasks", task_body, prefer="return=minimal")
     body = "\n".join(l for l in note["body"].splitlines() if l != line) + "\n"
     write_note(project_slug, note["title"], body, note.get("entity"))
     pr = prune_pointer_if_empty(project_slug, body); backfill()

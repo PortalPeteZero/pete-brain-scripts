@@ -145,7 +145,7 @@ Find Gmail threads labelled `Replies` or `Delegated` with NO matching task in `p
 ```bash
 # ONLY when Pete asks to task a Replies thread (overlap / de-tray). Reply-linked → tag 'reply'
 # + [no-sync-close] marker; the Mimestream link is mandatory.
-VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, due_on, entity_slug, project_slug, tags, notes, status) VALUES ('<action verb + WHO + WHAT>', 'P2', '<today+7d>', '<entity_slug>', '<project_slug NAME>', '{reply}', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary + routing trail\n[no-sync-close]', 'open')"
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, base_priority, due_on, entity_slug, project_slug, tags, notes, status) VALUES ('<action verb + WHO + WHAT>', 'P2', 'P2', NULL, '<entity_slug>', '<project_slug NAME>', '{reply}', '<Mimestream link>\n<Gmail link>\n<Finder link>\nsummary + routing trail\n[no-sync-close]', 'open')"
 ```
 
 - **Routing discipline**: the chain below implements the decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project first, else the single `General` project; escalation only ever by proposal to Pete, never auto-created.
@@ -168,7 +168,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, du
   VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{routed-entity-home}"
   ```
   Report attachments pulled + extract path + contacts added in Step 8. See [[2026-05-20-must-call-vault-enricher-not-just-reference]].
-- **Due date** (`due_on`), Atlantic/Canary: P1 → +2d · P2 → +7d (default) · P3 → +30d · P4 → none · `Delegated`-only → none (Step 5 handles timing). Pete can edit `due_on` after creation.
+- **Due date** (`due_on`) — the date is the switch (2026-07): email tasks are **UNDATED by default** (leave `due_on` NULL; a date would force the row to a PD). Only set a date when the email carries a genuine hard deadline, and then it's a **PD** — confirm the date with Pete first (the sole no-ask exception is a bill's invoice due date, handled by [[finance-filing]]). A chase that just needs a "come back to this later" nudge stays undated: put the timing in `notes` ("chase in N days") — the workflow that owns it evaluates when it's due (as enquiry chases do). Pete can add a date any time to turn it into a PD.
 - **Owner**: always Pete — the table is Pete's.
 
 Report: "N `Replies` threads have no task (expected — surfaced for awareness, no task created): {subject + age list}." Only if Pete then asks to task one: "Created 1 `Task` (with `[no-sync-close]`): {name}."

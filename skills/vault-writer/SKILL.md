@@ -96,7 +96,7 @@ This step defers to the brain skill's Compress Step 4, the canonical authority o
 
 - Pull current `public.tasks` state for the relevant projects -- verify the CC reflects reality
 - Identify follow-up actions from the session (what's pending, what surfaced, what needs watching)
-- **PROPOSE the follow-ups -- do NOT auto-create them.** List them in the Step 6 report as a short *suggested* set (name + suggested priority/project). **Create in `public.tasks` ONLY when Pete explicitly asks** -- then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source) VALUES (gen_random_uuid(),'<name>','<P1|P2|P3|P4>','<due or NULL>','<entity>','<project_slug>','todo','claude')"`. Never auto-insert -- auto-created follow-ups pile up as clutter (Pete, 28 Jun 2026).
+- **PROPOSE the follow-ups -- do NOT auto-create them.** List them in the Step 6 report as a short *suggested* set (name + suggested priority/project). **Create in `public.tasks` ONLY when Pete explicitly asks** -- then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (id,name,priority,base_priority,due_on,entity_slug,project_slug,status,source) VALUES (gen_random_uuid(),'<name>','<P1|P2|P3|P4 — undated>','<same P-tier>',NULL,'<entity>','<project_slug>','todo','claude')"` (the date is the switch — leave `due_on` NULL; a date auto-makes a PD, confirm any date with Pete). Never auto-insert -- auto-created follow-ups pile up as clutter (Pete, 28 Jun 2026).
 - Mark any completed tasks as done: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'"`
 - Report what was created in Step 6
 
@@ -130,7 +130,7 @@ Pete's task list drifts messy over time. At session end, surface a short digest 
 Stale-task review is a light query against `public.tasks`, surfaced for Pete's per-item call:
 
 ```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_slug, due_on FROM tasks WHERE status!='done' AND due_on < current_date - interval '30 days' ORDER BY due_on LIMIT 30"
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, priority, project_slug, due_on FROM tasks WHERE status!='done' AND priority='PD' AND due_on < current_date - interval '30 days' ORDER BY due_on LIMIT 30"
 ```
 
 **Digest (in Step 6):** one line per stale task (name + priority + how overdue). If the list is empty, say so in one line — don't manufacture noise. Pete confirms any close per item; never auto-close. (A richer cloud evidence engine — `daily_log` + the GitHub API for commits + `public.crons` — can be rebuilt later if this manual pass proves too coarse.)

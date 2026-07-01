@@ -301,11 +301,16 @@ def log_enquiry(p, apply, manifest):
             print(f"   • closed {len(closed)} prior open chase(s) for this enquiry")
     if a.get("follow_up_at"):
         tname = f"Chase enquiry — {name} ({a.get('subject','')})".replace("'", "")[:120]
-        print(f"   • chase task → public.tasks (due {a['follow_up_at']}, project {PROJECT_SLUG}/{BUCKET})")
+        # Enquiry chases are UNDATED (2026-07 task model): they're only touched when the Enquiry Engine runs,
+        # which evaluates which chases are due from the interval note + created_at — NOT from a due_on. Writing
+        # a due_on would make them PDs (dated commitments that surface every day / sync to the calendar), which
+        # is wrong for a chase. Keep the intended chase date in the notes so nothing is lost.
+        chase_note = f"[no-sync-close] Chase around {a['follow_up_at']} (EE evaluates when due, not a hard date). CRM contact {cid}"
+        print(f"   • chase task → public.tasks (UNDATED P3 · chase around {a['follow_up_at']}, project {PROJECT_SLUG}/{BUCKET})")
         if apply:
-            cc_sql(f"""insert into tasks (id,name,priority,due_on,entity_slug,project_slug,bucket,status,source,tags,notes)
-                       values (gen_random_uuid(),{lit(tname)},'P3',{lit(a['follow_up_at'])},'Sygma',{lit(PROJECT_SLUG)},{lit(BUCKET)},
-                       'todo','enquiry-engine',array['enquiry']::text[],{lit('[no-sync-close] CRM contact '+str(cid))})""")
+            cc_sql(f"""insert into tasks (id,name,priority,base_priority,due_on,entity_slug,project_slug,bucket,status,source,tags,notes)
+                       values (gen_random_uuid(),{lit(tname)},'P3','P3',NULL,'Sygma',{lit(PROJECT_SLUG)},{lit(BUCKET)},
+                       'todo','enquiry-engine',array['enquiry']::text[],{lit(chase_note)})""")
     # File the thread now the enquiry's been dealt with — out of the Replies tray + archived. The chase
     # task above is the follow-up tracker; the tray entry is now redundant. --no-file opts out.
     if apply and p.get("thread_id") and not NO_FILE:

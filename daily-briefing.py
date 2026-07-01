@@ -36,6 +36,7 @@ GA4_PROPS = [("Sygma Solutions", "354127076"), ("Canary Detect", "537126447")]
 
 # palette
 NAVY, BLUE, RED, AMBER, GREY, BORDER, BG = "#1B2340", "#2563eb", "#dc2626", "#d97706", "#64748b", "#e2e8f0", "#f8fafc"
+VIOLET = "#7c3aed"   # PD (dated commitments) — the date model badge colour
 
 
 def _helper(fname, mod):
@@ -58,6 +59,48 @@ def cc_get(path):
     url, key = _cc()
     req = urllib.request.Request(f"{url}/rest/v1/{path}", headers={"apikey": key, "Authorization": "Bearer " + key})
     return json.loads(urllib.request.urlopen(req, timeout=30).read())
+
+
+def cc_patch(path, body):
+    url, key = _cc()
+    req = urllib.request.Request(f"{url}/rest/v1/{path}", method="PATCH", data=json.dumps(body).encode(),
+        headers={"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json", "Prefer": "return=minimal"})
+    urllib.request.urlopen(req, timeout=30).read()
+
+
+# ─────────────────────────── PD auto-roll (2026-07 task model) ───────────────────────────
+# A missed PD (a dated commitment past its day) auto-rolls to the next realistic day so it never silently
+# slips, and gets morning-flagged here. Payment PDs skip weekends. A "waiting-on-someone" snooze pauses the
+# roll. After ROLL_GUARD automatic rolls the roll STOPS and the PD is flagged for a real decision instead of
+# rolling forever (decision 2). Only automatic missed-day rolls increment roll_count; a manual re-date or a
+# complete resets it (handled in the CC app write-path). Idempotent within a day: once rolled to today, a PD
+# is no longer due_on<today, so a second run the same day won't re-increment.
+ROLL_GUARD = 3
+
+def _roll_to(d, skip_weekend):
+    nd = d
+    if skip_weekend:
+        while nd.weekday() >= 5:   # Sat=5, Sun=6 — payment PDs land on the next working day
+            nd += datetime.timedelta(days=1)
+    return nd
+
+def auto_roll_pds(today):
+    iso = today.isoformat()
+    rows = cc_get(f"tasks?status=eq.todo&priority=eq.PD&due_on=lt.{iso}"
+                  "&select=id,name,due_on,roll_count,snoozed_until,tags,project_slug,entity_slug")
+    rolled, stuck = [], []
+    for t in rows:
+        snz = t.get("snoozed_until")
+        if snz and snz >= iso:               # still snoozed (blocked / waiting) — don't roll
+            continue
+        rc = t.get("roll_count") or 0
+        if rc >= ROLL_GUARD:                  # rolled too often — needs a decision, not another roll
+            stuck.append(t); continue
+        is_payment = ("to-pay" in (t.get("tags") or [])) or (t.get("project_slug") == "Team-Finances")
+        nd = _roll_to(today, skip_weekend=is_payment)
+        cc_patch(f"tasks?id=eq.{t['id']}", {"due_on": nd.isoformat(), "roll_count": rc + 1})
+        t["_new_due"] = nd.isoformat(); rolled.append(t)
+    return rolled, stuck
 
 
 def esc(s):
@@ -168,11 +211,11 @@ def _card(title, inner):
 
 
 def _badge(p):
-    c = {"P1": RED, "P2": AMBER}.get(p, GREY)
+    c = {"PD": VIOLET, "P1": RED, "P2": AMBER}.get(p, GREY)
     return f'<span style="background:{c};color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px">{esc(p or "P?")}</span>'
 
 
-def render(today, lesson, tray, due, overdue, events, garmin, ga4):
+def render(today, lesson, tray, due, overdue, events, garmin, ga4, rolled=None, stuck=None):
     parts = []
     # PF lesson lead
     if lesson:
@@ -199,9 +242,17 @@ def render(today, lesson, tray, due, overdue, events, garmin, ga4):
             rows += f'<div style="padding:5px 0;border-bottom:1px solid {BG}">{_badge(t.get("priority"))} {esc(t.get("name"))}{ent}</div>'
     else:
         rows = '<div style="padding:4px 0">No tasks due today.</div>'
-    od = " / ".join(f'{overdue.get(p,0)} {p}' for p in ("P1", "P2", "P3")) if overdue else "0"
-    rows += f'<div style="margin-top:8px;color:{GREY}">Overdue: {od}</div>'
+    od = str(sum(overdue.values())) if overdue else "0"   # overdue tasks are PDs that hit the roll-guard or are snoozed
+    rows += f'<div style="margin-top:8px;color:{GREY}">Overdue (PDs held at the roll-guard / snoozed): {od}</div>'
     parts.append(_card("PRIORITY TASKS, due today", rows))
+    # PD auto-roll morning-flag: what rolled overnight + what has rolled too many times and needs a decision.
+    if rolled or stuck:
+        rr = ""
+        for t in (rolled or []):
+            rr += f'<div style="padding:4px 0;border-bottom:1px solid {BG}">↻ <b>{esc(t.get("name"))}</b> rolled to {esc(t.get("_new_due"))}</div>'
+        for t in (stuck or []):
+            rr += f'<div style="padding:4px 0;border-bottom:1px solid {BG}"><span style="color:{RED};font-weight:700">⚠ {esc(t.get("name"))}</span> has rolled {ROLL_GUARD}+ times, held at {esc(t.get("due_on"))}, needs a decision (do it / break it up / delegate / drop the date)</div>'
+        parts.append(_card("PDs, auto-rolled overnight", rr))
     # Calendar
     if events:
         rows = ""
@@ -259,12 +310,16 @@ def main():
             return None
     lesson = safe(pf_lesson, today)
     tray = safe(replies_tray) or []
+    # Roll missed PDs FIRST (they then surface in today's list), then read tasks so `due` includes them.
+    rolled, stuck = safe(auto_roll_pds, today) or ([], [])
+    if rolled or stuck:
+        print(f"  PD auto-roll: {len(rolled)} rolled, {len(stuck)} held at guard")
     due, overdue = safe(tasks_today, today) or ([], {})
     events = safe(calendar_today, today) or []
     garmin = safe(garmin_recovery)
     ga4 = safe(ga4_snapshot) or []
 
-    html_body = render(today, lesson, tray, due, overdue, events, garmin, ga4)
+    html_body = render(today, lesson, tray, due, overdue, events, garmin, ga4, rolled, stuck)
     subject = "Morning Briefing, " + today.strftime("%A %d %b")
 
     g = _helper("gmail-api.py", "gmail_api").GmailAPI()

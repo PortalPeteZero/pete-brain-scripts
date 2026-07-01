@@ -362,26 +362,18 @@ def diff_and_log(today_data, prev_path, hub_status=""):
 # === Step 7: failure handling ===
 
 def raise_p2(reason):
-    """Raise a P2 Asana task if 2 consecutive failures."""
+    """Raise a CC task (public.tasks) on 2 consecutive failures. (Asana retired 2026-07 — this was a P2
+    Asana task; now an UNDATED P1 CC task, since a failure alert is undated importance, not a dated PD.)"""
     try:
-        pat = open(ASANA_PAT_PATH).read().strip()
-        notes = f"staff-master-sync.py failed: {reason}\n\nCheck Library/sy-hr/Staff Master.json freshness and the Hub Sheet permissions."
-        body = {"data": {"workspace": ASANA_WS, "name": f"staff-master-sync.py FAILED — {datetime.date.today().isoformat()}",
-                "projects": [SY_STAFF_PROJECT_GID], "assignee": PETE_USER_GID, "notes": notes,
-                "custom_fields": {PRI_FIELD: P2}}}
-        req = urllib.request.Request("https://app.asana.com/api/1.0/tasks", method="POST",
-            headers={"Authorization": f"Bearer {pat}", "Content-Type": "application/json"},
-            data=json.dumps(body).encode())
-        r = json.load(urllib.request.urlopen(req))
-        gid = r["data"]["gid"]
-        # Move to Phase 8 section
-        body2 = {"data": {"task": gid}}
-        req2 = urllib.request.Request(f"https://app.asana.com/api/1.0/sections/{SY_STAFF_PHASE8_SECTION_GID}/addTask",
-            method="POST", headers={"Authorization": f"Bearer {pat}", "Content-Type": "application/json"},
-            data=json.dumps(body2).encode())
-        urllib.request.urlopen(req2)
+        name = f"staff-master-sync.py FAILED, {datetime.date.today().isoformat()}".replace("'", "")
+        notes = (f"staff-master-sync.py failed: {reason}. Check Library/sy-hr/Staff Master.json freshness "
+                 "and the Hub Sheet permissions.").replace("'", "").replace("\n", " ")
+        sql = ("INSERT INTO tasks (id,name,priority,base_priority,due_on,entity_slug,project_slug,status,source,notes) "
+               f"VALUES (gen_random_uuid(),'{name}','P1','P1',NULL,'Sygma','General','todo','staff-master-sync','{notes}')")
+        subprocess.run([sys.executable, f"{VAULT}/cc-sql.py", sql],
+                       env={**os.environ, "VAULT": VAULT}, capture_output=True, timeout=30)
     except Exception as e:
-        sys.stderr.write(f"P2 raise itself failed: {e}\n")
+        sys.stderr.write(f"CC failure-task raise itself failed: {e}\n")
 
 # === main ===
 

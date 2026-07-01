@@ -579,11 +579,12 @@ But never nag about missing fields. Some properties deliberately don't have repo
 If the session produced actionable property updates (e.g., SEO fixes, content refreshes, design changes, new repos to set up), create tasks for them in the CC task store (`public.tasks`). His tasks live in the CC. Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
 
 ```sql
-INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes)
-VALUES (gen_random_uuid(), '<task name>', '<P1|P2|P3|P4>', '<due-date or NULL>',
+INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, project_slug, status, source, notes)
+VALUES (gen_random_uuid(), '<task name>', '<P1|P2|P3|P4 — undated>', '<same P-tier>', NULL,
         '<entity: Sygma | Canary Detect | One System>', '<project_slug, e.g. SY-Website>',
         'todo', 'claude', '<notes>');
 ```
+**The date is the switch (2026-07):** leave `due_on` NULL — P1–P4 are undated. A genuine hard deadline gets a date, and a date auto-makes it a **PD** (`priority='PD'`, `base_priority='<tier>'`) — confirm any inferred date with Pete first.
 
 Use the property's active `project_slug` NAME from its card (e.g. `SY-Website`, `CD-Website`, `OS-OConnors-Website`, `CD-Microsites`), not a GID, and confirm it is active first. The entity follows the prefix: `SY-`/`Team-` → Sygma, `CD-` → Canary Detect, `OS-` → One System.
 

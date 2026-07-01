@@ -246,8 +246,9 @@ At the end, offer: "Want me to run the vault-writer skill to make sure everythin
 If the review identified issues that require follow-up work (e.g. major refactor, performance optimization, dependency updates), create tasks in the CC task store (`public.tasks`). Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`:
 
 ```sql
-INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes)
-VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4>', '<due-date or NULL>',
+-- The date is the switch (2026-07): leave due_on NULL for P1–P4 (undated). A date auto-makes a PD.
+INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, project_slug, status, source, notes)
+VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4 — undated>', '<same P-tier>', NULL,
         '<entity: Sygma | Canary Detect | One System>', '<project_slug NAME, not a GID>',
         'todo', 'claude', '<notes>');
 ```

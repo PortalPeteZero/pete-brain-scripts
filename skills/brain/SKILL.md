@@ -76,18 +76,21 @@ Notes use lightweight markdown: `[[wikilinks]]` (link a knowledge note by its na
 
 Pete's tasks live in the CC `public.tasks` table. All task CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`.
 
-### Task model
+### Task model — the date is the switch (2026-07)
 
-- **Priority** is manual P1–P4 (P1 highest). PD forces a date.
+- **Priority**: **PD** = a dated commitment (the ONLY shape that carries a `due_on`; can be overdue; auto-rolls to the next realistic day if missed; syncs to Google Tasks + shows on the calendar). **P1–P3** = undated importance ranking (do-next → eventually; **never dated**). **P4** = someday / backlog.
+- **The date IS the switch**: give a task a `due_on` and it becomes a **PD** automatically (a DB trigger, `tasks_date_is_the_switch`, enforces this — you cannot store a dated P1/P2/P3). Clear the date and it reverts to its stored **`base_priority`** (the undated tier). So never write a dated P1/P2/P3; a date always means PD.
+- **Claude never auto-sets an inferred PD date** — flag it and confirm the date with Pete first. **Exception: bills** — set the invoice due date without asking, always PD, routed to `Team-Finances`.
+- **Undated P4 = the project backlog** — park via `cc-park.py`; the board shows one "Work through {Project} backlog" pointer.
 - **`entity_slug`** ∈ Sygma / Canary Detect / Personal / One System / El Atico.
 - **`project_slug`** groups tasks (e.g. `General`, `PA-Command-Centre`).
 
 ### Key Operations
 
-- **Create task**: `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)`
+- **Create task**: `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),…,'todo','claude',…)` — leave `due_on` NULL for P1–P4; a date ⇒ PD (the trigger sets `priority='PD'`). For a PD, also set `base_priority` to the tier it reverts to when the date is cleared.
 - **Complete task**: `UPDATE tasks SET status='done', completed_at=now() WHERE id=…`
-- **List Pete's open tasks**: `SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST`
-- **Reprioritise / reschedule**: `UPDATE tasks SET priority=…/due_on=… WHERE id=…`
+- **List Pete's open tasks (PD-aware order — PDs by date first, then the undated tiers)**: `SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY CASE priority WHEN 'PD' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END, due_on ASC NULLS LAST`
+- **Reprioritise / reschedule**: `UPDATE tasks SET priority=…/due_on=… WHERE id=…` (setting `due_on` auto-flips it to PD; when clearing it, also set `priority=base_priority`).
 
 ### Where project state lives
 
@@ -156,7 +159,7 @@ Reconstruct full context so Pete picks up where he left off.
 1. **Load core memory** -- the full `CLAUDE` + `MAP` came from the Step 0 caches (fallback: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM config WHERE key='claude-md'"` / `'map-md'`); pull routing from `vault_notes` (`/tmp/pbs/cc-knowledge-api.py "vault-routing"`). Project / entity / customer / property context lives in the live homes: query the **file-index** for "what exists / where is X" (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`) and the **knowledge DB** for notes / decisions / context (`/tmp/pbs/cc-knowledge-api.py`). Don't bulk-load individual project/customer records at resume — pull a specific one on demand when it's referenced in the conversation. **Also load the capability registry** -- the auto-generated `<!-- CAPABILITY-REGISTRY -->` block in `[[connections]]` (what API access exists, which keys are live, helpers available) -- so you start with general capability awareness and never ask Pete what access you have. Property-specific live state arrives via the `property-context-hook` on mention; this registry is the general baseline.
 2. **Load recent daily notes** -- the last 3 entries from the CC `daily_log` (`cc-sql.py "SELECT date, content FROM daily_log WHERE cron_name='session' ORDER BY date DESC LIMIT 3"`; if it's empty, the log is fresh — skip, no error). Read Quick Reference sections first; dig deeper only if needed. **Daily notes are a SECOND source.** Use them to spot drift against `public.tasks` (something in narrative but missing from `public.tasks`, or something in `public.tasks` whose status conflicts with narrative). Never quote pending items forward into the briefing without a per-task live-state cross-check against `public.tasks` — see Step 8 for the mechanic. The daily note's `## Garmin daily pull (Automated)` section carries the Garmin recovery + training headline (last night's sleep score + hours, HRV + status, today's training readiness, activity count) — the cron now fires **twice daily (07:00 + 17:00)**, so multiple lines may exist under that section; read the **most-recent line** (last entry) for the freshest activity count. Surface as "Last night (Garmin): ..." if present, and append a `| PUSH FAILED (…)` warning if the most-recent line carries that tag. The full Garmin data lives in the CC `garmin_daily` table (populated twice-daily by the `garmin-daily-pull` Railway cron — the rich `training` block: status, ACWR, training-effect, HR zones); query it via `cc-sql.py`. ([[garmin-api-configuration]].) The Garmin line also carries a **sign-off estimate** (`signed off ~HH:MM (night before)`) — surface it as "Last night you signed off ~HH:MM" and invite a correction. If Pete corrects it (e.g. "actually 23:00"), run `python3 "/tmp/pbs/garmin-daily-pull.py" --set-signoff {today} 23:00` (via Desktop Commander) to record the confirmed time — it wins over the estimate and updates the dashboard. The cron preserves `confirmed` across re-runs, so the 17:00 pull will never overwrite a morning correction. The estimate is a proxy (last Claude/Cowork session activity), so the correction is what makes it true.
 2a. **Surface yesterday's PF journal lesson** -- Query the CC `health_journal` table (the canonical home since 2026-06-27 migration; Drive/local paths are retired): `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT body FROM health_journal WHERE date = '{yesterday}'"`. Grep the returned `body` for the `## One lesson for tomorrow` heading; extract the line(s) that follow (cut at next `## ` heading or end-of-body). Surface in the Resume briefing as its own line: `**Yesterday's lesson:** {extracted text}`. If the row is missing or the heading is absent, skip silently — no nag from Resume; the 6pm `pf-journal-reminder` cron is the only nagger. Same source-of-truth + same extraction logic as the morning briefing's "Lesson from yesterday" section (canonical process: [[pf-journal#Lesson-flow]]). **Never read a local Drive mount or use Desktop Commander for this.**
-3. **Pull task state from public.tasks** -- list Pete's open tasks: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST"`. (Project/entity context lives in the CC + Drive.) **Before presenting an open task as a live priority, sanity-check it for shipped-evidence** (a commit, a README line, the artefact already existing, a `daily_log` entry) — the same source-of-truth discipline as the Pending line (Step 8). If a task looks already done, do NOT list it as a to-do: surface it as **"Looks shipped — close? {task}"** for Pete to confirm. Never auto-close a task at resume — tasks are Pete's.
+3. **Pull task state from public.tasks** -- list Pete's open tasks: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY CASE priority WHEN 'PD' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END, due_on ASC NULLS LAST"`. (Project/entity context lives in the CC + Drive.) **Before presenting an open task as a live priority, sanity-check it for shipped-evidence** (a commit, a README line, the artefact already existing, a `daily_log` entry) — the same source-of-truth discipline as the Pending line (Step 8). If a task looks already done, do NOT list it as a to-do: surface it as **"Looks shipped — close? {task}"** for Pete to confirm. Never auto-close a task at resume — tasks are Pete's.
 3a. **Detect manually-added tasks** -- Surface tasks added to `public.tasks` since the last session, so Claude absorbs their context before settling on the day's focus.
 
 **Mechanic:**
@@ -348,7 +351,7 @@ Read the appropriate template before generating the review.
 ### Morning Routine
 
 1. Read the most recent daily note — the latest `daily_log` row in the CC
-2. Pull open tasks from `public.tasks`: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST"` -- note P1/P2 priorities and overdue items
+2. Pull open tasks from `public.tasks`: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY CASE priority WHEN 'PD' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END, due_on ASC NULLS LAST"` -- note PDs due/overdue (overdue is PD-only now) + the top undated tiers (P1/P2)
 3. Check `public.tasks` for approaching deadlines (filter `due_on`)
 4. Business: pull business/department status from `vault_notes` (`cc-knowledge-api.py`) or the Drive home.
 5. Ask mode-appropriate questions:
@@ -404,7 +407,7 @@ Open tasks, highest priority / soonest due first:
 
 ```sql
 SELECT name,priority,due_on,entity_slug,project_slug FROM tasks
-WHERE status='todo' ORDER BY priority ASC NULLS LAST, due_on ASC NULLS LAST;
+WHERE status='todo' ORDER BY CASE priority WHEN 'PD' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END, due_on ASC NULLS LAST;
 ```
 
 Filter by entity or project with `AND entity_slug='…'` / `AND project_slug='…'`.
