@@ -372,7 +372,7 @@ For subsequent reviews, add "Review 2", "Review 3", etc. This builds a longitudi
 His tasks live in the CC task store (`public.tasks`). CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 
 - **Complete** the "Fortnightly review" task if it exists and is due: `UPDATE tasks SET status='done', completed_at=now() WHERE id='<task-id>'`
-- **Create** a new "Fortnightly review -- [Page Name] (due [date])" task if ongoing monitoring is needed (due date = today + 14 days): `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Fortnightly review -- [Page Name] (due [date])','P2',(current_date+14),'<entity>','<project_slug>','todo','claude','<notes>')`
+- **Create** a new "Fortnightly review -- [Page Name]" task if ongoing monitoring is needed. It's a soft cadence, not a hard deadline, so leave it **UNDATED** (the date is the switch — a `due_on` would force it to a PD): `INSERT INTO tasks (id,name,priority,base_priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Fortnightly review -- [Page Name]','P3','P3',NULL,'<entity>','<project_slug>','todo','claude','review ~fortnightly. <notes>')`
 - **Create** any follow-up tasks identified in the verdict (content top-up, backlink push, technical investigation) with the same INSERT pattern
 
 Use the page's `project_slug` NAME from its card (e.g. `SY-Website`, `CD-Website`, `OS-OConnors-Website`, `CD-Microsites`); entity follows the prefix (`SY-` → Sygma, `CD-` → Canary Detect, `OS-` → One System). Confirm it is active (`SELECT slug,status FROM projects WHERE slug='<X>'`) — never insert against an archived project.

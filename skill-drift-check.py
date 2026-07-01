@@ -77,9 +77,32 @@ LADDER = [
     (re.compile(r"P3\s*[=→]\s*\+?\s*30d"), "P3=+30d ladder"),
     (re.compile(r"PD stored as a dated P1"), "PD→dated-P1 stub"),
     (re.compile(r"date-derived tier", re.I), "date-derived tier fallback"),
+    # SQL date-arithmetic forms that produce a dated non-PD task (the audit-review:375 miss): a P1-P4 INSERT
+    # paired with current_date+N / +interval 'N day' violates the model (a date must mean PD, with base_priority).
+    (re.compile(r"current_date\s*[+]\s*\d+"), "dated INSERT (current_date+N)"),
+    (re.compile(r"[+]\s*interval\s*'\s*\d+\s*day", re.I), "dated INSERT (+ interval N days)"),
+    (re.compile(r"due date by priority", re.I), "auto-date-by-priority scheme"),
 ]
 
 skill_drift, card_drift = [], []
+
+# ── docs pass (2026-07): the ladder also hid in vault_notes process docs (finance-workflow, email-workflow,
+# ways-of-working) that the skill-only scan never saw. Scan live process/reference/workflow note bodies too;
+# skip historical snapshots (turnover/daily/weekly) and the plan notes (which quote the retired model on purpose).
+try:
+    docs = ccq("""SELECT slug, body FROM vault_notes
+                  WHERE type IN ('process','workflow','reference','guide','note','spec','design')
+                    AND slug NOT LIKE 'turnover%' AND slug NOT LIKE '%-plan-%'
+                    AND slug NOT LIKE '%build-plan%' AND slug NOT LIKE '%-design-2026%'""")
+    for d in docs:
+        for i, line in enumerate((d.get("body") or "").splitlines(), 1):
+            if EXPLAINER.search(line):
+                continue
+            for rx, label in LADDER:
+                if rx.search(line):
+                    skill_drift.append((f"doc:{d['slug']}", i, "task-ladder-doc", label, "retired model", line.strip()[:90]))
+except Exception as _e:
+    print(f"(docs pass skipped: {_e})")
 
 for path in sorted(glob.glob(f"{SKILLS_DIR}/*/SKILL.md")):
     name = os.path.basename(os.path.dirname(path))

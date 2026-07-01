@@ -382,50 +382,6 @@ Read the appropriate template before generating the review.
 
 ---
 
-## Task Management
-
-Pete's tasks live in the CC `public.tasks` table. All CRUD runs via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "<SQL>"`.
-
-### Schema notes
-
-- **Priority** is manual P1–P4 (P1 highest). PD forces a date.
-- **`entity_slug`** ∈ Sygma / Canary Detect / Personal / One System / El Atico.
-- **`project_slug`** groups tasks (e.g. `General`, `PA-Command-Centre`).
-- **`source`** = `'claude'` for tasks Claude creates.
-
-### Creating a Task
-
-```sql
-INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes)
-VALUES (gen_random_uuid(), '<name>', '<P1–P4>', '<YYYY-MM-DD or NULL>',
-        '<entity_slug>', '<project_slug>', 'todo', 'claude', '<notes>');
-```
-
-### Listing Tasks
-
-Open tasks, highest priority / soonest due first:
-
-```sql
-SELECT name,priority,due_on,entity_slug,project_slug FROM tasks
-WHERE status='todo' ORDER BY CASE priority WHEN 'PD' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END, due_on ASC NULLS LAST;
-```
-
-Filter by entity or project with `AND entity_slug='…'` / `AND project_slug='…'`.
-
-### Updating a Task
-
-- **Complete**: `UPDATE tasks SET status='done', completed_at=now() WHERE id=…`
-- **Reprioritise**: `UPDATE tasks SET priority=… WHERE id=…`
-- **Reschedule**: `UPDATE tasks SET due_on=… WHERE id=…`
-
-### Guidelines
-- Always set `entity_slug`, `project_slug`, and priority when creating tasks
-- At session end, **propose** follow-up actions in the report; create a CC task only if Pete explicitly asks (never auto-create)
-- Present task lists as clean markdown tables
-- For bulk operations, confirm with Pete first
-
----
-
 ## Output Styles
 
 Output styles define how the assistant communicates. Styles are bundled as reference files within this skill (`references/style-*.md`). Users can override or add custom styles in `.claude/output-styles/`.

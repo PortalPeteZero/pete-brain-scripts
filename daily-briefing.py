@@ -80,7 +80,10 @@ ROLL_GUARD = 3
 def _roll_to(d, skip_weekend):
     nd = d
     if skip_weekend:
-        while nd.weekday() >= 5:   # Sat=5, Sun=6 — payment PDs land on the next working day
+        # Weekend-only skip (Sat=5, Sun=6). Bank-holiday skip is deliberately NOT implemented: it needs a
+        # UK+Spanish holiday calendar for a rare edge (a payment rolling onto a bank holiday just shows that
+        # day; Pete pays the next working day). Revisit if it ever bites.
+        while nd.weekday() >= 5:   # payment PDs land on the next working day
             nd += datetime.timedelta(days=1)
     return nd
 

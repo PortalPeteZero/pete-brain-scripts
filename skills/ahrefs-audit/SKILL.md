@@ -375,7 +375,7 @@ Query the CC task store for open tasks already covering this page: `VAULT=/tmp/p
 
 ### 5b. Standing Tasks (if none exist yet for this page)
 
-1. **"Set up Ahrefs Rank Tracker tags -- [Page Name]"** -- P2. Insert: `INSERT INTO tasks (id,name,priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Set up Ahrefs Rank Tracker tags -- [Page Name]','P2',NULL,'<entity>','<project_slug>','todo','claude','<notes>')`.
+1. **"Set up Ahrefs Rank Tracker tags -- [Page Name]"** -- undated P2 (the date is the switch — leave `due_on` NULL). Insert: `INSERT INTO tasks (id,name,priority,base_priority,due_on,entity_slug,project_slug,status,source,notes) VALUES (gen_random_uuid(),'Set up Ahrefs Rank Tracker tags -- [Page Name]','P2','P2',NULL,'<entity>','<project_slug>','todo','claude','<notes>')`.
 2. **"Surfer baseline audit -- [Page Name]"** -- create it already done (we just did it via API): same INSERT but with `'done'` status and `completed_at=now()` (add the `completed_at` column to the INSERT).
 3. Don't create the fortnightly review task yet -- that happens after implementation
 

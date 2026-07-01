@@ -235,7 +235,7 @@ Route the review results to the right places:
 | Session progress | CC `daily_log` (`cron_name='session'`) |
 | Commit details | Note on the property's CC card if significant changes were made |
 
-If the review uncovered something that should be tracked as a task (e.g. "needs a bigger refactor later"), create a task in the CC task store (`public.tasks`). Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`: `INSERT INTO tasks (id, name, priority, due_on, entity_slug, project_slug, status, source, notes) VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4>', NULL, '<entity>', '<project_slug NAME>', 'todo', 'claude', '<notes>');`
+If the review uncovered something that should be tracked as a task (e.g. "needs a bigger refactor later"), create a task in the CC task store (`public.tasks`). Insert via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` (the date is the switch — leave `due_on` NULL for P1–P4 and set `base_priority` to the same tier; a date auto-makes it a PD): `INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, project_slug, status, source, notes) VALUES (gen_random_uuid(), '<name>', '<P1|P2|P3|P4 — undated>', '<same P-tier>', NULL, '<entity>', '<project_slug NAME>', 'todo', 'claude', '<notes>');`
 
 ### 4d. Suggest vault-writer
 

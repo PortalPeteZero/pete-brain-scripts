@@ -26,7 +26,7 @@ Architecture (per [[Library/processes/staff-data-routing]]):
   5. (RETIRED 2026-06-10) hub.staff_directory + hub.staff_hr via staff-hub-load.py — the platform is
      now the source of truth (edits at sygmaportal.com/hub/directory); inbound load disabled.
   6. Today's daily note line under "## Staff master sync (Automated)"
-  7. P2 Asana task in SY-General if 2 consecutive runs fail
+  7. Undated P1 CC task (public.tasks, General) if 2 consecutive runs fail
 
 Diff surfacing rules (vs yesterday's JSON):
   - new starter (employment_status: Pre-Start or Active appeared)
@@ -59,15 +59,6 @@ ROSTER_YAML = f"{VAULT}/Library/processes/sygma-trainer-roster.yaml"
 ALIASES_YAML = f"{VAULT}/Library/processes/sygma-trainer-aliases.yaml"   # curated, NEVER auto-generated
 DASHBOARD_DATA = f"{VAULT}/Properties/Sygma Solutions Website/data/staff"   # Phase 11 destination
 DAILY_DIR = f"{VAULT}/Daily"
-
-# Asana failure-task placeholder (set during Phase 8 cron-registration step)
-SY_STAFF_PROJECT_GID = "1215314810136091"
-SY_STAFF_PHASE8_SECTION_GID = "1215304089121362"
-ASANA_PAT_PATH = f"{VAULT}/Library/processes/secrets/asana-pat"
-PETE_USER_GID = "1213947679900718"
-ASANA_WS = "1213947679900731"
-PRI_FIELD = "1213945150508559"
-P2 = "1213945150508561"
 
 # === Helpers ===
 
@@ -433,7 +424,7 @@ def main():
         # retired. This sync still regenerates the vault person.md cards from the Staff Master sheet.
         return 0
     except Exception as e:
-        # Record fail. Two consecutive fails raise the P2.
+        # Record fail. Two consecutive fails raise the CC failure task.
         marker = "/tmp/staff-master-sync-last-fail"
         prev_fail = os.path.exists(marker)
         with open(marker, "w") as f: f.write(datetime.datetime.utcnow().isoformat() + "\n")
