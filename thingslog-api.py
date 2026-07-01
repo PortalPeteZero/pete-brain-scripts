@@ -8,13 +8,21 @@ functions) so it can WRITE too: change device config/interval, provision devices
 Creds live in the CC secrets table as 'thingslog-login.json' (base_url, username, password, company_id).
 
 Usage:
-  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py devices         # id, name, model, active
-  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py fleet           # full fleet table (pulse, interval, sim...)
-  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py config <num>    # one device's config (pulse_coef, etc.)
-  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py get <path>      # raw GET any endpoint
-  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py openapi         # dump endpoint list (incl. write endpoints)
-WRITES (config/interval/provision) exist in the API but are intentionally NOT wired here yet —
-add them deliberately, never as a side effect. See [[thingslog-connection]] in vault_notes.
+  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py devices          # id, name, model, active
+  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py fleet            # full fleet table (pulse, interval, sim...)
+  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py config <num>     # one device's config (pulse_coef, etc.)
+  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py set-transmission <num|all> <hours> [logging_min]  # WRITE call-in interval
+  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py get <path>       # raw GET any endpoint
+  VAULT=/tmp/pbs python3 /tmp/pbs/thingslog-api.py openapi          # dump write endpoints
+
+set-transmission is the ONE wired write (PUT /api/devices/{n}/config): call-in hours = countsThreshold ×
+logging_min / 60, applied on the device's NEXT call-in. Provision/commands/delete are deliberately NOT wired
+-- add them consciously, never as a side effect. There is no "transmit now" endpoint.
+
+CHANGING WHICH TIMES a device reports (the phase, not the interval): ThingsLog has no clock-time schedule, so
+shift the times with a ONE-OFF interval nudge that straddles a single call-in (shorten before a call-in to move
+the schedule earlier, then restore 8h before the next call-in; prefer shortening -- lengthening leaves a
+coverage gap). Full method + worked example (Michelle / 04298215) in [[thingslog-connection]] in vault_notes.
 """
 import json, sys, subprocess, urllib.request, urllib.error, ssl
 
