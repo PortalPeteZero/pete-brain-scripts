@@ -84,7 +84,7 @@ def backfill():
     except Exception: pass
 
 def park(task_id, project_slug, section, item=None):
-    t = rest("GET", f"tasks?id=eq.{task_id}&select=id,name,entity_slug")
+    t = rest("GET", f"tasks?id=eq.{task_id}&select=id,name,entity_slug,gtask_id,gtasklist_id")
     if not t: sys.exit(f"task {task_id} not found")
     item = item or t[0]["name"]
     pname, pentity = proj_meta(project_slug)
@@ -95,6 +95,12 @@ def park(task_id, project_slug, section, item=None):
         body = f"# {title}\n\nThe \"next time we work on {pname}\" worklist. Pointer task keeps it on the radar.\n\n## {section}\n- [ ] {sanitize(item)}\n"
         ent = pentity
     write_note(project_slug, title, body, ent)
+    # If the parked task is a synced PD, tombstone its gtask_id so the Google Tasks sync deletes the mirrored
+    # Google task instead of re-importing it (resurrection). The sync clears the tombstone.
+    if t[0].get("gtask_id"):
+        rest("POST", "gtask_tombstones?on_conflict=gtask_id",
+             {"gtask_id": t[0]["gtask_id"], "gtasklist_id": t[0].get("gtasklist_id")},
+             prefer="resolution=merge-duplicates,return=minimal")
     rest("DELETE", f"tasks?id=eq.{task_id}", prefer="return=minimal")
     ptr = ensure_pointer(project_slug, pname, pentity); backfill()
     print(f"PARKED: '{sanitize(item)[:50]}' -> {project_slug}-backlog [{section}] | task deleted | pointer={ptr}")
