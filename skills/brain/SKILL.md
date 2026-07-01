@@ -287,7 +287,7 @@ Save everything valuable from the current session.
    - If no task id, grep today's daily note for the task's keywords. If a later session log shows the work landed, do the same in-place strike-through with the evidence marker.
    - When uncertain, surface as a question to Pete (`"Looks like X may have shipped via commit Y -- close the task?"`) rather than auto-modifying.
    
-   **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create a task; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed task stayed open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`). See [[2026-05-04-same-day-reconciliation-gap]].
+ **Why:** before this step existed, each session-log's pending-task snapshot was treated as final. A morning session would open "Wire X" + create a task; a 12:30 detour shipped X as commit ABC; end-of-day Compress wrote the new session log but never re-read the morning's TODO block, so the closed task stayed open and the daily note still claimed `[ ] Wire X`. Pete spots the drift in the morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`).
    
    **How to apply:** Runs at end-of-session, before the final Report step. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence (commit hash, decision doc, README log line) -- never strikes a line on assumption alone. Same logic must run in `vault-writer` (separate but parallel cleanup checklist).
 7a. **Task staleness sweep** (mirrors vault-writer Step 3b) -- Scan `public.tasks` for stale work and surface a digest: open tasks untouched >21d, long-overdue >14d (`due_on` past), bloated undated clusters (a `project_slug` full of same-day-dumped tasks), completed-but-still-listed clutter. Group by `entity_slug` -> `project_slug` with a one-line call per cluster (close / archive / delegate / verify-then-close). **Surface-only -- never bulk-close, delete, or reassign without Pete's per-item confirmation** (Pete's tasks are sacred). The only unprompted closes are tasks this session demonstrably shipped (Step 7). If nothing crosses the thresholds, say so in one line -- don't manufacture noise.
@@ -563,7 +563,7 @@ Crons modify vault files before sessions start — **always Read a daily note be
 - `Library/processes/automations-dashboard/automations.json` → live view at https://pete-automations.vercel.app
 - `mcp__scheduled-tasks__list_scheduled_tasks` — live Cowork cron state
 
-Any cron change (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
+Any cron change (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`.
 
 ## General Guidelines
 
@@ -629,16 +629,15 @@ Do NOT:
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill:
 
-- [[2026-05-06-vault-bookkeeping-with-artefacts]]
 - [[2026-05-24-mirror-source-system-dating-not-a-cleverer-model]] — for any data Pete also reads in a source app (Garmin, bank, console), match that app's own dating/labels; don't invent a smarter scheme that contradicts their screen.
 - [[2026-05-24-gcal-updated-timestamp-race-after-create]] — calendar/sync race-condition pattern; Resume reads gcal-twice-daily-sync output.
 - [[2026-05-25-calendar-sync-window-mismatch-births-past-event-dupes]] — Resume reads gcal cron line; understand window-mismatch failure mode.
-- [[2026-05-25-garmin-daily-pull-must-rebase-before-push]] — Resume Step 2 reads Garmin pull line; PUSH FAILED warning is part of that line.
-- [[2026-05-19-ip-takedown-attribution-vs-speed-trade-off]] — IP enforcement methodology; fires when brain handles IP-portfolio / takedown tasks.
+- Resume Step 2 reads Garmin pull line; PUSH FAILED warning is part of that line.
+- IP enforcement methodology; fires when brain handles IP-portfolio / takedown tasks.
 - [[2026-05-26-enforcement-campaigns-surface-counter-attack-vectors-at-planning]] — surface counter-attack + personal-liability vectors at planning; fires on any IP / regulatory / public-callout campaign brain orchestrates.
-- [[2026-05-27-pptx-image-pass-build-from-pristine-backup-and-match-logo-to-bg]] — deck/document image-placement work; build from pristine backup, match each logo to its slide background.
+- deck/document image-placement work; build from pristine backup, match each logo to its slide background.
 
 
 ## Tasks ↔ project backlog (operating model, 28 Jun 2026)

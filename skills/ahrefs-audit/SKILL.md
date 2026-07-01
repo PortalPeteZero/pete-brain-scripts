@@ -497,7 +497,7 @@ If Pete says "rescan" or "check how it's doing", trigger audit-review, not this 
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill:
 
 - [[2026-05-07-surfer-rewards-curriculum-detail]]
 - [[2026-05-16-surfer-audit-read-every-section-and-dual-keyword]]

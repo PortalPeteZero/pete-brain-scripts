@@ -68,7 +68,7 @@ The skill runs phase-by-phase, sets a task per phase, fixes issues as it goes, a
 
 ## Execution, READ THIS FIRST
 
-**Use Desktop Commander (`mcp__Desktop_Commander__*`), not workspace bash, for any walk that might exceed ~30s.** The workspace bash sandbox has a 45-second cap. The cron-vs-SKILL trap is documented at `[[2026-05-02-scheduled-task-skill-md-uses-dc]]`.
+**Use Desktop Commander (`mcp__Desktop_Commander__*`), not workspace bash, for any walk that might exceed ~30s.** The workspace bash sandbox has a 45-second cap.
 
 Concretely:
 - Inventory walks → write a Python script to `/tmp/`, run via `mcp__Desktop_Commander__start_process`, capture results to a temp JSON / txt for parsing.
@@ -182,7 +182,7 @@ Scan the **most recent 14 `daily_log` entries** in the CC. For each:
 
 Output: one row per drift finding, with the `daily_log` date, task summary, evidence type, and proposed fix. If prevention is working this list should usually be empty -- non-empty means prevention silently failed and Pete should investigate why.
 
-**Why this phase exists:** prevention can fail silently (a session that didn't run vault-writer, a step that errored, an updated SKILL.md that wasn't installed). This is the periodic catch -- surfaced 2026-05-04, lesson [[2026-05-04-same-day-reconciliation-gap]].
+**Why this phase exists:** prevention can fail silently (a session that didn't run vault-writer, a step that errored, an updated SKILL.md that wasn't installed). This is the periodic catch -- surfaced 2026-05-04, lesson.
 
 ### Phase 8 -- Compile report + fix plan + execute remaining fixes
 
@@ -224,12 +224,11 @@ Concise, factual, no preamble. Numbers, paths, GIDs. The report is a working doc
 - Hub sync helper: `/tmp/pbs/hub-sync.py` + [[hub-content-index]]
 - Routing rules: [[vault-routing]]
 - Connections registry: [[connections]]
-- The IP portfolio cron-vs-SKILL trap that motivated Phase 3: [[2026-05-02-scheduled-task-skill-md-uses-dc]]
+- The IP portfolio cron-vs-SKILL trap that motivated Phase 3 (see Phase 3 above).
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill:
 
 - [[2026-05-03-header-name-lookups-for-resilient-scripts]]
-- [[2026-05-04-skill-md-canonical-and-mirror-not-hardlinked]]
 - [[2026-05-05-sheet-migration-via-values-update-is-wrong]]

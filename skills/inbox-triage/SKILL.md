@@ -665,7 +665,7 @@ Pete can invoke specific actions without full triage:
 - State file: `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`
 - History classifier helper: `/tmp/pbs/triage-action-classify.py`
 - Validator helper: `/tmp/pbs/triage-validator.py`
-- Build history (archived): `[[email-workflow-plan-2026-04-24]]`
+- Build history (archived): 
 
 
 ## Tasks ↔ project backlog (operating model, 28 Jun 2026)

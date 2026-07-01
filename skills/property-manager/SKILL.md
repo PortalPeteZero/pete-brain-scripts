@@ -15,7 +15,7 @@ Single workflow for connecting to any of Pete's digital properties, understandin
 Properties carry a `property_type:` field on their CC card (vocabulary at [[vault-routing#property-type-vocabulary]]: `marketing-site`, `saas-app`, `internal-tool`, `external-data-source`, `microsite`). Read the type when opening a property and adapt the workflow lens accordingly. Style rules for outbound communications live in [[voice-principles]] only — PRs, commit messages, card writes, audit reports, and code comments are internal artefacts and not subject to those rules.
 
 > [!important] Live state is machine-maintained — don't re-derive it by hand
-> Each property card carries a `<!-- LIVE-STATE -->` block (host, deployed commit vs repo head, DNS, Supabase, GSC/GA4/Ahrefs/GTM) refreshed every night by the [[property-state-and-capability-system-plan|property-state system]] (`property-live-state.py`). **Read that block for current state; don't manually curl/check what's already verified there.** The §E service-declaration fields (`domains`, `hosting`, `github`, `vercel_project`, `gsc_property`, `ga4_property`, …) drive it — keep them filled on every card. The whole estate is on the dashboard at `properties-dashboard-xi.vercel.app`; in Claude Code, mentioning a property auto-injects its verified state via the `property-context-hook`.
+> Each property card carries a `<!-- LIVE-STATE -->` block (host, deployed commit vs repo head, DNS, Supabase, GSC/GA4/Ahrefs/GTM) refreshed every night by the property-state system (`property-live-state.py`). **Read that block for current state; don't manually curl/check what's already verified there.** The §E service-declaration fields (`domains`, `hosting`, `github`, `vercel_project`, `gsc_property`, `ga4_property`, …) drive it — keep them filled on every card. The whole estate is on the dashboard at `properties-dashboard-xi.vercel.app`; in Claude Code, mentioning a property auto-injects its verified state via the `property-context-hook`.
 
 Version history: [[CHANGELOG]].
 
@@ -682,14 +682,13 @@ These are specific lessons from incidents where this skill was followed incomple
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill:
 
 - [[2026-05-13-migration-redirect-prefix-exclusion-bug]]
 - [[2026-05-14-nextjs-instrumentation-must-be-in-src]]
 - [[2026-05-16-supabase-concurrent-component-row-creation]]
-- [[2026-05-06-google-ads-pre-filled-mccid-trap]]
 - [[2026-05-07-server-side-mp-paid-attribution-gap]]
-- [[2026-05-21-mergin-server-file-whitelist-and-input-app]] — Mergin server file-type whitelist, `.mergin-ignore` timing, Mergin Maps Input is the right tablet app (not QField)
+- Mergin server file-type whitelist, `.mergin-ignore` timing, Mergin Maps Input is the right tablet app (not QField)
 - [[2026-05-21-monitoring-alerts-anchor-on-real-device-timing]] — Anchor delta checks on chronological reading order (`dtSeconds > 0`); silent/offline thresholds on the device's actual configurable transmit interval, not a flat constant
 - [[2026-05-22-dont-swallow-conflict-then-insert]] — when applying a code change, if the surrounding context has drifted, fix the conflict before insert; don't silently swallow it.
 - [[2026-05-22-new-pages-generic-images-crop-in-fixed-slots]] — generic stock-style images crop predictably in fixed slots; brief-specific images must be hand-cropped before commit.

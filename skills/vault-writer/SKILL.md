@@ -119,7 +119,7 @@ Before sign-off, re-read **every prior `> [!todo] Pending Tasks` block in today'
 - **Non-code ships you can't close immediately** (a cron, an email, a file): drop a `SHIPPED: <task-id> — <evidence>` line in today's daily note. The reconciler treats that explicit marker as closeable.
 Neither replaces actually closing the task — they're what make a *missed* close get caught instead of rotting.
 
-**Why:** before this step, each session log's pending-task block was treated as final. A morning session opens "Wire X" + creates a task; a 12:30 detour ships X as commit ABC; end-of-day vault-writer never re-read the morning's TODO block. the task sat closed-but-still-open; daily note still claimed `[ ] Wire X`. Pete spots it the next morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`). See [[2026-05-04-same-day-reconciliation-gap]].
+**Why:** before this step, each session log's pending-task block was treated as final. A morning session opens "Wire X" + creates a task; a 12:30 detour ships X as commit ABC; end-of-day vault-writer never re-read the morning's TODO block. the task sat closed-but-still-open; daily note still claimed `[ ] Wire X`. Pete spots it the next morning, vault loses credibility. Surfaced 2026-05-04 via the `x_studio_report_link` writeback (a task, shipped as `ba02060`).
 
 **How to apply:** Runs end-of-session, before Verification. Cheap because today's daily note is small. Touches only TODO lines that have positive evidence -- never strikes a line on assumption alone. Mirror logic also lives in brain Compress Step 7 (canonical orchestrator); vault-writer's copy is the cleanup-checklist guarantee that it actually runs.
 
@@ -221,7 +221,7 @@ Several scheduled crons write to the CC (`daily_log`, `garmin_daily`, registries
 - the automations registry (`public.crons`) → live view at https://pete-automations.vercel.app
 - `cc-cron.py list` — live Railway cron state
 
-Any cron change this skill's session touches (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`. See [[2026-06-06-cron-changes-update-dashboard-skills-point-at-registries]].
+Any cron change this skill's session touches (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`.
 
 All crons run on **Railway**. The source of truth is the live `crons` table in the CC + the `# CRON-META` blocks inside each `.py` in `pete-brain-scripts`; manage them with `cc-cron.py`.
 
@@ -283,12 +283,10 @@ When in doubt, save it.
 
 ## Related lessons (auto-surfaced by deployment matrix)
 
-Lessons in scope for this skill per [[2026-05-16-lesson-deployment-matrix]]:
+Lessons in scope for this skill:
 
 - [[2026-05-03-header-name-lookups-for-resilient-scripts]]
-- [[2026-05-04-skill-md-canonical-and-mirror-not-hardlinked]]
 - [[2026-05-05-sheet-migration-via-values-update-is-wrong]]
-- [[2026-05-06-vault-bookkeeping-with-artefacts]]
 
 
 ## Tasks ↔ project backlog (operating model, 28 Jun 2026)

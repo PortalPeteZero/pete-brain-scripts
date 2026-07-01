@@ -285,4 +285,4 @@ Do NOT:
 
 ## Related lessons
 
-- [[2026-05-29-soldo-audit-ocr-every-receipt-no-exceptions]] — sister Sygma trainer-cost audit (monthly-soldo-audit): OCR every receipt, no exceptions. Same finance-discipline pattern.
+- sister Sygma trainer-cost audit (monthly-soldo-audit): OCR every receipt, no exceptions. Same finance-discipline pattern.

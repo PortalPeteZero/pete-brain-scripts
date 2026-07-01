@@ -81,7 +81,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT id, name, notes, status, updat
 
 For each task, extract Gmail thread IDs from `notes` (both `mail.google.com/mail/u/0/#[a-z]+/{thread_id}` and `links.mimestream.com/g/{email}/t/{thread_id}` forms). Carry forward `id`, `name`, `status`, `due_on`, `entity_slug`, `project_slug`, the thread IDs, and `priority`.
 
-**Both-sides query is non-negotiable.** If Step 1 only pulls open tasks, Step 3 has no done tasks to act on — the Gmail label persists after CC-side closure, so the thread wrongly lingers in the Replies tray after its task is done. See [[2026-05-20-sync-must-query-both-open-and-closed-tasks]].
+**Both-sides query is non-negotiable.** If Step 1 only pulls open tasks, Step 3 has no done tasks to act on — the Gmail label persists after CC-side closure, so the thread wrongly lingers in the Replies tray after its task is done.
 
 ### Step 2: Priority reconciliation — no-op
 
@@ -167,7 +167,7 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, ba
   ```bash
   VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{routed-entity-home}"
   ```
-  Report attachments pulled + extract path + contacts added in Step 8. See [[2026-05-20-must-call-vault-enricher-not-just-reference]].
+ Report attachments pulled + extract path + contacts added in Step 8.
 - **Due date** (`due_on`) — the date is the switch (2026-07): email tasks are **UNDATED by default** (leave `due_on` NULL; a date would force the row to a PD). Only set a date when the email carries a genuine hard deadline, and then it's a **PD** — confirm the date with Pete first (the sole no-ask exception is a bill's invoice due date, handled by [[finance-filing]]). A chase that just needs a "come back to this later" nudge stays undated: put the timing in `notes` ("chase in N days") — the workflow that owns it evaluates when it's due (as enquiry chases do). Pete can add a date any time to turn it into a PD.
 - **Owner**: always Pete — the table is Pete's.
 
@@ -263,6 +263,6 @@ User: "sync" (or accepted the end-of-triage offer). Claude: runs `email-task-syn
 ## Related lessons
 
 - [[2026-04-25-email-mutation-pre-action-checklist]] — every Gmail mutation pre-flight.
-- [[2026-04-28-actions-label-proposed-not-auto-applied]] — the Replies label is surfaced, never auto-tasked.
+- the Replies label is surfaced, never auto-tasked.
 - [[2026-05-20-sync-must-call-wrapper-not-re-derive-steps]] — always run the deterministic wrapper.
-- [[2026-05-20-sync-must-query-both-open-and-closed-tasks]] — Step 1 must pull BOTH open and recently-done.
+- Step 1 must pull BOTH open and recently-done.
