@@ -38,7 +38,7 @@ Payload shape (one enquiry):
   "drive_url": "https://drive..."                # optional; sent collateral
 }
 """
-import os, sys, json, re, time, datetime as dt, urllib.request, urllib.parse, urllib.error, subprocess
+import os, sys, json, re, time, datetime as dt, urllib.request, urllib.parse, urllib.error, subprocess, hashlib
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SECRETS = f"{VAULT}/Library/processes/secrets"
@@ -196,7 +196,13 @@ def write_knowledge(p, contact_id, apply):
     a = p.get("activity", {})
     # 🟠 date-stamp the slug so repeat touches never overwrite (each touch = its own searchable note)
     date = (a.get("occurred_at") or now_iso())[:10]
-    slug = f"enquiry-{slugify(p.get('company_name') or p.get('full_name') or p.get('email'))}-{slugify(a.get('kind','touch'))}-{date}"
+    # 🔴 discriminate by CONTACT (email-hash) too — company+kind+date alone collides for two different people
+    # at the same company on the same day, and cc-knowledge-ingest upserts on_conflict=vault_path, silently
+    # overwriting the first note with the second. Email-hash is STABLE (not a timestamp/random) so a repeat
+    # touch of the SAME contact still yields the same slug → it updates in place, stays idempotent.
+    ident = (p.get("email") or p.get("full_name") or "").strip().lower()
+    disc = hashlib.sha1(ident.encode()).hexdigest()[:6] if ident else "noident"
+    slug = f"enquiry-{slugify(p.get('company_name') or p.get('full_name') or p.get('email'))}-{slugify(a.get('kind','touch'))}-{date}-{disc}"
     rel = f"Library/projects/SY-Training-Enquiries/enquiries/{slug}.md"
     # 🟡 nudge: a distilled takeaway makes the note far more useful to future retrieval than the raw reply
     if not p.get("knowledge"):

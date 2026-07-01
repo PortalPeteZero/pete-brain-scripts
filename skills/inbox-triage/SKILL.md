@@ -92,6 +92,18 @@ User says any of:
 ═════════════════════════════════════════════════════════════════════════════
 ```
 
+## Send & forward gates (pre-send, non-negotiable)
+
+Any outward send or forward — from triage, the Replies walker, or a `Hand to` chaser — passes ALL of these BEFORE the irreversible click. (These come from real 1 Jul 2026 failures: an internal accreditation email forwarded to the external accountant; a "ready" claim on a silently-broken HTML draft.)
+
+1. **One verified recipient before sending.** Resolve the addressee to exactly ONE confirmed address. Search the name **broadly** across from/to/cc (`gmail-api.py search "<name>" 20`), never a single guessed pattern. A narrow/exact-address query returning nothing is NOT proof the person doesn't exist. *(1 Jul: "michaela" = wife `michaela.ashcroft@sygma-solutions.com` (internal) OR accountant `michaela@sterlingrees.com` (external); an exact `michaela@sygma-solutions.com` miss falsely "proved" no internal Michaela.)*
+2. **Confirm ambiguous names before an outward send.** More than one match, or a guessed address → **STOP and confirm with Pete BEFORE sending.** Flagging doubt AFTER the send does not count.
+3. **Don't map Pete's shorthand to row indices.** Shorthand replies ("1. forward to X / 2. reply") map to the concrete ITEM, not the table row number — echo "item → action" back and get a nod before any irreversible step.
+4. **Recipient/content fit check.** Does this recipient make sense for this content? An internal-only accreditation note heading to an external accountant must trip this.
+5. **Verify the SENT artefact, not a proxy.** After sending: read back the sent To/Cc and confirm they're the intended party; confirm the thread carries the sent message + any draft cleared. For drafts/HTML, re-fetch and inspect the STORED artefact, never a preview or a return value. **`gmail-api.py`'s `html=` is a boolean flag, not an HTML-body slot** — put the HTML in `body`, or it's silently binned to a plain stub.
+
+Full manual: [[email-workflow#send--forward-gates]]. EE sends run outside triage but obey the same gates ([[workflow-design]]).
+
 ## The triage loop
 
 ### Step 1: Pull inbox
@@ -376,6 +388,8 @@ After validation passes, render the verb→primitive table TO THE CHAT (so Pete 
 Then ask: `go` (proceed), `cancel` (stop), or `change row N` (adjust). One confirmation per stage.
 
 ### Step 6.2: Execute -- iterate the ops table 1:1
+
+> **A customer / supplier / project thread is NOT filed until `vault-enricher.py {thread} {entity}` has run — the Gmail label alone logs NOTHING into the entity's home.** (1 Jul 2026: Clancy threads got the label but no enrich, so the SY-Clancy home captured nothing.) The enrich is a verb side-effect below, not an afterthought.
 
 Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primitive map (unchanged from v1.7):
 
