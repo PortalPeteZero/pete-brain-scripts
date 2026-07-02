@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """property-state-cc.py — headless property live-state → CC public.property_state.
 
-property-live-state.py walks the vault Properties/*/README cards for each property's DECLARED services
-and writes LIVE-STATE blocks back into them — vault-coupled, can't run headless. This thin cron REUSES
-its probe functions (check_domain / check_github / check_vercel / check_supabase / resolve_liveness /
-drift_flags) but takes the per-property declarations from the CC table `property_declarations` (kept in
-sync from the READMEs by `--sync-declarations`, run locally on a property change) and writes the
-dashboard feed straight to `public.property_state` — the table the CC /m/properties page reads.
+This thin cron REUSES property-live-state.py's probe functions (check_domain / check_github /
+check_vercel / check_supabase / resolve_liveness / drift_flags), takes the per-property declarations
+from the CC table `property_declarations`, and writes the dashboard feed straight to
+`public.property_state` — the table the CC /m/properties page reads.
+
+`property_declarations` is populated and maintained via `cc-property-api.py --create` / `--set`
+(one place, read by every skill — see Library/decisions/2026-06-30-skills-read-live-not-hardcoded.md).
+The old `--sync-declarations` README-walk was removed 2026-07-02: the local vault it walked was
+retired in the 24 Jun Business OS thin-client cutover.
 
 Runs on Railway (always-on), so the properties dashboard stays live (up/down/drift per property) even
 when the Mac is asleep. No vault writes. SEO pulls are skipped headless (the core up/down/drift is the
 dashboard's job; SEO needs the SA key — a later add).
 
-Local:  property-state-cc.py --sync-declarations   # walk the READMEs → property_declarations
-Cloud:  property-state-cc.py                        # read property_declarations → probe → public.property_state
+Cloud:  property-state-cc.py    # read property_declarations → probe → public.property_state
 
 # CRON-META
 # what: Property live-state probe (headless) — reads declarations from property_declarations, probes each property's services, writes public.property_state (the /m/properties feed)
@@ -62,20 +64,6 @@ def cc_rest(method, path, body=None, prefer=None):
         return json.loads(t) if t.strip() else None
 
 
-def sync_declarations():
-    """LOCAL: walk the vault READMEs → property_declarations (run when a property is added/changed)."""
-    props = pls.PROPS
-    names = sorted(n for n in os.listdir(props) if os.path.isfile(os.path.join(props, n, "README.md")))
-    rows = []
-    for name in names:
-        raw = open(os.path.join(props, name, "README.md"), encoding="utf-8").read()
-        fm = raw.split("---", 2)[1] if raw.startswith("---") else raw[:1500]
-        rows.append({"name": name, "f": pls.parse_fm(fm)})
-    cc_rest("POST", "property_declarations?on_conflict=name", rows,
-            prefer="resolution=merge-duplicates,return=minimal")
-    print(f"property-state-cc: synced {len(rows)} declarations → property_declarations")
-
-
 def run():
     rows = cc_rest("GET", "property_declarations?select=name,f") or []
     records, digest = [], []
@@ -120,6 +108,7 @@ def run():
 
 if __name__ == "__main__":
     if "--sync-declarations" in sys.argv:
-        sync_declarations()
-    else:
-        sys.exit(run())
+        print("--sync-declarations was removed 2026-07-02: the vault READMEs it walked no longer exist.\n"
+              "Declarations are managed directly with cc-property-api.py --create / --set.")
+        sys.exit(2)
+    sys.exit(run())
