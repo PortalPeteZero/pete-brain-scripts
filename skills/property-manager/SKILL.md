@@ -364,9 +364,17 @@ git checkout -b feat/<short-description-of-step>
 
 Stage specific files and commit:
 
+> [!important] Author MUST be Pete's verified identity — do NOT substitute a custom name/email
+> Some Vercel projects (confirmed **`leakguard-insight-hub`**) have commit-author verification on: a push
+> whose git author isn't a recognised GitHub seat is **silently BLOCKED, not built** (`seatBlock:
+> COMMIT_AUTHOR_REQUIRED` — the push succeeds, the deploy never runs, the old build keeps serving). Use the
+> exact config below (`user.name` = the Account, `user.email` = pete.ashcroft@sygma-solutions.com); never a
+> "Claude …" or other author. Learned 2 Jul 2026: a custom author blocked a whole day's LeakGuard UI deploys.
+> Full detail: [[github-configuration]] → "Vercel COMMIT-AUTHOR gate".
+
 ```bash
 git config user.email "pete.ashcroft@sygma-solutions.com"
-git config user.name "<Account>"   # PortalPeteZero or SygmaSol
+git config user.name "<Account>"   # PortalPeteZero or SygmaSol -- NOT a custom/Claude author (Vercel blocks it)
 git add path/to/specific/file   # always specific files, never git add .
 git commit -m "<clear description>
 
@@ -449,6 +457,12 @@ Note: the PR route triggers a Vercel preview build and a notification email to P
 ### 6e. Wait for Vercel (or Lovable Cloud) to deploy
 
 - Vercel: 1-3 minutes typically. Detect a new deploy by checking the live URL's `etag` header has changed from pre-merge value.
+- **Confirm the deploy actually reached `readyState=READY`** — do NOT assume a push deployed. A deploy can be **BLOCKED** (commit-author gate, see 6a) or **ERROR** (build failure); either way the push succeeds but the site keeps serving the OLD build, so "it pushed" ≠ "it's live". Check the latest deployment's state:
+  ```bash
+  curl -s "https://api.vercel.com/v6/deployments?projectId=<PROJECT_ID>&limit=1" -H "Authorization: Bearer <VERCEL_TOKEN>" \
+    | python3 -c "import sys,json; d=json.load(sys.stdin)['deployments'][0]; print(d['readyState'], d.get('readyStateReason') or '')"
+  ```
+  READY = live. BLOCKED = fix the commit author (6a) and re-trigger. ERROR = read the build log and fix.
 - Lovable Cloud: 1-2 minutes.
 - LovableHTML pre-rendered sites: cached HTML may take longer to refresh. If URLs or meta changed, consider invalidating cache via `lovablehtml-cache-invalidation` process.
 
