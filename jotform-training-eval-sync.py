@@ -380,27 +380,10 @@ def main():
 
 
 def rebuild_calendar_truth_cache():
-    """Run the truth-builder; return summary string. Surface invariant violations
-    via the daily-note line + (TODO) Asana P2 if any."""
-    if os.environ.get("EVAL_DATA_DIR"):  # headless (Railway): skip the calendar-truth-builder (needs vault YAML; secondary enrichment)
-        return "skipped (headless)"
-    r = subprocess.run(
-        [sys.executable, str(SCRIPTS / "jotform-calendar-truth-builder.py")],
-        capture_output=True, text=True,
-    )
-    if r.returncode != 0:
-        return f"FAILED (exit {r.returncode}): {r.stderr[:200]}"
-    # Inspect the freshly-written cache for invariant violations
-    cache_path = DATA_DIR / "calendar-truth-cache.json"
-    try:
-        cache = json.loads(cache_path.read_text())
-        violations = cache.get("invariant_violations", [])
-        stats = cache.get("stats", {})
-        if violations:
-            return f"⚠ {len(violations)} INVARIANT VIOLATIONS: {violations[0][:120]} (see cache file for full list)"
-        return f"ok ({stats.get('events_in_window', '?')} events, {stats.get('events_matched_to_course', '?')} matched, no invariant violations)"
-    except Exception as e:
-        return f"WARN cache read failed: {e}"
+    """jotform-calendar-truth-builder.py was retired 2 Jul 2026 (dead code, never invoked on
+    Railway where this cron actually runs). This function is kept as a no-op so callers/logging
+    below don't need to change."""
+    return "skipped (calendar-truth-builder retired)"
 
 
 if __name__ == "__main__":
