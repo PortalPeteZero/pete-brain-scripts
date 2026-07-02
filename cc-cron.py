@@ -310,12 +310,17 @@ def cmd_resume(a):
 def cmd_retire(a):
     row = get_cron(a.key) or {}
     sid = row.get("host_ref") or find_service(a.key)
-    update_cron(a.key, {"status": "binned", "enabled": False, "migration_status": "binned", "updated_at": now_iso()})
     if sid:
         try: service_delete(sid); print(f"  ✓ Railway service {sid[:8]} deleted")
-        except SystemExit as ex: print(f"  ⚠ service delete failed (binned still applied): {str(ex)[:120]}")
-    log_event(a.key, "retired", "service deleted + binned")
-    print(f"✓ {a.key} RETIRED — binned in public.crons, automations page in sync")
+        except SystemExit as ex: print(f"  ⚠ service delete failed (row NOT deleted — retry retire): {str(ex)[:120]}"); return
+    # Snapshot the audit trail before deleting: cron_events has an ON DELETE CASCADE FK to crons,
+    # so the row deletion wipes them. Retired = GONE (a binned row still renders on the automations
+    # page — payroll-es-monthly ghosted twice before this change, 2 Jul 2026).
+    events = sb("GET", f"cron_events?cron_key=eq.{a.key}&select=at,kind,detail&order=at")
+    for e in (events or []):
+        print(f"  history: {e['at'][:16]} {e['kind']} — {(e.get('detail') or '')[:80]}")
+    sb("DELETE", f"crons?key=eq.{a.key}")
+    print(f"✓ {a.key} RETIRED — Railway service gone, registry row deleted ({len(events or [])} audit events printed above, cascade-removed)")
 
 def cmd_status(a):
     keys = [a.key] if a.key else [r["key"] for r in sb("GET", "crons?select=key&host=eq.railway&order=key")]
