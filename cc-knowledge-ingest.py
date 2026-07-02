@@ -92,7 +92,12 @@ def row_for(path):
         "vault_path":rel, "slug":fm.get("slug") or stem, "type":ty,
         "entity":entity_of(rel,fm), "title":fm.get("title") or h1(body) or stem,
         "body":body.replace("\x00","")[:200000], "frontmatter":fm, "tags":tags[:40], "links":links_of(body)[:60],
-        "word_count":len(body.split()), "source_updated":str(su)
+        "word_count":len(body.split()), "source_updated":str(su),
+        # Explicit null (not omitted!) so the ON CONFLICT UPDATE clears any stale hash — an omitted
+        # column keeps the OLD embedded_hash on re-ingest, which the A→B→A edit case spuriously
+        # re-matches. cc-embedder.py re-stamps on the next pass. Never null `embedding` itself —
+        # the old vector stays searchable until re-embed.
+        "embedded_hash":None
     }
 def walk_md(roots):
     for r in roots:

@@ -32,7 +32,10 @@ for f in sorted(os.listdir(MEM)):
     rows.append({"vault_path":f"_memory/{f}","slug":fm.get("name") or stem,"type":"memory",
         "entity":"pa","title":fm.get("name") or stem,"body":body[:200000],
         "frontmatter":fm,"tags":[],"links":links[:60],"word_count":len(body.split()),
-        "source_updated":datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(MEM,f)),datetime.timezone.utc).strftime("%Y-%m-%d")})
+        "source_updated":datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(MEM,f)),datetime.timezone.utc).strftime("%Y-%m-%d"),
+        # Explicit null so the ON CONFLICT UPDATE clears any stale hash (A→B→A edit case);
+        # cc-embedder.py re-stamps. Never null `embedding` itself.
+        "embedded_hash":None})
 req=urllib.request.Request(f"{URL}/rest/v1/vault_notes?on_conflict=vault_path",data=json.dumps(rows).encode(),headers=H,method="POST")
 try: urllib.request.urlopen(req); print(f"✅ {len(rows)} memory entries ingested")
 except urllib.error.HTTPError as e: print("err",e.code,e.read().decode()[:300])
