@@ -58,10 +58,17 @@ def pointer_name(project_name): return f"Work through {project_name} backlog"
 def ensure_pointer(project_slug, project_name, entity):
     name = pointer_name(project_name)
     if rest("GET", f"tasks?name=eq.{urllib.parse.quote(name)}&status=eq.todo&select=id"): return "exists"
-    rest("POST", "tasks", {"name": name, "priority": "P4", "due_on": None, "entity_slug": entity,
-         "project_slug": project_slug, "status": "todo", "source": "claude",
-         "notes": f"Pointer to the {project_name} backlog ([[{project_slug}-backlog]]). Bump priority/date to schedule a session; back to P4 after."},
-         prefer="return=minimal"); return "created"
+    try:
+        rest("POST", "tasks", {"name": name, "priority": "P4", "due_on": None, "entity_slug": entity,
+             "project_slug": project_slug, "status": "todo", "source": "claude",
+             "notes": f"Pointer to the {project_name} backlog ([[{project_slug}-backlog]]). Bump priority/date to schedule a session; back to P4 after."},
+             prefer="return=minimal")
+    except urllib.error.HTTPError as e:
+        # tasks_one_pointer_per_project (partial unique index, added 2026-07-02) is the DB backstop
+        # for the GET-then-POST race: a concurrent or retried park already landed the pointer.
+        if e.code == 409: return "exists"
+        raise
+    return "created"
 
 def prune_pointer_if_empty(project_slug, body):
     """If no open items remain, delete the P4 pointer (and the empty note)."""

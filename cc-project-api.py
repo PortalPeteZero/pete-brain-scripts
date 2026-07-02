@@ -79,7 +79,11 @@ def main():
     existing = rest("GET", f"projects?slug=eq.{slug}&select=slug")
     if isinstance(existing, list) and existing:
         print(json.dumps({"_error": f"project '{slug}' already exists"})); sys.exit(1)
-    rest("POST", "projects", {"slug": slug, "name": a.name, "entity_slug": a.entity, "status": "active", "description": a.desc or None}, {"Prefer": "return=minimal"})
+    res = rest("POST", "projects", {"slug": slug, "name": a.name, "entity_slug": a.entity, "status": "active", "description": a.desc or None}, {"Prefer": "return=minimal"})
+    if isinstance(res, dict) and "_error" in res:
+        # projects_pkey backstop: 23505 here means a concurrent create won the race after the GET above.
+        msg = f"project '{slug}' already exists" if "23505" in res["_error"] else res["_error"]
+        print(json.dumps({"_error": msg})); sys.exit(1)
     rest("POST", "buckets", {"project_slug": slug, "name": "General", "sort_order": 0}, {"Prefer": "return=minimal"})
     out["bucket"] = "General"
 
