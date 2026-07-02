@@ -92,9 +92,23 @@ def main():
     # run the ONE embedder over all three tables (the content-hash dirty scan lives inside it)
     subprocess.run(["python3", os.path.join(HERE, "cc-embedder.py")], env=os.environ)
     dirty = gate_counts()
+    total = sum(n for n in dirty.values() if n and n > 0)
     print("cc-knowledge-sync — post-embed gate:", dirty)
-    if any(n for n in dirty.values() if n and n > 0):
+    # Persistence gate on the alert: a row can read dirty for one cycle for benign reasons (edited during
+    # the pass, a one-off Voyage blip that self-heals next hour). Only alert when staleness PERSISTS across
+    # two consecutive runs — that is genuine "SUCCESS-but-stale" (can't refresh), not transient noise.
+    cs = _cron_state()
+    prev = 0
+    if cs:
+        try: prev = int(cs.get_state(CRON_KEY, "last-dirty") or 0)
+        except Exception: prev = 0
+        try: cs.set_state(CRON_KEY, "last-dirty", total)
+        except Exception: pass
+    if total > 0 and prev > 0:
+        print(f"  STILL stale after 2 consecutive runs ({total}) — alerting")
         alert(dirty)
+    elif total > 0:
+        print(f"  {total} stale this run — transient; will alert only if still stale next run")
     else:
         print("  all tables fresh (gate=0)")
     print("done")

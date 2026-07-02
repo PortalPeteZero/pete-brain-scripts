@@ -97,9 +97,16 @@ def run_table(table):
         for batch in _embed_batches(rows):
             try:
                 vecs = voyage([r["t"] for r in batch])
+                wrote += write_rows(table, a, b, batch, vecs)
             except Exception as e:
-                print(f"  {table}: embed fail {str(e)[:140]}", flush=True); continue
-            wrote += write_rows(table, a, b, batch, vecs)
+                # A whole-batch failure (a slow/large row, a transient network blip) must NOT drop every
+                # row in the batch for an hour — retry each row on its own once before giving up on it.
+                print(f"  {table}: batch embed failed ({str(e)[:100]}) — retrying rows individually", flush=True)
+                for r in batch:
+                    try:
+                        wrote += write_rows(table, a, b, [r], voyage([r["t"]]))
+                    except Exception as e2:
+                        print(f"    row {r['id'][:8]} still failing: {str(e2)[:100]}", flush=True)
         total += wrote
         print(f"  {table}: +{wrote} (total {total})", flush=True)
         if wrote == 0:   # nothing landed this pass (all lost the optimistic race, or embed failed) — stop
