@@ -1,48 +1,44 @@
 #!/usr/bin/env python3
 """Publish the operational Sygma staff directory (non-salary) to the Command Centre.
 
-Reads the vault person.md cards (Businesses/sygma-solutions/people/) and publishes a
-roster snapshot to reports.snapshots key `staff-directory` (CC module: Sygma > Internal,
+Reads hub.staff_directory on the Sygma Platform (the source of truth — the old vault
+person.md cards were retired with the 24 Jun cutover; repointed 2026-07-03) and publishes
+a roster snapshot to reports.snapshots key `staff-directory` (CC module: Sygma > Internal,
 PRIVATE / owner-only).
 
 SAFETY: explicit allowlist of operational fields ONLY — name, job title, sub-business,
-employment status, work email, reports-to. NEVER emits salary/HR (that lives in the
-separate Payroll Master / hub.staff_hr, never in person.md), nor payroll refs, Soldo
-card refs, or personal contact. See [[staff-data-routing]].
+employment status, work email, reports-to. NEVER emits salary/HR (that lives in
+hub.staff_hr / the Payroll Master), nor payroll refs, Soldo card refs, or personal
+contact. See [[staff-data-routing]].
 
 Run standalone to refresh, or call publish_staff_directory() from staff-master-sync.py.
 """
-import os, glob, datetime
+import os, json, datetime, urllib.request
 from pathlib import Path
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-VAULT = VAULT
-PEOPLE_DIR = f"{VAULT}/Businesses/sygma-solutions/people"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # Operational fields safe to surface (already on the all-staff Hub directory tier).
 ALLOW = ["name", "job_title", "sub_business", "employment_status", "work_email", "reports_to"]
 
-def _fm(text):
-    if not text.startswith("---"):
-        return {}
-    end = text.find("\n---", 4)
-    block = text[4:end] if end != -1 else ""
-    fm = {}
-    for line in block.splitlines():
-        if ":" not in line:
-            continue
-        k, v = line.split(":", 1)
-        fm[k.strip()] = v.strip().strip('"')
-    return fm
+def _hub_directory():
+    d = json.load(open(f"{VAULT}/Library/processes/secrets/sygma-portal-supabase-keys.json"))
+    key = d.get("service_role") or d["service_role_key"]
+    req = urllib.request.Request(
+        f"{d['url'].rstrip('/')}/rest/v1/staff_directory"
+        "?select=full_name,job_title,sub_business,employment_status,work_email,reports_to&order=full_name",
+        headers={"apikey": key, "Authorization": f"Bearer {key}", "Accept-Profile": "hub"})
+    with urllib.request.urlopen(req, timeout=45) as r:
+        return json.loads(r.read().decode())
 
 def build_html():
     people = []
-    for p in sorted(glob.glob(f"{PEOPLE_DIR}/*.md")):
-        fm = _fm(open(p).read())
-        if not fm.get("name"):
+    for row in _hub_directory():
+        if not row.get("full_name"):
             continue
-        people.append({k: fm.get(k, "") for k in ALLOW})
+        people.append({"name": row["full_name"],
+                       **{k: (row.get(k) or "") for k in ALLOW if k != "name"}})
     # group by sub_business
     groups = {}
     for person in people:
