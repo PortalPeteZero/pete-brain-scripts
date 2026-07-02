@@ -36,8 +36,22 @@ def rest(path):
 
 def _resolve(target):
     enc = urllib.parse.quote(target); encmd = urllib.parse.quote(target + ".md")
-    rows, _ = rest(f"vault_notes?or=(slug.eq.{enc},vault_path.eq.{enc},vault_path.eq.{encmd})&select=id,title,type,vault_path,body&limit=1")
-    return rows[0] if rows else None
+    # 1. exact vault_path (DB-unique) wins — unambiguous.
+    rows, _ = rest(f"vault_notes?or=(vault_path.eq.{enc},vault_path.eq.{encmd})&select=id,title,type,vault_path,body&limit=1")
+    if rows:
+        return rows[0]
+    # 2. by slug — slugs are filename-derived and COLLIDE (e.g. 'README' across many notes). Rather than
+    #    return an arbitrary row, fetch all matches, pick the newest deterministically, and warn with the
+    #    alternatives so the caller can pass a full vault_path to disambiguate. (Freshness plan B6-ii: scope,
+    #    don't rename — renaming would orphan note_links dst_targets.)
+    rows, _ = rest(f"vault_notes?slug=eq.{enc}&select=id,title,type,vault_path,body,source_updated&order=source_updated.desc")
+    if not rows:
+        return None
+    if len(rows) > 1:
+        alts = ", ".join(r["vault_path"] for r in rows[1:6]) + ("…" if len(rows) > 6 else "")
+        print(f"note: slug '{target}' matches {len(rows)} notes — using the newest ({rows[0]['vault_path']}). "
+              f"Others: {alts} — pass the full vault_path to pick a specific one.", file=sys.stderr)
+    return rows[0]
 
 def cmd_search(q, lim):
     rows = rpc("search_notes", {"q": q, "lim": lim})
