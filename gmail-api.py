@@ -478,7 +478,11 @@ class GmailAPI:
         """Send an email. `html` defaults to None = auto-detect from body content.
         Pass html=True to force HTML, html=False to force plain text. `signature=True` (default) appends the
         sender alias's Gmail signature (never double-signs); pass signature=False to omit it.
-        For a threaded REPLY, prefer reply_thread() — it fills thread_id + in_reply_to + references for you."""
+        For a threaded REPLY, prefer reply_thread() — it fills thread_id + in_reply_to + references for you.
+        NOTE: `html` is a FLAG, not content. If you pass an HTML *string* to `html`, it is treated as the body
+        (common footgun that silently mailed the plain `body` instead — guarded here)."""
+        if isinstance(html, str):
+            body, html = html, True
         if signature:
             body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
@@ -491,7 +495,10 @@ class GmailAPI:
         """Create a draft. `html` defaults to None = auto-detect from body content. `signature=True`
         (default) appends the sender alias's Gmail signature (never double-signs) so a draft opened + sent
         from Gmail looks the same as one you composed yourself; pass signature=False to omit it.
-        For a threaded REPLY draft, prefer reply_thread(..., as_draft=True)."""
+        For a threaded REPLY draft, prefer reply_thread(..., as_draft=True).
+        NOTE: `html` is a FLAG, not content. If you pass an HTML *string* to `html`, it is treated as the body."""
+        if isinstance(html, str):
+            body, html = html, True
         if signature:
             body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
