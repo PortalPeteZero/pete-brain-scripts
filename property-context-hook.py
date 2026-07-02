@@ -13,23 +13,72 @@ FAST check that is both secret-free and genuinely real-time — a public-domain 
 throttled to once per property per 10 min, and the whole injection is key-pattern-sanitised before
 it goes out. Vercel/repo/SEO stay as-of-last-sync (they need secrets; a per-prompt hook holds none).
 
-Reads only the maintained feed + the linked project README (no secrets — the feed carries IDs/state
-only). FAIL-OPEN by design: any error → exit 0, inject nothing, never block the user's prompt.
+The feed is the CC table `public.property_state` (written nightly by the property-state-cc Railway
+cron) — fetched via Supabase REST with a hard 3s timeout and cached locally for 5 min so prompts
+never wait on the network twice. The injected text carries IDs/state only; the whole injection is
+key-pattern-sanitised. FAIL-OPEN by design: any error (no keys, no network, CC down) → exit 0,
+inject nothing, never block the user's prompt.
+
+(Rewired 2026-07-02: the old read target, a local vault file at Library/processes/property-state.json,
+was retired with the 24 Jun Business OS thin-client cutover.)
 
 Wire in settings.json under hooks.UserPromptSubmit (see property-context-hook.README).
 """
 import sys, json, re, os, time, ssl, urllib.request
-import os
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-VAULT = VAULT
-FEED = os.path.join(VAULT, "Library/processes/property-state.json")
 PROJECTS = os.path.join(VAULT, "Projects")
+FEED_CACHE = "/tmp/property-context-hook-feed-cache.json"   # {"ts": epoch, "feed": {...}}
+FEED_TTL = 300      # re-fetch the CC feed at most once per 5 min
+CC_KEYFILES = [
+    os.path.expanduser("~/.config/pete-secrets/command-centre-supabase-keys.json"),  # permanent local key
+    os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json"),  # bootstrapped session
+]
 THROTTLE = "/tmp/property-hook-live.json"   # {domain: {"ts": epoch, "live": "up"/"down", "code": 200, "host": "vercel"}}
 MAXP = 3            # cap injected properties to avoid noise
 LIVE_TTL = 600      # re-check a domain at most once per 10 min
 LIVE_TIMEOUT = 3    # hard cap — a per-prompt hook must never hang
 MAXLEN = 4000       # never balloon the prompt
+
+
+def load_feed():
+    """Latest public.property_state payload, 5-min-cached. Any failure → None (caller exits 0)."""
+    now = time.time()
+    try:
+        c = json.load(open(FEED_CACHE))
+        if (now - c.get("ts", 0)) < FEED_TTL and c.get("feed"):
+            return c["feed"]
+    except Exception:
+        pass
+    url = os.environ.get("CC_SUPABASE_URL")
+    key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+    if not (url and key):
+        for kf in CC_KEYFILES:
+            try:
+                d = json.load(open(kf))
+                url, key = d["url"], d["service_role_key"]
+                break
+            except Exception:
+                continue
+    if not (url and key):
+        return None
+    try:
+        req = urllib.request.Request(
+            url.rstrip("/") + "/rest/v1/property_state?select=payload&order=generated.desc&limit=1",
+            headers={"apikey": key, "Authorization": "Bearer " + key})
+        with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
+            rows = json.loads(r.read().decode())
+        feed = rows[0]["payload"] if rows else None
+    except Exception:
+        return None
+    if feed:
+        try:
+            tmp = FEED_CACHE + ".tmp"
+            json.dump({"ts": now, "feed": feed}, open(tmp, "w"))
+            os.replace(tmp, FEED_CACHE)
+        except Exception:
+            pass
+    return feed
 
 # never let anything key-shaped reach the model via the injection (defence in depth — the feed is
 # IDs/state only, but the linked README is free text)
@@ -96,9 +145,8 @@ def main():
         sys.exit(0)
     if len(prompt) < 4:
         sys.exit(0)
-    try:
-        feed = json.load(open(FEED, encoding="utf-8"))
-    except Exception:
+    feed = load_feed()
+    if not feed:
         sys.exit(0)
 
     matched = []
@@ -137,9 +185,9 @@ def main():
         caps = [c.upper() for c in ('ga4', 'gtm', 'gsc', 'ahrefs', 'surfer', 'supabase_ref') if p.get(c)]
         if caps:
             lines.append(f"    measurement/services wired: {', '.join(caps)}")
-        # Command Centre: surface the generated live map + ops doc so any CC-touching prompt has them in hand.
+        # Command Centre: surface the generated orientation map so any CC-touching prompt has it in hand.
         if "command centre" in (p.get("name", "") or "").lower():
-            lines.append("    ↳ CC map: Properties/Pete Command Centre/cc-map.md (GENERATED — every module by area · who-can-see-what · access-change history) · ops doc: Library/processes/command-centre.md (read FIRST for any CC work)")
+            lines.append("    ↳ CC orientation map: ~/.config/pete-cc/MAP.cache.md (GENERATED twice daily from the live tables — read FIRST for any CC work; source: config key map-md)")
         # linked project's authoritative-status line
         for proj in re.split(r"[,\[\]\s]+", (p.get("declared", {}).get("projects", "") or "")):
             proj = proj.strip(' "\'')
