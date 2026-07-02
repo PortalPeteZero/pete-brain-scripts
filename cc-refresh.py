@@ -4,7 +4,7 @@ Part H), the CC's derived/snapshot tables (automations registry · data-map · P
 hand-run. This runs all of them in sequence so "keep the CC current" is one command. At Part H this is
 the job Railway schedules.
 
-Runs: cc-automations-sync.py · cc-data-map-sync.py · cc-knowledge-embed-backfill.py
+Runs: cc-automations-sync.py · cc-data-map-sync.py · cc-knowledge-sync.py (the one embedder)
 Usage: python3 cc-refresh.py [--dry]
 """
 import subprocess, sys, os
@@ -22,7 +22,7 @@ for label, script, extra in STEPS:
     path = os.path.join(HERE, script)
     if not os.path.exists(path):
         print(f"  ⚠ {label}: {script} not found — skipped"); continue
-    args = ["python3", path] + extra + (["--dry"] if DRY and script not in ("cc-cron.py", "cc-knowledge-embed-backfill.py", "cc-knowledge-sync.py") else [])
+    args = ["python3", path] + extra + (["--dry"] if DRY and script not in ("cc-cron.py", "cc-knowledge-sync.py") else [])
     print(f"▶ {label}")
     r = subprocess.run(args, capture_output=True, text=True)
     out = (r.stdout.strip().splitlines() or [""])[-1]

@@ -436,7 +436,7 @@ User voice from the primary context file is applied ON TOP of the active style.
 
 ### Saving Resources
 
-When Pete shares reusable content, route per `[[vault-routing#master-routing-matrix]]`. Processes / SOPs / API-config docs stay in `Library/processes/` (the surviving skeleton); everything else — competitor intel, market research, templates, decisions, IP/trademark — is **knowledge → ingest a `.md` to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>` → null embedding → `cc-knowledge-embed-backfill.py`). Add `tags:`; report what was saved and where.
+When Pete shares reusable content, route per `[[vault-routing#master-routing-matrix]]`. Processes / SOPs / API-config docs stay in `Library/processes/` (the surviving skeleton); everything else — competitor intel, market research, templates, decisions, IP/trademark — is **knowledge → ingest a `.md` to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>`; the hourly embedder re-indexes it automatically, or run `cc-embedder.py` to index it now). Add `tags:`; report what was saved and where.
 
 ### Finding Resources
 
@@ -470,7 +470,7 @@ USE WHEN Pete:
 
 ### Step 1: Identify Meeting Type and Save Location
 
-Meeting notes are **knowledge → `vault_notes`**: write the note (`type: meeting`, a `meeting_type` tag — standup / client-call / one-on-one / board-review / all-hands / cross-team / general — + entity tags) and ingest it (`cc-knowledge-ingest.py` → null embedding → `cc-knowledge-embed-backfill.py`). Client-call notes wikilink to the customer's CC record.
+Meeting notes are **knowledge → `vault_notes`**: write the note (`type: meeting`, a `meeting_type` tag — standup / client-call / one-on-one / board-review / all-hands / cross-team / general — + entity tags) and ingest it (`cc-knowledge-ingest.py`; the hourly embedder re-indexes it automatically, or run `cc-embedder.py` to index it now). Client-call notes wikilink to the customer's CC record.
 
 Filename: `YYYY-MM-DD Meeting Title.md`.
 
