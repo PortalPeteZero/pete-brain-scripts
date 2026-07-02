@@ -52,11 +52,17 @@ def cmd_semantic(q, lim):
     for r in rows:
         print(f"[{r['type']}] {r['title']}  (sim {r['similarity']:.2f})  ({r['vault_path']})")
 
-def cmd_get(target):
+def cmd_get(target, head=0):
     n = _resolve(target)
     if not n: print("not found:", target); return
     print(f"# {n['title']}  [{n['type']}]  {n['vault_path']}\n")
-    print((n.get("body") or "")[:6000])
+    body = n.get("body") or ""
+    # Default: print the WHOLE body. The old silent 6,000-char cap hid deep facts (a confirmed value at
+    # char ~9k was invisible to every session). Use --head N for a deliberate, MARKED preview instead.
+    if head and len(body) > head:
+        print(body[:head] + f"\n…[preview: first {head} of {len(body)} chars — omit --head for the full note]")
+    else:
+        print(body)
 
 def cmd_backlinks(target):
     n = _resolve(target)
@@ -89,7 +95,7 @@ if __name__ == "__main__":
     sub = ap.add_subparsers(dest="cmd")
     s = sub.add_parser("search", help="ranked full-text search"); s.add_argument("q"); s.add_argument("--limit", type=int, default=10)
     sm = sub.add_parser("semantic", help="semantic / vector search"); sm.add_argument("q"); sm.add_argument("--limit", type=int, default=10)
-    g = sub.add_parser("get", help="full note body for a <slug> or vault path"); g.add_argument("target")
+    g = sub.add_parser("get", help="full note body for a <slug> or vault path"); g.add_argument("target"); g.add_argument("--head", type=int, default=0, help="preview first N chars instead of the full body")
     b = sub.add_parser("backlinks", help="notes linking TO <slug>"); b.add_argument("target")
     o = sub.add_parser("outlinks", help="notes <slug> links to"); o.add_argument("target")
     sub.add_parser("stats", help="row counts by type")
@@ -102,7 +108,7 @@ if __name__ == "__main__":
     a = ap.parse_args(argv)
     if a.cmd == "search": cmd_search(a.q, a.limit)
     elif a.cmd == "semantic": cmd_semantic(a.q, a.limit)
-    elif a.cmd == "get": cmd_get(a.target)
+    elif a.cmd == "get": cmd_get(a.target, a.head)
     elif a.cmd == "backlinks": cmd_backlinks(a.target)
     elif a.cmd == "outlinks": cmd_outlinks(a.target)
     elif a.cmd == "stats": cmd_stats()

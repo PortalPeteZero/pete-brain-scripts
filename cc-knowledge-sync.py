@@ -1,102 +1,103 @@
 #!/usr/bin/env python3
-"""cc-knowledge-sync.py — keep the CC's semantic search CURRENT, automatically.
+"""cc-knowledge-sync.py — keep the CC semantic layer CURRENT (pure DB job).
 
-Finds vault `.md` changed since the last run → (re)ingests them into `vault_notes` → nulls the
-embeddings of changed notes so they get re-embedded with the new content → embeds anything un-embedded
-(direct Voyage). So any NEW or EDITED note / process / doc becomes searchable on its own, without a
-manual ingest step. Runs from `cc-refresh` (→ Railway at Part H).
+Runs the ONE embedder (cc-embedder.py) across vault_notes + tasks + notes. The embedder refreshes every
+row whose CONTENT changed, using the SQL embed_input() single-source-of-truth + a content hash
+(embedded_hash). So a manual edit from the app, phone, bot or raw SQL is picked up automatically, and a
+stale-but-present vector can no longer hide — the old NULL-only check silently missed those.
 
-⚠ FUTURE — ON-WRITE indexing (Pete, 22 Jun: "i want a note or plan somewhere to add the on-write
-later"): this cron is the v1 (catch-up on a schedule). The next step is to index the INSTANT something
-is written — a small write-hook on each path that creates content (Cowork capture, Claude Code edits,
-the CC's own writes) that calls ingest+embed for just that file. That makes search real-time instead of
-up-to-the-last-sync. Tracked in the master plan checklist. Until then, this cron keeps it current.
+SUCCESS-but-stale guard: after the embed pass, if any table still has DIRTY rows (content changed but the
+stored embedding could not be refreshed — e.g. a Voyage outage) the job emails Pete once per day and logs
+a cron_events row, so the board can't show green while vectors rot.
 
-Usage: python3 cc-knowledge-sync.py [--full]   (--full re-scans everything, ignoring the last-run stamp)
+Replaces the old file-mtime re-ingest arm, which was a production NO-OP: the deployed container carries
+only a handful of .md files and its state file reset on every deploy. Knowledge INGESTION is session-driven
+via cc-knowledge-ingest.py; this cron owns freshness of the SEMANTIC LAYER only.
 """
 # CRON-META
-# what: Re-indexes the CC knowledge base — re-ingests changed docs and re-embeds any un-embedded vault_notes/notes so semantic search and the bot stay current with manual edits.
-# why: A manual CC edit (app / phone / bot / raw SQL) can land a row with no embedding; this is the self-healing safety net so nothing goes invisible to semantic search. (Was hand-run via cc-refresh; this is the deferred "Part H" Railway deployment.)
-# reads: vault .md file changes + vault_notes/notes rows with a null embedding
-# writes: vault_notes (ingest + embeddings), notes (embeddings)
+# what: Refreshes the CC semantic layer — re-embeds any vault_notes/tasks/notes row whose content changed (content-hash dirty detection via embed_input) and alerts if embeddings stay stale while the job succeeds.
+# why: A manual edit (app/phone/bot/SQL) leaves a stale-but-present vector the old NULL-only check never caught; this is the self-healing freshness job + a SUCCESS-but-stale alarm so semantic search can't silently rot.
+# reads: vault_notes/tasks/notes content vs embedded_hash (the freshness gate)
+# writes: vault_notes/tasks/notes (embedding + embedded_hash)
 # entity: command-centre
-# secrets: VOYAGE_API_KEY, SUPABASE_TOKEN
+# secrets: VOYAGE_API_KEY, SUPABASE_TOKEN, GOOGLE_SA_JSON
 # schedule: 0 * * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
-import json, os, sys, subprocess, datetime, time, urllib.request
+import json, os, sys, subprocess, datetime, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = f"{VAULT}/Library/processes/secrets"
-STATE = os.path.join(HERE, "_logs", "knowledge-sync-state.json")
-# the vault content trees that become vault_notes (the operating skeleton + knowledge)
-ROOTS = ["Library", "Projects", "Daily", "Businesses", "Customers", "Suppliers", "Properties", "Personal", "Accreditations"]
-LOOKBACK_H = 72   # first-run / no-state window
+REF = "zhexcaflgahdcbzvbyfq"
+CRON_KEY = "knowledge-reindex"
+ALERT_TO = "pete.ashcroft@sygma-solutions.com"
+GATE = {"vault_notes": "embed_input(title,body)", "tasks": "embed_input(name,notes)", "notes": "embed_input(title,body)"}
 
-def _k():
-    k = json.load(open(f"{SEC}/command-centre-supabase-keys.json")); return k["url"], k["service_role_key"]
-
-def load_state():
-    try: return json.load(open(STATE))
-    except Exception: return {}
-
-def save_state(s):
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    json.dump(s, open(STATE, "w"))
-
-def changed_since(ts):
-    out = []
-    for r in ROOTS:
-        base = os.path.join(VAULT, r)
-        if not os.path.isdir(base): continue
-        for dp, dn, fn in os.walk(base):
-            dn[:] = [d for d in dn if not d.startswith(".") and d != "_archive"]
-            for f in fn:
-                if f.endswith(".md") and not f.startswith("."):
-                    p = os.path.join(dp, f)
-                    try:
-                        if os.path.getmtime(p) > ts: out.append(os.path.relpath(p, VAULT))
-                    except Exception: pass
-    return out
-
-def null_embeddings(paths):
-    """Null changed notes' embeddings so they're re-embedded with the new body (FTS is already live).
-    Uses the Management API SQL endpoint — paths contain spaces, so a PostgREST in.() URL can't carry them."""
-    if not paths: return
-    REF = "zhexcaflgahdcbzvbyfq"
+def mgmt_sql(q):
     tok = (os.environ.get("SUPABASE_TOKEN") or open(f"{SEC}/supabase-token").read()).strip()
     UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
-    for i in range(0, len(paths), 200):
-        batch = paths[i:i + 200]
-        vals = ",".join("'" + p.replace("'", "''") + "'" for p in batch)
-        q = f"update public.vault_notes set embedding=null where vault_path in ({vals});"
-        req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query",
-            data=json.dumps({"query": q}).encode(),
-            headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "User-Agent": UA}, method="POST")
-        try: urllib.request.urlopen(req, timeout=120)
-        except Exception as e: print("  ⚠ null-embed batch failed:", str(e)[:140])
+    req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query",
+        data=json.dumps({"query": q}).encode(),
+        headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "User-Agent": UA}, method="POST")
+    return json.loads(urllib.request.urlopen(req, timeout=120).read() or "[]")
 
-def run(script, *args):
-    r = subprocess.run(["python3", os.path.join(HERE, script), *args], capture_output=True, text=True)
-    return (r.stdout.strip().splitlines() or [r.stderr.strip()[-160:]])[-1]
+def gate_counts():
+    out = {}
+    for t, ei in GATE.items():
+        try:
+            r = mgmt_sql(f"SELECT count(*) AS dirty FROM public.{t} "
+                         f"WHERE length({ei})>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei}))")
+            out[t] = r[0]["dirty"] if r else -1
+        except Exception as e:
+            print(f"  gate {t} failed: {str(e)[:120]}"); out[t] = -1
+    return out
+
+def _cron_state():
+    try:
+        sys.path.insert(0, HERE)
+        from importlib import import_module
+        return import_module("cron_state")
+    except Exception:
+        return None
+
+def alert(dirty):
+    cs = _cron_state()
+    today = datetime.date.today().isoformat()
+    if cs and cs.get_state(CRON_KEY, "stale-alert-date") == today:
+        print("  stale-alert: already sent today"); return
+    lines = "\n".join(f"  {t}: {n} rows whose stored embedding no longer matches their content"
+                      for t, n in dirty.items() if n and n > 0)
+    body = ("The hourly knowledge-reindex job ran but the CC semantic layer is still STALE:\n\n" + lines +
+            "\n\nEmbeddings could not be refreshed (likely a Voyage error). Semantic search / Ask may return "
+            "outdated matches until this clears. Check the knowledge-reindex logs on Railway.\n")
+    try:
+        subprocess.run(["python3", os.path.join(HERE, "gmail-api.py"), "send", ALERT_TO,
+                        "⚠ CC semantic search stale (knowledge-reindex)", body],
+                       check=False, capture_output=True, timeout=60)
+    except Exception as e:
+        print("  stale-alert: email failed", str(e)[:120])
+    try:
+        d = ("SUCCESS-but-stale: " + ", ".join(f"{t}={n}" for t, n in dirty.items() if n and n > 0)).replace("'", "''")
+        mgmt_sql(f"INSERT INTO public.cron_events (id, cron_key, at, kind, detail, actor) "
+                 f"VALUES (gen_random_uuid(), '{CRON_KEY}', now(), 'stale-alert', '{d}', 'cc-knowledge-sync')")
+    except Exception as e:
+        print("  stale-alert: cron_events insert failed", str(e)[:120])
+    if cs:
+        try: cs.set_state(CRON_KEY, "stale-alert-date", today)
+        except Exception: pass
+    print("  stale-alert: SENT")
 
 def main():
-    st = load_state()
-    now = time.time()
-    since = 0 if "--full" in sys.argv else st.get("last_run_epoch", now - LOOKBACK_H * 3600)
-    changed = changed_since(since)
-    print(f"cc-knowledge-sync — {len(changed)} .md changed since {datetime.datetime.fromtimestamp(since, datetime.timezone.utc).isoformat()}")
-    if changed:
-        for i in range(0, len(changed), 80):
-            print("  ingest:", run("cc-knowledge-ingest.py", *changed[i:i + 80]))
-        null_embeddings(changed)      # so edited notes get a fresh embedding, not a stale one
-    print("  embed:", run("cc-knowledge-embed-backfill.py"))
-    print("  embed tasks:", run("cc-tasks-embed.py"))   # embed any new/edited public.tasks → semantic task search + Ask
-    st["last_run_epoch"] = now
-    st["last_run_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    st["last_changed"] = len(changed)
-    save_state(st)
+    # run the ONE embedder over all three tables (the content-hash dirty scan lives inside it)
+    subprocess.run(["python3", os.path.join(HERE, "cc-embedder.py")], env=os.environ)
+    dirty = gate_counts()
+    print("cc-knowledge-sync — post-embed gate:", dirty)
+    if any(n for n in dirty.values() if n and n > 0):
+        alert(dirty)
+    else:
+        print("  all tables fresh (gate=0)")
     print("done")
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()

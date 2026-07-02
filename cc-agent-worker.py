@@ -93,7 +93,15 @@ SYSTEM = (
     "• KNOWLEDGE = vault_notes (lessons/decisions/processes, semantic + full-text); AUTOMATIONS = crons; "
     "FILE INDEX = drive_files; for 'where does X live' consult DATA HOMES = data_map.\n"
     "MEMORY: the recent Telegram conversation is provided as prior messages — use it for context (follow-ups, "
-    "pronouns like 'that meeting', 'move it', 'them'). Don't claim you have no memory; refer back when relevant."
+    "pronouns like 'that meeting', 'move it', 'them'). Don't claim you have no memory; refer back when relevant.\n\n"
+    "FRESHNESS & CORRECTNESS OF FACTS (critical): a single fact — a cabin number, date, price, address, status — "
+    "has ONE current value. (1) READING: if cc_search, cc_read or the prior conversation give you DATED or "
+    "CONFLICTING values for the same fact, trust the most recent value or the one explicitly marked "
+    "'confirmed'/'now confirmed'; treat earlier 'TBC'/'guarantee'/provisional entries as SUPERSEDED; and if you "
+    "cannot tell which is current, say so rather than quoting a possibly-stale one. (2) WRITING with cc_write: "
+    "state a changing fact ONCE — REPLACE the old value in place; never append a line that contradicts an existing "
+    "one, and if a note already holds an out-of-date value for what you are updating, remove or correct that line "
+    "in the same write. Appending contradictions is exactly what makes the brain surface dead values."
 )
 
 def sb(method, path, body=None, prefer=None):
@@ -149,17 +157,32 @@ TOOLS = [
          "required": ["table", "op"]}},
 ]
 
+# cc_read reads note BODIES (a fact can sit deep in a long note, e.g. char ~9k in the cruise note), so it
+# gets a much larger ceiling than the other tools; and every truncation carries an explicit marker so the
+# model knows output was cut (silent truncation is what hid the confirmed cabin behind the 8k window).
+CC_READ_CAP = 40000
+
+def _cap_marked(s, n, hint="narrow the query / add LIMIT"):
+    """Truncate to n chars with an explicit marker — never silent."""
+    s = str(s)
+    if len(s) <= n:
+        return s
+    m = f"\n…[truncated at {n} chars — {hint}]"
+    return s[:max(0, n - len(m))] + m
+
 def t_cc_read(a):
     try:
-        return json.dumps(sb("POST", "rpc/cc_read", body={"q": (a.get("query") or "").strip()}))[:8000]
+        return _cap_marked(json.dumps(sb("POST", "rpc/cc_read", body={"q": (a.get("query") or "").strip()})), CC_READ_CAP)
     except urllib.error.HTTPError as e:
         return f"ERROR: {e.read().decode()[:300]}"
 
 def t_cc_search(a):
     try:
         rows = sb("POST", "rpc/search_notes", body={"q": a.get("query") or "", "lim": int(a.get("limit") or 8)}) or []
+        # NOTE: search_notes returns a 'snippet' column only, so the body/content slice below is inert today.
+        # If search_notes is ever widened to return full bodies, add an explicit truncation marker here too.
         slim = [{k: (v[:400] if isinstance(v, str) and k in ("body", "content") else v) for k, v in r.items()} for r in rows]
-        return json.dumps(slim)[:8000]
+        return _cap_marked(json.dumps(slim), 8000, "refine the search / lower limit")
     except urllib.error.HTTPError as e:
         return f"ERROR: {e.read().decode()[:300]}"
 
@@ -399,8 +422,8 @@ def chat_history(chat_id, exclude_id, limit=6):
         p = (r.get("prompt") or "").strip(); ans = (r.get("result") or "").strip()
         if not p or not ans:
             continue
-        msgs.append({"role": "user", "content": p[:1500]})
-        msgs.append({"role": "assistant", "content": ans[:1500]})
+        msgs.append({"role": "user", "content": _cap_marked(p, 1500, "older turn, trimmed")})
+        msgs.append({"role": "assistant", "content": _cap_marked(ans, 1500, "older turn, trimmed")})
     return msgs
 
 def run_agentic(prompt, model, history=None):
@@ -422,7 +445,10 @@ def run_agentic(prompt, model, history=None):
             fn = TOOL_FN.get(tu["name"])
             out = fn(tu.get("input") or {}) if fn else f"ERROR: unknown tool {tu['name']}"
             print(f"    ↳ {tu['name']} {json.dumps(tu.get('input', {}))[:90]} → {str(out)[:90]}", flush=True)
-            results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": str(out)[:8000]})
+            # cc_read gets the larger ceiling (it reads note bodies); every other tool keeps the 8k cap. Each
+            # tool already self-caps, so this is a backstop; _cap_marked makes any cut explicit, never silent.
+            cap = CC_READ_CAP if tu["name"] == "cc_read" else 8000
+            results.append({"type": "tool_result", "tool_use_id": tu["id"], "content": _cap_marked(str(out), cap)})
         messages.append({"role": "user", "content": results})
     return "(stopped: hit max tool steps)", {"input_tokens": tin, "output_tokens": tout}, MAX_STEPS
 
@@ -442,7 +468,7 @@ def process(job):
     ctx = job.get("context") or {}
     history = chat_history(ctx.get("chat_id"), jid) if ctx.get("chat_id") else []
     if ctx:
-        prompt = f"{prompt}\n\n[context]\n{json.dumps(ctx)[:4000]}"
+        prompt = f"{prompt}\n\n[context]\n{_cap_marked(json.dumps(ctx), 4000, 'context trimmed')}"
     print(f"  ▶ job {jid[:8]} ({job.get('kind')}/{job.get('source')}) → {model}{f' · +{len(history)//2} prior turns' if history else ''}", flush=True)
     try:
         text, usage, steps = run_agentic(prompt, model, history)

@@ -229,7 +229,7 @@ def cmd_text(a):
 
 
 def cmd_status(a):
-    r = subprocess.run(f'cd "{VAULT}" && python3 cc-sql.py "SELECT type, count(*) AS n, count(embedding) AS embedded FROM vault_notes WHERE tags && ARRAY[\'passionfit-concepts\'] GROUP BY type ORDER BY n DESC"',
+    r = subprocess.run(f'cd "{VAULT}" && python3 cc-sql.py "SELECT type, count(*) AS n, count(*) FILTER (WHERE embedding IS NOT NULL AND embedded_hash = md5(embed_input(title,body))) AS embedded FROM vault_notes WHERE tags && ARRAY[\'passionfit-concepts\'] GROUP BY type ORDER BY n DESC"',
                        shell=True, capture_output=True, text=True)
     print(r.stdout.strip() or r.stderr[:300])
 

@@ -619,6 +619,7 @@ Do NOT:
 - Create tasks anywhere other than CC `public.tasks` (Pete's tasks)
 - Write any permanent file to local disk -- it belongs in one of the four homes (Drive / `vault_notes` / `public.tasks` / the CC)
 - Duplicate routing rules into this skill -- they live in [[vault-routing]] only
+- **Append a changed fact as a new line while leaving the old value in the note.** State a volatile fact (number / date / price / status) ONCE: replace it in place and remove the superseded line. FTS + the 24/7 bot rank on the whole note and aren't position-aware, so any dead value left in the body can be surfaced as current (the stale-cabin-"TBC" bug). See the volatile-fact rule in [[vault-writer]].
 
 ## Pete's Preferences for Written Content
 

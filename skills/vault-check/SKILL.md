@@ -91,7 +91,7 @@ Phases run in order. Each phase gets its own task via TaskCreate so progress is 
 
 Confirm the four cloud homes are coherent:
 
-1. **Knowledge** — `vault_notes` has 0 un-embedded notes: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT count(*) FROM vault_notes WHERE embedding IS NULL"`. If non-zero, run `cc-knowledge-embed-backfill.py` and re-check.
+1. **Knowledge** — the semantic layer is FRESH (hash gate = 0), not merely non-NULL. A stale-but-present embedding (content edited, vector not refreshed) passes a NULL check yet is silently wrong, so check content-vs-hash across all three embedding tables: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT 'vault_notes' t, count(*) c FROM vault_notes WHERE length(embed_input(title,body))>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5(embed_input(title,body))) UNION ALL SELECT 'tasks', count(*) FROM tasks WHERE length(embed_input(name,notes))>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5(embed_input(name,notes))) UNION ALL SELECT 'notes', count(*) FROM notes WHERE length(embed_input(title,body))>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5(embed_input(title,body)))"`. If any count is non-zero, run the consolidated embedder `VAULT=/tmp/pbs python3 /tmp/pbs/cc-embedder.py` and re-check.
 2. **Files** — `drive_files` is fresh (the `drive-changes-watch` cron is current in `/m/automations-log`); spot-check a recent change is indexed.
 3. **Secrets** — every secret a skill/process references exists in the CC `secrets` table (materialised under `/tmp/pbs`). Flag any referenced-but-missing key.
 4. **Reconcile gate** — `VAULT=/tmp/pbs python3 /tmp/pbs/vault-reconcile-gate.py` passes. Fix any failure in-session.

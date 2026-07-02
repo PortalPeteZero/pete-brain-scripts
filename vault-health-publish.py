@@ -60,6 +60,28 @@ def drift_info():
     n = m.group(1) if m else str(len(issues))
     return False, f"{n} issue(s) at last run ({when}).", issues
 
+def semantic_freshness():
+    """Hash gate: rows whose stored embedding no longer matches their current content, across the three
+    embedding tables. Returns (ok, message). ok True = all fresh, False = stale rows, None = unreadable."""
+    import subprocess, json as _json
+    gate = {"vault_notes": "embed_input(title,body)", "tasks": "embed_input(name,notes)", "notes": "embed_input(title,body)"}
+    parts, total, unknown = [], 0, False
+    for t, ei in gate.items():
+        try:
+            r = subprocess.run(["python3", str(SCRIPT_DIR / "cc-sql.py"),
+                f"SELECT count(*) c FROM {t} WHERE length({ei})>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei}))"],
+                capture_output=True, text=True, env={**os.environ, "VAULT": VAULT}, timeout=60)
+            c = int(_json.loads(r.stdout)[0]["c"])
+        except Exception:
+            unknown = True; continue
+        if c > 0:
+            parts.append(f"{t}={c}"); total += c
+    if unknown:
+        return None, "Could not read the freshness gate."
+    if total == 0:
+        return True, "All embeddings current (content-hash gate = 0)."
+    return False, f"{total} stale embedding(s): " + ", ".join(parts)
+
 def build_html():
     results = []
     for label, url, tokens in CHECKS:
@@ -72,6 +94,7 @@ def build_html():
     n_ok = sum(1 for _, s, _ in results if s == "pass")
     allgood = n_ok == len(results)
     drift_ok, drift_msg, drift_issues = drift_info()
+    sem_ok, sem_msg = semantic_freshness()
     def dot(state):
         c = {"pass": "#16a34a", "fail": "#dc2626", "error": "#d97706"}.get(state, "#94a3b8")
         return f"<span style='display:inline-block;width:9px;height:9px;border-radius:50%;background:{c};margin-right:8px'></span>"
@@ -99,6 +122,8 @@ def build_html():
             f"<table style='width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e6f0;border-radius:10px;overflow:hidden'><tbody>{rows}</tbody></table>"
             f"<div style='font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin:18px 0 6px'>Vault drift</div>"
             f"{drift_block}"
+            f"<div style='font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin:18px 0 6px'>Semantic search freshness</div>"
+            f"<p style='margin:0;color:{ {True:'#16a34a', False:'#dc2626', None:'#64748b'}[sem_ok] }'>{html.escape(sem_msg)}</p>"
             f"<p style='margin:14px 0 0;color:#94a3b8;font-size:12px'>Checked {datetime.datetime.now():%Y-%m-%d %H:%M}. The sc-marker monitor + drift-check crons keep alerting on failure as before.</p></div>")
     return html_out, allgood
 

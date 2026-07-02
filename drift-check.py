@@ -85,10 +85,30 @@ def main():
     else:
         findings.append(("✓", "Drive watch: all drives polling"))
 
-    # 4. un-embedded knowledge
-    un = q("SELECT count(*) c FROM vault_notes WHERE embedding IS NULL")
-    nun = int(un[0]["c"]) if un else 0
-    findings.append((("⚠" if nun else "✓"), f"Knowledge: {nun} un-embedded notes" if nun else "Knowledge: all embedded"))
+    # 4. semantic-layer freshness — HASH GATE (catches stale-but-present vectors, not just NULLs) across
+    #    all three embedding tables; plus a DEAD-MAN on the freshness cron itself. The cron's own
+    #    SUCCESS-but-stale alert lives inside that cron, so it shares the cron's failure domain — if the
+    #    cron dies entirely, staleness accrues with no alert. This external cross-check closes that gap.
+    #    (Source: public.crons only — cron_events carries only lifecycle kinds, no per-run success signal.)
+    GATE = {"vault_notes": "embed_input(title,body)", "tasks": "embed_input(name,notes)", "notes": "embed_input(title,body)"}
+    stale_bits = []
+    for t, ei in GATE.items():
+        r = q(f"SELECT count(*) c FROM {t} WHERE length({ei})>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei}))")
+        c = int(r[0]["c"]) if r else 0
+        if c: stale_bits.append(f"{t}={c}")
+    if stale_bits:
+        findings.append(("⚠", "Semantic layer STALE (content≠embedding): " + ", ".join(stale_bits)))
+    else:
+        findings.append(("✓", "Semantic layer: all embeddings current (hash gate = 0)"))
+    ki = q("SELECT last_status, last_run_at::timestamp(0) r, (last_run_at < now() - interval '26 hours') AS overdue "
+           "FROM crons WHERE key='knowledge-reindex'")
+    if ki:
+        row = ki[0]
+        if str(row.get("last_status") or "").upper() != "SUCCESS" or row.get("overdue"):
+            findings.append(("⚠", f"knowledge-reindex freshness cron unhealthy: last_status={row.get('last_status')}, "
+                                  f"last_run={row.get('r')} — semantic staleness may be accruing UNALERTED"))
+        else:
+            findings.append(("✓", "knowledge-reindex freshness cron: healthy (recent SUCCESS)"))
 
     warns = [f for f in findings if f[0] == "⚠"]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
