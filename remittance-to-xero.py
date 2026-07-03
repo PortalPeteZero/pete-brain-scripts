@@ -51,7 +51,10 @@ XERO = os.environ.get(
     'xero.inbox.!2!zhs.b16ycmse1tlm8n1h@xerofiles.com'
 )
 PROCESSED_LABEL = 'Xero-Forwarded'
-SEARCH_QUERY = '(subject:remittance OR from:*remittance*) -label:Xero-Forwarded newer_than:14d'
+# -to:xerofiles.com excludes this cron's own forwards: they carry subject "Remittance: …",
+# so without it each run re-matches and re-forwards the previous run's output (the
+# self-poisoning loop of 3 Jul 2026 — "Remittance: Remittance: Remittance: …").
+SEARCH_QUERY = '(subject:remittance OR from:*remittance*) -label:Xero-Forwarded -to:xerofiles.com newer_than:14d'
 
 def get_or_create_label(g, name):
     for lbl in g.list_labels():
@@ -192,6 +195,13 @@ def main():
 
             sent_id = forward_to_xero(g, msg, tid, pdf_bytes, fname)
             g.modify_thread(tid, add=[processed_label])
+            # Belt-and-braces vs the self-forward loop: mark our own outbound forward as
+            # processed too, so it can never match a future run even if the query changes.
+            try:
+                sent_msg = g._call('GET', f'/messages/{sent_id}', query={'format': 'minimal'})
+                g.modify_thread(sent_msg['threadId'], add=[processed_label])
+            except Exception as e:
+                print(f"    (warn: could not label own forward {sent_id}: {e})")
             print(f"    Forwarded -> Xero (msg {sent_id}, {src}, filename={fname})")
             processed += 1
         except Exception as e:
