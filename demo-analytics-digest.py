@@ -165,9 +165,27 @@ def send_email(subject, html):
     return r.get("id", "ok")
 
 
+def top_up_demo():
+    """Roll the demo home's readings forward to now, even on days with zero visitors.
+    The /demo page also tops up on open; this is the daily guarantee."""
+    req = urllib.request.Request(
+        f"{LG_URL}/functions/v1/demo-session",
+        data=json.dumps({"topupOnly": True}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        out = json.loads(r.read().decode())
+    print(f"demo top-up: latest reading {out.get('latestReading')}")
+
+
 def main():
     # Canary is UTC in winter, UTC+1 in summer; the digest window is relative so exact tz is not critical.
     now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    try:
+        top_up_demo()
+    except Exception as e:
+        print(f"demo top-up failed (digest continues): {e}")
     subject, html = build(now)
     if SEND:
         mid = send_email(subject, html)
