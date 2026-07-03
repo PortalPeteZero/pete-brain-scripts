@@ -90,7 +90,7 @@ Use for: real impressions, clicks, CTR, and average position at the query level 
 
 ### 0a. Property Discovery
 
-Ask Pete which property and page. Read the property's CC record (Properties module) + its SEO plans in `vault_notes`.
+Ask Pete which property and page. **Then read the property's FRONT DOOR first**: `vault_notes` `Properties/{Name}/README.md` (story, standing decisions — e.g. locked no-work pages, protected click-engine pages) + its `{property}-state-of-play.md` (current truth, updated in place). If the front door doesn't exist, create it per [[vault-routing]] Properties rule (exemplar: Sygma Solutions Website) before auditing. Then the property's CC record (Properties module) + its SEO plans in `vault_notes`. An audit that produces a new plan or verdict = one story line on the README + state-of-play update at close.
 
 **Read the property's IDs + project from its LIVE card — never a table baked into this skill** (those rot; the card is the single source). See [[page-seo-workflow]].
 
