@@ -192,7 +192,13 @@ git push origin main
 
 ### 2a. Read property context
 
-Read the property's home to understand current state:
+**FIRST: the property front door.** Every property has (or must get) a root README in `vault_notes` at `Properties/{Name}/README.md` -- the single home for that site: read-in-this-order chain, the story so far (one line per era, linked), standing decisions, and where work is logged. Read it BEFORE anything else:
+
+- Fetch it: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT body FROM vault_notes WHERE vault_path = 'Properties/{Name}/README.md'"`
+- **If it does not exist, CREATE it before any work** (this is not optional): copy the pattern from `Properties/Sygma Solutions Website/README.md` (the exemplar, built 3 Jul 2026) -- sections: *Read in this order* / *Where the work is logged* / *The story so far* / *Standing decisions* / *Maintenance rule*. Pair it with a `{property}-state-of-play.md` note (current truth, updated IN PLACE, never forked).
+- The front door is an INDEX: one line per event, detail lives in linked notes. Volatile facts (metrics, positions) live ONLY in the state-of-play note.
+
+Then read the rest of the property's home:
 
 - List the property's **Google Drive** folder (`drive_files` via `cc-sql.py`) -- see what reference data exists
 - Read the property's **CC card** for domain, tech stack, tracking IDs
@@ -572,6 +578,7 @@ Follow the routing rules:
 | What you found | Where it goes |
 |---|---|
 | **Any change that shipped** (commit on main, live page edit) | a **Work Log** row via `worklog.py` -- see Step 6f² (mandatory, not optional; this is the cross-property "what did we do / did it work" index at /m/work-log) |
+| **A major event** (consolidation, migration, strategy verdict, new lock, agency change) | ONE new line in the property front-door README's "story so far" + update `{property}-state-of-play.md` IN PLACE (never append a duplicate; never fork a second state doc). Re-ingest both. This is what keeps a future session able to walk in through one door and know what/why/decisions. |
 | SEO crawl data, audit results | the property's **Google Drive** folder |
 | SEO page optimisation (which pages, keywords, scores, rescans) | Update the SEO Page Tracker on the property's **CC card** (see ahrefs-audit skill for format) |
 | Google Ads data | the property's **Google Drive** folder |
