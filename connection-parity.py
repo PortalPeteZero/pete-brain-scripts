@@ -160,15 +160,30 @@ def check(secrets, conn_body, config_notes, consumers, cron_names, cron_declarer
     for cn in cited_notes:
         if cn not in have_notes:
             findings.append(("P2", cn, "connections.md cites a config note with no matching *-configuration.md in vault_notes"))
+    #   Only CONCRETE pointer forms, never loose prose (a doc saying "secrets are pointer-only"
+    #   must not trip this): (a) `secret[s]: \`<name>\`` / "secret \`<name>\`" — a backtick-quoted
+    #   name right after the word secret(s); (b) a `secrets/<name>` path. Verify each names a real
+    #   secret. `public.*` (public.secrets/public.tasks) and *-configuration stems are excluded.
     for body_name, body in [("connections.md", conn_body)] + [(p, b) for p, b in config_notes.items()]:
-        for ref in re.findall(r'secret[s]?[`\s/]+([a-z0-9][A-Za-z0-9_.\-/]{3,})', body):
+        refs = re.findall(r'secret[s]?:?\s*`([A-Za-z0-9_.\-/]{4,})`', body)
+        refs += re.findall(r'\bsecrets/([A-Za-z0-9_.\-/]{4,})', body)
+        for ref in refs:
             ref = ref.strip("`/. ")
-            if ref in sec_names:
+            # normalise: a note may cite the full materialised PATH — reduce to the bare secret name
+            ref = re.sub(r'^(?:.*/)?Library/processes/secrets/', '', ref)
+            ref = ref.split("secrets/")[-1] if "secrets/" in ref else ref
+            if "*" in ref:            # a glob (passkit-*.pem) — a family pointer, not a single name
                 continue
-            # only flag things that look like a concrete secret-name token (has a hyphen or dot-json)
-            if (("-" in ref and not ref.endswith("-")) or ref.endswith(".json")) and "/" not in ref[:1]:
-                if ref not in have_notes and not ref.endswith("configuration"):
-                    findings.append(("P2", f"{body_name}:{ref}", "doc cites a secret-name-shaped token not present in public.secrets (verify or fix pointer)"))
+            if re.fullmatch(r'[A-Z0-9_]{4,}', ref):   # ALL-CAPS = an env-var name (external Supabase/env), not a CC secret file
+                continue
+            if ref in sec_names or ref.startswith("public.") or ref.endswith("configuration"):
+                continue
+            # a dangling-hyphen capture (`passkit-` from `passkit-*.pem`) or any prefix that names a
+            # FAMILY of real secrets (passkit-key.pem, passkit-passphrase, …) is a valid family pointer
+            if ref.endswith("-") or any(n.startswith(ref) for n in sec_names):
+                continue
+            if ref not in have_notes:
+                findings.append(("P2", f"{body_name}:{ref}", "doc cites a secret-name pointer not present in public.secrets (verify or fix pointer)"))
 
     # P3 unregistered config — a config note (service) with no connections.md row
     for p in config_notes:
