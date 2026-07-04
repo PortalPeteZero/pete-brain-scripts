@@ -152,7 +152,22 @@ def run(apply_mode, since, extra_dirs):
                 "Most are other live sessions' work (correctly left alone) -- but a commit YOU made in a "
                 "way the transcript didn't stamp (e.g. `git commit -q`, or a commit buried in a compound "
                 "shell command) also lands here. Confirm ownership before logging any; never auto-log these.")
+        failed = [x for x in recorded if not x.get("ok")]
+        if failed:
+            report["warnings"].append(
+                f"{repo}: {len(failed)} work_log write(s) FAILED ({', '.join(x['sha'] for x in failed)}) "
+                "-- these commits are NOT recorded and still count as unlogged. "
+                + "; ".join(x.get("out", "") for x in failed)[:220])
     return report
+
+
+def _remaining(report):
+    """Owned commits still NOT in the work log after this run: mine_unlogged minus the writes
+    that ACTUALLY succeeded. A FAILED work_log write must never count as recorded -- otherwise
+    the gate would report 'clean' while a commit silently went unlogged (the exact failure the
+    skill exists to prevent)."""
+    return sum(len(rp["mine_unlogged"]) - len([x for x in rp["recorded"] if x.get("ok")])
+               for rp in report["repos"])
 
 
 def _human(r):
@@ -173,10 +188,12 @@ def _human(r):
         for c in rp["others_unlogged"]:
             print(f"   UNATTRIBUTED, unlogged (surface — confirm before logging): {c['sha']}  {c['subject'][:70]}")
         for rec in rp["recorded"]:
-            print(f"   -> recorded {rec['sha']}: {'ok' if rec['ok'] else 'FAILED '+rec['out']}")
-    # the runnable-gate one-liner
-    mine_left = sum(len(rp["mine_unlogged"]) - len(rp["recorded"]) for rp in r["repos"])
-    print(f"\nUNLOGGED-OWNED REMAINING: {mine_left}")
+            if rec["ok"]:
+                print(f"   -> recorded {rec['sha']}: ok")
+            else:
+                print(f"   -> WRITE FAILED {rec['sha']}: {rec['out']}  (still unlogged)")
+    # the runnable-gate one-liner (a failed write is NOT recorded -- see _remaining)
+    print(f"\nUNLOGGED-OWNED REMAINING: {_remaining(r)}")
 
 
 def main():
@@ -188,10 +205,15 @@ def main():
     i = 0
     argv = [a for a in args if a not in ("--apply", "--human")]
     while i < len(argv):
-        if argv[i] == "--since":
-            since = argv[i + 1]; i += 2
-        elif argv[i] == "--git-dir":
-            extra.append(argv[i + 1]); i += 2
+        if argv[i] in ("--since", "--git-dir"):
+            if i + 1 >= len(argv):
+                sys.exit(f"closeout-sweep: {argv[i]} needs a value "
+                         f"(e.g. {argv[i]} {'YYYY-MM-DD' if argv[i]=='--since' else '/path/to/checkout'})")
+            if argv[i] == "--since":
+                since = argv[i + 1]
+            else:
+                extra.append(argv[i + 1])
+            i += 2
         else:
             i += 1
     rep = run(apply_mode, since, extra)
@@ -200,9 +222,9 @@ def main():
     else:
         print(json.dumps(rep, indent=2))
     # exit 0 always for dry-run; in --apply, exit 2 if any owned commit stayed unlogged
+    # (a FAILED work_log write counts as still-unlogged -- see _remaining).
     if apply_mode:
-        left = sum(len(rp["mine_unlogged"]) - len(rp["recorded"]) for rp in rep["repos"])
-        sys.exit(2 if left else 0)
+        sys.exit(2 if _remaining(rep) else 0)
 
 
 if __name__ == "__main__":

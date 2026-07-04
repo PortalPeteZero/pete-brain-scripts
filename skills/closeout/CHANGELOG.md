@@ -1,5 +1,15 @@
 # closeout — changelog
 
+## 1.0.2 — 2026-07-04 (second hardening round — re-audit found 2 pre-existing defects)
+The convergence re-audit confirmed all five 1.0.1 fixes closed cleanly, and a fresh-eyes
+pass surfaced two defects that pre-dated the audit (not introduced by the fixes):
+- **Honest runnable gate (major)** — a FAILED work_log write still counted toward `recorded`,
+  so `UNLOGGED-OWNED REMAINING` and the `--apply` exit code reported 0/clean even though the
+  commit never logged (the exact silent-record-failure the skill exists to prevent). Now a
+  failed write keeps the commit as still-unlogged: `REMAINING > 0`, exit 2, and a loud warning.
+- **Arg parsing (minor)** — `--since`/`--git-dir` as a bare trailing token crashed with an
+  IndexError; now a clean one-line usage error.
+
 ## 1.0.1 — 2026-07-04 (same-day hardening after an independent adversarial audit)
 A 4-auditor + verify workflow confirmed deliverables and records were complete and the
 spine never grabs another session's work in the shipped environment, but flagged five
