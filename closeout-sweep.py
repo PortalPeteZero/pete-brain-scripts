@@ -136,6 +136,12 @@ def run(apply_mode, since, extra_dirs):
             "others_unlogged": [{"sha": f[:9], "subject": s} for f, s in others_unlogged],
             "recorded": recorded,
         })
+        if others_unlogged:
+            report["warnings"].append(
+                f"{repo}: {len(others_unlogged)} unlogged commit(s) NOT auto-attributed to this session. "
+                "Most are other live sessions' work (correctly left alone) -- but a commit YOU made in a "
+                "way the transcript didn't stamp (e.g. `git commit -q`, or a commit buried in a compound "
+                "shell command) also lands here. Confirm ownership before logging any; never auto-log these.")
     return report
 
 
@@ -155,7 +161,7 @@ def _human(r):
         else:
             print("   mine: all logged ✓")
         for c in rp["others_unlogged"]:
-            print(f"   other session (surface only): {c['sha']}  {c['subject'][:70]}")
+            print(f"   UNATTRIBUTED, unlogged (surface — confirm before logging): {c['sha']}  {c['subject'][:70]}")
         for rec in rp["recorded"]:
             print(f"   -> recorded {rec['sha']}: {'ok' if rec['ok'] else 'FAILED '+rec['out']}")
     # the runnable-gate one-liner
