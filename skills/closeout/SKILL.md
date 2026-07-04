@@ -1,6 +1,6 @@
 ---
 name: closeout
-version: 1.0
+version: 1.0.3
 description: >
   Run at the END of any session that touched one of Pete's properties — an SEO site, a
   product app like LeakGuard, the Command Centre itself, or a brand-new build. One

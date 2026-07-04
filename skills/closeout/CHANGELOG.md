@@ -1,5 +1,16 @@
 # closeout — changelog
 
+## 1.0.3 — 2026-07-04 (runtime-honesty fix)
+`closeout-sweep.py` used to print `UNLOGGED-OWNED REMAINING: 0` and exit 0 even when it
+could NOT resolve a session transcript (a sub-run, or a non-Claude-Code runtime like Cowork
+where the `gitOperation`-stamped transcript may be absent) — a false all-clear for the gate
+that is the whole trust anchor. Now, when ownership is unverifiable, it prints "OWNERSHIP
+UNVERIFIABLE — NOT a clean pass" and exits **3** (distinct from 2 = a commit still unlogged,
+0 = clean). Docs corrected: closeout's auto-record needs the Claude Code interactive
+transcript (was mislabelled "Cowork + Claude Code"); the `vault-writer` cross-reference now
+states the same runtime caveat and the exit-code meanings. Found because the vault-writer
+edit pointed a Cowork-capable skill at a Claude-Code-only gate.
+
 ## 1.0.2 — 2026-07-04 (second hardening round — re-audit found 2 pre-existing defects)
 The convergence re-audit confirmed all five 1.0.1 fixes closed cleanly, and a fresh-eyes
 pass surfaced two defects that pre-dated the audit (not introduced by the fixes):

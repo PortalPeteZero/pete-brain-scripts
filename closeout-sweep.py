@@ -96,13 +96,23 @@ def run(apply_mode, since, extra_dirs):
         "session_id": sid, "main_transcript": main, "is_subagent": is_sub,
         "owned_shas": sorted(owned), "unattributed_subruns": unattributed,
         "attribution_notes": notes, "applied": apply_mode, "since": since,
-        "repos": [], "warnings": list(notes),
+        "repos": [], "warnings": list(notes), "ownership_verifiable": True,
     }
+    # When ownership CANNOT be verified (a sub-run, or no session transcript -- e.g. a non
+    # Claude-Code runtime like Cowork, where the gitOperation-stamped transcript may be absent),
+    # this gate did NOT check anything. It must fail LOUD: never report REMAINING 0 / exit 0,
+    # which would be a false all-clear. The auto-attribution requires the Claude Code interactive
+    # transcript; elsewhere the caller must fall back to recall-based per-ship logging.
     if is_sub:
+        report["ownership_verifiable"] = False
         report["warnings"].insert(0, "REFUSING: this is a sub-run, not the main session. No records written.")
         return report
     if not main:
-        report["warnings"].insert(0, "REFUSING: no main transcript resolved; cannot prove ownership. No records written.")
+        report["ownership_verifiable"] = False
+        report["warnings"].insert(0, "COULD NOT VERIFY OWNERSHIP: no session transcript resolved (not a Claude "
+                                     "Code interactive session, or CLAUDE_CODE_SESSION_ID unset). NOTHING was "
+                                     "checked or recorded -- this is NOT a clean pass. Fall back to logging each "
+                                     "ship by hand with worklog.py.")
         return report
 
     checkouts = candidate_checkouts(extra_dirs)
@@ -176,6 +186,9 @@ def _human(r):
     print(f"owned commits this session: {', '.join(s[:9] for s in r['owned_shas']) or '(none)'}")
     for w in r["warnings"]:
         print(f"  ! {w}")
+    if not r.get("ownership_verifiable", True):
+        print("\nOWNERSHIP UNVERIFIABLE — nothing checked or recorded. NOT a clean pass.")
+        return
     if not r["repos"]:
         print("no touched checkouts with owned commits found.")
     for rp in r["repos"]:
@@ -221,8 +234,11 @@ def main():
         _human(rep)
     else:
         print(json.dumps(rep, indent=2))
-    # exit 0 always for dry-run; in --apply, exit 2 if any owned commit stayed unlogged
-    # (a FAILED work_log write counts as still-unlogged -- see _remaining).
+    # exit 3 = ownership UNVERIFIABLE (no transcript / sub-run) -- gate could not run, NOT a clean
+    # pass; a false REMAINING-0 here would be the worst outcome. exit 2 = ran, but an owned commit
+    # stayed unlogged (incl. a failed write, see _remaining). exit 0 = clean.
+    if not rep.get("ownership_verifiable", True):
+        sys.exit(3)
     if apply_mode:
         sys.exit(2 if _remaining(rep) else 0)
 
