@@ -41,6 +41,7 @@ Match the user's intent to the right section:
 |---|---|
 | "resume", "start session", "pick up where I left off", **bare `/brain` with no verb** | [Resume Session](#resume-session) |
 | "save", "compress", "end session", "wrap up session" | [Compress / Save Session](#compress--save-session) |
+| "close out", "/closeout", "are we done / everything saved?", wrapping up a session that **touched a property** (SEO site, LeakGuard, the CC, a new build) | the **`closeout`** skill — the property-work end-of-session command (records only this session's own commits via the shared `session_attribution.py` gate, verifies live state, hands over one menu). Distinct from Compress (the general session save); closeout does NOT chain Compress. |
 | "remember this", "preserve", "save permanently" | [Preserve Knowledge](#preserve-knowledge) |
 | "morning", "evening", "daily review", "weekly review" | [Daily Review](#daily-review) |
 | "task", "to-do", "create task", "check tasks" | [Task Management](#task-management) |
