@@ -111,39 +111,58 @@ def _sibling_subagent_files(main_jsonl, sid):
     cand = sorted(set(os.path.realpath(c) for c in cand))
     mine, unknown = [], []
     for c in cand:
+        claimed = False
         try:
-            head = open(c, "r", encoding="utf-8", errors="replace").read(8192)
+            with open(c, "r", encoding="utf-8", errors="replace") as fh:
+                for _ in range(80):                 # a child's session linkage is in its first records
+                    line = fh.readline()
+                    if not line:
+                        break
+                    if not sid or sid not in line:  # cheap pre-filter before json.loads
+                        continue
+                    try:
+                        o = json.loads(line)
+                    except (ValueError, json.JSONDecodeError):
+                        continue
+                    # Claim ONLY on a STRUCTURED session-linkage field equal to sid -- never a
+                    # bare substring. A foreign transcript that merely mentions our sid as data
+                    # (in a message, a path, a prompt) must NOT be claimed. In real subagent
+                    # transcripts the top-level `sessionId` equals the PARENT session id (the
+                    # child's own identity lives in `agentId`), so sessionId==sid is the tie.
+                    if any(str(o.get(k)) == sid for k in ("sessionId", "parentSessionId", "parentUuid")):
+                        claimed = True
+                        break
         except OSError:
             unknown.append(c); continue
-        # A child transcript records its parent; claim only on a positive SID match.
-        if sid and sid in head:
-            mine.append(c)
-        else:
-            unknown.append(c)
+        (mine if claimed else unknown).append(c)
     return mine, unknown
 
 
 def _shas_from_file(path, deadline):
     """Stream one transcript, pulling gitOperation.commit.sha only. The `"gitOperation"
     not in line` fast-path means only the handful of commit lines ever get json.loaded,
-    so even a 100 MB+ file is cheap. Returns (shas, ok, note)."""
+    so even a 100 MB+ file is cheap. Returns (shas, ok, note, unparsed) -- `unparsed`
+    counts lines that CARRIED the gitOperation token but would not JSON-parse (a truncated
+    or corrupt commit record). The caller surfaces that count; it is never dropped."""
     shas = set()
+    unparsed = 0
     try:
         size = os.path.getsize(path)
     except OSError as e:
-        return (shas, False, f"cannot stat {os.path.basename(path)}: {e}")
+        return (shas, False, f"cannot stat {os.path.basename(path)}: {e}", unparsed)
     if size > _MAX_BYTES_PER_FILE:
-        return (shas, False, f"{os.path.basename(path)} is {size//1048576} MB (> budget) -- not fully scanned")
+        return (shas, False, f"{os.path.basename(path)} is {size//1048576} MB (> budget) -- not fully scanned", unparsed)
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if time.time() > deadline:
-                    return (shas, False, f"time budget hit while scanning {os.path.basename(path)}")
+                    return (shas, False, f"time budget hit while scanning {os.path.basename(path)}", unparsed)
                 if "gitOperation" not in line:
                     continue
                 try:
                     o = json.loads(line)
                 except (ValueError, json.JSONDecodeError):
+                    unparsed += 1          # a gitOperation line we couldn't read -- surface, don't drop
                     continue
                 tur = o.get("toolUseResult")
                 if not isinstance(tur, dict):
@@ -155,16 +174,17 @@ def _shas_from_file(path, deadline):
                 if isinstance(c, dict) and c.get("sha"):
                     shas.add(str(c["sha"]))
     except OSError as e:
-        return (shas, False, f"read error on {os.path.basename(path)}: {e}")
-    return (shas, True, "")
+        return (shas, False, f"read error on {os.path.basename(path)}: {e}", unparsed)
+    return (shas, True, "", unparsed)
 
 
 def owned_commit_shas():
     """(shas:set[str], unattributed:int, notes:list[str]).
 
     shas = commit SHAs THIS session created (from gitOperation.commit.sha). notes carries
-    every reason coverage was incomplete; unattributed counts sub-run transcripts we could
-    not confirm belong to us. Callers MUST surface notes/unattributed -- no silent caps."""
+    every reason coverage was incomplete; unattributed counts anything we could not confirm
+    or parse (sub-run transcripts we can't tie to us + unparseable gitOperation lines).
+    Callers MUST surface notes/unattributed -- no silent caps."""
     sid, main, is_sub, why = resolve_transcript()
     notes = []
     if is_sub:
@@ -176,22 +196,31 @@ def owned_commit_shas():
 
     deadline = time.time() + _MAX_SECONDS
     shas = set()
-    s, ok, note = _shas_from_file(main, deadline)
+    unattributed = 0
+    s, ok, note, unp = _shas_from_file(main, deadline)
     shas |= s
     if not ok and note:
         notes.append("MAIN TRANSCRIPT: " + note)
+    if unp:
+        unattributed += unp
+        notes.append(f"MAIN TRANSCRIPT: {unp} gitOperation line(s) were unparseable (truncated/corrupt) "
+                     "-- surfaced as unattributed, NOT silently dropped.")
 
     mine_subs, unknown_subs = _sibling_subagent_files(main, sid)
     for f in mine_subs:
-        s, ok, note = _shas_from_file(f, deadline)
+        s, ok, note, unp = _shas_from_file(f, deadline)
         shas |= s
         if not ok and note:
             notes.append("SUBAGENT: " + note)
-    unattributed = len(unknown_subs)
-    if unattributed:
-        notes.append(f"{unattributed} sub-run transcript(s) in this project could NOT be confirmed as "
-                     "this session's (shared subagents/ dir) -- their commits, if any, are NOT claimed. "
-                     "Surface, don't assume.")
+        if unp:
+            unattributed += unp
+            notes.append(f"SUBAGENT {os.path.basename(f)}: {unp} unparseable gitOperation line(s) "
+                         "-- surfaced as unattributed, not dropped.")
+    if unknown_subs:
+        unattributed += len(unknown_subs)
+        notes.append(f"{len(unknown_subs)} sub-run transcript(s) in this project could NOT be structurally "
+                     "confirmed as this session's (sessionId did not match) -- their commits, if any, are "
+                     "NOT claimed. Surface, don't assume.")
     return (shas, unattributed, notes)
 
 
@@ -199,6 +228,8 @@ def owns(full_sha, owned):
     """A repo's full SHA belongs to this session if any owned token is a prefix of it
     (gitOperation SHAs may be abbreviated to 7 chars; repo SHAs are full 40)."""
     f = (full_sha or "").lower()
+    if not f.strip():          # an empty/None SHA must never be claimed by any token
+        return False
     for t in owned:
         t = (t or "").lower()
         if t and (f.startswith(t) or t.startswith(f)):

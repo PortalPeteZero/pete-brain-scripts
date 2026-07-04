@@ -1,5 +1,24 @@
 # closeout — changelog
 
+## 1.0.1 — 2026-07-04 (same-day hardening after an independent adversarial audit)
+A 4-auditor + verify workflow confirmed deliverables and records were complete and the
+spine never grabs another session's work in the shipped environment, but flagged five
+latent defects in the ownership code. All fixed, each verified with code-level evidence:
+- **Structured session match** — `_sibling_subagent_files` claimed a subagent transcript on
+  a loose `sid in head` substring, so a foreign file that merely MENTIONED our session id as
+  data could be claimed. Now it claims only when a structured `sessionId`/`parentSessionId`
+  field equals ours; unconfirmed files stay surfaced. (Was unreachable in the current
+  transcript layout, but a real logic hole in the safety test.)
+- **No silent drop** — a `gitOperation` line that won't JSON-parse (truncated/corrupt) is now
+  counted and surfaced as "N unattributed", per the plan's no-silent-cap rule (was silently skipped).
+- **Cross-repo prefix safety** — an owned short SHA that resolves in more than one checkout
+  (a 7-char prefix collision) is now surfaced, never auto-placed/logged in any of them.
+- **Empty-SHA guard** — `owns()` and `worklog_sha.is_present()` now reject an empty/None SHA
+  instead of matching any token.
+- **Honest deploy doc** — SKILL.md A3/A4 now states `deploy-for-sha` exit-3 has three causes
+  (unverified-author BLOCK, build-not-started, or older than the 100-deploy scan window) and
+  the scan window, instead of asserting a single cause.
+
 ## 1.0 — 2026-07-04
 Initial build, from the plan audited to convergence over 4 rounds
 (`Projects/PA-Command-Centre/files/plan-closeout-skill-2026-07-04.md`).

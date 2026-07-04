@@ -119,8 +119,8 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 ### Live & deploy
 | id | check | class | how |
 |----|-------|-------|-----|
-| A3 | every pushed SHA maps to a Vercel deploy that is READY + live curl 200 | verify | `vercel-api.py deploy-for-sha <sha> --json` per owned pushed SHA (exit 3 = NO deploy) |
-| A4 | a deploy EXISTS for the pushed SHA (missing = the non-verified-author BLOCK signature) | verify | same; exit 3 is the red flag |
+| A3 | every pushed SHA maps to a Vercel deploy that is READY + live curl 200 | verify | `vercel-api.py deploy-for-sha <sha> --json` per owned pushed SHA (exit 0 READY / 2 not-ready / 3 no-deploy). Scope caveat: it scans the last 100 deploys, so exit 3 = "no deploy in that window" |
+| A4 | a deploy EXISTS for the pushed SHA (a missing deploy is OFTEN the non-verified-author BLOCK) | verify | exit 3 has THREE causes — unverified-author BLOCK, build-not-started-yet, or SHA older than the 100-deploy scan window. READ the tool's note before concluding BLOCK. (On a same-session close the SHA is brand-new, so "older than 100" ≈ impossible and "not started" self-resolves on retry — a persistent exit 3 there really is the BLOCK.) |
 | A5 | no uncommitted/unpushed changes left in a clone this session owns | surface | `git status` in the owned checkout only |
 | A7 | env vars a change depends on are present on the host (Vercel prod) + a runtime smoke | verify | |
 | A9 | package.json + lockfile in sync and both committed | verify | |

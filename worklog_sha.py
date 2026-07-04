@@ -46,6 +46,8 @@ def is_present(full_sha, tokens):
     """True if this full SHA is referenced by any token (token is a prefix of it, or
     -- for an already-short full -- vice-versa)."""
     f = (full_sha or "").lower()
+    if not f.strip():          # an empty/None SHA is never "present"
+        return False
     for t in tokens:
         t = (t or "").lower()
         if t and (f.startswith(t) or t.startswith(f)):

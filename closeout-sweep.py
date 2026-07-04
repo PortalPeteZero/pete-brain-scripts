@@ -106,17 +106,27 @@ def run(apply_mode, since, extra_dirs):
         return report
 
     checkouts = candidate_checkouts(extra_dirs)
-    # Map each owned SHA to the checkout that contains it.
+    # Map each owned SHA to the checkout(s) that contain it. gitOperation gives us a short
+    # (often 7-char) SHA with NO repo, so we resolve by membership. If a short SHA resolves
+    # in MORE THAN ONE checkout (a cross-repo prefix collision), we must NOT auto-place it in
+    # all of them -- that could log a foreign commit. Ambiguous ones are surfaced, not placed.
+    dirs_for = {s: [d for d in checkouts if contains_sha(d, s)] for s in owned}
     owned_by_dir = {}
-    for d in checkouts:
-        for s in owned:
-            if contains_sha(d, s):
-                owned_by_dir.setdefault(d, set()).add(s)
-    unplaced = sorted(s for s in owned if not any(s in v for v in owned_by_dir.values()))
+    ambiguous = []
+    for s, ds in dirs_for.items():
+        if len(ds) == 1:
+            owned_by_dir.setdefault(ds[0], set()).add(s)
+        elif len(ds) > 1:
+            ambiguous.append((s, ds))
+    unplaced = sorted(s for s, ds in dirs_for.items() if not ds)
     if unplaced:
         report["warnings"].append(
             f"{len(unplaced)} owned commit(s) not found in any scanned checkout ({', '.join(unplaced)}); "
             "their repo isn't on disk here, so they can't be reconciled. Surface, don't assume logged.")
+    for s, ds in ambiguous:
+        report["warnings"].append(
+            f"owned SHA {s} resolves in MULTIPLE checkouts ({', '.join(os.path.basename(x) for x in ds)}) "
+            "-- a short-SHA prefix collision across repos. Surfaced, NOT auto-logged; confirm its repo.")
 
     for d, owned_here in sorted(owned_by_dir.items()):
         repo = repo_slug(d)
