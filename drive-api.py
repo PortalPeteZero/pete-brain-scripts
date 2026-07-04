@@ -432,6 +432,20 @@ def whoami():
         total = int(q.get("limit", 0)) // 1024 // 1024
         print(f"Storage: {used}MB used of {total}MB")
 
+def create_drive(name):
+    """Create a new Shared Drive named `name`. Idempotent: returns the existing drive if the name already
+    matches (Drive lets you make same-named drives, so we guard). Needs the delegated user to be allowed to
+    create shared drives (full auth/drive scope). drives.create requires a client-generated requestId."""
+    import uuid
+    for d in api("GET", "/drives", {"pageSize": 100}).get("drives", []):
+        if d.get("name") == name:
+            print(f"Shared drive already exists: {name} (ID: {d['id']})")
+            return d
+    result = api("POST", "/drives", {"requestId": str(uuid.uuid4())}, {"name": name})
+    print(f"Created shared drive: {result.get('name')} (ID: {result.get('id')})")
+    return result
+
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -461,6 +475,9 @@ def main():
         info(args[1])
     elif cmd == "whoami":
         whoami()
+    elif cmd == "create-drive":
+        if len(args) < 2: print("Usage: drive-api.py create-drive NAME"); sys.exit(1)
+        create_drive(args[1])
     # ----- Sygma Hub build extensions -----
     elif cmd == "copy":
         if len(args) < 3: print("Usage: drive-api.py copy SRC_ID DEST_FOLDER_ID [NEW_NAME]"); sys.exit(1)
