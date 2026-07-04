@@ -112,12 +112,18 @@ def build_table(helpers):
     for path, scope in helpers:
         # Derive service domain from filename (`gmail-api.py` -> `Gmail`)
         domain = path.stem.replace("-api", "").replace("-", " ").title()
-        rel = f"`Library/processes/scripts/{path.name}`"
+        rel = f"`{path.name}`"  # flat repo-root layout (post-cutover); pulled to /tmp/pbs
         rows.append(f"| **{domain}** | {rel} | {scope} |")
     return "\n".join(rows)
 
 
+# The routing doc lives in vault_notes (Library/ is git-ignored + absent on Railway). Regen is
+# DB-backed one-command via cc_note_sync — no local-file skeleton, no /tmp workaround.
+ROUTING_VAULT_PATH = "Library/processes/external-service-routing.md"
+
+
 def regenerate(check_only=False, print_only=False):
+    from cc_note_sync import fetch_body, write_body, splice_block
     helpers = discover_helpers()
     table = build_table(helpers)
 
@@ -125,7 +131,8 @@ def regenerate(check_only=False, print_only=False):
         [
             BEGIN_MARK,
             f"<!-- Auto-generated from {len(helpers)} *-api.{{py,sh}} helpers by helper-script-registry.py. -->",
-            f"<!-- Do not edit by hand -- run `python3 Library/processes/scripts/helper-script-registry.py` to refresh. -->",
+            f"<!-- CADENCE: regenerated on every connection-updater ritual run; P6-stale iff stated count != live count. count={len(helpers)} -->",
+            f"<!-- Do not edit by hand -- run `VAULT=/tmp/pbs python3 /tmp/pbs/helper-script-registry.py` to refresh (writes vault_notes). -->",
             "",
             table,
             "",
@@ -137,35 +144,29 @@ def regenerate(check_only=False, print_only=False):
         print(auto_block)
         return 0
 
-    if not ROUTING_DOC.exists():
-        print(f"ERROR: {ROUTING_DOC} does not exist. Create the skeleton first.", file=sys.stderr)
+    current = fetch_body(ROUTING_VAULT_PATH)
+    if current is None:
+        print(f"ERROR: note {ROUTING_VAULT_PATH} not found in vault_notes.", file=sys.stderr)
         return 2
-
-    current = ROUTING_DOC.read_text()
     if BEGIN_MARK not in current or END_MARK not in current:
-        print(
-            f"ERROR: {ROUTING_DOC} is missing AUTOGEN markers. Skeleton must contain {BEGIN_MARK} and {END_MARK}.",
-            file=sys.stderr,
-        )
+        print(f"ERROR: {ROUTING_VAULT_PATH} is missing AUTOGEN markers.", file=sys.stderr)
         return 2
 
-    before, _, rest = current.partition(BEGIN_MARK)
-    _, _, after = rest.partition(END_MARK)
-    new_doc = before + auto_block + after
+    new_doc = splice_block(current, BEGIN_MARK, END_MARK, auto_block)
 
     if check_only:
         if new_doc != current:
-            print(f"DRIFT: {ROUTING_DOC.name} table is stale -- {len(helpers)} helpers detected but doc differs.")
+            print(f"DRIFT: external-service-routing.md table is stale -- {len(helpers)} helpers detected but doc differs.")
             return 1
-        print(f"OK: {ROUTING_DOC.name} table matches {len(helpers)} helpers on disk.")
+        print(f"OK: external-service-routing.md table matches {len(helpers)} helpers.")
         return 0
 
     if new_doc == current:
-        print(f"NO-OP: {ROUTING_DOC.name} already up to date ({len(helpers)} helpers).")
+        print(f"NO-OP: external-service-routing.md already up to date ({len(helpers)} helpers).")
         return 0
 
-    ROUTING_DOC.write_text(new_doc)
-    print(f"OK: regenerated table in {ROUTING_DOC.name} ({len(helpers)} helpers).")
+    write_body(ROUTING_VAULT_PATH, new_doc)
+    print(f"OK: regenerated table in external-service-routing.md ({len(helpers)} helpers) -> vault_notes.")
     return 0
 
 

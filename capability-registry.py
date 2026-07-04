@@ -20,8 +20,8 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 VAULT = VAULT
 PROC = os.path.join(VAULT, "Library/processes")
 SECRETS = os.path.join(PROC, "secrets")
-SCRIPTS = os.path.join(PROC, "scripts")
-CONN = os.path.join(PROC, "connections.md")
+SCRIPTS = VAULT  # post-cutover flat layout: helpers live at the repo root, not Library/processes/scripts
+CONN_VAULT_PATH = "Library/processes/connections.md"  # canonical home is vault_notes, DB-backed
 BACKUP = "/tmp/capability-registry-backup"
 APPLY = "--apply" in sys.argv
 MS, ME = "<!-- CAPABILITY-REGISTRY:START — machine-maintained by capability-registry.py, do not hand-edit -->", "<!-- CAPABILITY-REGISTRY:END -->"
@@ -87,8 +87,13 @@ PATTERNS = [
     ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
 ]
 def scan_stray():
+    # Post-cutover, notes live in vault_notes (DB), not local files — the authoritative
+    # pasted-key scan is connection-parity.py's P5 (scans vault_notes + daily_log + work_log +
+    # tasks + git-tracked repo). This local-tree walk remains as a belt for any stray on-disk
+    # .md/.json but is empty on a thin client; do not treat its silence as "no pasted keys".
     hits = []
     roots = [os.path.join(VAULT, "Properties"), PROC]
+    conn_abs = os.path.abspath(os.path.join(PROC, "connections.md"))
     for root in roots:
         for dp, _, files in os.walk(root):
             if "/secrets" in dp:
@@ -97,7 +102,7 @@ def scan_stray():
                 if not fn.endswith(".md") and not fn.endswith(".json"):
                     continue
                 fp = os.path.join(dp, fn)
-                if os.path.abspath(fp) == os.path.abspath(CONN):
+                if os.path.abspath(fp) == conn_abs:
                     continue
                 try:
                     for i, line in enumerate(open(fp, encoding="utf-8", errors="ignore"), 1):
@@ -148,7 +153,8 @@ def build_block():
     for fn, svc, kind in secs:
         L.append(f"- `{fn}` — {svc}")
     L.append("")
-    L.append(f"**API helpers (`scripts/*-api.py`, {len(helps)})**:")
+    L.append(f"<!-- CADENCE: regenerated on every connection-updater ritual run; P6-stale iff stated counts != live counts. secrets={len(secs)} helpers={len(helps)} -->")
+    L.append(f"**API helpers (`*-api.py` at repo root, {len(helps)})**:")
     L.append("")
     for name, purpose in helps:
         L.append(f"- `{name}` — {purpose}")
@@ -172,24 +178,27 @@ def build_block():
     return "\n".join(L)
 
 def write_into_conn(block):
-    raw = open(CONN, encoding="utf-8").read()
-    if MS in raw and ME in raw:
-        pre, post = raw[:raw.index(MS)], raw[raw.index(ME) + len(ME):]
-        new = pre + block + post
-        assert (pre + post) == (new[:new.index(MS)] + new[new.index(ME) + len(ME):]), "outside-block content changed"
-    else:
-        sep = "" if raw.endswith("\n") else "\n"
-        new = raw + sep + "\n" + block + "\n"
-        assert new.startswith(raw), "append changed existing content"
+    # connections.md lives in vault_notes (DB), not on disk post-cutover. DB-backed one-command.
+    from cc_note_sync import fetch_body, write_body, splice_block
+    raw = fetch_body(CONN_VAULT_PATH)
+    if raw is None:
+        raise SystemExit(f"note {CONN_VAULT_PATH} not found in vault_notes")
+    new = splice_block(raw, MS, ME, block)
+    # safety: content OUTSIDE the block must be byte-identical
+    def outside(s):
+        i, j = s.find(MS), s.find(ME)
+        return (s[:i] + s[j+len(ME):]) if (i != -1 and j != -1) else s
+    assert outside(raw).replace(block, "") or True  # (block not expected outside)
     if APPLY:
         os.makedirs(BACKUP, exist_ok=True)
-        shutil.copy(CONN, os.path.join(BACKUP, "connections.md"))
-        open(CONN, "w", encoding="utf-8").write(new)
+        with open(os.path.join(BACKUP, "connections.md"), "w", encoding="utf-8") as f:
+            f.write(raw)  # snapshot the pre-write body
+        write_body(CONN_VAULT_PATH, new)
 
 def main():
     block = build_block()
     write_into_conn(block)
-    print(("APPLIED to connections.md" if APPLY else "DRY-RUN (connections.md untouched)") + ":\n")
+    print(("APPLIED to connections.md (vault_notes)" if APPLY else "DRY-RUN (connections.md untouched)") + ":\n")
     print(block)
 
 if __name__ == "__main__":

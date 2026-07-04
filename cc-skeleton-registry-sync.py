@@ -32,6 +32,18 @@ if not (URL and KEY):
     URL, KEY = CC["url"], CC["service_role_key"]
 URL = URL.rstrip("/")
 
+# The set of real secret NAMES from public.secrets — secrets_in() matches against THESE rather
+# than a naive word-grep (the old regex produced junk like "WHERE, table"). Fetched once.
+def _known_secret_names():
+    try:
+        req = urllib.request.Request(f"{URL}/rest/v1/secrets?select=name",
+            headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
+        return {r["name"] for r in json.load(urllib.request.urlopen(req, timeout=30))}
+    except Exception:
+        return set()
+
+SECRET_NAMES = _known_secret_names()
+
 def upsert(table, rows):
     if not rows:
         return 0
@@ -60,9 +72,20 @@ def first_doc(text):
     return (m.group(1).strip()[:300]) if m else ""
 
 def secrets_in(text):
-    found = set(re.findall(r'secrets[/"\'\s]+([A-Za-z0-9_.\-]+\.?[A-Za-z0-9]*)', text))
-    found = {s.strip('"\'/ ') for s in found if len(s) > 2 and not s.startswith(".")}
-    return ", ".join(sorted(found)[:8])
+    """Which real secret NAMES does this script reference? Three signals, unioned:
+      1. a known secret name appearing verbatim (covers `secrets/<name>`, `_cc_secret("<name>")`,
+         env-file paths, doc mentions) — matched against public.secrets, so no junk;
+      2. `_cc_secret(...)` / `cc_secret(...)` call arguments (quoted);
+      3. `SECRETFILE__<name>` CRON-META tokens (env-var convention)."""
+    found = set()
+    for name in SECRET_NAMES:
+        if name and name in text:
+            found.add(name)
+    for arg in re.findall(r'_?cc_secret\(\s*["\']([^"\']+)["\']', text):
+        found.add(arg)
+    for tok in re.findall(r'SECRETFILE__([A-Za-z0-9_]+)', text):
+        found.add(tok.replace("__", "."))
+    return ", ".join(sorted(found))
 
 # Pre-build version map from skills/README.md (canonical version source)
 _ver_map = {}
