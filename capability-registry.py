@@ -43,6 +43,8 @@ def infer_service(fn):
         ("pagespeed", "PageSpeed/CrUX"), ("anthropic", "Anthropic API"), ("apple", "Apple Wallet/PassKit"),
         ("passkit", "PassKit"), ("xhale", "Xhale"), ("resend", "Resend email"), ("cookieyes", "CookieYes"),
         ("gtm", "Google Tag Manager"), ("ga4", "GA4"), ("indexnow", "IndexNow"),
+        ("telegram", "Telegram bridge (@pete_command_centre_bot)"), ("blotato", "Blotato social"),
+        ("thingslog", "ThingsLog water meters"), ("voyage", "Voyage embeddings"),
     ]:
         if f.startswith(key) or key in f:
             return name
