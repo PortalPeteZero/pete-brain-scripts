@@ -144,6 +144,8 @@ Fix-on-find: missing or stale mapping -- run `VAULT=/tmp/pbs python3 /tmp/pbs/hu
 
 Process/SOP/API references live as knowledge notes (`vault_notes`) and config docs pulled to `/tmp/pbs`. Future-proof by querying the knowledge DB + walking the pulled config, not by listing names.
 
+**Fast path — run the parity engine first.** `VAULT=/tmp/pbs python3 /tmp/pbs/connection-parity.py` gives a machine-checked pass over secrets ↔ connections registry ↔ config notes ↔ helpers (P1 orphan secret · P2 dead pointer · P3 unregistered config · P4 helper drift · P5 pasted key · P6 stale autogen · P7 metadata). `0 gaps` = the mechanical half of this phase is already clean; a non-zero result is your work-list. Then do the human read below for anything the engine can't judge (semantic drift, "we no longer do X"). Same engine the `connection-updater` skill and the weekly `drift-check` cron use.
+
 For each process / connection / API reference:
 
 1. Read it (no skim).

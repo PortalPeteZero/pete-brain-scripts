@@ -11,13 +11,18 @@ It also refreshes each cron's expected_interval_hours (schedules may have change
 
 Report-only: writes a dated summary to daily_log (cron_name='drift-check') + prints it. The only
 writes are the interval refresh + the log row. Findings are sorted into OK / NEEDS-ATTENTION so the
-weekly read is "what's wrong", not a to-do list. Deeper repo-grep checks (orphan data files, stale
-doc refs) are out of scope here — this is the always-on DB watch.
+weekly read is "what's wrong", not a to-do list.
+
+It also runs `connection-parity.py --json` (the connection-updater backstop) and folds the gap
+count into the digest — still REPORT-ONLY: parity FIXES (which need repo writes + re-ingest) are
+escalated to a session, never performed here. connection-parity is dual-runtime safe (DB legs run
+in the container; its P5 repo-leg self-skips when the container has no .git and says so in the
+digest). Deeper repo-grep checks beyond parity remain out of scope — this is the always-on DB watch.
 """
 # CRON-META
 # what: weekly self-check of the Command Centre's own health (drift-check)
 # why: surface migration/health regressions (drive mislabels, failed/overdue crons, stalled drives, un-embedded notes) automatically instead of by accident
-# reads: drive_files, crons, drive_change_tokens, vault_notes
+# reads: drive_files, crons, drive_change_tokens, vault_notes, secrets, helpers (via connection-parity.py)
 # writes: daily_log (drift-check summary) + refreshes crons.expected_interval_hours
 # entity: cc
 # report: automations-log
@@ -109,6 +114,27 @@ def main():
                                   f"last_run={row.get('r')} — semantic staleness may be accruing UNALERTED"))
         else:
             findings.append(("✓", "knowledge-reindex freshness cron: healthy (recent SUCCESS)"))
+
+    # Connection-registry parity (connection-updater backstop) — REPORT-ONLY: classify into the
+    # digest, never fix here (fixes need repo writes + re-ingest, escalated to a session). The
+    # parity script is dual-runtime safe: DB legs run everywhere; its P5 repo-leg self-reports
+    # `SKIPPED (no .git…)` when the container lacks git history — that INFO line is exactly the
+    # empirical .git check, surfaced in the weekly read.
+    try:
+        pr = subprocess.run([sys.executable, os.path.join(VAULT, "connection-parity.py"), "--json"],
+                            capture_output=True, text=True, timeout=120)
+        pdata = json.loads(pr.stdout or "{}")
+        ngaps = pdata.get("gaps", 0)
+        if ngaps:
+            types = ", ".join(pdata.get("gap_types", []))
+            sample = "; ".join(f"{f['rule']} {f['subject']}" for f in pdata.get("findings", [])[:4])
+            findings.append(("⚠", f"Connection parity: {ngaps} gap(s) [{types}] — run `connection-parity.py` in a session to fix. e.g. {sample}"))
+        else:
+            findings.append(("✓", "Connection parity: 0 gaps (secrets ↔ registry ↔ config notes ↔ helpers consistent)"))
+        for inf in pdata.get("info", []):
+            findings.append(("ℹ", f"Connection parity {inf['subject']}: {inf['detail']}"))
+    except Exception as e:
+        findings.append(("⚠", f"Connection parity: check did not run ({e})"))
 
     warns = [f for f in findings if f[0] == "⚠"]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
