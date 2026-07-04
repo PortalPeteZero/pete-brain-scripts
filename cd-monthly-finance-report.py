@@ -6,7 +6,7 @@ calendar month, pulling live from CD's Odoo (camello-blanco-sl.odoo.com).
 Read-only. Nothing is sent, nothing is written to Odoo. Pure reporting.
 
 Output: a Markdown file at
-  Businesses/canary-detect/finance/monthly-turnover-reports/turnover-{YYYY}-{MM}.md
+  Drive: Entities Private / Canary Detect (Camello Blanco SL) / Finance / Monthly Turnover Reports / turnover-{YYYY}-{MM}.md
 
 Usage:
   # Default -- last completed month (today's month - 1)
@@ -41,8 +41,23 @@ from collections import defaultdict
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-VAULT_ROOT = SCRIPT_DIR.parent.parent.parent  # .../Command Centre
-OUTPUT_DIR = VAULT_ROOT / "Businesses/canary-detect/finance/monthly-turnover-reports"
+
+# Modernised 4 Jul 2026: turnover reports go to their Drive home, not a local file (nothing local per Pete's rule).
+# Entities Private / Canary Detect (Camello Blanco SL) / Finance / Monthly Turnover Reports, upserted in place so
+# re-runs replace rather than duplicate. Lazy import so simply importing this module (the email cron reuses
+# build_report) does NOT pull drive-api — only an actual publish does.
+_da = None
+def _publish_md(fname, md):
+    global _da
+    import importlib.util as _il, tempfile as _tempfile, os as _os
+    if _da is None:
+        _spec = _il.spec_from_file_location("driveapi", _os.path.join(_os.environ.get("VAULT", "/tmp/pbs"), "drive-api.py"))
+        _da = _il.module_from_spec(_spec); _spec.loader.exec_module(_da)
+    _folder = _da.ensure_path("0APHr3b2NkrNNUk9PVA", "Canary Detect (Camello Blanco SL)", "Finance", "Monthly Turnover Reports")
+    with _tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as _tf:
+        _tf.write(md); _tmp = _tf.name
+    _res = _da.upsert_file(_tmp, _folder, fname); _os.remove(_tmp)
+    return _res
 
 
 def _odoo():
@@ -421,16 +436,14 @@ def main():
     odoo = _odoo()
 
     today = dt.date.today()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     if args.year:
         max_month = 12 if args.year < today.year else today.month
         for m in range(1, max_month + 1):
             md = build_report(args.year, m, odoo)
             fname = f"turnover-{args.year:04d}-{m:02d}.md"
-            path = OUTPUT_DIR / fname
-            path.write_text(md)
-            print(f"Saved {path}")
+            _res = _publish_md(fname, md)
+            print(f"Saved to Drive: Canary Detect / Finance / Monthly Turnover Reports / {fname}  (ID {_res['id']})")
     else:
         if args.month:
             year, month = map(int, args.month.split("-"))
@@ -443,9 +456,8 @@ def main():
 
         md = build_report(year, month, odoo)
         fname = f"turnover-{year:04d}-{month:02d}.md"
-        path = OUTPUT_DIR / fname
-        path.write_text(md)
-        print(f"Saved {path}")
+        _res = _publish_md(fname, md)
+        print(f"Saved to Drive: Canary Detect / Finance / Monthly Turnover Reports / {fname}  (ID {_res['id']})")
 
 
 if __name__ == "__main__":

@@ -432,6 +432,49 @@ def whoami():
         total = int(q.get("limit", 0)) // 1024 // 1024
         print(f"Storage: {used}MB used of {total}MB")
 
+def _find_child(name, parent_id, folders_only=False):
+    esc = name.replace("\\", "\\\\").replace("'", "\\'")
+    q = f"name = '{esc}' and '{parent_id}' in parents and trashed=false"
+    if folders_only:
+        q += " and mimeType='application/vnd.google-apps.folder'"
+    r = api("GET", "/files", {"q": q, "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+                              "fields": "files(id,name,mimeType)"})
+    fs = r.get("files", [])
+    return fs[0]["id"] if fs else None
+
+
+def ensure_path(drive_id, *parts):
+    """Resolve nested folders under a shared-drive root (drive_id), creating any that are missing.
+    Returns the leaf folder id. Use to target a Drive home from a script without hardcoding folder ids."""
+    parent = drive_id
+    for p in parts:
+        fid = _find_child(p, parent, folders_only=True)
+        if not fid:
+            fid = create_folder(p, parent)["id"]
+        parent = fid
+    return parent
+
+
+def upsert_file(local_path, folder_id, name=None):
+    """Upload local_path into folder_id, REPLACING any existing same-named file (update content in place,
+    so re-runs don't create duplicates). Falls back to a fresh upload if none exists."""
+    if not os.path.exists(local_path):
+        print(f"File not found: {local_path}", file=sys.stderr); sys.exit(1)
+    name = name or os.path.basename(local_path)
+    existing = _find_child(name, folder_id)
+    if not existing:
+        return upload_file(local_path, folder_id, name)
+    with open(local_path, "rb") as f:
+        data = f.read()
+    req = urllib.request.Request(
+        UPLOAD_BASE + f"/files/{existing}?uploadType=media&supportsAllDrives=true&fields=id,name",
+        data=data, headers={"Authorization": f"Bearer {get_token()}", "Content-Type": "application/octet-stream"},
+        method="PATCH")
+    result = json.loads(urllib.request.urlopen(req).read())
+    print(f"Updated: {result['name']} (ID: {result['id']})")
+    return result
+
+
 def create_drive(name):
     """Create a new Shared Drive named `name`. Idempotent: returns the existing drive if the name already
     matches (Drive lets you make same-named drives, so we guard). Needs the delegated user to be allowed to
@@ -478,6 +521,9 @@ def main():
     elif cmd == "create-drive":
         if len(args) < 2: print("Usage: drive-api.py create-drive NAME"); sys.exit(1)
         create_drive(args[1])
+    elif cmd == "upsert-file":
+        if len(args) < 3: print("Usage: drive-api.py upsert-file /local/file FOLDER_ID [NAME]"); sys.exit(1)
+        upsert_file(args[1], args[2], args[3] if len(args) > 3 else None)
     # ----- Sygma Hub build extensions -----
     elif cmd == "copy":
         if len(args) < 3: print("Usage: drive-api.py copy SRC_ID DEST_FOLDER_ID [NEW_NAME]"); sys.exit(1)

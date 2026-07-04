@@ -43,8 +43,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-VAULT_ROOT = SCRIPT_DIR.parent.parent.parent
-OUTPUT_DIR = VAULT_ROOT / "Businesses/canary-detect/finance/weekly-turnover-reports"
 TZ = ZoneInfo("Atlantic/Canary")
 
 # Recipients
@@ -557,15 +555,18 @@ def main():
     print(f"Pulling outstanding invoices...", file=sys.stderr)
     outstanding = fetch_outstanding(odoo)
 
-    # Save markdown reports too (for archive)
-    print(f"Saving markdown archives...", file=sys.stderr)
+    # Archive the markdown to its Drive home (modernised 4 Jul 2026 — was a local file; nothing local per
+    # Pete's rule). Non-fatal so a Drive hiccup never breaks the email/snapshot. Reuses the report module's
+    # Drive publisher (Entities Private / Canary Detect (Camello Blanco SL) / Finance / Weekly Turnover Reports).
+    print(f"Archiving markdown to Drive...", file=sys.stderr)
     weekly_mod = _weekly_report()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for w in (monday, prev_monday):
         md = weekly_mod.build_report(w, odoo)
-        path = OUTPUT_DIR / f"turnover-week-{w.isoformat()}.md"
-        path.write_text(md)
-        print(f"  Saved {path.name}", file=sys.stderr)
+        try:
+            _res = weekly_mod._publish_md(f"turnover-week-{w.isoformat()}.md", md)
+            print(f"  Archived to Drive: {_res['name']}", file=sys.stderr)
+        except Exception as _e:
+            print(f"  Drive archive skipped (non-fatal): {_e}", file=sys.stderr)
 
     html = render_email(this_week, prev_week, outstanding)
     subject = f"CD Weekly Finance Report — w/c {monday.strftime('%-d %b %Y')} (incl. refresh of w/c {prev_monday.strftime('%-d %b')})"

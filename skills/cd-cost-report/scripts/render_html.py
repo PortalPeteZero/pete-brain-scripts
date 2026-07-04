@@ -710,10 +710,20 @@ document.querySelectorAll('.tab').forEach(t => {{
 '''
 
 import os
-VAULT_ROOT = os.environ.get("VAULT_ROOT", "/tmp/pbs")
-OUT = os.path.join(VAULT_ROOT, "Businesses/canary-detect/finance/cost-base-reports/2026-cost-base-YTD.html")
-with open(OUT, 'w') as f:
+# Modernised 4 Jul 2026: the permanent home for the cost-base report is DRIVE, not a local repo path.
+# Was: VAULT_ROOT/Businesses/canary-detect/finance/cost-base-reports/... (a permanent local path — outdated;
+# nothing permanent-local per Pete's rule). Now: an EPHEMERAL /tmp scratch copy for the immediate pipeline
+# (allowed — /tmp is fine) PLUS an upsert to the Drive home (Entities Private / Canary Detect (Camello Blanco
+# SL) / Finance / Cost Base Reports), replaced in place so re-runs don't duplicate.
+import importlib.util as _il
+_tmp_out = "/tmp/2026-cost-base-YTD.html"
+with open(_tmp_out, "w", encoding="utf-8") as f:
     f.write(html)
-print(f'Saved: {OUT}')
+_spec = _il.spec_from_file_location("driveapi", os.path.join(os.environ.get("VAULT", "/tmp/pbs"), "drive-api.py"))
+_da = _il.module_from_spec(_spec); _spec.loader.exec_module(_da)
+_folder = _da.ensure_path("0APHr3b2NkrNNUk9PVA", "Canary Detect (Camello Blanco SL)", "Finance", "Cost Base Reports")
+_res = _da.upsert_file(_tmp_out, _folder, "2026 Cost Base YTD.html")
+print(f"Rendered (scratch): {_tmp_out}")
+print(f"Saved to Drive: Entities Private / Canary Detect (Camello Blanco SL) / Finance / Cost Base Reports / 2026 Cost Base YTD.html  (ID {_res['id']})")
 print(f'YTD: {eur(ytd_total)} | Monthly avg: {eur(monthly_avg)} | Weekly avg: {eur(weekly_avg)}')
 print(f'Baseline monthly: {eur(mb)} | Baseline weekly: {eur(mb/4.33)}')

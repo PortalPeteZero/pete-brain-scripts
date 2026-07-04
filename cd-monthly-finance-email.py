@@ -37,8 +37,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-VAULT_ROOT = SCRIPT_DIR.parent.parent.parent
-OUTPUT_DIR = VAULT_ROOT / "Businesses/canary-detect/finance/monthly-turnover-reports"
 TZ = ZoneInfo("Atlantic/Canary")
 
 RECIPIENTS_LIVE = [
@@ -421,7 +419,7 @@ def render_email(data: dict, outstanding: list) -> str:
     # Footer
     html.append(f'<div style="margin-top:24px;padding:16px;text-align:center;font-size:12px;color:{MUTED};">')
     html.append('<div>Pulled live from Odoo (camello-blanco-sl.odoo.com) — no cached data.</div>')
-    html.append('<div style="margin-top:6px;">Run on demand. Markdown archive: Businesses/canary-detect/finance/monthly-turnover-reports/</div>')
+    html.append('<div style="margin-top:6px;">Run on demand. Markdown archive: Drive → Entities Private / Canary Detect / Finance / Monthly Turnover Reports</div>')
     html.append('<div style="margin-top:12px;color:#9ca3af;">Canary Detect — "The Leaky Finders" · Camello Blanco S.L.</div>')
     html.append('</div>')
 
@@ -453,14 +451,17 @@ def main():
     print("Pulling outstanding...", file=sys.stderr)
     outstanding = fetch_outstanding(odoo)
 
-    # Save markdown archive
-    print("Saving markdown archive...", file=sys.stderr)
+    # Archive the markdown to its Drive home (modernised 4 Jul 2026 — was a local file; nothing local per
+    # Pete's rule). Non-fatal so a Drive hiccup never breaks the email/snapshot. Reuses the report module's
+    # Drive publisher (Entities Private / Canary Detect (Camello Blanco SL) / Finance / Monthly Turnover Reports).
+    print("Archiving markdown to Drive...", file=sys.stderr)
     monthly_mod = _monthly_report()
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     md = monthly_mod.build_report(year, month, odoo)
-    path = OUTPUT_DIR / f"turnover-{year:04d}-{month:02d}.md"
-    path.write_text(md)
-    print(f"  Saved {path.name}", file=sys.stderr)
+    try:
+        _res = monthly_mod._publish_md(f"turnover-{year:04d}-{month:02d}.md", md)
+        print(f"  Archived to Drive: {_res['name']}", file=sys.stderr)
+    except Exception as _e:
+        print(f"  Drive archive skipped (non-fatal): {_e}", file=sys.stderr)
 
     html = render_email(data, outstanding)
     subject = f"CD Monthly Finance Report — {data['month_label']}"
