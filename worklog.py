@@ -147,12 +147,19 @@ def main():
 
 
 def reconcile():
-    """Backstop GATE: diff a repo's commits against work_log.source_ref and list any
-    that aren't logged. Covers the path the close-on-ship skill hooks miss -- raw
-    main-session dev/deploy work. Exit 2 if gaps exist (so a close routine can detect it).
+    """Backstop GATE: diff a repo's commits against the work_log and list any not logged.
+    Covers the path the close-on-ship skill hooks miss -- raw main-session dev/deploy work.
+    Exit 2 if gaps exist (so a close routine can detect it).
+
+    Matching is by SHA, not by rigid ref format: a commit counts as logged if its SHA
+    appears ANYWHERE in a work_log entry's source_ref OR detail (the `git:owner/repo@sha`
+    prefix is optional, short 7+ SHAs are fine), and `shaA..shaB` ranges are expanded via
+    `git rev-list` so one range/feature entry covers every commit inside it. This stops
+    thoroughly-but-readably-logged work (feature slugs, `cd 2316dd4..32677fb` ranges,
+    `cd a/b` pairs) tripping false "unlogged" alarms.
       worklog.py reconcile --repo owner/repo --git-dir /path/to/checkout [--since YYYY-MM-DD]"""
     ap = argparse.ArgumentParser(prog="worklog.py reconcile")
-    ap.add_argument("--repo", required=True, help="owner/repo, matched against source_ref 'git:owner/repo@sha'")
+    ap.add_argument("--repo", required=True, help="owner/repo (shown in output; matching is by SHA anywhere in source_ref/detail)")
     ap.add_argument("--git-dir", dest="git_dir", required=True, help="local checkout to read commits from")
     ap.add_argument("--since", default=None, help="default: today (Atlantic/Canary)")
     a = ap.parse_args(sys.argv[2:])
@@ -164,10 +171,20 @@ def reconcile():
     if out.returncode != 0:
         sys.exit(f"worklog reconcile: git log failed for {a.git_dir}: {out.stderr.strip()[:200]}")
     commits = [l.split("\t", 1) for l in out.stdout.strip().splitlines() if "\t" in l]
-    res = ccq(f"SELECT source_ref FROM work_log WHERE source_ref LIKE 'git:{a.repo}@%'")
-    logged = {r["source_ref"].split("@", 1)[1] for r in (res or []) if r.get("source_ref") and "@" in r["source_ref"]}
+    # Collect every SHA-like token referenced anywhere in the work log (source_ref + detail),
+    # in any format, then expand `A..B` ranges to every commit between them (resolved in this
+    # repo). A commit is "logged" if its full SHA starts with one of those tokens.
+    res = ccq("SELECT COALESCE(source_ref,'') AS s, COALESCE(detail,'') AS d FROM work_log")
+    text = " ".join(((r.get("s") or "") + " " + (r.get("d") or "")) for r in (res or [])).lower()
+    tokens = set(re.findall(r"(?<![0-9a-f])[0-9a-f]{7,40}(?![0-9a-f])", text))
+    for aa, bb in re.findall(r"([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})", text):
+        rl = subprocess.run(["git", "-C", a.git_dir, "rev-list", f"{aa}^..{bb}"],
+                            capture_output=True, text=True)
+        if rl.returncode == 0:
+            tokens.update(rl.stdout.split())
+    tokens = {t for t in tokens if len(t) >= 7}
     missing = [(full[:9], subj) for full, subj in commits
-               if not any(full.startswith(s) or s.startswith(full[:9]) for s in logged)]
+               if not any(full.startswith(t) for t in tokens)]
     if not missing:
         print(f"worklog reconcile: OK -- all {len(commits)} commit(s) in {a.repo} since {since} are logged.")
         return
