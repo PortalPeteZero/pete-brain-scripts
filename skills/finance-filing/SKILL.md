@@ -17,7 +17,7 @@ description: >
 # Finance filing — the reconciling finance verb
 
 > [!important] Finance homes (route per [[vault-routing#finance-routing-by-entity--sygma--canary-detect--personal]])
-> Each entity's finance home is a **Google Drive** folder + a `vault_notes` record: personal & family → **Ashcroft Family/Finance** (Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll, Pete + Michaela only) → **Sygma Private**; Canary Detect → **CD Private/finance**. The Ashcroft ledger → the CC **`public.finance_ledger`** table (converted from the old finance-ledger.md 2026-07-03). An action → `public.tasks`; session log → `daily_log`.
+> Each entity's finance home is a **Google Drive** folder + a `vault_notes` record: personal & family → **Ashcroft Family/Finance** (Pete-solo → **My Drive/Finance**); Sygma operational → **Sygma Hub**; Sygma owner-private (Accounts + Payroll, Pete + Michaela only) → **Sygma Private**; Canary Detect → **Entities Private / Canary Detect (Camello Blanco SL) / Finance** (the old CD Private was folded in here 4 Jul). The Ashcroft ledger → the CC **`public.finance_ledger`** table (converted from the old finance-ledger.md 2026-07-03). An action → `public.tasks`; session log → `daily_log`.
 
 The way to get **any** finance content into the right place: separated by entity, captured into its entity home, reconciled against what's already there — Claude **understands each item before it files it**, never just dumps it somewhere.
 
@@ -71,7 +71,7 @@ This verb is for **finance knowledge/context by entity**. The **business payable
 - **Addition · Personal** — a new pension statement → new file in `Ashcroft Family/Finance` (Pete-solo → `My Drive/Finance`), `Personal/PA-Finance` label, ledger line, no task.
 - **Edit · Personal** — Mike confirms the NI opt-out verdict → update the existing `Ashcroft Family/Finance/cross-border-tax-restructure/` doc in place; ledger line.
 - **Change · Sygma** — a corrected VAT figure supersedes last quarter's → update `Sygma Hub` (Sygma operational) + note old→new; P2 task if a refiling is due.
-- **Duplicate · CD** — a re-sent CD invoice already filed → cross-link in `CD Private/finance`, stop, no second file.
+- **Duplicate · CD** — a re-sent CD invoice already filed → cross-link in `Entities Private / Canary Detect (Camello Blanco SL) / Finance`, stop, no second file.
 - **Ambiguous** — "sort this finance email" with no entity cue → **ASK** "Sygma or personal?" before filing.
 - **Both (split)** — a JWR thread with a personal NI line **and** a Sygma P11D chase → personal part to `Ashcroft Family/Finance`, Sygma part to `Sygma Hub` (or `Sygma Private` if salary-bearing), cross-linked.
 

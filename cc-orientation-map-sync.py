@@ -152,7 +152,7 @@ Top-level of each home drive (from the live `drive_files` index). **One home per
 - **Sygma Hub** (the Sygma operating drive): `Accreditations` · `App Data` ⛔ · `Archive` · `Course Records` · `Courses` 🔒 · `Customer Specific Documentation` · `Customers and Suppliers` · `HR` · `Library` · `Marketing` · `Media` · `Projects` · `Reports` · `Sales & Pipeline`
 - **Sygma Private** (owner/finance, private): `Accounts` · `Payroll` · `Personnel` · `_backups`
 - **Canary Detect** (the CD operating drive): `App Data` ⛔ · `Blog Content` · `Canary Detect Mapping` · `CD Website Development` · `Company` · `Customers` · `ECO FINISH` · `Expenses` · `LeakGuard Admin` · `Leakguard Installs` · `Odoo Forms` · `Pools` · `Projects` · `Promotional` · `Report App` · `Survey Methodology` · `Trade Names and Marks` · `Vehicles` · `Videos`
-- **CD Private** (CD owner/finance, private): `finance` · `payroll`
+- **Entities Private** (private light-entity homes; the old **CD Private** was folded in here 4 Jul): `Canary Detect (Camello Blanco SL)` (`Finance` · `Payroll`) · `Sygma Subsurface Solutions Ltd` · `Sygma Detection Ltd` · `One System Software Ltd` · `El Atico (Asociacion Social)`
 - **One System**: `Projects` · `Website Assets`
 - **Ashcroft Family** (joint Pete + Michaela, private): `Finance` · `Health` · `Property` · `Vehicles` · `Legal` · `identity` · `Spanish Admin` · `HMRC Personal` · `House Insurance` · `Camello Blanco` · `Family Members` · `Travel`
 - **El Atico**: `Agendas` · `Minutes` · `El Atico Accounts` · `Finance` · `Completed Forms` · `Blank Forms` · `Database` · `Write Ups` · `Stationary`
