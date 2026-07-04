@@ -14,6 +14,8 @@ Commands:
   project <project_id>            Get project details
   status <deployment_id>          Quick status check (READY/ERROR/BUILDING)
   latest [project_id]             Get latest deployment status
+  deploy-for-sha <sha> [proj_id]  Map a pushed commit SHA -> its deploy readyState
+                                  (--json for machine output; exit 0=READY 2=not-ready 3=no-deploy)
 
 Environment:
   Token fetched from the CC secrets table (name: vercel-token) via _cc_secret().
@@ -187,6 +189,53 @@ def cmd_latest(project_id=None):
         cmd_logs(d["uid"])
 
 
+def cmd_deploy_for_sha(sha, project_id=None, as_json=False):
+    """Map an arbitrary pushed commit SHA -> its deployment readyState.
+
+    Scans recent deployments and matches meta.githubCommitSha by prefix (a pushed SHA
+    is often short). This is what lets closeout verify EVERY pushed SHA reached a live
+    READY deploy -- not just the latest one.
+
+    Exit codes (so a close routine can branch): 0 = found + READY,
+    2 = found but not READY (BUILDING/QUEUED/ERROR), 3 = NO deploy for this SHA at all
+    (the LeakGuard non-verified-commit-author BLOCK signature -- a push that silently
+    never deployed)."""
+    sha = (sha or "").lower()
+    params = {"limit": "100"}
+    if project_id:
+        params["projectId"] = project_id
+    if len(sha) >= 40:            # Vercel's `sha` filter needs the full hash; prefix still scans below
+        params["sha"] = sha
+    data = api("/v6/deployments", params)
+    match = None
+    for d in data.get("deployments", []):
+        dsha = (d.get("meta", {}).get("githubCommitSha") or "").lower()
+        if dsha and (dsha.startswith(sha) or sha.startswith(dsha)):
+            match = d
+            break
+    if not match:
+        note = ("no deployment found for this SHA in the last 100 -- if it was just pushed, either the "
+                "build hasn't started, the SHA is older than 100 deploys, or the commit author is "
+                "unverified (Vercel silently blocks deploys from non-allowed authors).")
+        if as_json:
+            print(json.dumps({"sha": sha, "found": False, "readyState": None, "note": note}))
+        else:
+            print(f"No deployment for {sha[:9]}.\n{note}")
+        sys.exit(3)
+    state = match.get("readyState", match.get("state", "UNKNOWN"))
+    url = match.get("url", "")
+    if as_json:
+        print(json.dumps({"sha": sha, "found": True, "readyState": state, "url": url,
+                          "uid": match.get("uid"), "created": ts_to_str(match.get("created"))}))
+    else:
+        print(f"SHA:     {sha[:9]}")
+        print(f"State:   {state}")
+        print(f"URL:     {url}")
+        print(f"Created: {ts_to_str(match.get('created'))}")
+        print(f"ID:      {match.get('uid')}")
+    sys.exit(0 if state == "READY" else 2)
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -194,15 +243,18 @@ def main():
 
     cmd = sys.argv[1]
     args = sys.argv[2:]
+    as_json = "--json" in args
+    pos = [a for a in args if a != "--json"]
 
     commands = {
-        "deployments": lambda: cmd_deployments(args[0] if args else None),
-        "deployment": lambda: cmd_deployment(args[0]),
-        "logs": lambda: cmd_logs(args[0]),
+        "deployments": lambda: cmd_deployments(pos[0] if pos else None),
+        "deployment": lambda: cmd_deployment(pos[0]),
+        "logs": lambda: cmd_logs(pos[0]),
         "projects": cmd_projects,
-        "project": lambda: cmd_project(args[0]),
-        "status": lambda: cmd_status(args[0]),
-        "latest": lambda: cmd_latest(args[0] if args else None),
+        "project": lambda: cmd_project(pos[0]),
+        "status": lambda: cmd_status(pos[0]),
+        "latest": lambda: cmd_latest(pos[0] if pos else None),
+        "deploy-for-sha": lambda: cmd_deploy_for_sha(pos[0], pos[1] if len(pos) > 1 else None, as_json),
     }
 
     if cmd not in commands:

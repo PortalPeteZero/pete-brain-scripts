@@ -173,18 +173,15 @@ def reconcile():
     commits = [l.split("\t", 1) for l in out.stdout.strip().splitlines() if "\t" in l]
     # Collect every SHA-like token referenced anywhere in the work log (source_ref + detail),
     # in any format, then expand `A..B` ranges to every commit between them (resolved in this
-    # repo). A commit is "logged" if its full SHA starts with one of those tokens.
+    # repo). A commit is "logged" if its full SHA starts with one of those tokens. The
+    # tokeniser + prefix-match live in worklog_sha (shared with the closeout skill's
+    # ownership alignment) so discovery and ownership can never disagree.
+    import worklog_sha
     res = ccq("SELECT COALESCE(source_ref,'') AS s, COALESCE(detail,'') AS d FROM work_log")
-    text = " ".join(((r.get("s") or "") + " " + (r.get("d") or "")) for r in (res or [])).lower()
-    tokens = set(re.findall(r"(?<![0-9a-f])[0-9a-f]{7,40}(?![0-9a-f])", text))
-    for aa, bb in re.findall(r"([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})", text):
-        rl = subprocess.run(["git", "-C", a.git_dir, "rev-list", f"{aa}^..{bb}"],
-                            capture_output=True, text=True)
-        if rl.returncode == 0:
-            tokens.update(rl.stdout.split())
-    tokens = {t for t in tokens if len(t) >= 7}
+    text = " ".join(((r.get("s") or "") + " " + (r.get("d") or "")) for r in (res or []))
+    tokens = worklog_sha.logged_tokens(text, a.git_dir)
     missing = [(full[:9], subj) for full, subj in commits
-               if not any(full.startswith(t) for t in tokens)]
+               if not worklog_sha.is_present(full, tokens)]
     if not missing:
         print(f"worklog reconcile: OK -- all {len(commits)} commit(s) in {a.repo} since {since} are logged.")
         return
