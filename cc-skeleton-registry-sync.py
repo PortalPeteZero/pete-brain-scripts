@@ -168,9 +168,10 @@ for sk in sorted(glob.glob(os.path.join(VAULT, "skills/*/SKILL.md"))):
     if not last_edited:
         mtime = os.path.getmtime(sk)
         last_edited = datetime.datetime.fromtimestamp(mtime, tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    row = {"name": name, "path": rel, "what": what, "content": txt, "last_edited": last_edited}
-    if version:
-        row["version"] = version
+    # ALWAYS include `version` (None if unknown) — PostgREST bulk-insert rejects rows with
+    # differing key sets, so a single version-less skill would 400 the whole batch + break the cron.
+    row = {"name": name, "path": rel, "what": what, "content": txt, "last_edited": last_edited,
+           "version": version}
     skills.append(row)
 
 # Prune deleted skills (guard: only when at least 5 found on disk)

@@ -19,6 +19,7 @@ Installing a skill elsewhere (for example via Claude Code plugin marketplaces or
 |---|---|---|---|
 | `brain/` | v6.3 | Cowork + Claude Code | Command Centre session layer (sessions, reviews, tasks, memory, meetings, output styles). Multi-system context loading. Full history: [[CHANGELOG]]. |
 | `vault-writer/` | v5.6 | Cowork + Claude Code | End-of-session cleanup checklist (structured-home sweep, task staleness, task↔project parity). Full history: [[CHANGELOG]]. |
+| `connection-updater/` | v1.0 | Cowork + Claude Code | The store/update/expand/rotate/migrate/retire ritual for connections (API keys, MCP connectors, OAuth, service accounts). Secret → `public.secrets` pointer-only; registry row + config note + helper gate; `connection-parity.py` gate + weekly drift-check backstop. Full history: [[CHANGELOG]]. |
 | `inbox-triage/` | v1.11 | Cowork + Claude Code | Interactive inbox walker. Verb `triage`. `Hand to {person}` creates a CC task (`public.tasks`) under `project_slug='Team-General'`, tagged `delegated`. Full history: [[CHANGELOG]]. |
 | `email-task-sync/` | 2026-06-25 | Cowork + Claude Code | Reconciliation engine. Verb `sync`. Reconciles Gmail `Replies`/`Delegated` labels ↔ CC `public.tasks`. Full history: [[CHANGELOG]]. |
 | `ahrefs-audit/` | v2.4 | Claude Code | Combined Ahrefs + Surfer + GSC page audit and optimisation plan. Full history: [[CHANGELOG]]. |

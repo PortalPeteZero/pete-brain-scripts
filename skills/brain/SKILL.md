@@ -277,6 +277,7 @@ Save everything valuable from the current session.
    ```
 3. **Update memory files (structured-home sweep)** -- Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its home in the cloud — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`) for knowledge + the `drive_files` index (`cc-sql.py`) for the entity's Drive folder — and update it with what changed + the rationale.** Knowledge / decisions / lessons → ingest a `.md` to `vault_notes`; files → the Drive folder; the session log → CC `daily_log`. The daily log is a pointer only; nothing of substance ends its life there. Operator prefs → CLAUDE.md Rules **only on an explicit Pete correction he asks to be saved**; structured rules → `vault_notes`. See the website-work lesson (in `vault_notes`).
 4. **Follow-up tasks -- PROPOSE, never auto-create.** Surface follow-up actions from the session as a short *suggested* list in the Report step. **Create a CC task ONLY when Pete explicitly asks** ("make a task for that" / "add those"). Auto-creating follow-ups is forbidden -- they pile up as clutter (Pete, 28 Jun 2026). Marking *completed* items done (`UPDATE tasks SET status='done', completed_at=now() WHERE id=…`) when work demonstrably shipped is still fine -- it is *creating* new tasks unprompted that is banned.
+4a. **Connection check** -- if this session added, changed, expanded, rotated, or retired any external access (an API key/token, MCP connector, OAuth app, service account), run the **`connection-updater`** skill for each before closing (it stores the secret pointer-only, registers the connection, and its `connection-parity.py` gate must print `0 gaps`). The weekly `drift-check` backstop catches anything missed, but same-session is cleaner.
 5. **Check session plans** -- Look for session plan files created this session:
    - If all steps complete, update `status: completed`
    - If steps incomplete, note pending items in the daily note
@@ -323,6 +324,8 @@ When Pete corrects you, save the correction. Don't ask. **Where you save it depe
 **CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `vault_notes` as a standalone lesson with no pointer in CLAUDE.md. Knowledge-DB search is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes — keep CLAUDE.md a navigable index of corrections only.
 
 Default to a `vault_notes` lesson when in doubt. Routing structured corrections inline into CLAUDE.md bloats it; lessons exist precisely to absorb them so CLAUDE.md stays a navigable index of corrections only.
+
+**Separate track — a new/changed CONNECTION is not a lesson.** If the "correction" is actually Pete handing over external access (an API key, a connector, an OAuth login) or telling you to expand/rotate/retire one, that goes through the **`connection-updater`** skill (secret → `public.secrets`, registry row, config note, parity gate), not the lesson/CLAUDE.md track.
 
 Confirm what was saved and where after the fact.
 
@@ -578,7 +581,7 @@ Any cron change (create / edit / pause / decommission, any runtime) must run the
 - **Outbound text drafting**: read `[[voice-principles]]` before drafting any outbound text on Pete's behalf (customer email, supplier email, internal email, blog, article, ad copy).
 - **Finance / invoicing / Soldo / Dext / Odoo / Xero / payroll / VAT**: read `[[finance-workflow]]` first.
 - **Helper scripts**: in GitHub `pete-brain-scripts`, pulled to `/tmp/pbs` by the boot kernel — run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`. Don't reinvent; check the CC Helpers registry (`/m/process-library`).
-- **Connectors and APIs**: registry at `[[connections]]` -- don't guess what's connected or how it auths.
+- **Connectors and APIs**: registry at `[[connections]]` -- don't guess what's connected or how it auths. **Any new/changed/expanded/rotated/retired external access (API key, MCP connector, OAuth, service account) → run the `connection-updater` skill** (secret → `public.secrets` pointer-only, registry row, config note, helper gate, `connection-parity.py` gate). Never store a key ad hoc.
 - **Sygma Hub content**: lives in the **Sygma Hub** Google Drive folder (indexed in `drive_files`). When Pete asks about Sygma policies / training reference / company info / HR / sales pipeline, query the Drive index first. See `[[hub-content-index]]`.
 - **Daily notes**: the CC `daily_log` table (one row per session, `cron_name='session'`) is the session diary + most-read memory — keep it current; the CC **Daily** page (`/m/daily`) renders it.
 - **Working files live in Drive + the CC.** Project artefacts go in the entity's Drive home; knowledge goes in `vault_notes`; code repos clone into a temp directory (`/tmp/...`). Nothing permanent is written to local disk.
@@ -600,6 +603,7 @@ Brain owns workflow orchestration. Hand off to specialised skills when their ver
 | `simplify`, "review my code" | `simplify` |
 | End-of-session vault cleanup | `vault-writer` (defers to brain Compress for task sync) |
 | Distinctive frontend design | `frontend-design` |
+| `here's the API key/token`, "I've connected X", "store/update this connection", key rotation, scope expansion, a new MCP connector, retiring/migrating a service | `connection-updater` |
 
 ## Auto-Save Rule
 
