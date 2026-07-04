@@ -155,6 +155,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 | E3 | any snapshot this session claims to have taken actually EXISTS before any bin proceeds | verify (block delete if missing) |
 | F1 | a new API/secret/cron/integration/project/bucket/Gmail label recorded in its home | surface; auto only if provably mine AND capability write + re-ingest run as one confirmed action → route to `connection-updater` |
 | F2 | a background cron deployed without being flagged first | surface |
+| F3 | a new SKILL or HELPER/tool built this session is REGISTERED + discoverable: in `public.skills` / `public.helpers` (run `cc-skeleton-registry-sync.py`), listed in `skills/README.md` with a version, and — for a skill — reachable from routing (a `brain` routing row or the skill's own triggers). A built-but-unregistered skill is invisible to the CC. (This check exists because closeout's OWN first build shipped unregistered — 2026-07-04.) | verify + surface |
 | G1 | LIVE probe: domain up + pushed SHA READY, reconciled against the stale `property_state` cache | verify | `property-live-state.py` + `deploy-for-sha` |
 | G2 | the property's front-door state-of-play / README got its update | surface |
 | H1 | a task is now shipped (mine) and should be closed | surface (Pete confirms) |
