@@ -159,7 +159,7 @@ Top-level of each home drive (from the live `drive_files` index). **One home per
 - **My Drive** (Pete's personal + the **Command Centre working home**): `Command Centre` (the working home) · `Passion Fit` · `Health` · `Finance` · `Freemasonry` · `Scouts` · `Los Claveles` · `Sporting Events` · `Projects` · `General` · `Inbox` · `ip-trademark` · `Business Brain` · `Screenshots` · `Media Uploads`
 
 **Read-only indexed (captured, not reorganised):** Sygma Mala · Sygma Trainers · External Sygma Solutions · External Canary Detect.
-**Excluded entirely (not indexed):** Petes Photo Archive · OSCA · Social Media · Pete & Mic · Sygma Backup's · DAPA.
+**Excluded entirely (not indexed):** Petes Photo Archive · Social Media · Sygma Backup's.
 
 🔒 `Sygma Hub/Courses/` is **locked** — never rename/reorganise. ⛔ `App Data` (Hub + CD) is the **live Portal/CD-CRM document store** — confirm the CRM's Drive reference before touching."""
 

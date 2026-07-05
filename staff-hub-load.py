@@ -15,7 +15,7 @@ row into two privacy tiers:
       appraisal date, qualifications + staff-folder links.
 
 NEVER loaded into the Hub: salary / bank / tax codes / pension / contract documents / payroll row
-pointer / disciplinary / full appraisals — those live ONLY in the Pete & Mic Payroll Master /
+pointer / disciplinary / full appraisals — those live ONLY in the CC `payroll` schema (SSOT) + the Sygma Private Payroll Master /
 Personnel private folders (owner-only), per [[staff-data-routing]]. This loader touches NONE of
 those; it reads only the operational Directory tab. Also dropped: integration IDs (Asana/Xero/
 Odoo/Soldo/Garmin/calendar/jotform) and the free-text `notes` field (can hold sensitive HR notes).
