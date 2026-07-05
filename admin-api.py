@@ -2,7 +2,9 @@
 """
 admin-api.py -- Google Workspace Admin SDK helper
 Auth: service account JWT + DWD (impersonates pete.ashcroft@sygma-solutions.com -- must be super admin)
-Scopes: admin.directory.user, admin.directory.group, directory.readonly
+Scopes: admin.directory.user, admin.directory.group, apps.groups.settings
+        (apps.groups.settings + the Groups Settings API added 2026-07-05 -- lets us open a
+         group to external senders so customer mail to a role address never bounces)
 Usage:
   python3 admin-api.py users [DOMAIN]               # list all users (default: sygma-solutions.com)
   python3 admin-api.py user EMAIL                   # get user details
@@ -12,20 +14,32 @@ Usage:
   python3 admin-api.py suspend USER_EMAIL           # suspend user
   python3 admin-api.py restore USER_EMAIL           # restore suspended user
   python3 admin-api.py add-alias USER_EMAIL ALIAS_EMAIL
-  python3 admin-api.py add-to-group USER_EMAIL GROUP_EMAIL
+  python3 admin-api.py remove-alias USER_EMAIL ALIAS_EMAIL       # free an alias (e.g. before making it a group)
+  python3 admin-api.py create-group EMAIL NAME [DESCRIPTION]     # create a Google Group
+  python3 admin-api.py delete-group EMAIL                        # delete a group
+  python3 admin-api.py add-to-group USER_EMAIL GROUP_EMAIL [ROLE]  # ROLE: MEMBER (default)|MANAGER|OWNER
+  python3 admin-api.py remove-from-group USER_EMAIL GROUP_EMAIL  # remove a member
+  python3 admin-api.py group-settings GROUP_EMAIL               # show posting/access settings
+  python3 admin-api.py open-group GROUP_EMAIL                   # allow external senders (ANYONE_CAN_POST, no moderation)
   python3 admin-api.py whoami                       # show auth info
 """
 
 import json, time, base64, urllib.request, urllib.parse, urllib.error
 import tempfile, os, subprocess, sys
 
-KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+KEY = (
+    os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
+    if os.environ.get("VAULT")                       # $VAULT-aware (bootstrap materialises the key here)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+)
 IMPERSONATE = "pete.ashcroft@sygma-solutions.com"
 SCOPES = " ".join([
     "https://www.googleapis.com/auth/admin.directory.user",
     "https://www.googleapis.com/auth/admin.directory.group",
+    "https://www.googleapis.com/auth/apps.groups.settings",
 ])
 BASE = "https://admin.googleapis.com/admin/directory/v1"
+GSETTINGS = "https://www.googleapis.com/groups/v1/groups"   # Groups Settings API (whoCanPostMessage etc.)
 DEFAULT_DOMAIN = "sygma-solutions.com"
 
 with open(KEY) as f:
@@ -146,9 +160,54 @@ def add_alias(user_email, alias_email):
     api("POST", f"/users/{user_email}/aliases", body={"alias": alias_email})
     print(f"Added alias {alias_email} to {user_email}")
 
-def add_to_group(user_email, group_email):
-    api("POST", f"/groups/{group_email}/members", body={"email": user_email, "role": "MEMBER"})
-    print(f"Added {user_email} to {group_email}")
+def add_to_group(user_email, group_email, role="MEMBER"):
+    api("POST", f"/groups/{group_email}/members", body={"email": user_email, "role": role.upper()})
+    print(f"Added {user_email} to {group_email} as {role.upper()}")
+
+def remove_alias(user_email, alias_email):
+    api("DELETE", f"/users/{user_email}/aliases/{alias_email}")
+    print(f"Removed alias {alias_email} from {user_email}")
+
+def remove_from_group(user_email, group_email):
+    api("DELETE", f"/groups/{group_email}/members/{user_email}")
+    print(f"Removed {user_email} from {group_email}")
+
+def create_group(email, name, description=""):
+    g = api("POST", "/groups", body={"email": email, "name": name, "description": description})
+    print(f"Created group: {g.get('email')} (ID: {g.get('id')})")
+
+def delete_group(email):
+    api("DELETE", f"/groups/{email}")
+    print(f"Deleted group: {email}")
+
+def _gsettings(method, group_email, body=None):
+    """Groups Settings API call (separate base URL from the Directory API)."""
+    url = f"{GSETTINGS}/{group_email}?alt=json"
+    data = json.dumps(body).encode() if body else None
+    headers = {"Authorization": f"Bearer {get_token()}"}
+    if data: headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        resp = urllib.request.urlopen(req).read()
+        return json.loads(resp) if resp else {}
+    except urllib.error.HTTPError as e:
+        print(f"Error {e.code}: {e.read().decode()}", file=sys.stderr); sys.exit(1)
+
+def group_settings(group_email):
+    s = _gsettings("GET", group_email)
+    for k in ("whoCanPostMessage", "allowExternalMembers", "messageModerationLevel",
+              "spamModerationLevel", "whoCanJoin", "whoCanViewGroup", "isArchived"):
+        print(f"  {k:<22} {s.get(k)}")
+
+def open_group(group_email):
+    """Allow anyone (incl. external customers) to email the group, no moderation -- so role-address mail never bounces."""
+    s = _gsettings("PUT", group_email, {
+        "whoCanPostMessage": "ANYONE_CAN_POST",
+        "messageModerationLevel": "MODERATE_NONE",
+        "whoCanViewGroup": "ALL_MEMBERS_CAN_VIEW",
+        "isArchived": "true",
+    })
+    print(f"Opened {group_email} to external senders: whoCanPostMessage={s.get('whoCanPostMessage')}")
 
 def whoami():
     u = api("GET", f"/users/{IMPERSONATE}")
@@ -183,8 +242,26 @@ def main():
         if len(args) < 3: print("Usage: admin-api.py add-alias USER_EMAIL ALIAS_EMAIL"); sys.exit(1)
         add_alias(args[1], args[2])
     elif cmd == "add-to-group":
-        if len(args) < 3: print("Usage: admin-api.py add-to-group USER_EMAIL GROUP_EMAIL"); sys.exit(1)
-        add_to_group(args[1], args[2])
+        if len(args) < 3: print("Usage: admin-api.py add-to-group USER_EMAIL GROUP_EMAIL [ROLE]"); sys.exit(1)
+        add_to_group(args[1], args[2], args[3] if len(args) > 3 else "MEMBER")
+    elif cmd == "remove-alias":
+        if len(args) < 3: print("Usage: admin-api.py remove-alias USER_EMAIL ALIAS_EMAIL"); sys.exit(1)
+        remove_alias(args[1], args[2])
+    elif cmd == "remove-from-group":
+        if len(args) < 3: print("Usage: admin-api.py remove-from-group USER_EMAIL GROUP_EMAIL"); sys.exit(1)
+        remove_from_group(args[1], args[2])
+    elif cmd == "create-group":
+        if len(args) < 3: print("Usage: admin-api.py create-group EMAIL NAME [DESCRIPTION]"); sys.exit(1)
+        create_group(args[1], args[2], args[3] if len(args) > 3 else "")
+    elif cmd == "delete-group":
+        if len(args) < 2: print("Usage: admin-api.py delete-group EMAIL"); sys.exit(1)
+        delete_group(args[1])
+    elif cmd == "group-settings":
+        if len(args) < 2: print("Usage: admin-api.py group-settings GROUP_EMAIL"); sys.exit(1)
+        group_settings(args[1])
+    elif cmd == "open-group":
+        if len(args) < 2: print("Usage: admin-api.py open-group GROUP_EMAIL"); sys.exit(1)
+        open_group(args[1])
     elif cmd == "whoami":
         whoami()
     else:
