@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """cc-refresh.py — refresh the CC's snapshot data in one command. While the crons are frozen (→ Railway,
-Part H), the CC's derived/snapshot tables (automations registry · data-map · Pete's task mirror) are
+Part H), the CC's derived/snapshot tables (data-map · Pete's task mirror) are
 hand-run. This runs all of them in sequence so "keep the CC current" is one command. At Part H this is
 the job Railway schedules.
 
