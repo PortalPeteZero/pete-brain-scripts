@@ -20,10 +20,13 @@ Design (per the 5 Jul drive-cleanup audit):
 # schedule: 30 5 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
-import sys, json, urllib.request, urllib.parse
-sys.path.insert(0, "/tmp/pbs")
+import sys, os, json, urllib.request, urllib.parse
 import importlib.util
-_spec = importlib.util.spec_from_file_location("da", "/tmp/pbs/drive-api.py")
+# Load drive-api.py from THIS script's own directory — portable across local (/tmp/pbs)
+# and Railway (repo checkout); never hard-code /tmp/pbs (doesn't exist on Railway).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HERE)
+_spec = importlib.util.spec_from_file_location("da", os.path.join(_HERE, "drive-api.py"))
 da = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(da)
 
 BASE = "https://www.googleapis.com/drive/v3/files"
