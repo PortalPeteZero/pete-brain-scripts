@@ -11,8 +11,7 @@ description: >
   puts the secret in the ONE safe (`public.secrets`, pointer-only everywhere else), writes the
   registry row + config note + helper if one is earned, propagates to every consumer (crons AND
   24/7 services), regenerates the indexes, and verifies with a runnable gate
-  (`connection-parity.py`). Never leaves a key in plaintext; never leaves an undescribed secret;
-  never leaves a rotated service running on the old key.
+  (`connection-parity.py`). Never leaves a key in plaintext, an undescribed secret, or a rotated service on the old key.
 ---
 
 # Connection updater — the store/update/retire ritual for connections
