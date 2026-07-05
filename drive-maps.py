@@ -19,6 +19,7 @@ Design (per the 5 Jul drive-cleanup audit):
 # entity: command-centre
 # schedule: 30 5 * * *
 # timezone: Atlantic/Canary
+# secrets: GOOGLE_SA_JSON
 # CRON-META-END
 import sys, os, json, urllib.request, urllib.parse
 import importlib.util
