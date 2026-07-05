@@ -10,9 +10,16 @@ Design (per the 5 Jul drive-cleanup audit):
 - Uses a DISTINCT filename `MAP.md` — never touches an existing README.md.
 - Lists each drive LIVE via the Drive API, so it works for drives NOT in the CC index
   (Petes Photo Archive, Social Media, Sygma Backup's).
-
-# CRON-META: name=drive-maps; schedule=@daily; runtime=railway; writes=Drive MAP.md per kept drive
 """
+# CRON-META
+# what: Writes/refreshes a MAP.md front-door index in every kept Google shared drive + My Drive
+# why: every drive carries an at-a-glance map for Claude (Pete's design); listed live so the un-indexed drives are covered too
+# reads: Google Drive API (SA) — top-level listing of each kept drive
+# writes: MAP.md at each kept drive root (marker-block auto-index; preserves hand-written prose)
+# entity: command-centre
+# schedule: 30 5 * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
 import sys, json, urllib.request, urllib.parse
 sys.path.insert(0, "/tmp/pbs")
 import importlib.util
