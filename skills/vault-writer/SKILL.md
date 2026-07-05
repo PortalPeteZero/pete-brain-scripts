@@ -225,11 +225,11 @@ Several scheduled crons write to the CC (`daily_log`, `garmin_daily`, registries
 
 **Do not embed cron lists in this skill — they drift.** The single sources of truth (locked 2026-06-06 after embedded copies went stale):
 
-- `[[scheduled-tasks]]` — narrative registry, entry per task with vault-touch lists. **Its header carries the dashboard 3-step routing rule.**
-- the automations registry (`public.crons`) → live view at https://pete-automations.vercel.app
-- `cc-cron.py list` — live Railway cron state
+- `[[cron-registry]]` — the canonical narrative registry (per cron: what / why / schedule / dependencies).
+- CC `public.crons` → live view at **commandcentre.info/m/automations-log** (reads it LIVE).
+- `cc-cron.py list` — live Railway cron state; each script's `# CRON-META` header is the schedule source.
 
-Any cron change this skill's session touches (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`.
+Any cron change this skill's session touches (create / edit / pause / decommission, any runtime) is made with **`cc-cron.py`** — it writes Railway + `public.crons` and the dashboard updates instantly. There is NO manual sync: the old `automations.json → index.html → deploy.py` 3-step and `pete-automations.vercel.app` are RETIRED.
 
 All crons run on **Railway**. The source of truth is the live `crons` table in the CC + the `# CRON-META` blocks inside each `.py` in `pete-brain-scripts`; manage them with `cc-cron.py`.
 

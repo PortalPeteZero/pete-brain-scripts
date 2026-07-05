@@ -563,11 +563,11 @@ Crons modify vault files before sessions start — **always Read a daily note be
 
 **No cron list is embedded here — embedded copies drift (locked 2026-06-06; the old table here was stale on schedule AND contents).** The sources of truth:
 
-- `[[scheduled-tasks]]` — narrative registry, entry per task with vault-touch lists. **Read its header rules before editing any entry** — it carries the dashboard 3-step.
-- `Library/processes/automations-dashboard/automations.json` → live view at https://pete-automations.vercel.app
-- `mcp__scheduled-tasks__list_scheduled_tasks` — live Cowork cron state
+- `[[cron-registry]]` — the canonical narrative registry (per cron: what / why / schedule / dependencies).
+- **CC `public.crons`** → live view at **commandcentre.info/m/automations-log** (reads `public.crons` LIVE — a cron deployed via `cc-cron.py` shows instantly).
+- Each script's inline `# CRON-META` header (in git with the code) is the schedule source of truth; `mcp__scheduled-tasks__list_scheduled_tasks` shows live Cowork cron state.
 
-Any cron change (create / edit / pause / decommission, any runtime) must run the dashboard 3-step: update `automations.json` → re-embed `index.html` → `deploy.py`.
+Any cron change (create / edit / pause / decommission, any runtime) is made with **`cc-cron.py`** (deploy / set-schedule / pause / resume / retire / status): it writes Railway + `public.crons` and the dashboard reflects it instantly. There is NO manual sync — the old `automations.json → index.html → deploy.py` 3-step and `pete-automations.vercel.app` are RETIRED.
 
 ## General Guidelines
 
