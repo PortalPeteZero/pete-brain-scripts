@@ -432,6 +432,17 @@ def whoami():
         total = int(q.get("limit", 0)) // 1024 // 1024
         print(f"Storage: {used}MB used of {total}MB")
 
+def delete_drive(drive_id):
+    """Permanently delete a Shared Drive (with its trashed contents). Requires organizer + domain admin.
+    IRREVERSIBLE — only call on a drive you've confirmed empty of live content."""
+    url = DRIVE_BASE + f"/drives/{drive_id}?useDomainAdminAccess=true&allowItemDeletion=true"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {get_token()}"}, method="DELETE")
+    with urllib.request.urlopen(req) as r:
+        code = r.status
+    print(f"Deleted shared drive {drive_id} (HTTP {code})")
+    return code
+
+
 def _find_child(name, parent_id, folders_only=False):
     esc = name.replace("\\", "\\\\").replace("'", "\\'")
     q = f"name = '{esc}' and '{parent_id}' in parents and trashed=false"
@@ -524,6 +535,9 @@ def main():
     elif cmd == "upsert-file":
         if len(args) < 3: print("Usage: drive-api.py upsert-file /local/file FOLDER_ID [NAME]"); sys.exit(1)
         upsert_file(args[1], args[2], args[3] if len(args) > 3 else None)
+    elif cmd == "delete-drive":
+        if len(args) < 2: print("Usage: drive-api.py delete-drive DRIVE_ID"); sys.exit(1)
+        delete_drive(args[1])
     # ----- Sygma Hub build extensions -----
     elif cmd == "copy":
         if len(args) < 3: print("Usage: drive-api.py copy SRC_ID DEST_FOLDER_ID [NEW_NAME]"); sys.exit(1)

@@ -692,7 +692,7 @@ html = f'''<!doctype html>
   </div>
   <div class="tabs">{tab_buttons}</div>
   <div class="card">{cover_html}{month_pages}</div>
-  <div class="footer">Source · Odoo (camello-blanco-sl.odoo.com) + Xero (Sygma intercompany) · Baseline config · Businesses/canary-detect/finance/cost-base-reports/baseline-config.md</div>
+  <div class="footer">Source · Odoo (camello-blanco-sl.odoo.com) + Xero (Sygma intercompany) · Baseline window · build_data.py (BASELINE_START/END)</div>
 </div>
 <script>
 document.querySelectorAll('.tab').forEach(t => {{

@@ -39,7 +39,7 @@ It complements the revenue-side `cd-monthly-finance-email` cron — which is tur
 - `skills/cd-cost-report/SKILL.md` — this file
 - `skills/cd-cost-report/scripts/build_data.py` — pulls Odoo + applies manual data → writes `/tmp/ytd_data.json`
 - `skills/cd-cost-report/scripts/render_html.py` — reads `/tmp/ytd_data.json` → writes the HTML report
-- `baseline-config.md` — locked baseline definition (input to build_data.py)
+- Locked baseline window: the `BASELINE_START` / `BASELINE_END` constants in `scripts/build_data.py` (2026-01-01 -> 2026-04-30). There is NO separate baseline-config file.
 - Drive: **Entities Private / Canary Detect (Camello Blanco SL) / Finance / Cost Base Reports / 2026 Cost Base YTD.html** — the rendered report's permanent home (render_html.py upserts it; scratch copy at `/tmp/2026-cost-base-YTD.html`)
 - Live mirror: **commandcentre.info/m/cd-finance** Cost base tab (`reports.snapshots` key `cd-cost-base`) — the Vercel project was retired 11 Jun 2026
 
@@ -115,7 +115,7 @@ Specific known overrides:
 
 ### When Pete asks for the standard YTD report
 
-1. Confirm the locked baseline items (the skill's `scripts/baseline-config.md`).
+1. Confirm the locked baseline window (the `BASELINE_START` / `BASELINE_END` constants in `scripts/build_data.py`).
 2. **Ask Pete**: "Any cash overtime to add for these months beyond the €800/mo default? Any new manual lines (vans started? Sygma rental resumed billing? new cash workers)?" If silent, use the current defaults baked into `build_data.py`.
 3. Run the skill's bundled generators (in this skill's `scripts/` directory):
    ```bash
