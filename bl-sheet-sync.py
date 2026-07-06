@@ -129,11 +129,15 @@ def main():
     snap = snapshot()
     print(f"Snapshot stored: {len(snap)} rows -> reports.snapshots/bl-work-items-presync.")
 
-    # full mirror: clear the table, insert the sheet's rows
-    _sb("DELETE", "work_items", params="?id=not.is.null")
+    # SCOPED mirror: only the Appear-Online-sourced rows are owned by the sheet.
+    # Rows from other actors (jane's directories, sygma earned/pipeline) are LEFT ALONE —
+    # bl.work_items is the broad ledger; the sheet is SSOT for Appear Online placements only.
+    kept = len(snap) - sum(1 for r in snap if r.get("source_ref") == "appear-online-sheet")
+    _sb("DELETE", "work_items", params="?source_ref=eq.appear-online-sheet")
     _sb("POST", "work_items", body=parsed, prefer="return=minimal")
     after = json.loads(_sb("GET", "work_items", params="?select=id&limit=1000"))
-    print(f"Mirrored: bl.work_items now {len(after)} rows (== sheet). Done.")
+    print(f"Mirrored: {len(parsed)} Appear Online rows from the sheet; {kept} other-actor rows preserved. "
+          f"bl.work_items now {len(after)} rows. Done.")
 
 if __name__ == "__main__":
     main()
