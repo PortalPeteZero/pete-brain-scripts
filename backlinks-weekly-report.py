@@ -43,6 +43,67 @@ def _week_ending(d=None):
     # Sunday of the just-completed week
     return d - datetime.timedelta(days=(d.weekday() + 1) % 7 or 7)
 
+# --- "Is it benefiting?" — target-page rank movement (added 2026-07-06) ------------
+# A placement isn't done when it's live; it has to move the page it points at. For every
+# target page our links point to, pull its GSC position now vs the prior 28d so a live link
+# visibly turns into a ranking gain. Degrades gracefully — a GSC outage must not break the report.
+GSC_SITE = "sc-domain:sygma-solutions.com"
+TARGET_PAGE_MAP = {
+    "/": "/", "homepage": "/",
+    "cat and genny training": "/courses/cat-and-genny-training",
+    "cable avoidance training": "/courses/cable-avoidance-training",
+    "eusr cat1": "/courses/eusr-cat1", "eusr cat 1": "/courses/eusr-cat1",
+    "hsg47 training": "/courses/hsg47-training", "hsg47": "/courses/hsg47-training",
+}
+def _norm_target(tp):
+    if not tp:
+        return None
+    key = tp.strip().lower()
+    if key in TARGET_PAGE_MAP:
+        return TARGET_PAGE_MAP[key]
+    return key if key.startswith("/") else None  # drop unmapped labels
+
+def _load_gsc():
+    try:
+        import importlib
+        return importlib.import_module("gsc-api").GSCAPI()
+    except Exception:
+        return None
+
+def _benefit(items):
+    ranked = ("live", "crawled", "counted")
+    pending = ("submitted", "approved", "review", "proposed")
+    pages = {}
+    for i in items:
+        n = _norm_target(i.get("target_page"))
+        if not n:
+            continue
+        g = pages.setdefault(n, {"live": 0, "pending": 0})
+        if i["status"] in ranked:
+            g["live"] += 1
+        elif i["status"] in pending:
+            g["pending"] += 1
+    gsc = _load_gsc()
+    out = []
+    for page, cnt in sorted(pages.items(), key=lambda kv: -(kv[1]["live"] + kv[1]["pending"])):
+        row = {"page": page, "live_links": cnt["live"], "pending_links": cnt["pending"],
+               "position_now": None, "position_prev": None,
+               "clicks_now": None, "clicks_prev": None, "trend": "n/a"}
+        if gsc:
+            try:
+                c = gsc.compare_page(GSC_SITE, page, 28, 28)
+                tp = c.get("this") or {}
+                pv = c.get("prev") or {}
+                row["position_now"], row["position_prev"] = tp.get("position"), pv.get("position")
+                row["clicks_now"], row["clicks_prev"] = tp.get("clicks"), pv.get("clicks")
+                pn, pp = row["position_now"], row["position_prev"]
+                if pn is not None and pp is not None:
+                    row["trend"] = "improving" if pn < pp - 0.4 else "slipping" if pn > pp + 0.4 else "flat"
+            except Exception:
+                row["trend"] = "unavailable"
+        out.append(row)
+    return out
+
 def build(items, week_end):
     wk_start = week_end - datetime.timedelta(days=6)
     ranked = ("live", "crawled", "counted")
@@ -61,12 +122,32 @@ def build(items, week_end):
                 f"<td style='padding:6px 9px;border:1px solid #e2e6f0'>{i['status']}</td></tr>")
     live_rows = "".join(row(i) for i in live) or "<tr><td colspan=4 style='padding:6px 9px;border:1px solid #e2e6f0;color:#888'>none yet</td></tr>"
     new_rows = "".join(f"<li>{i['publisher']} — {i['status']} ({i.get('actor')})</li>" for i in new_this_week) or "<li>no new actions logged this week</li>"
+    # "Is it benefiting?" — target-page rank movement
+    benefit = _benefit(items)
+    def brow(b):
+        arrows = {"improving": "▲", "slipping": "▼", "flat": "→"}
+        colors = {"improving": "#16a34a", "slipping": "#dc2626", "flat": "#64748b"}
+        if b["position_now"] is not None:
+            prev = f" <span style='color:#94a3b8'>(was {b['position_prev']:.1f})</span>" if b["position_prev"] is not None else ""
+            pos = f"<span style='color:{colors.get(b['trend'], '#64748b')};font-weight:600'>{b['position_now']:.1f} {arrows.get(b['trend'], '')}</span>{prev}"
+        else:
+            pos = "<span style='color:#94a3b8'>no data</span>" if b["trend"] != "unavailable" else "<span style='color:#94a3b8'>GSC unavailable</span>"
+        clicks = f"{b['clicks_now']}" + (f" <span style='color:#94a3b8'>(was {b['clicks_prev']})</span>" if b["clicks_now"] is not None and b["clicks_prev"] is not None else "") if b["clicks_now"] is not None else "—"
+        links = f"{b['live_links']} live" + (f" · {b['pending_links']} pending" if b["pending_links"] else "")
+        cell = "padding:6px 9px;border:1px solid #e2e6f0"
+        return (f"<tr><td style='{cell}'>{b['page']}</td><td style='{cell}'>{links}</td>"
+                f"<td style='{cell}'>{pos}</td><td style='{cell}'>{clicks}</td></tr>")
+    benefit_rows = "".join(brow(b) for b in benefit) or "<tr><td colspan=4 style='padding:6px 9px;border:1px solid #e2e6f0;color:#888'>no target pages tracked yet</td></tr>"
     html = (f"<div style='font:14px/1.6 -apple-system,Segoe UI,sans-serif;padding:18px;color:#0b1220'>"
             f"<h2 style='margin:0 0 4px'>Backlinks — week ending {week_end:%-d %b %Y}</h2>"
             f"<p style='color:#16a34a;font-weight:600;margin:0 0 12px'>{len(crawled)} crawled &amp; counting · {len(live)} live or better · {by_status.get('approved',0)} approved · {by_status.get('proposed',0)} proposed.</p>"
             f"<h3 style='margin:14px 0 4px;color:#1B2340'>Live placements — published articles</h3>"
             f"<table style='width:100%;border-collapse:collapse;font-size:13px;background:#fff'>"
             f"<tr style='background:#f8fafc'><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Publisher / article</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>DR</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Target</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Status</b></td></tr>{live_rows}</table>"
+            f"<h3 style='margin:16px 0 4px;color:#1B2340'>Is it benefiting? — target-page search rank (28d vs prior 28d)</h3>"
+            f"<table style='width:100%;border-collapse:collapse;font-size:13px;background:#fff'>"
+            f"<tr style='background:#f8fafc'><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Target page</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Links</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Avg position</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Clicks</b></td></tr>{benefit_rows}</table>"
+            f"<p style='color:#94a3b8;font-size:12px;margin:4px 0 0'>Lower position = higher on Google. ▲ improving · ▼ slipping · → flat. This is where the deep-link strategy proves out.</p>"
             f"<h3 style='margin:16px 0 4px;color:#1B2340'>New / changed this week</h3><ul style='margin:0'>{new_rows}</ul>"
             f"<p style='color:#94a3b8;font-size:12px;margin:14px 0 0'>From the bl.work_items ledger ({len(items)} actions). Baseline: 0 external backlinks to target pages at the 11 May audit.</p></div>")
     # Structured data so the Command Centre can render the Weekly tab NATIVELY (no iframe) with
@@ -83,6 +164,7 @@ def build(items, week_end):
                     "total": len(items)},
         "live": [item_d(i) for i in live],
         "new_this_week": [item_d(i) for i in new_this_week],
+        "benefit": benefit,
     }
     return html, data
 
