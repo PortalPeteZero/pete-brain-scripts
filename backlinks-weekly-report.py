@@ -33,6 +33,10 @@ _SECRETS = (Path(os.environ["VAULT"]) / "Library/processes/secrets") if os.envir
 KEYS = json.load(open(_SECRETS / "command-centre-supabase-keys.json"))
 SRK = KEYS["service_role_key"]; BASE = KEYS["url"] + "/rest/v1"
 
+# The shared live tracker (SSOT for Appear Online placements; mirrored into bl.work_items by bl-sheet-sync).
+# Routing: Library/processes/seo/sygma-backlink-tracker-routing.md
+TRACKER_URL = "https://docs.google.com/spreadsheets/d/1XMMJDuvx95K2nV-jE7VjAr3UnaE1pSd-OnhpXZsigCM/edit"
+
 def _work_items():
     req = urllib.request.Request(f"{BASE}/work_items?select=*&order=date.desc",
         headers={"apikey": SRK, "Authorization": f"Bearer {SRK}", "Accept-Profile": "bl"})
@@ -140,7 +144,8 @@ def build(items, week_end):
     benefit_rows = "".join(brow(b) for b in benefit) or "<tr><td colspan=4 style='padding:6px 9px;border:1px solid #e2e6f0;color:#888'>no target pages tracked yet</td></tr>"
     html = (f"<div style='font:14px/1.6 -apple-system,Segoe UI,sans-serif;padding:18px;color:#0b1220'>"
             f"<h2 style='margin:0 0 4px'>Backlinks — week ending {week_end:%-d %b %Y}</h2>"
-            f"<p style='color:#16a34a;font-weight:600;margin:0 0 12px'>{len(crawled)} crawled &amp; counting · {len(live)} live or better · {by_status.get('approved',0)} approved · {by_status.get('proposed',0)} proposed.</p>"
+            f"<p style='color:#16a34a;font-weight:600;margin:0 0 6px'>{len(crawled)} crawled &amp; counting · {len(live)} live or better · {by_status.get('approved',0)} approved · {by_status.get('proposed',0)} proposed.</p>"
+            f"<p style='margin:0 0 12px'>📊 <a href='{TRACKER_URL}' style='color:#2563eb;font-weight:600'>Open the live Backlink Placement Tracker ↗</a> <span style='color:#94a3b8'>(shared with Appear Online; this page mirrors it, refreshed daily).</span></p>"
             f"<h3 style='margin:14px 0 4px;color:#1B2340'>Live placements — published articles</h3>"
             f"<table style='width:100%;border-collapse:collapse;font-size:13px;background:#fff'>"
             f"<tr style='background:#f8fafc'><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Publisher / article</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>DR</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Target</b></td><td style='padding:6px 9px;border:1px solid #e2e6f0'><b>Status</b></td></tr>{live_rows}</table>"
@@ -158,6 +163,7 @@ def build(items, week_end):
                 "actor": i.get("actor"), "date": i.get("date")}
     data = {
         "week_end": week_end.isoformat(),
+        "tracker_url": TRACKER_URL,
         "summary": {"crawled": len(crawled), "live": len(live),
                     "approved": by_status.get("approved", 0), "proposed": by_status.get("proposed", 0),
                     "submitted": by_status.get("submitted", 0), "review": by_status.get("review", 0),
