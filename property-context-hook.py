@@ -138,6 +138,109 @@ def live_check(domain):
     _save_throttle({k: v for k, v in cache.items() if now - v.get("ts", 0) < 3600})
     return rec
 
+# ---- property matching (F2): whole-word + globally-unique tokens, no substring collisions --------
+# The 2026-07 failure: substring/prefix matching let a bare "lanzarote" resolve to all FOUR Lanzarote
+# properties. Fix: match on WHOLE WORDS only, and a single-word term is a match-term ONLY if it is
+# ≥5 chars, not stop-listed, AND appears in exactly ONE property across the whole feed (so any token
+# shared by ≥2 properties — lanzarote, sygma, canary, leakguard — is automatically inert). Full
+# domains always match (they are inherently unique to one property).
+STOP = {
+    # structural / type words (these tokenise out of names + the declared.tags string)
+    "property", "website", "web", "site", "sites", "page", "pages", "app", "apps", "saas",
+    "microsite", "internal", "tool", "field", "personal", "game", "crm", "report", "client",
+    # descriptors
+    "wordpress", "marketing", "holiday", "lets", "lovable", "vercel", "drain", "pool",
+    # generic english
+    "the", "and", "for", "new", "live", "main",
+    # broad place / multi-property that uniqueness alone might miss if only one is tagged
+    "lanzarote", "scouts",
+}
+
+
+def _tok(s):
+    s = re.sub(r"['’]", "", (s or "").lower())     # o'connor's -> oconnors (one token, not o|connor|s)
+    return [w for w in re.split(r"[^a-z0-9]+", s) if w]
+
+
+def _candidate_terms(p):
+    """(single-token set, full-domain set) for one property, before the uniqueness filter."""
+    toks, doms = set(), set()
+    toks.update(_tok(p.get("name", "")))
+    for d in (p.get("domains") or []):
+        d = (d or "").lower().strip()
+        if d:
+            doms.add(d)
+            toks.update(_tok(d.split("/")[0]))          # domain labels are tokens too
+    decl = p.get("declared") or {}
+    for src in (decl.get("aliases"), decl.get("tags")):
+        for a in re.split(r"[,\[\]\s]+", (src or "").lower()):
+            a = a.strip(' "\'')
+            toks.update(_tok(a))
+    return toks, doms
+
+
+def match_properties(feed, prompt):
+    props = feed.get("properties", []) or []
+    cand, freq = [], {}
+    for p in props:
+        toks, doms = _candidate_terms(p)
+        cand.append((toks, doms))
+        for t in toks:
+            freq[t] = freq.get(t, 0) + 1
+    prompt_words = set(_tok(prompt))
+    prompt_l = (prompt or "").lower()
+    prompt_phrase = " " + " ".join(_tok(prompt)) + " "
+    matched = []
+    for p, (toks, doms) in zip(props, cand):
+        keep = {t for t in toks if len(t) >= 5 and t not in STOP and freq.get(t, 0) == 1}
+        # exact multi-word property NAME as a contiguous phrase — collision-free (each name is unique),
+        # so it catches "leakguard lanzarote" even when every individual token is shared/stop-listed
+        name_toks = _tok(p.get("name", ""))
+        phrase_hit = len(name_toks) >= 2 and (" " + " ".join(name_toks) + " ") in prompt_phrase
+        if phrase_hit or any(t in prompt_words for t in keep) or any(d in prompt_l for d in doms):
+            matched.append(p)
+    return matched
+
+
+def _cc_creds():
+    url = os.environ.get("CC_SUPABASE_URL")
+    key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
+    if url and key:
+        return url, key
+    for kf in CC_KEYFILES:
+        try:
+            d = json.load(open(kf))
+            return d["url"], d["service_role_key"]
+        except Exception:
+            continue
+    return None, None
+
+
+def resolve_live_domain(name):
+    """Inject-time truth: the property's CURRENT primary domain straight from `property_declarations`,
+    so a declaration edited AFTER the last nightly feed run is still reported correctly. This is the
+    real F2 class-fix (the nightly feed is only as fresh as its last run). Fail-open → None."""
+    if not name:
+        return None
+    url, key = _cc_creds()
+    if not (url and key):
+        return None
+    try:
+        import urllib.parse
+        q = urllib.parse.quote(name, safe="")
+        req = urllib.request.Request(
+            url.rstrip("/") + "/rest/v1/property_declarations?select=f&name=eq." + q,
+            headers={"apikey": key, "Authorization": "Bearer " + key})
+        with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
+            rows = json.loads(r.read().decode())
+        if rows:
+            doms = ((rows[0].get("f") or {}).get("domains")) or []
+            return doms[0] if doms else None
+    except Exception:
+        return None
+    return None
+
+
 def main():
     try:
         prompt = (json.load(sys.stdin).get("prompt") or "").lower()
@@ -149,33 +252,40 @@ def main():
     if not feed:
         sys.exit(0)
 
-    matched = []
-    for p in feed.get("properties", []):
-        terms = {p["name"].lower()}
-        for d in p.get("domains", []):
-            terms.add(d.lower()); terms.add(d.split(".")[0].lower())
-        for a in re.split(r"[,\[\]\s]+", (p.get("declared", {}).get("aliases", "") or "").lower()):
-            a = a.strip(' "\'')
-            if len(a) >= 4:
-                terms.add(a)
-        words = [w for w in re.split(r"[^a-z0-9]+", prompt) if len(w) >= 5]
-        if any((len(t) >= 4 and t in prompt) or (len(t) >= 5 and any(t.startswith(w) for w in words)) for t in terms):
-            matched.append(p)
+    matched = match_properties(feed, prompt)
     if not matched:
         sys.exit(0)
+
+    # F2 inject-time domain resolution for the TOP match: re-read its CURRENT domain from
+    # property_declarations right now, so a declaration edited since the last nightly feed is still
+    # correct. If it differs from the feed, that's the tripwire — surface it. Fail-open to the feed.
+    top = matched[0]
+    feed_domain = top.get("primary_domain")
+    live_domain = None
+    try:
+        live_domain = resolve_live_domain(top.get("name"))
+    except Exception:
+        live_domain = None
+    top_domain = live_domain or feed_domain
+    domain_moved = bool(live_domain and feed_domain and live_domain != feed_domain)
 
     # live re-check the TOP match only — one probe, 3s-capped, so the hook stays sub-second-ish
     live = None
     try:
-        live = live_check(matched[0].get("primary_domain"))
+        live = live_check(top_domain)
     except Exception:
         live = None
 
-    lines = [f"[property-state hook — VERIFIED current state from the last sync ({feed.get('generated','?')}). Trust this over any narrative file.]"]
+    lines = [f"[property-state hook — state as-of the last sync ({feed.get('generated','?')}); the top "
+             f"match's domain is re-resolved LIVE at this prompt. Trust this over any narrative file.]"]
     for i, p in enumerate(matched[:MAXP]):
         drift = ("  ⚠ " + " · ".join(p["drift"])) if p.get("drift") else ""
+        shown_domain = (top_domain if i == 0 else p.get("primary_domain")) or "no domain"
         lines.append(f"• {p['name']}: {str(p.get('live','?')).upper()} · host {p.get('host','?')} · "
-                     f"{p.get('primary_domain') or 'no domain'} · repo {p.get('repo_head') or '–'} vs deployed {p.get('deployed') or '–'}{drift}")
+                     f"{shown_domain} · repo {p.get('repo_head') or '–'} vs deployed {p.get('deployed') or '–'}{drift}")
+        if i == 0 and domain_moved:
+            lines.append(f"    ↳ ⚠ DOMAIN CHANGED since the last feed sync: declaration now says "
+                         f"{live_domain} (feed had {feed_domain}). Use {live_domain}.")
         if i == 0 and live:
             if live.get("live") == "timeout":
                 lines.append(f"    ↳ LIVE re-check: {p.get('primary_domain')} did NOT respond within {LIVE_TIMEOUT}s just now — could NOT confirm it's up; the sync's last state ({str(p.get('live','?')).upper()}) may be stale. Treat as possibly DOWN (check apex DNS) until confirmed.")
@@ -189,7 +299,7 @@ def main():
         if "command centre" in (p.get("name", "") or "").lower():
             lines.append("    ↳ CC orientation map: ~/.config/pete-cc/MAP.cache.md (GENERATED twice daily from the live tables — read FIRST for any CC work; source: config key map-md)")
         # linked project's authoritative-status line
-        for proj in re.split(r"[,\[\]\s]+", (p.get("declared", {}).get("projects", "") or "")):
+        for proj in re.split(r"[,\[\]\s]+", ((p.get("declared") or {}).get("projects") or "")):
             proj = proj.strip(' "\'')
             rp = os.path.join(PROJECTS, proj, "README.md")
             if len(proj) >= 3 and os.path.isfile(rp):
