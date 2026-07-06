@@ -25,6 +25,7 @@ Usage:
 # reads: Google Sheet (Sygma Backlinks tracker); bl.work_items (CC)
 # writes: bl.work_items (CC); reports.snapshots key bl-work-items-presync
 # entity: sygma
+# secrets: GOOGLE_SA_JSON
 # schedule: 0 6 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
