@@ -210,6 +210,18 @@ Routing an enquiry in triage = exactly these three side-effects, nothing more:
 
 This is the cross-skill hook the cockpit relies on: triage recognises + routes; the **separately-run** Engine owns the lifecycle, drafting, learning, and properly-threaded sending. There is NO cron — the EE is Pete-triggered.
 
+### Step 4.7: Backlink-email recognition (hand backlink emails to the Backlink Engine)
+
+An Appear Online / backlink email is NOT a generic inbox row — it belongs to the **Backlink Engine** (SSOT = the shared placement tracker Google Sheet, mirrored daily into `bl.work_items` + the CC page `/m/sygma-backlink-tracker`). Before Action-verb selection, flag each thread that is a backlink email. A thread is a backlink email if ANY of:
+
+1. **Sender / label** — from `andrew@` / `chris@` / `zubin@appearonline.co.uk`, OR it carries the `Suppliers/SY-AppearOnline` label.
+2. **Jane's directory intake** — subject `Claude - Backlinks Sygma`.
+3. **Content** — Sygma placements, live URLs that have landed, published articles, repoints, or spam/disavow ownership.
+
+When matched, route it to the **Backlink Engine** — capture is ONE command, **`bl-log.py`** (the `te-log` for backlinks): it files the thread (`Suppliers/SY-AppearOnline` + archive), updates the sheet SSOT (fills live URLs / appends placements / sets status), writes a `work_log` line, and runs the sheet→CC sync, all in lockstep. Read the email, build the payload (live URLs landed, new placements, status changes), then:
+`VAULT=/tmp/pbs python3 /tmp/pbs/bl-log.py --in touch.json` (dry-run) → review → add `--apply`.
+**Never hand-edit `bl.work_items` or the CC page** — always go through the sheet via `bl-log`. In the ops table mark Action **"Route → Backlink Engine (bl-log)"**. Full routing + payload shape: [[sygma-backlink-tracker-routing]].
+
 ### Step 5: Per-row Action verb selection (constrained by `Ask`)
 
 Once `Ask` is set, the Action verb is constrained:
