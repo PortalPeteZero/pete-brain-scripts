@@ -14,7 +14,7 @@ description: >
 # Simplify — Multi-Agent Code Review & Fix
 
 > [!important] Where things go
-> Property repo / tech stack / account → the **CC Properties module** (`drive_files` for files). Review findings + session plan → **`vault_notes`** (ingest a `.md`). Session log → CC `daily_log`. Tools run from `/tmp/pbs`.
+> Property repo / tech stack / account → the **CC Properties module** (`drive_files` for files). Review findings + session plan → **`vault_notes`** (persist with **`cc-save.py`** — never `cc-knowledge-ingest.py` for a session-plan, it drops it). Session log → CC `daily_log`. Tools run from `/tmp/pbs`.
 
 Three parallel review agents (reuse opportunities, quality issues, efficiency improvements) review code, aggregate findings, then apply fixes. Style rules for outbound communications live in [[voice-principles]] only — commit messages, PR descriptions, README writes, and audit reports are internal artefacts and not subject to those rules.
 
@@ -41,7 +41,7 @@ Get the repo, tech stack, and account from the **CC Properties module** (`drive_
 
 **Pre-step: Write session plan**
 
-Before starting the review, write a session plan to `vault_notes` (ingest a `.md`) with goal, steps, and `status: in-progress`. Update it as you work through each phase.
+Before starting the review, write a session plan to `vault_notes` — persist it with **`cc-save.py`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-save.py <file>`), NOT `cc-knowledge-ingest.py`, which skips session-plans and would silently drop it (F3) — with goal, steps, and `status: in-progress`. Update it (re-save with `cc-save.py`) as you work through each phase.
 
 Clone the repo:
 
@@ -223,7 +223,7 @@ Always confirm with Pete before pushing. Show a summary of changes first.
 
 **Verification**: Follow property-manager Steps 5-6 for mandatory pre-push (git diff, grep, build) and post-push (fresh-clone, grep, build, Preview for UI) verification.
 
-Update the session plan after pushing with commit hash and verification results.
+Update the session plan (re-save with `cc-save.py`) after pushing with commit hash and verification results.
 
 ### 4c. Save findings
 

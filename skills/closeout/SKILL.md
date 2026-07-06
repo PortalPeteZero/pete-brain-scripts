@@ -108,7 +108,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 |----|-------|-------|-----|
 | A1 | this session's OWN commits are in the Work Log | auto | `closeout-sweep.py --apply` |
 | A2 | unlogged commits that are NOT mine | surface | `closeout-sweep.py` lists them; never log |
-| B1 | knowledge `.md` authored under `/tmp/pbs` is ingested to its CORRECT home, no cross-session collision | auto | for each note: `closeout_ingest_guard.py <file> --json` → safe(NEW/IDENTICAL/UPDATE) then `cc-knowledge-ingest.py`; COLLISION → surface, don't overwrite |
+| B1 | knowledge `.md` authored under `/tmp/pbs` is persisted to its CORRECT home, no cross-session collision | auto | for each note: `closeout_ingest_guard.py <file> --json` → safe(NEW/IDENTICAL/UPDATE) then **`cc-save.py <file>`** (always persists, incl. lifecycle notes like session-plans that `cc-knowledge-ingest.py` silently drops — F3); COLLISION → surface, don't overwrite |
 | B2 | a durable lesson belongs in `vault_notes` | surface | brutal bar (will it be used + could it mislead) |
 | B3 | a behavioural correction/preference belongs in AUTO-MEMORY (MEMORY.md), distinct from a vault lesson | surface | |
 | K1 | knowledge produced this session but stranded LOCALLY (scratchpad / local dir) | surface | move under `/tmp/pbs/<home>` + ingest on Pete's OK |
@@ -146,7 +146,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 |----|-------|-------|
 | A8 | no stale worktrees / orphaned branches left by this session | surface |
 | C1 | a session-plan is still open | surface; MY finished plan → strong "stamp done?" default |
-| C2a | STAMP a demonstrably-shipped (mine) plan `completed` + re-ingest | auto (non-destructive) |
+| C2a | STAMP a demonstrably-shipped (mine) plan `completed` + **re-save via `cc-save.py`** (re-embeds the banner; `cc-knowledge-ingest.py` would SKIP a session-plan, leaving the plan OPEN forever while closeout reports done — F3) | auto (non-destructive) |
 | C2b | BIN a done plan (snapshot+delete) | surface (destructive — separate yes) |
 | D1 | deliverable files in scratchpad that belong in Drive | surface |
 | D2 | files created in Drive are indexed in `drive_files` | verify |

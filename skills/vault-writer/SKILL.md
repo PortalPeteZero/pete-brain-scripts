@@ -17,7 +17,7 @@ description: >
 # Vault Writer
 
 > [!important] Where things live (route per [[vault-routing]])
-> Files → **Google Drive** (`drive_files` index via `/tmp/pbs/cc-sql.py`). Knowledge / lessons / decisions / notes → **CC `vault_notes`** (`cc-knowledge-api.py`; surfaced in the CC Brain page). Tasks → **`public.tasks`**. Session log → **`daily_log`**.
+> Files → **Google Drive** (`drive_files` index via `/tmp/pbs/cc-sql.py`). Knowledge / lessons / decisions / notes → **CC `vault_notes`** (SAVE with **`cc-save.py`**; SEARCH/read with `cc-knowledge-api.py`; surfaced in the CC Brain page). Tasks → **`public.tasks`**. Session log → **`daily_log`**.
 
 End-of-session cleanup checklist and vault writing standards. Routing rules live in [[vault-routing]] — single source of truth for where things go. Brain owns workflow orchestration; vault-writer ensures end-of-session capture follows those rules.
 
@@ -37,7 +37,7 @@ The golden rule: **search first, then write**.
 ## Where things go (cloud)
 
 Save to the cloud homes (full matrix: [[vault-routing]]):
-- **Knowledge / decisions / notes / research** → CC `vault_notes`: write a `.md` to `/tmp`, then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>`. The hourly embedder re-indexes changed notes automatically (content-hash detection) — run `cc-embedder.py` to index it immediately.
+- **Knowledge / decisions / notes / research** → CC `vault_notes`: write a `.md` to `/tmp`, then `VAULT=/tmp/pbs python3 /tmp/pbs/cc-save.py <file>`. **Use `cc-save.py`, not `cc-knowledge-ingest.py`, as the default single-file save** — `cc-save.py` always persists (including lifecycle notes such as session-plans, which the bulk ingest deliberately skips and would silently drop — F3). `cc-knowledge-ingest.py` remains the BULK/directory ingest for general knowledge. The hourly embedder re-indexes changed notes automatically (content-hash detection) — run `cc-embedder.py` to index it immediately.
 - **Files / documents / data** → the entity's **Google Drive** folder (find it: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT drive,path FROM drive_files WHERE …"`).
 - **Live work** → the CC `tasks` engine (`public.tasks`). **Session log** → CC `daily_log`.
 - **Tools** pull from GitHub to `/tmp/pbs`; run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`.
@@ -66,7 +66,7 @@ Run this at the end of every working session — **and run the lifecycle steps (
 
 - Update the project's CC record (status, next steps, any new context learned this session)
 - Consolidate working files in the project's Drive folder -- merge scratch notes or drafts that are now superseded
-- **Plan lifecycle (keep plans honest — a shipped plan must not look live, a dead one must not look active):** plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` driven by frontmatter `status`. **Sweep every plan you touched OR that relates to work done this session — not only ones you think changed**, and verify each against the live system (does the thing it planned now exist? is its task done?) before leaving it `ready`/`in-progress`. Stamp the shipped ones and re-ingest so the banner re-stamps — even if an earlier session did the actual shipping (a plan left `in-progress` is exactly what the next Resume mis-reads as live):
+- **Plan lifecycle (keep plans honest — a shipped plan must not look live, a dead one must not look active):** plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` driven by frontmatter `status`. **Sweep every plan you touched OR that relates to work done this session — not only ones you think changed**, and verify each against the live system (does the thing it planned now exist? is its task done?) before leaving it `ready`/`in-progress`. Stamp the shipped ones and **re-save with `cc-save.py`** so the banner re-stamps (a session-plan would be SKIPPED by `cc-knowledge-ingest.py`, so re-ingest silently does nothing — F3) — even if an earlier session did the actual shipping (a plan left `in-progress` is exactly what the next Resume mis-reads as live):
   - **Executed / shipped** → `status: completed` (banner → ✅ historical). Never leave a shipped plan `ready`/`in-progress` — that's what makes a future grep treat it as live state.
   - **Scrapped / abandoned** → EITHER **hard-delete the plan note** (snapshot first; the default for pure noise) **OR** set `status: scrapped` (banner → ⛔ "do not use"). Delete if it should leave no trace; stamp if the *decision not to do it* is worth keeping.
 - Don't delete old *knowledge/files* on a whim -- keep history; but a scrapped *plan* should be deleted or clearly stamped dead (above), never left looking active
@@ -176,7 +176,7 @@ If this session touched any external access — a new/rotated/expanded/retired A
 
 ### Step 8: Propagate to the cloud
 
-The map is **auto-generated** — `cc_map` (the `/m/map` page) from the `modules` table, and the `config.map-md` orientation doc rendered twice daily by `cc-orientation-map-sync.py` from the live tables (counts + the `data_map` routing) — nothing to maintain by hand. Knowledge reaches the cloud when you **ingest it to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-ingest.py <file>`; the hourly embedder re-indexes it automatically, or run `cc-embedder.py` to index it now); files reach the cloud by living in their **Drive** folder (captured automatically by the `drive-changes-watch` Railway cron). Confirm each thing you saved this session has landed in its cloud home before sign-off.
+The map is **auto-generated** — `cc_map` (the `/m/map` page) from the `modules` table, and the `config.map-md` orientation doc rendered twice daily by `cc-orientation-map-sync.py` from the live tables (counts + the `data_map` routing) — nothing to maintain by hand. Knowledge reaches the cloud when you **save it to `vault_notes`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-save.py <file>` — the default single-file save that never drops a lifecycle note; `cc-knowledge-ingest.py` is the bulk/directory ingest for general knowledge; the hourly embedder re-indexes it automatically, or run `cc-embedder.py` to index it now); files reach the cloud by living in their **Drive** folder (captured automatically by the `drive-changes-watch` Railway cron). Confirm each thing you saved this session has landed in its cloud home before sign-off.
 
 ---
 

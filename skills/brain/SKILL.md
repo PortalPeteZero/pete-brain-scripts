@@ -115,7 +115,7 @@ The full step-by-step protocol lives in vault-routing -- this skill defers there
 
 ## Session Plan Requirement
 
-Every session that involves real work (not casual chat) MUST have a session plan recorded BEFORE any real work starts. The plan is a `vault_notes` record (`type: session-plan`), ingested via `cc-knowledge-api.py`, tagged with the project slug it belongs to. Surfaced on the CC Brain page.
+Every session that involves real work (not casual chat) MUST have a session plan recorded BEFORE any real work starts. The plan is a `vault_notes` record (`type: session-plan`), persisted via **`cc-save.py`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-save.py <file>`), tagged with the project slug it belongs to. Surfaced on the CC Brain page. **Why cc-save and not the ingest tool:** a session-plan is a lifecycle note the bulk `cc-knowledge-ingest.py` deliberately SKIPS (it would print "0 notes ingested" and silently drop the plan — the F3 bug); `cc-save.py` always persists it, and the auto-push hook routes session-plans there automatically.
 
 **Template:**
 ```yaml
@@ -146,7 +146,7 @@ At session end, update `status: completed` or `partial`. The plan stays in `vaul
 > Plans carry an auto-stamped `<!-- PLAN-LIFECYCLE-BANNER -->` (open = "verify live" · done = "historical" · scrapped = "⛔ dead"), driven by the frontmatter `status`. So whenever a plan's state changes, **change its status** (and re-ingest / fix the banner so it re-stamps):
 > - **Executed / shipped** → set `status: completed`. NEVER leave a shipped plan as `ready`/`in-progress` — that is exactly what makes a future grep mistake it for live state.
 > - **Scrapped / abandoned** → EITHER **hard-delete the plan note** (snapshot first — the default when it is pure noise with no lasting value) **OR** set `status: scrapped` (the banner becomes ⛔ "do not use"). Choose: delete if it should leave no trace; stamp if the *decision not to do it* is worth keeping. Never leave a dead plan looking active.
-> - To re-stamp after a status change: re-ingest the plan (`cc-knowledge-ingest.py` → re-embed), or if editing the `vault_notes` row directly, update the banner at the top of the body too.
+> - To re-stamp after a status change: re-save the plan with **`cc-save.py`** (the hourly embedder re-embeds; note `cc-knowledge-ingest.py` would SKIP a session-plan, so it is the wrong tool here), or if editing the `vault_notes` row directly, update the banner at the top of the body too.
 
 ---
 

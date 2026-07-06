@@ -43,8 +43,23 @@ def main() -> int:
             last = ((r.stdout or "") + (r.stderr or "")).strip()
             if r.returncode == 0 and ", 0 failed" in last:
                 rel = os.path.relpath(fp, root)
+                # F3: a lifecycle note (session-plan) is skipped by the BULK ingest but BELONGS in
+                # vault_notes. cc-knowledge-ingest flags it with "PERSIST-ELIGIBLE:"; fall through to
+                # cc-save.py so it actually persists. This NEVER fires for SKILL.md / scaffolding —
+                # those skip with no marker — so edited skills still stay out of the KB.
+                if "PERSIST-ELIGIBLE:" in last:
+                    save = os.path.join(root, "cc-save.py")
+                    s = subprocess.run(
+                        ["python3", save, fp], cwd=root, env=dict(os.environ, VAULT=root),
+                        capture_output=True, text=True, timeout=60,
+                    )
+                    if s.returncode == 0 and "SAVED:" in (s.stdout or ""):
+                        print(f"CC auto-push OK: {rel} persisted via cc-save (lifecycle note).")
+                        return 0
+                    last = f"cc-save fall-through failed: {((s.stdout or '')+(s.stderr or '')).strip()[:300]}"
+                    continue  # retry the whole loop; after 3, surface as a blocking failure below
                 if "0 notes ingested" in last:
-                    print(f"CC auto-push: {rel} skipped as ephemeral type (by design — not a vault doc).")
+                    print(f"CC auto-push: {rel} skipped as ephemeral scaffolding (by design — not a vault doc).")
                 else:
                     print(f"CC auto-push OK: {rel} is now in vault_notes.")
                 return 0

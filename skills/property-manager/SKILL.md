@@ -8,14 +8,14 @@ description: "Use this skill whenever Pete wants to work on any website, app, or
 # Property Manager — Universal Workflow Skill
 
 > [!important] Where property state lives
-> A property's **card** (domain, tech stack, tracking IDs, live-state block) lives in the **CC Properties module** (Part E). Its **reference data** (SEO crawl, audit results, ads/analytics exports) lives in the property's **Google Drive** folder (find via `drive_files`: `/tmp/pbs/cc-sql.py`). **Decisions / notes / plans** → **`vault_notes`** (`cc-knowledge-api.py`). **Session log** → CC `daily_log`. Customer/supplier/business context → the entity's Drive folder + a `vault_notes` record. Code repos clone to `/tmp/<repo>` (a fresh working copy each session); tools run from `/tmp/pbs`; a `[[wikilink]]` links a note by its name in `vault_notes`. Route per the matrix in [[vault-routing]].
+> A property's **card** (domain, tech stack, tracking IDs, live-state block) lives in the **CC Properties module** (Part E). Its **reference data** (SEO crawl, audit results, ads/analytics exports) lives in the property's **Google Drive** folder (find via `drive_files`: `/tmp/pbs/cc-sql.py`). **Decisions / notes** → **`vault_notes`** (search with `cc-knowledge-api.py`, persist with **`cc-save.py`**); **plans** (`type: session-plan`) → `vault_notes` via **`cc-save.py`** (a session-plan is a lifecycle note the bulk `cc-knowledge-ingest.py` drops — F3). **Session log** → CC `daily_log`. Customer/supplier/business context → the entity's Drive folder + a `vault_notes` record. Code repos clone to `/tmp/<repo>` (a fresh working copy each session); tools run from `/tmp/pbs`; a `[[wikilink]]` links a note by its name in `vault_notes`. Route per the matrix in [[vault-routing]].
 
 Single workflow for connecting to any of Pete's digital properties, understanding architecture, making changes safely, and keeping the CC property cards up to date.
 
 Properties carry a `property_type:` field on their CC card (vocabulary at [[vault-routing#property-type-vocabulary]]: `marketing-site`, `saas-app`, `internal-tool`, `external-data-source`, `microsite`). Read the type when opening a property and adapt the workflow lens accordingly. Style rules for outbound communications live in [[voice-principles]] only — PRs, commit messages, card writes, audit reports, and code comments are internal artefacts and not subject to those rules.
 
 > [!important] Live state is machine-maintained — don't re-derive it by hand
-> Each property card carries a `<!-- LIVE-STATE -->` block (host, deployed commit vs repo head, DNS, Supabase, GSC/GA4/Ahrefs/GTM) refreshed every night by the property-state system (`property-live-state.py`). **Read that block for current state; don't manually curl/check what's already verified there.** The §E service-declaration fields (`domains`, `hosting`, `github`, `vercel_project`, `gsc_property`, `ga4_property`, …) drive it — keep them filled on every card. The whole estate is on the dashboard at `properties-dashboard-xi.vercel.app`; in Claude Code, mentioning a property auto-injects its verified state via the `property-context-hook`.
+> Each property card carries a `<!-- LIVE-STATE -->` block (host, deployed commit vs repo head, DNS, Supabase, GSC/GA4/Ahrefs/GTM) refreshed every night by the property-state feed cron (`property-state-cc.py`, which reuses `property-live-state.py`'s probe functions — `property-live-state.py` is the probe library, not the cron). **Read that block for current state; don't manually curl/check what's already verified there.** The §E service-declaration fields (`domains`, `hosting`, `github`, `vercel_project`, `gsc_property`, `ga4_property`, …) drive it — keep them filled on every card. The whole estate is on the dashboard at `properties-dashboard-xi.vercel.app`; in Claude Code, mentioning a property auto-injects its verified state via the `property-context-hook`.
 
 Version history: [[CHANGELOG]].
 
@@ -131,7 +131,7 @@ Then continue with the rest of this workflow.
 
 FIRST action after understanding what Pete wants:
 
-1. **Recorded session plan**: Write a `vault_notes` session-plan record (`type: session-plan`, tagged with the project slug) with goal, steps, and status: in-progress. Update it as work progresses. This is the permanent record.
+1. **Recorded session plan**: Write a `vault_notes` session-plan record (`type: session-plan`, tagged with the project slug) with goal, steps, and status: in-progress, and persist it with **`cc-save.py`** (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-save.py <file>`) — NOT `cc-knowledge-ingest.py`, which skips session-plans and would silently drop it (F3). Update it as work progresses (re-save with `cc-save.py`). This is the permanent record.
 2. **Claude Code built-in plan**: Also use Claude Code's built-in plan mode for live session tracking. This is ephemeral (lives in the UI, not saved) but gives Pete a live progress view.
 
 ---

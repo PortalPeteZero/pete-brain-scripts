@@ -78,13 +78,24 @@ def prune_pointer_if_empty(project_slug, body):
     rest("DELETE", f"vault_notes?slug=eq.{project_slug}-backlog", prefer="return=minimal")
     return "pruned (pointer + empty note removed)"
 
+_CC_SAVE = None
+def _cc_save():
+    """Lazy-load cc-save.py (dash-named) so the backlog upsert goes through the ONE save path (DRY)."""
+    global _CC_SAVE
+    if _CC_SAVE is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("cc_save", os.path.join(VAULT, "cc-save.py"))
+        _CC_SAVE = importlib.util.module_from_spec(spec); spec.loader.exec_module(_CC_SAVE)
+    return _CC_SAVE
+
 def write_note(project_slug, title, body, entity):
     bslug = f"{project_slug}-backlog"; vpath = f"Projects/{project_slug}/backlog.md"
     fm = {"type": "backlog", "slug": bslug, "title": title, "entity": (entity or ""), "tags": [project_slug, "backlog"], "project": project_slug}
-    rest("POST", "vault_notes?on_conflict=vault_path", {"vault_path": vpath, "slug": bslug, "type": "backlog",
+    # DRY: same idempotent on_conflict=vault_path upsert as every other vault_notes write, via cc-save.
+    _cc_save().upsert([{"vault_path": vpath, "slug": bslug, "type": "backlog",
          "entity": (entity or ""), "title": title, "body": body, "frontmatter": fm,
          "tags": [project_slug, "backlog"], "links": [], "word_count": len(body.split()),
-         "source_updated": datetime.date.today().isoformat(), "embedding": None}, prefer="resolution=merge-duplicates,return=minimal")
+         "source_updated": datetime.date.today().isoformat(), "embedding": None}])
 
 def backfill():
     try: subprocess.run([sys.executable, f"{VAULT}/cc-knowledge-embed-backfill.py"], capture_output=True, timeout=60, env={**os.environ, "VAULT": VAULT})

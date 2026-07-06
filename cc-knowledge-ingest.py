@@ -113,23 +113,43 @@ def walk_md(roots):
 # knowledge base — that is what bloated it. Skip skill files, style/template refs, and ephemeral types.
 # (Daily notes are intentionally NOT skipped — the CC Daily page reads them.)
 EPHEMERAL_TYPES={"session-plan","session-log","session-report","run-log","drift-check","email-extract"}
-def is_ephemeral(rel,ty):
+# Persist-eligible (F3, 2026-07): types that are ephemeral to the BULK knowledge ingest (they are not
+# general lessons) but DO belong in vault_notes because they carry a lifecycle — a session-plan goes
+# open->completed and the CC /m/plans page renders it. These are still skipped from the bulk batch, but
+# flagged with a "PERSIST-ELIGIBLE:" line so the auto-push hook (cc-ingest-hook.py) falls through to
+# cc-save.py and actually persists them. FILE/PATH-ephemeral scaffolding (SKILL.md, /skills/, style-/
+# template- refs) is NEVER persist-eligible — that must stay out of the KB (the bloat this skip exists
+# to prevent). This is the signal that fixed the silent-drop: before it, both a session-plan and an
+# edited SKILL.md produced the SAME "0 notes ingested" and the plan was lost.
+PERSIST_ELIGIBLE_TYPES={"session-plan"}
+def is_path_ephemeral(rel):
     base=os.path.basename(rel); low=rel.lower()
     if base in ("SKILL.md","CHANGELOG.md"): return True
     if "/skills/" in low or "/references/style-" in low or "/references/template-" in low: return True
-    return ty in EPHEMERAL_TYPES
-roots=sys.argv[1:] or ["Library/lessons"]
-batch=[]; n=0; fails=0; skipped=0
-for p in walk_md(roots):
-    try: r=row_for(p)
-    except Exception as e: fails+=1; continue
-    if is_ephemeral(r["vault_path"],r["type"]): skipped+=1; continue
-    batch.append(r)
-    if len(batch)>=100:
+    return False
+def is_ephemeral(rel,ty):
+    return is_path_ephemeral(rel) or ty in EPHEMERAL_TYPES
+def persist_eligible(rel,ty):
+    return (ty in PERSIST_ELIGIBLE_TYPES) and not is_path_ephemeral(rel)
+def _run_cli():
+    roots=sys.argv[1:] or ["Library/lessons"]
+    batch=[]; n=0; fails=0; skipped=0
+    for p in walk_md(roots):
+        try: r=row_for(p)
+        except Exception as e: fails+=1; continue
+        if is_ephemeral(r["vault_path"],r["type"]):
+            skipped+=1
+            if persist_eligible(r["vault_path"],r["type"]):
+                print(f"PERSIST-ELIGIBLE: {p}")   # -> cc-ingest-hook.py falls through to cc-save.py
+            continue
+        batch.append(r)
+        if len(batch)>=100:
+            try: post(batch); n+=len(batch)
+            except urllib.error.HTTPError as e: print("POST err",e.code,e.read().decode()[:200]); fails+=len(batch)
+            batch=[]; print(f"  ...{n} ingested",flush=True)
+    if batch:
         try: post(batch); n+=len(batch)
-        except urllib.error.HTTPError as e: print("POST err",e.code,e.read().decode()[:200]); fails+=len(batch)
-        batch=[]; print(f"  ...{n} ingested",flush=True)
-if batch:
-    try: post(batch); n+=len(batch)
-    except urllib.error.HTTPError as e: print("POST err",e.code,e.read().decode()[:300]); fails+=len(batch)
-print(f"DONE: {n} notes ingested, {skipped} ephemeral skipped, {fails} failed  (roots={roots})")
+        except urllib.error.HTTPError as e: print("POST err",e.code,e.read().decode()[:300]); fails+=len(batch)
+    print(f"DONE: {n} notes ingested, {skipped} ephemeral skipped, {fails} failed  (roots={roots})")
+if __name__=="__main__":
+    _run_cli()
