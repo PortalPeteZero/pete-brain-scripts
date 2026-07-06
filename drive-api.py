@@ -25,6 +25,8 @@ Usage:
   python3 drive-api.py upload-text PATH FOLDER_ID NAME [--mime TYPE]  # upload from a string-content file
   python3 drive-api.py trash FILE_ID                   # send file/folder to trash (recoverable 30 days)
   python3 drive-api.py untrash FILE_ID                 # restore from trash
+  python3 drive-api.py share FILE_ID EMAIL [role] [--notify] [--message TEXT]  # grant reader|commenter|writer (default writer, silent)
+  python3 drive-api.py list-permissions FILE_ID        # list who has access
 """
 
 import json, time, base64, urllib.request, urllib.parse, urllib.error
@@ -423,6 +425,28 @@ def info(file_id):
     for k, v in meta.items():
         print(f"  {k}: {v}")
 
+def share(file_id, email, role="writer", notify=False, message=None):
+    """Grant a user permission on a file/folder. role: reader|commenter|writer.
+    notify=False shares silently (no email) -- the covering email carries the link.
+    Works for shared-drive files (supportsAllDrives). External-sharing must be
+    allowed by the shared drive's settings for a third-party email to stick."""
+    body = {"type": "user", "role": role, "emailAddress": email}
+    params = {"supportsAllDrives": "true",
+              "sendNotificationEmail": "true" if notify else "false",
+              "fields": "id,role,emailAddress"}
+    if notify and message:
+        params["emailMessage"] = message
+    r = api("POST", f"/files/{file_id}/permissions", params, body)
+    print(f"Shared {file_id} with {email} as {role} (notify={notify})")
+    return r
+
+def list_permissions(file_id):
+    r = api("GET", f"/files/{file_id}/permissions",
+            {"supportsAllDrives": "true", "fields": "permissions(id,type,role,emailAddress,displayName)"})
+    for p in r.get("permissions", []):
+        print(f"  {p.get('role'):<10} {p.get('type'):<7} {p.get('emailAddress') or p.get('displayName','')}")
+    return r
+
 def whoami():
     about = api("GET", "/about", {"fields": "user,storageQuota"})
     print(f"Authenticated as: {about['user']['displayName']} ({about['user']['emailAddress']})")
@@ -585,6 +609,18 @@ def main():
     elif cmd == "untrash":
         if len(args) < 2: print("Usage: drive-api.py untrash FILE_ID"); sys.exit(1)
         untrash_file(args[1])
+    elif cmd == "share":
+        if len(args) < 3: print("Usage: drive-api.py share FILE_ID EMAIL [role] [--notify] [--message TEXT]"); sys.exit(1)
+        role = args[3] if len(args) > 3 and not args[3].startswith("--") else "writer"
+        notify = "--notify" in args
+        msg = None
+        if "--message" in args:
+            mi = args.index("--message")
+            msg = args[mi + 1] if mi + 1 < len(args) else None
+        share(args[1], args[2], role=role, notify=notify, message=msg)
+    elif cmd == "list-permissions":
+        if len(args) < 2: print("Usage: drive-api.py list-permissions FILE_ID"); sys.exit(1)
+        list_permissions(args[1])
     else:
         print(f"Unknown command: {cmd}"); print(__doc__); sys.exit(1)
 
