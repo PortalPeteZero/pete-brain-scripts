@@ -188,19 +188,21 @@ def _candidates_from_tool(tool_name, ti):
             content = ti[k]
             break
 
+    # command-based tools FIRST (start_process/interact_with_process also start with the DC prefix, so
+    # they must be matched here before the DC path-key branch below, or their command string is missed)
+    if tool_name == "Bash" or tool_name in (
+            "mcp__Desktop_Commander__start_process", "mcp__Desktop_Commander__interact_with_process"):
+        cmd = ti.get("command") or ti.get("input") or ""
+        if isinstance(cmd, str):
+            out.extend((p, None) for p in _write_targets_from_shell(cmd))
+        return out
+
     if tool_name in ("Write", "Edit", "NotebookEdit") or tool_name.startswith("mcp__Desktop_Commander__") \
             or tool_name.startswith("mcp__PowerPoint"):
         for k in _PATH_KEYS:
             v = ti.get(k)
             if isinstance(v, str) and v.strip():
                 out.append((v, content))
-        return out
-
-    if tool_name == "Bash" or tool_name in (
-            "mcp__Desktop_Commander__start_process", "mcp__Desktop_Commander__interact_with_process"):
-        cmd = ti.get("command") or ti.get("input") or ""
-        if isinstance(cmd, str):
-            out.extend((p, None) for p in _write_targets_from_shell(cmd))
         return out
 
     # unknown tool that still carries a path key — be safe, inspect it
@@ -234,6 +236,10 @@ def _write_targets_from_shell(cmd):
     for rx in (_REDIR_RE, _TEE_RE, _CPMV_RE, _PYOPEN_RE):
         for m in rx.finditer(cmd):
             t = m.group(1).strip().strip('"\'')
+            # unexpanded shell var / command-substitution ($VAR, ${VAR}, $(...), `...`) — the guard
+            # can't know where it resolves, so per the CONSERVATISM RULE it must ALLOW, not block.
+            if "$" in t or "`" in t:
+                continue
             if t and t not in _IGNORE_TARGETS and not t.startswith("/dev/") and _pathlike(t):
                 targets.append(t)
     return targets
