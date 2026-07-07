@@ -183,9 +183,9 @@ def _latest_outbound_is_formatted(thread_id, sender_match="sygma-solutions"):
                 if r: return r
             return None
         html = find_html(outbound[-1].get("payload", {})) or ""
-        # ee-html's distinctive paragraph style is the signal it went through the formatter. A crude
-        # auto-<br> body (or plain) won't have it (a signature block alone won't either).
-        return "margin:0 0 12px" in html or "padding-left:22px" in html
+        # the house-style ee-html template uses the Briefing's navy card (#1B2340 + border-radius:10px)
+        # — that's the signal it went through the formatter. A crude auto-<br> body (or plain) won't have it.
+        return "#1B2340" in html and "border-radius:10px" in html
     except Exception:
         return None
 
