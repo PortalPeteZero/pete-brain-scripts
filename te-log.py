@@ -168,9 +168,13 @@ def fetch_reply_body(thread_id, sender_match="sygma-solutions"):
 # _norm MUST treat both draft and sent identically, stripping the boilerplate that is NOT an
 # edit (signature, auto-appended agenda link, quoted-history tail) — else a clean send reads
 # as edited=true and the North-Star metric is corrupted. edit_distance is char-level (§12.1).
+# A sign-off marker must be (essentially) ALONE on its line — the closing word + optional trailing
+# punctuation, nothing more. Anchoring with [\s,.!]*$ stops a mid-body opener like "Thanks, that is
+# helpful" (which continues into a sentence) from being read as the sign-off and cutting the whole
+# email — the bug that masked a real body edit on 2026-07-07 (William Wilton).
 _SIG_MARKERS = re.compile(
     r"(?im)^\s*(kind regards|kindest regards|warm regards|best regards|best wishes|many thanks|"
-    r"thanks(?: again)?|thank you|regards|cheers|all the best|speak soon)\b.*$")
+    r"thanks again|thank you|regards|cheers|all the best|speak soon|best)[\s,.!]*$")
 def _norm(text):
     t = text or ""
     cut = _QUOTE_MARKERS.search(t)                       # drop quoted-history tail (same markers as the Gmail pull)
