@@ -164,6 +164,31 @@ def fetch_reply_body(thread_id, sender_match="sygma-solutions"):
         print(f"   ⚠ Gmail auto-pull failed ({type(e).__name__}: {e}) — proceeding without it")
         return ""
 
+def _latest_outbound_is_formatted(thread_id, sender_match="sygma-solutions"):
+    """True if the latest OUTBOUND message is PROPERLY formatted HTML (ran through ee-html), False if it's
+    crude <br>-only auto-converted text or plain, None if unknown. Backstop for the well-formatted-HTML
+    rule (Pete 2026-07-07): technically-HTML-but-unformatted is still a breach — that's the recurring miss."""
+    import base64
+    try:
+        g = _gmail(); t = g.get_thread(thread_id)
+        def _from(m): return next((h["value"] for h in m.get("payload", {}).get("headers", []) if h["name"].lower() == "from"), "")
+        outbound = [m for m in t.get("messages", []) if sender_match in _from(m).lower()]
+        if not outbound:
+            return None
+        def find_html(pl):
+            if pl.get("mimeType") == "text/html" and pl.get("body", {}).get("data"):
+                return base64.urlsafe_b64decode(pl["body"]["data"]).decode("utf8", "ignore")
+            for pt in pl.get("parts", []) or []:
+                r = find_html(pt)
+                if r: return r
+            return None
+        html = find_html(outbound[-1].get("payload", {})) or ""
+        # ee-html's distinctive paragraph style is the signal it went through the formatter. A crude
+        # auto-<br> body (or plain) won't have it (a signature block alone won't either).
+        return "margin:0 0 12px" in html or "padding-left:22px" in html
+    except Exception:
+        return None
+
 # ---- draft-vs-sent edit metric (§6.2/§6.3) ------------------------------------------------
 # _norm MUST treat both draft and sent identically, stripping the boilerplate that is NOT an
 # edit (signature, auto-appended agenda link, quoted-history tail) — else a clean send reads
@@ -346,6 +371,14 @@ def log_enquiry(p, apply, manifest):
             print(f"   ↳ auto-pulled reply body from Gmail thread ({len(pulled)} chars)")
         else:
             print(f"   ⚠ no body passed and nothing auto-pulled from thread {p['thread_id']}")
+    # ⛔ HTML-rule backstop: a customer reply/quote must be HTML (Pete 2026-07-07). This is the mandatory
+    # gate, so it catches a plain-text send even when ee-send.py was bypassed.
+    if apply and not BACKFILL and a.get("kind") in ("reply", "quote") and p.get("thread_id") and not NO_GMAIL:
+        _fmt = _latest_outbound_is_formatted(p["thread_id"])
+        if _fmt is False:
+            print("   ⚠⚠ FORMATTING BREACH: this reply went out as UNFORMATTED text (crude <br> or plain), NOT")
+            print("        well-formatted HTML (workflow-design, Pete 2026-07-07). ALWAYS send via `ee-send.py`,")
+            print("        which runs the reply through ee-html.to_html. Resend it formatted.")
     # activity
     aid = None
     if a:
