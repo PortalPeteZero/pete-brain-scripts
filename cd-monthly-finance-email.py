@@ -484,8 +484,10 @@ def main():
 
     if args.to_override:
         recipients = [r.strip() for r in args.to_override.split(",") if r.strip()]
-    elif args.preview or os.environ.get("FINANCE_LIVE") != "1":
-        # send-gate (migration): route to Pete only until FINANCE_LIVE=1 verifies the real recipients
+    elif args.preview or os.environ.get("FINANCE_PREVIEW") == "1":
+        # Live is the DEFAULT (real recipients verified 2026-07-07). Preview is opt-in only:
+        # pass --preview or set FINANCE_PREVIEW=1. Live-by-default means a service rebuilt from
+        # scratch can never silently revert to Pete-only — there is no go-live flag to lose.
         recipients = RECIPIENTS_PREVIEW
     else:
         recipients = RECIPIENTS_LIVE

@@ -48,9 +48,10 @@ RECIPIENTS = [
     "jane.williams@sygma-solutions.com",
 ]
 
-# Send-gate (migration): until BRIEFING_LIVE=1 is set on the cron, route the team briefing to Pete
-# ONLY, so a cloud run can never blast the CD field team by accident. Flip to live once verified.
-if os.environ.get("BRIEFING_LIVE") != "1":
+# Send-gate: live to the full team by DEFAULT (recipients verified 2026-07-07). Preview is opt-in —
+# set BRIEFING_PREVIEW=1 (or pass --to-override) to route the briefing to Pete ONLY for a test run.
+# Live-by-default means a service rebuilt from scratch can never silently revert to Pete-only.
+if os.environ.get("BRIEFING_PREVIEW") == "1":
     RECIPIENTS = ["pete.ashcroft@sygma-solutions.com"]
 
 # ── Odoo config (loaded from the canonical config file) ───────────────────────

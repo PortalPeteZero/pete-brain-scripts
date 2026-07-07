@@ -2,7 +2,7 @@
 """cd-daily-briefing.py — the MERGED CD daily briefing launcher (weekdays + Sunday-for-Monday).
 
 Runs the two self-contained briefing scripts in order, each targeting TOMORROW's events:
-  1. cd-team-briefing.py    — CD field jobs from Odoo → the team (gated to Pete until BRIEFING_LIVE=1)
+  1. cd-team-briefing.py    — CD field jobs from Odoo → the team (live by default; BRIEFING_PREVIEW=1 → Pete only)
   2. pete-personal-briefing.py — Pete's Google Calendar → Pete only
 
 Replaces the two Cowork SKILL.md crons cd-daily-briefing-weekdays (Tue–Sat) + cd-daily-briefing-sunday
@@ -15,7 +15,7 @@ SKILL.md wrote is dropped (the emails are the output).
 # what: CD team briefing (Odoo) + Pete's personal briefing (Calendar) for tomorrow, weekday + Sunday
 # why: The CD field team + Pete get tomorrow's jobs/calendar the evening before, from one cloud run
 # reads: Odoo (CD jobs) + Google Calendar (Pete)
-# writes: 2 emails (team briefing gated to Pete until BRIEFING_LIVE=1; personal to Pete)
+# writes: 2 emails (team briefing live by default, BRIEFING_PREVIEW=1 → Pete only; personal to Pete)
 # entity: canary-detect
 # report: cd-briefings
 # schedule: 15 19 * * 0-5

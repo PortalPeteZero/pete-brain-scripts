@@ -3,14 +3,15 @@
 them to log their nights-away count on Sunday's calendar entry. Headless extraction of the Cowork SKILL.
 
 Deterministic: only acts on the last Friday of the month (exits silently otherwise). Sends a clean 1:1
-email per trainer. Send-gate: until NIGHTS_LIVE=1, every email routes to Pete (so a cloud run can never
-email the trainers by accident). NIGHTS_FORCE=1 bypasses the last-Friday guard for a verification run.
+email per trainer. Live to the trainers by DEFAULT (recipients verified 2026-07-07); set NIGHTS_PREVIEW=1
+to route every email to Pete for a test run. NIGHTS_FORCE=1 bypasses the last-Friday guard for a
+verification run. Live-by-default means a service rebuilt from scratch can never revert to preview.
 """
 # CRON-META
 # what: Last-Friday-of-month reminder to the 6 card-holding trainers to log nights-away
 # why: So trainers log nights worked away on Sunday's calendar entry (cross-refs Soldo card spend)
 # reads: schedule (date logic) + hard-coded trainer roster
-# writes: 1:1 emails to trainers (gated to Pete until NIGHTS_LIVE=1)
+# writes: 1:1 emails to trainers (live by default; NIGHTS_PREVIEW=1 routes to Pete for a test run)
 # entity: sygma
 # report:
 # schedule: 0 9 * * 5
@@ -24,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Atlantic/Canary")
 PETE = "pete.ashcroft@sygma-solutions.com"
-LIVE = os.environ.get("NIGHTS_LIVE") == "1"          # off → all emails route to Pete
+LIVE = os.environ.get("NIGHTS_PREVIEW") != "1"       # live by default; NIGHTS_PREVIEW=1 → route all to Pete
 FORCE = os.environ.get("NIGHTS_FORCE") == "1"        # bypass the last-Friday guard (verification)
 
 TRAINERS = [
