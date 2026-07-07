@@ -36,8 +36,8 @@ MODEL = {
     "C015":       {"family": "cat2",         "cert": "ProQual (details TBC — Pete owes)",      "note": "ProQual Cat 2 — SAME DELIVERY as EUS Cat 2 (C008); different agenda + cert."},
     "C009":       {"family": "combined",     "cert": "EUSR Cat 1 + Cat 2 (£34pp each)",        "note": "EUS Cat 1 & 2 Combined — NOT a third product: the Cat 1 day + the Cat 2 day, priced as two days."},
     "C010":       {"family": "combined",     "cert": "EUSR Cat 1 + Cat 2 (£34pp each)",        "note": "EUS Cat 1 & 2 Combined (variant of C009)."},
-    "C036":       {"family": "super-user",   "cert": "Sygma in-house (£0)",                    "note": "Super User Utility Location Coach (2-day) — coaching/assessing/supervisor competency. NOT a train-the-trainer product."},
-    "C037":       {"family": "super-user",   "cert": "EUSR-endorsed (£34pp)",                  "note": "Super User Coach (EUSR-endorsed) — agenda covers both C036 + C037."},
+    "C036":       {"family": "super-user",   "cert": "Sygma in-house (£0)",                    "note": "Super User Utility Location Coach (2-day) — coaching/assessing/supervisor competency. NOT a train-the-trainer product. ⚠ ON-SITE ONLY (never a public/open course), max 6 delegates (Pete, 2026-07-07)."},
+    "C037":       {"family": "super-user",   "cert": "EUSR-endorsed (£34pp)",                  "note": "Super User Coach (EUSR-endorsed) — agenda covers both C036 + C037. ⚠ ON-SITE ONLY (never a public/open course), max 6 delegates."},
     "C017":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award (full 2-day) — CAT & Genny family (NOT Cat 2). Day 1 = the CAT & Genny day; Day 2 = award completers. Agenda: build pending."},
     "C051":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award 1-day refresher — rides the standard CAT & Genny day (a delivery/scheduling matter, no own agenda)."},
 }
