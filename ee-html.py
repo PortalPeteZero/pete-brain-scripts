@@ -11,7 +11,9 @@ Usage (library): m.to_html(text) → HTML body string.
 """
 import re, html as _h
 
-NAVY, BLUE, INK, MUTE, PAGE, LINE = "#1B2340", "#2563eb", "#1e293b", "#cbd5e1", "#f8fafc", "#e2e8f0"
+# ONE blue everywhere (header, section bars, buttons, links) — matches Pete's signature navy. (Pete, 2026-07-07)
+NAVY = BLUE = "#003366"
+INK, MUTE, PAGE, LINE = "#1e293b", "#c7d3e0", "#f4f6f8", "#e2e8f0"
 FONT = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"
 
 def _button(label, url):
