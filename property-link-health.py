@@ -61,8 +61,21 @@ def main():
             html = fetch(p)
         except Exception as e:
             link_pages[f"[UNFETCHABLE PAGE] {p}"].add(p); continue
-        for h in set(re.findall(r'href="([^"#]+)"', html)):
-            if h.startswith(("mailto:", "tel:", "javascript:", "data:")):
+        # anchors, <img src>, <link href>, and <img/source srcset> — so broken
+        # IMAGES and assets are caught too, not just anchor links (audit gap 2026-07-07).
+        refs = set(re.findall(r'href="([^"#]+)"', html))
+        refs |= set(re.findall(r'<img[^>]+src="([^"]+)"', html))
+        refs |= set(re.findall(r'<(?:source|img)[^>]+srcset="([^"]+)"', html))
+        # srcset holds a comma-separated "url size" list -> split out the urls
+        expanded = set()
+        for r in refs:
+            if " " in r and ("," in r or r.strip().endswith(("w", "x"))):
+                for part in r.split(","):
+                    expanded.add(part.strip().split(" ")[0])
+            else:
+                expanded.add(r)
+        for h in expanded:
+            if not h or h.startswith(("mailto:", "tel:", "javascript:", "data:")):
                 continue
             a = urljoin(p, h)
             if not a.startswith("http"):
