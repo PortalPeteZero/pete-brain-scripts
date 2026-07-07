@@ -19,6 +19,7 @@ CRON-META (optional daily monitor -- deploy only on Pete's OK):
   # entity: sygma
 """
 import sys, re, json, urllib.request, urllib.error
+import html as _htmlmod  # aliased: the page-content var below is named `html`
 from urllib.parse import urljoin, urlparse
 from collections import defaultdict
 
@@ -75,6 +76,7 @@ def main():
             else:
                 expanded.add(r)
         for h in expanded:
+            h = _htmlmod.unescape(h)  # decode &amp; etc. so encoded query URLs aren't false 4xx
             if not h or h.startswith(("mailto:", "tel:", "javascript:", "data:")):
                 continue
             a = urljoin(p, h)
