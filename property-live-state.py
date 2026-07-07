@@ -508,4 +508,17 @@ def main():
         print(f"Wrote dashboard feed: {STATE_JSON} ({len(records)} properties)")
 
 if __name__ == "__main__":
-    main()
+    # DECOMMISSIONED entrypoint (2026-07-07). This script's README-walk main() reads declarations from a
+    # LOCAL Properties/*/README.md tree — a local-vault-era pattern. Post-cutover, declarations live in the
+    # CC `property_declarations` table and the nightly feed is `property-state-cc.py` (which imports THIS
+    # module's probe functions — check_domain/check_github/resolve_liveness/… — and is the only supported
+    # runner). Running the local walk against the (empty on a thin client) tree would silently write a
+    # misleading feed. The probe functions remain importable; only the CLI walk is retired.
+    if "--force-local-walk" in sys.argv:
+        main()  # escape hatch for a genuine local-tree debug run; never the production path
+    else:
+        print("property-live-state.py CLI is DECOMMISSIONED — declarations now live in the CC "
+              "`property_declarations` table. Run the nightly feed via `property-state-cc.py` "
+              "(it reuses this module's probe functions). Pass --force-local-walk only to debug a "
+              "local Properties/ tree.", file=sys.stderr)
+        sys.exit(2)

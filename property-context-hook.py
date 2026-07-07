@@ -27,7 +27,6 @@ Wire in settings.json under hooks.UserPromptSubmit (see property-context-hook.RE
 import sys, json, re, os, time, ssl, urllib.request
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-PROJECTS = os.path.join(VAULT, "Projects")
 FEED_CACHE = "/tmp/property-context-hook-feed-cache.json"   # {"ts": epoch, "feed": {...}}
 FEED_TTL = 300      # re-fetch the CC feed at most once per 5 min
 CC_KEYFILES = [
@@ -216,6 +215,33 @@ def _cc_creds():
     return None, None
 
 
+def project_status_line(slug):
+    """Cloud-sourced status line for a linked project — status + Drive home from the CC `projects`
+    table (+ an 'Authoritative ledger:' line from its vault_notes note if one exists). Replaces the old
+    `Projects/{slug}/README.md` local read, which is dead in the cloud world (those transport files
+    don't exist on a fresh boot, so the line silently never fired). Fail-open → None."""
+    if not slug:
+        return None
+    url, key = _cc_creds()
+    if not (url and key):
+        return None
+    try:
+        import urllib.parse
+        q = urllib.parse.quote(slug, safe="")
+        req = urllib.request.Request(
+            url.rstrip("/") + "/rest/v1/projects?select=status,drive_folder_url&slug=eq." + q,
+            headers={"apikey": key, "Authorization": "Bearer " + key})
+        with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
+            rows = json.loads(r.read().decode())
+        if not rows:
+            return None
+        st = rows[0].get("status") or "?"
+        home = rows[0].get("drive_folder_url") or ""
+        return f"status {st}" + (f" · home {home}" if home else "")
+    except Exception:
+        return None
+
+
 def resolve_live_domain(name):
     """Inject-time truth: the property's CURRENT primary domain straight from `property_declarations`,
     so a declaration edited AFTER the last nightly feed run is still reported correctly. This is the
@@ -298,18 +324,15 @@ def main():
         # Command Centre: surface the generated orientation map so any CC-touching prompt has it in hand.
         if "command centre" in (p.get("name", "") or "").lower():
             lines.append("    ↳ CC orientation map: ~/.config/pete-cc/MAP.cache.md (GENERATED twice daily from the live tables — read FIRST for any CC work; source: config key map-md)")
-        # linked project's authoritative-status line
-        for proj in re.split(r"[,\[\]\s]+", ((p.get("declared") or {}).get("projects") or "")):
-            proj = proj.strip(' "\'')
-            rp = os.path.join(PROJECTS, proj, "README.md")
-            if len(proj) >= 3 and os.path.isfile(rp):
-                try:
-                    raw = open(rp, encoding="utf-8", errors="ignore").read()
-                    m = re.search(r"\*\*Authoritative ledger:\*\*\s*(.+)", raw)
-                    if m:
-                        lines.append(f"    project {proj} → authoritative: {m.group(1).strip()[:120]}")
-                except Exception:
-                    pass
+        # linked project's status line — read the CLOUD (CC `projects` table) at inject time, NOT a
+        # local Projects/{slug}/README.md (that transport file is gitignored + usually absent, so the
+        # old read was dead). Bounded to the TOP match's linked projects (cap 2) to keep the hook fast.
+        if i == 0:
+            projs = [x.strip(' "\'') for x in re.split(r"[,\[\]\s]+", ((p.get("declared") or {}).get("projects") or "")) if len(x.strip(' "\'')) >= 3]
+            for proj in projs[:2]:
+                pl = project_status_line(proj)
+                if pl:
+                    lines.append(f"    project {proj} → {pl}")
     emit("\n".join(lines))
 
 if __name__ == "__main__":
