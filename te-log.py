@@ -183,9 +183,8 @@ def _latest_outbound_is_formatted(thread_id, sender_match="sygma-solutions"):
                 if r: return r
             return None
         html = find_html(outbound[-1].get("payload", {})) or ""
-        # the house-style ee-html template uses the navy card (#003366 + border-radius:10px) — that's the
-        # signal it went through the formatter. A crude auto-<br> body (or plain) won't have it.
-        return "#003366" in html and "border-radius:10px" in html
+        # ee-html's clean-email signal: its paragraph style. A crude gmail auto-<br> body won't have it.
+        return "margin:0 0 12px;" in html
     except Exception:
         return None
 
