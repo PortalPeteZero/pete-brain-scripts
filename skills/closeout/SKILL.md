@@ -163,7 +163,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 | H3 | an inferred PD date needs confirming (except bills) | surface |
 | I1 | every message/email sent this session had To verified + render tested | verify |
 | I2 | a draft meant to go was left unsent | surface |
-| I3 | an enquiry (EE) reply sent this session has its `te-log --apply` triple-write landed | verify → "run te-log --apply?" |
+| I3 | an enquiry (EE) reply sent this session: `te-log --apply` triple-write landed, `draft_text` captured (I3a), AND the EE sign-off is clean — no source-bearing edit left with `source_fixed IS NOT TRUE` (I3b). Only `kind IN ('reply','quote')` carry a draft — handoff/chase/note/correction are exempt. Gate: `VAULT=/tmp/pbs python3 /tmp/pbs/ee-signoff.py --since <session start>` exits 0 | verify → "run te-log --apply / ee-signoff?" |
 
 ### New-build mode (only when a brand-new property is detected — kept OUT of the everyday report)
 project row + General bucket · Drive folder + seeded knowledge home · Sentry first-wire ·
