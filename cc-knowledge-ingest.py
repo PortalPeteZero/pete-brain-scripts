@@ -58,11 +58,29 @@ def links_of(body):
         t=m.split("|")[0].split("#")[0].strip()
         if t: out.append(t)
     return sorted(set(out))
+def _vault_rel(path, fm):
+    # macOS: os.getcwd()/abspath resolve /tmp -> /private/tmp, but VAULT is the /tmp nickname, so a
+    # raw relpath yielded ../../private/tmp/... garbage vault_paths (dupe rows + misparsed type/entity).
+    # Resolve BOTH sides through realpath so a file inside the clone maps cleanly (Projects/..., Library/...).
+    rel=os.path.relpath(os.path.realpath(path), os.path.realpath(VAULT))
+    if not rel.startswith(".."):
+        return rel
+    # File is OUTSIDE the vault (e.g. a /tmp scratchpad). NEVER store the temp path — derive a logical
+    # container-relative home from frontmatter so the note is filed sanely, not by its temp directory.
+    base=os.path.basename(path)
+    proj=fm.get("project")
+    if proj:
+        proj=re.sub(r'^\[\[|\]\]$','',str(proj)).strip()
+        return f"Projects/{proj}/{base}"
+    ty=str(fm.get("type","") or "").lower()
+    for key,folder in (("plan","plans"),("lesson","lessons"),("decision","decisions")):
+        if key in ty: return f"Library/{folder}/{base}"
+    return f"Library/notes/{base}"
 def row_for(path):
-    rel=os.path.relpath(path,VAULT)
     try: text=open(path,encoding="utf-8").read()
     except: text=open(path,encoding="utf-8",errors="replace").read()
     fm,body=fm_parse(text)
+    rel=_vault_rel(path,fm)
     stem=os.path.splitext(os.path.basename(path))[0]
     tags=fm.get("tags") if isinstance(fm.get("tags"),list) else ([fm["tags"]] if fm.get("tags") else [])
     su=fm.get("updated") or fm.get("date") or None
