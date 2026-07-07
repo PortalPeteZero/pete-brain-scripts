@@ -149,6 +149,12 @@ For every project **touched this session**, confirm `public.tasks` reflects what
 
 If this session touched any external access — a new/rotated/expanded/retired API key, MCP connector, OAuth app, or service account — run the **`connection-updater`** skill for each (it stores the secret pointer-only in `public.secrets`, registers the connection, and its gate `VAULT=/tmp/pbs python3 /tmp/pbs/connection-parity.py` must print `0 gaps`). If unsure whether the session touched a connection, run the bare parity gate anyway — it's read-only and fast. The weekly `drift-check` cron is the backstop, but same-session is cleaner.
 
+#### Step 3e: Enquiry-Engine capture + sign-off (mirrors `closeout` check I3)
+
+If this session sent any training-enquiry replies, they MUST be captured and reconciled before close — the same gate the `closeout` skill runs, so whichever end-of-session skill fires, the EE never closes half-done:
+- **Every reply captured** via `te-log --apply` (CRM + knowledge + chase + de-tray). A reply Pete sent by hand from Gmail still needs logging — capture it with its `thread_id`.
+- **EE sign-off clean:** `VAULT=/tmp/pbs python3 /tmp/pbs/ee-signoff.py --since today` must exit 0 — no source-bearing edit left with `source_fixed IS NOT TRUE`, no `reply`/`quote` with a dropped `draft_text`, no duplicate chases. `handoff`/`chase`/`note`/`correction` are draftless and exempt. If it exits non-zero, close each named source and re-run to zero. Full contract: [[workflow-design]] §6.10.
+
 ### Step 4: Housekeeping
 
 - Wikilinks used for all references in files written this session
