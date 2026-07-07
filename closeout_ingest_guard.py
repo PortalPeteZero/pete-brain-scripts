@@ -71,8 +71,10 @@ def _query_existing(vault_path):
 
 
 def check(local_path, vault_root=VAULT_DEFAULT):
-    local_path = os.path.abspath(local_path)
-    vault_root = os.path.abspath(vault_root)
+    # realpath (not abspath) both sides: on macOS /tmp -> /private/tmp, so an abspath mismatch
+    # would false-reject a valid file or (elsewhere) build a ../../private/tmp vault_path. Resolve both.
+    local_path = os.path.realpath(local_path)
+    vault_root = os.path.realpath(vault_root)
     if not local_path.startswith(vault_root + os.sep):
         return {"verdict": "NOT_INGESTABLE", "safe": False,
                 "detail": f"{local_path} is NOT under VAULT ({vault_root}); the ingest tool only "
