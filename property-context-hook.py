@@ -24,7 +24,7 @@ was retired with the 24 Jun Business OS thin-client cutover.)
 
 Wire in settings.json under hooks.UserPromptSubmit (see property-context-hook.README).
 """
-import sys, json, re, os, time, ssl, urllib.request
+import sys, json, re, os, time, ssl, urllib.request, urllib.error
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 FEED_CACHE = "/tmp/property-context-hook-feed-cache.json"   # {"ts": epoch, "feed": {...}}
