@@ -7,7 +7,8 @@
 # entity: sygma
 # schedule: 30 6 * * *
 # timezone: Atlantic/Canary
-# note: read-only against calendars + sheet; only writes the CC table. --dry prints without writing. Idempotent (refreshes the forward window each run so a cancelled course drops off).
+# secrets: GOOGLE_SA_JSON, SECRETFILE__sygma-trainer-roster__yaml
+# note: read-only against calendars + sheet; only writes the CC table. --dry prints without writing. Idempotent (refreshes the forward window each run so a cancelled course drops off). GOOGLE_SA_JSON = shared Google service-account (8 trainer calendars + bookings sheet); the roster yaml materialises to Library/processes/secrets/ where sweep_calendars reads it.
 # CRON-META-END
 """ee-public-dates.py — the EE public/open-course availability consolidator (plan §4A.4).
 
