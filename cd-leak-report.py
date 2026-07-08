@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """
-cd-leak-report.py — Bespoke Leak Report engine plumbing (formerly "the Report Brain"). Canary Detect bespoke one-off leak reports (community + any bespoke job).
+cd-leak-report.py — Bespoke Leak Report engine plumbing (formerly "the Report Brain").
+Canary Detect bespoke one-off reports for ANY customer, on a 2-axis model:
+  • CUSTOMER type : community | business | individual   (the durable record = cd_communities)
+  • SERVICE       : pipework-leak | pool-leak | drain-survey   (the report discipline)
+Premises (community / home / business premises: bar, restaurant, hotel, petrol station …) follows
+the customer type. NOTE: table is still named cd_communities + community_slug (plumbing, historical);
+the CONCEPT is "customer". pool-leak / drain-survey reports get their own template + method wording,
+built the first time we do one (the pipework-leak template exists today).
 
 Handles the MECHANICAL parts so each report is fast; the HTML content is still hand-built
-section-by-section with Pete (every community differs — flexibility by design).
+section-by-section with Pete (every job differs — flexibility by design).
 Operating contract: vault_notes [[cd-leak-report-engine]].
 
 The LEARN-AND-GROW loop (so report N+1 beats N):
@@ -13,16 +20,16 @@ The LEARN-AND-GROW loop (so report N+1 beats N):
   note), stores per-report learnings, and regenerates the cockpit — so nothing drifts. Capture
   a lesson any time with `learn`.
 
-Commands:
+Commands (customer-* names preferred; community-* kept as aliases):
   pull-job <sale-order-id|S0xxxx>     Pull job facts (partner, dates, lines, total) from Odoo
-  pull-community <community-slug>     Brief for a (repeat) community: facts + plan URLs + reports + lessons
+  pull-customer <slug>                Brief for a (repeat) customer: type + facts + plan URLs + reports + lessons
   publish <dir>                       Publish a report folder to the CC (uploads images to the PUBLIC
                                         'leak-reports' bucket; writes modules + module_content + cd_reports;
-                                        writes back community memory; regenerates the cockpit)
-  community <json>                    Upsert a public.cd_communities row from a JSON string/file
-  community-asset <slug> <file> [--type schematic|satellite|house-numbers] [--year YYYY]
+                                        writes back customer memory; regenerates the cockpit)
+  customer <json>                     Upsert a customer row (public.cd_communities) from a JSON string/file
+  customer-asset <slug> <file> [--type schematic|satellite|house-numbers] [--year YYYY]
                                         Store a reusable plan/map image ONCE (public bucket) + record its URL
-  learn <report-slug> "<note>"        Capture a lesson on a report (read next time via pull-community)
+  learn <report-slug> "<note>"        Capture a lesson on a report (read next time via pull-customer)
   cockpit                             Rebuild the /m/leak-reports index from the registry (auto-run on publish)
   list [reports|communities]          List the registry
 
@@ -30,9 +37,13 @@ A report <dir> holds: preview.html, report.css, NN-*.{jpg,png} assets, and repor
   { "slug":"las-margaritas-2026-06-17", "community_slug":"las-margaritas",
     "title":"...", "ref":"CD-LM-2026-0617", "report_type":"survey-repair",
     "survey_date":"2026-06-17", "repair_date":"2026-06-22", "engineer":"Tom",
-    "odoo_order":"S01630", "methods":["pressure","acoustic","gas"], "outcome":"leak-found-repaired",
+    "odoo_order":"S01630", "service":"pipework-leak", "methods":["pressure","acoustic","gas"],
+    "outcome":"leak-found-repaired",
     // optional, feed the learn-and-grow loop:
     "community_updates":"new isolation valve found at block C", "learnings":["ES caption font too small"] }
+A customer <json> holds: { "slug":"...", "name":"...", "type":"community|business|individual",
+    "managing_agent":"Olsen Estate" (communities only), "location":"...", "drive_folder_url":"...",
+    "odoo_partner_id":807, "network_setup":"...", "integrity_method":"pressure|meter" }
 """
 import json, os, re, sys, mimetypes, subprocess, urllib.request, urllib.error
 
@@ -186,6 +197,7 @@ def cmd_pull_community(slug):
     c = rows[0]
     reps = _get("cd_reports", f"community_slug=eq.{slug}&select=slug,ref,report_type,survey_date,outcome,public_url,extra&order=survey_date.desc")
     print(f"\n=== {c['name']}  ({slug}) ===")
+    print(f"Customer type  : {c.get('type')}")
     print(f"Managing agent : {c.get('managing_agent')}")
     print(f"Location       : {c.get('location')}")
     print(f"Odoo partner   : {c.get('odoo_partner_id')}")
@@ -256,6 +268,7 @@ def cmd_publish(d):
     rep = {k: m.get(k) for k in ["slug", "community_slug", "title", "ref", "report_type", "survey_date",
                                  "repair_date", "engineer", "odoo_order", "outcome"]}
     rep["methods"] = m.get("methods", [])
+    rep["service"] = m.get("service", "pipework-leak")  # pipework-leak | pool-leak | drain-survey
     rep["status"] = "published"; rep["url"] = f"/m/{slug}"
     # Public face = the Canary Detect website (Bespoke Leak Report, Phase 2). The /m/<slug>
     # CC page stays as the internal/admin view; shares + cockpit point at public_url.
@@ -308,8 +321,13 @@ if __name__ == "__main__":
     try:
         {"pull-job": lambda: cmd_pull_job(a[1]),
          "publish": lambda: cmd_publish(a[1]),
+         # customer = the durable record (community | business | individual). The
+         # community-* names are kept as aliases (the table is still cd_communities).
+         "customer": lambda: cmd_community(a[1]),
          "community": lambda: cmd_community(a[1]),
+         "customer-asset": lambda: cmd_community_asset(a[1], a[2], _opt("--type"), _opt("--year")),
          "community-asset": lambda: cmd_community_asset(a[1], a[2], _opt("--type"), _opt("--year")),
+         "pull-customer": lambda: cmd_pull_community(a[1]),
          "pull-community": lambda: cmd_pull_community(a[1]),
          "learn": lambda: cmd_learn(a[1], a[2]),
          "cockpit": lambda: cmd_cockpit(),
