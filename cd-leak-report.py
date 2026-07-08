@@ -269,7 +269,7 @@ def cmd_publish(d):
     pub = f"{CC_URL}/storage/v1/object/public/{PUBLIC_BUCKET}/{slug}/assets"
     html = open(os.path.join(d, "preview.html")).read()
     html = html.replace('href="report.css"', f'href="/raw/{slug}/assets/report.css"')
-    html = re.sub(r'src="([0-9][^"]+\.(?:jpg|png))"', lambda x: f'src="{pub}/{x.group(1)}"', html)
+    html = re.sub(r'src="([0-9][^"]+\.(?:jpg|png|mp4|webm|mov))"', lambda x: f'src="{pub}/{x.group(1)}"', html, flags=re.I)
     # Report CSS: use the build dir's own if it drops one; otherwise the engine's canonical
     # template (the approved photo-strip + plan-figure layout). Guarantees new reports never
     # ship the old photo-card style, even if the build dir omits report.css.
@@ -286,11 +286,12 @@ def cmd_publish(d):
     for key, payload in [(slug, html), (f"{slug}/assets/report.css", css)]:
         print(f"content[{key[:36]}]:", rest("POST", "/rest/v1/module_content", [{"module_key": key, "html": payload}],
               {"Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"})[0])
-    for f in sorted(x for x in os.listdir(d) if re.match(r'^[0-9].*\.(jpg|png)$', x)):
-        data = _bake_orientation(os.path.join(d, f))  # apply EXIF orientation + strip the tag
-        ct = mimetypes.guess_type(f)[0] or "application/octet-stream"
+    for f in sorted(x for x in os.listdir(d) if re.match(r'^[0-9].*\.(jpg|png|mp4|webm|mov)$', x, re.I)):
+        is_img = f.lower().endswith((".jpg", ".png"))
+        data = _bake_orientation(os.path.join(d, f)) if is_img else open(os.path.join(d, f), "rb").read()
+        ct = mimetypes.guess_type(f)[0] or ("video/mp4" if f.lower().endswith(".mp4") else "application/octet-stream")
         s, _ = rest("POST", f"/storage/v1/object/{PUBLIC_BUCKET}/{slug}/assets/{f}", data, {"Content-Type": ct, "x-upsert": "true"}, raw=True)
-        print(f"img {f}:", s)
+        print(f"{'img' if is_img else 'vid'} {f}:", s)
     rep = {k: m.get(k) for k in ["slug", "community_slug", "title", "ref", "report_type", "survey_date",
                                  "repair_date", "engineer", "odoo_order", "outcome"]}
     rep["methods"] = m.get("methods", [])

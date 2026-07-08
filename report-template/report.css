@@ -553,3 +553,9 @@ body:not(.lang-es) .photo-grid.multi [data-lang="es"] { display: none; }
 .photo-strip.two .ps-item img, .photo-strip.three .ps-item img{ height:340px; }
 .photo-strip .ps-cap{ font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.35; }
 @media (max-width:640px){ .photo-strip, .photo-strip.two, .photo-strip.three{ grid-template-columns:repeat(2,1fr); } .photo-strip .ps-item img{ height:240px; } }
+
+
+/* REPORT VIDEO — inline clip (e.g. a live leak). Portrait-friendly, capped width. */
+.report-video{ margin:16px 0 4px; }
+.report-video video{ width:100%; max-width:420px; height:auto; border-radius:10px; display:block; border:1px solid var(--border); background:#000; }
+.report-video .rv-cap{ font-size:11.5px; color:var(--text-muted); margin-top:7px; line-height:1.4; }
