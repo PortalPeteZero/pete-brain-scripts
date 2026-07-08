@@ -1,0 +1,555 @@
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --orange: #F5A623;
+      --teal: #2BBFBF;
+      --navy: #1B2340;
+      --navy-light: #2D3A5C;
+      --text: #1E293B;
+      --text-muted: #64748B;
+      --bg: #FFFFFF;
+      --bg-alt: #F8FAFC;
+      --border: #E2E8F0;
+      --orange-light: #FFF7E6;
+      --teal-light: #EFF9F9;
+    }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .page { max-width: 900px; margin: 0 auto; padding: 0 20px 40px; }
+
+    /* LANGUAGE TOGGLE */
+    .lang-bar {
+      background: var(--navy);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .lang-btn {
+      background: transparent;
+      border: 1.5px solid rgba(255,255,255,0.4);
+      color: rgba(255,255,255,0.7);
+      padding: 5px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+    .lang-btn.active { background: var(--orange); border-color: var(--orange); color: white; }
+    .lang-btn:hover:not(.active) { border-color: white; color: white; }
+
+    /* HEADER */
+    .report-header {
+      background: var(--navy);
+      color: white;
+      padding: 28px 32px;
+      border-radius: 0 0 12px 12px;
+      margin-bottom: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .report-header-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1 1 auto;
+      min-width: 280px;
+    }
+    .report-header-left .legal-entity {
+      font-size: 26px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: 0.3px;
+      line-height: 1.15;
+      margin-bottom: 2px;
+    }
+    .report-header-left .registration {
+      font-size: 14px;
+      line-height: 1.4;
+      color: rgba(255,255,255,0.92);
+    }
+    .report-header-left .registration strong { color: white; font-weight: 600; }
+    .report-header-left .contact-line { font-size: 12px; line-height: 1.5; color: rgba(255,255,255,0.72); }
+    .report-header-left .contact-line:first-of-type { margin-top: 6px; }
+    .report-header-right {
+      text-align: right;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .report-header-right img {
+      height: 48px;
+      width: auto;
+      display: block;
+      margin-bottom: 6px;
+      opacity: 0.95;
+    }
+    .report-type-badge {
+      display: inline-block;
+      background: var(--orange);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 6px;
+    }
+    .report-header-right .ref { font-size: 13px; opacity: 0.8; margin-top: 4px; }
+    .report-header-right .date { font-size: 13px; opacity: 0.8; }
+
+    /* CUSTOMER INFO */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 600px) { .info-grid { grid-template-columns: 1fr; } }
+    .info-card {
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    .info-card h3 {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 8px;
+    }
+    .info-card p { font-size: 14px; color: var(--text); line-height: 1.5; }
+    .info-card .name { font-weight: 600; font-size: 15px; }
+
+    /* SECTIONS */
+    .section {
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .section-header {
+      background: var(--navy);
+      color: white;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-header .section-num {
+      background: var(--orange);
+      color: white;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .section-header h2 { font-size: 14px; font-weight: 600; letter-spacing: 0.3px; }
+    .section-body { padding: 20px; background: var(--bg); }
+    .section-body p { margin-bottom: 12px; line-height: 1.75; }
+    .section-body p:last-child { margin-bottom: 0; }
+
+    /* SURVEY OPENING */
+    .survey-opening {
+      background: var(--orange-light);
+      border-left: 4px solid var(--orange);
+      padding: 16px 20px;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 4px;
+    }
+    .survey-opening p { font-size: 13px; color: var(--text); line-height: 1.75; }
+
+    /* PRELIMINARY SUB-SECTIONS */
+    .prelim-subsection {
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .prelim-subsection:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .prelim-subsection h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--teal);
+      display: inline-block;
+    }
+
+    /* EQUIPMENT */
+    .equipment-item {
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+    .equipment-item:last-child { margin-bottom: 0; }
+    .equipment-item h4 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .equipment-item h4::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--teal);
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .equipment-item p { font-size: 13px; line-height: 1.75; color: var(--text); }
+
+    /* CONFIRMATION BOX */
+    .confirmation-box {
+      background: var(--teal-light);
+      border: 1.5px solid var(--teal);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-top: 16px;
+    }
+    .confirmation-box p { font-size: 13px; font-weight: 500; color: var(--navy); line-height: 1.75; }
+
+    /* LOCATION NOTE */
+    .location-note { font-style: italic; color: var(--text-muted) !important; font-size: 13px; }
+
+    /* TRANSITION BOX (combined report — bridges survey to repair) */
+    .transition-box {
+      background: var(--teal-light);
+      border-left: 4px solid var(--teal);
+      padding: 12px 20px;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 24px;
+    }
+    .transition-box p { font-size: 13px; font-style: italic; color: var(--navy); font-weight: 500; }
+
+    /* QUOTE BOX */
+    .quote-box {
+      background: var(--teal-light);
+      border: 1.5px solid var(--teal);
+      border-radius: 8px;
+      padding: 12px 18px;
+      margin-top: 16px;
+    }
+    .quote-box p { font-size: 14px; color: var(--navy); }
+
+    /* GUARANTEE */
+    .guarantee-box {
+      background: var(--orange-light);
+      border: 2px solid var(--orange);
+      border-radius: 10px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .guarantee-icon { font-size: 28px; flex-shrink: 0; line-height: 1; }
+    .guarantee-box h3 { font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .guarantee-box .guarantee-reg {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 8px;
+      letter-spacing: 0.2px;
+    }
+    .guarantee-box p { font-size: 13px; color: var(--text); line-height: 1.6; }
+
+    /* PHOTO GRID */
+    .photo-grid { margin-top: 16px; }
+    .photo-grid.single .photo-card { max-width: 600px; }
+    .photo-grid.two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .photo-grid.multi {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .photo-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg-alt);
+    }
+    .photo-card img {
+      width: 100%;
+      height: 240px;
+      object-fit: contain;
+      background: #f8f8f8;
+      display: block;
+    }
+    .photo-caption {
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      border-top: 1px solid var(--border);
+    }
+    /* REINSTATEMENT NOTICE */
+    .reinstatement-notice {
+      background: #fffbeb;
+      border: 1.5px solid #f59e0b;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-top: 16px;
+    }
+    .reinstatement-notice p {
+      font-size: 13px;
+      color: #92400e;
+      line-height: 1.65;
+      margin: 0;
+    }
+
+    /* SYMPTOM LIST */
+    .symptom-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px 0;
+    }
+    .symptom-list li {
+      padding: 8px 12px 8px 36px;
+      margin-bottom: 6px;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      line-height: 1.6;
+      position: relative;
+    }
+    .symptom-list li::before {
+      content: '';
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 8px;
+      background: var(--orange);
+      border-radius: 50%;
+    }
+    .symptom-note {
+      font-style: italic;
+      color: var(--text-muted);
+      font-size: 13px;
+      border-left: 3px solid var(--orange);
+      padding-left: 12px;
+      margin-top: 8px;
+    }
+
+    /* TEST RESULT BADGE */
+    .test-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+    }
+    .badge-leak {
+      background: #FEE2E2;
+      color: #B91C1C;
+      border: 1.5px solid #FCA5A5;
+    }
+    .badge-no-leak {
+      background: #DCFCE7;
+      color: #15803D;
+      border: 1.5px solid #86EFAC;
+    }
+
+    /* NO-LEAK RESULT BOX */
+    .no-leak-result-box {
+      background: #F0FDF4;
+      border: 2px solid #86EFAC;
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 4px;
+    }
+    .no-leak-icon { font-size: 28px; flex-shrink: 0; line-height: 1; }
+    .no-leak-result-box h3 { font-size: 14px; font-weight: 700; color: #15803D; margin-bottom: 8px; }
+    .no-leak-result-box p { font-size: 13px; color: #166534; line-height: 1.75; }
+
+    /* IMPORTANT NOTE BOX */
+    .important-note-box {
+      background: #FFFBEB;
+      border: 1.5px solid #FCD34D;
+      border-left: 4px solid #F59E0B;
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+    }
+    .important-note-box p { font-size: 13px; color: #92400E; line-height: 1.75; }
+
+    /* CCTV VIDEO LINK */
+    .cctv-video-link {
+      background: var(--teal-light);
+      border: 1px solid var(--teal);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 12px 0;
+    }
+    .cctv-video-link a { color: var(--teal); font-weight: 600; word-break: break-all; }
+
+    /* FOOTER */
+    .report-footer {
+      background: var(--navy);
+      color: rgba(255,255,255,0.85);
+      padding: 26px 32px 28px;
+      border-radius: 12px;
+      margin-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .report-footer .footer-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1 1 auto;
+      min-width: 280px;
+    }
+    .report-footer .footer-legal-entity {
+      font-size: 22px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: 0.3px;
+      line-height: 1.15;
+      margin-bottom: 2px;
+    }
+    .report-footer .footer-registration {
+      font-size: 14px;
+      line-height: 1.4;
+      color: rgba(255,255,255,0.92);
+    }
+    .report-footer .footer-registration strong { color: white; font-weight: 600; }
+    .report-footer .footer-trading {
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 6px;
+    }
+    .report-footer .footer-right {
+      text-align: right;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .report-footer .footer-right .addr { color: rgba(255,255,255,0.78); margin-bottom: 4px; }
+    .report-footer a { color: var(--orange); text-decoration: none; }
+
+    /* PRINT */
+    @media print {
+      .lang-bar { display: none !important; }
+      .page { padding: 0; max-width: 100%; }
+      .section { break-inside: avoid; }
+      .photo-card { break-inside: avoid; }
+      .report-header { border-radius: 0; }
+      .report-footer { border-radius: 0; }
+      body { font-size: 12px; }
+      .photo-card img { height: 180px; }
+    }
+
+    /* LANGUAGE SWITCHING */
+    [data-lang="es"] { display: none; }
+    body.lang-es [data-lang="en"] { display: none; }
+    body.lang-es [data-lang="es"] { display: block; }
+    .photo-grid.two-col [data-lang],
+    .photo-grid.multi [data-lang] { display: block; }
+    body.lang-es .photo-grid.two-col [data-lang="en"],
+    body.lang-es .photo-grid.multi [data-lang="en"] { display: none; }
+
+/* Full-width stacked plan figures (Las Laderas: satellite + topo) */
+.plan-figure { margin: 4px 0 20px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.plan-figure img { width: 100%; height: auto; display: block; }
+.plan-caption { padding: 12px 18px; font-size: 13px; line-height: 1.5; color: var(--text-muted); background: var(--bg-alt); border-top: 1px solid var(--border); }
+
+/* ── Fixes (2026-05-29) ─────────────────────────────────────────── */
+/* App CSS only hid the inactive-language caption in ES mode inside two-col/
+   multi grids; in EN mode the Spanish caption was still showing as a 2nd line. */
+body:not(.lang-es) .photo-grid.two-col [data-lang="es"],
+body:not(.lang-es) .photo-grid.multi [data-lang="es"] { display: none; }
+
+/* Keep a long (Spanish) report-type badge from widening the header-right column
+   and breaking the header layout: bound it and let it wrap instead. */
+.report-type-badge { white-space: normal; max-width: 300px; }
+
+/* Video facade: poster image + play button + VIDEO badge, loads on tap. */
+.video-block { margin-top: 16px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.video-facade { position: relative; cursor: pointer; display: block; background: #000; }
+.video-facade img { width: 100%; height: auto; display: block; opacity: 0.9; }
+.video-play { position: absolute; top: 50%; left: 50%; width: 74px; height: 74px; transform: translate(-50%, -50%); background: rgba(245,166,35,0.95); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+.video-play::after { content: ""; border-style: solid; border-width: 13px 0 13px 22px; border-color: transparent transparent transparent #fff; margin-left: 6px; }
+.video-tag { position: absolute; top: 12px; left: 12px; background: rgba(27,35,64,0.92); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.6px; padding: 5px 11px; border-radius: 6px; text-transform: uppercase; }
+.video-block video { width: 100%; height: auto; display: block; }
+
+/* Mobile: stack two-col photo pairs (multi + info-grid already collapse) */
+@media (max-width: 600px) {
+  .photo-grid.two-col { grid-template-columns: 1fr; }
+  .report-header { padding: 22px 20px; }
+  .report-type-badge { max-width: 100%; }
+}
+
+
+/* FIGURE ROW — descriptive text beside the photo (default for step photos, portrait-friendly).
+   Alternate .flip to put the image on the left. Stacks image-under-text on mobile. */
+.figure-row{ display:flex; gap:22px; align-items:flex-start; margin:6px 0 22px; }
+.figure-row.flip{ flex-direction:row-reverse; }
+.figure-row .fr-text{ flex:1; min-width:0; }
+.figure-row .fr-text p{ margin:0 0 12px; }
+.figure-row .fr-text p:last-child{ margin-bottom:0; }
+.figure-row .fr-media{ flex:0 0 300px; }
+.figure-row .fr-media img{ width:100%; height:auto; border-radius:10px; display:block; border:1px solid var(--border); background:#f8f8f8; }
+.figure-row .fr-cap{ font-size:11.5px; color:var(--text-muted); margin-top:7px; line-height:1.45; }
+@media (max-width:640px){
+  .figure-row, .figure-row.flip{ flex-direction:column; }
+  .figure-row .fr-media{ flex:none; width:100%; max-width:360px; margin:0 auto; }
+}
+
+
+/* PHOTO STRIP — description above, photos labelled side by side below (the default).
+   Uniform height + object-fit:cover so portraits sit in a clean row with no grey bars.
+   .two / .three set the columns for fewer photos; everything stacks to 2-up on mobile. */
+.photo-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:16px 0 2px; }
+.photo-strip.three{ grid-template-columns:repeat(3,1fr); }
+.photo-strip.two{ grid-template-columns:repeat(2,1fr); }
+.photo-strip .ps-item img{ width:100%; height:250px; object-fit:cover; border-radius:8px; display:block; border:1px solid var(--border); background:#f8f8f8; }
+.photo-strip.two .ps-item img, .photo-strip.three .ps-item img{ height:340px; }
+.photo-strip .ps-cap{ font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.35; }
+@media (max-width:640px){ .photo-strip, .photo-strip.two, .photo-strip.three{ grid-template-columns:repeat(2,1fr); } .photo-strip .ps-item img{ height:240px; } }

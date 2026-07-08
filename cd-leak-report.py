@@ -270,7 +270,13 @@ def cmd_publish(d):
     html = open(os.path.join(d, "preview.html")).read()
     html = html.replace('href="report.css"', f'href="/raw/{slug}/assets/report.css"')
     html = re.sub(r'src="([0-9][^"]+\.(?:jpg|png))"', lambda x: f'src="{pub}/{x.group(1)}"', html)
-    css = open(os.path.join(d, "report.css")).read()
+    # Report CSS: use the build dir's own if it drops one; otherwise the engine's canonical
+    # template (the approved photo-strip + plan-figure layout). Guarantees new reports never
+    # ship the old photo-card style, even if the build dir omits report.css.
+    css_path = os.path.join(d, "report.css")
+    if not os.path.exists(css_path):
+        css_path = os.path.join(os.path.dirname(__file__), "report-template", "report.css")
+    css = open(css_path).read()
     mod = {"module_key": slug, "title": m["title"], "section": m.get("section", "Canary Detect"),
            "subsection": m.get("subsection", "External"), "slug": slug, "tier": m.get("tier", "public"),
            "groups": ["work-cd"], "tags": ["leak-report"], "icon": "▨", "status": "live", "enabled": True,
