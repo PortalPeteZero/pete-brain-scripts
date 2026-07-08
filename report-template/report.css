@@ -566,3 +566,13 @@ body:not(.lang-es) .photo-grid.multi [data-lang="es"] { display: none; }
 .video-row video{ width:100%; height:auto; border-radius:10px; border:1px solid var(--border); background:#000; }
 .video-row .vr-cap{ font-size:11.5px; color:var(--text-muted); margin-top:7px; line-height:1.4; }
 @media (max-width:640px){ .video-row{ grid-template-columns:1fr; } }
+
+
+/* PLAY BADGE — makes a <video> unmistakably a video (static first frame otherwise reads as a
+   photo). Wrap each <video> in <span class="playwrap">. Badge is pointer-events:none so the
+   native controls still work; it fades on hover so it never blocks playback. */
+.playwrap{ position:relative; display:block; }
+.report-video .playwrap{ max-width:420px; }
+.playwrap::before{ content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:60px; height:60px; border-radius:50%; background:rgba(0,0,0,.55); box-shadow:0 2px 10px rgba(0,0,0,.35); pointer-events:none; transition:opacity .2s; z-index:2; }
+.playwrap::after{ content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) translateX(3px); width:0; height:0; border-style:solid; border-width:12px 0 12px 20px; border-color:transparent transparent transparent #fff; pointer-events:none; transition:opacity .2s; z-index:3; }
+.playwrap:hover::before, .playwrap:hover::after{ opacity:0; }
