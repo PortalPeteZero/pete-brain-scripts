@@ -132,6 +132,26 @@ COCKPIT_STYLE = (
 def _esc(s):
     return (str(s or "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
+def _bake_orientation(path):
+    """Apply any EXIF orientation to the pixels and strip the tag, so every renderer (the
+    web browser included) shows the photo the same way. Phone/HEIC-derived photos carry an
+    orientation tag (6/8) and otherwise render SIDEWAYS on the report (bit us on the Etna
+    gauges + the Los Claveles work-area, 8 Jul 2026). Falls back to the raw bytes if Pillow
+    is unavailable or the file is not a normal image."""
+    raw = open(path, "rb").read()
+    try:
+        import io
+        from PIL import Image, ImageOps
+        im = Image.open(io.BytesIO(raw))
+        if im.getexif().get(274, 1) in (None, 1):
+            return raw  # already upright / no tag — leave the bytes untouched
+        buf = io.BytesIO()
+        fmt = "PNG" if path.lower().endswith(".png") else "JPEG"
+        ImageOps.exif_transpose(im).save(buf, format=fmt, quality=90)
+        return buf.getvalue()
+    except Exception:
+        return raw
+
 def cockpit_gen(verbose=True):
     """Rebuild the /m/leak-reports index straight from the registry (cd_communities +
     cd_reports). DB-driven — called at the end of every publish so it can NEVER drift."""
@@ -261,7 +281,7 @@ def cmd_publish(d):
         print(f"content[{key[:36]}]:", rest("POST", "/rest/v1/module_content", [{"module_key": key, "html": payload}],
               {"Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"})[0])
     for f in sorted(x for x in os.listdir(d) if re.match(r'^[0-9].*\.(jpg|png)$', x)):
-        data = open(os.path.join(d, f), "rb").read()
+        data = _bake_orientation(os.path.join(d, f))  # apply EXIF orientation + strip the tag
         ct = mimetypes.guess_type(f)[0] or "application/octet-stream"
         s, _ = rest("POST", f"/storage/v1/object/{PUBLIC_BUCKET}/{slug}/assets/{f}", data, {"Content-Type": ct, "x-upsert": "true"}, raw=True)
         print(f"img {f}:", s)
