@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cd-leak-report.py — the Report Brain plumbing (Canary Detect bespoke community leak reports).
+cd-leak-report.py — Bespoke Leak Report engine plumbing (formerly "the Report Brain"). Canary Detect bespoke one-off leak reports (community + any bespoke job).
 
 Handles the MECHANICAL parts so each report is fast; the HTML content is still hand-built
 section-by-section with Pete (every community differs — flexibility by design).
@@ -113,7 +113,7 @@ def cmd_publish(d):
                                  "repair_date", "engineer", "odoo_order", "outcome"]}
     rep["methods"] = m.get("methods", [])
     rep["status"] = "published"; rep["url"] = f"/m/{slug}"
-    # Public face = the Canary Detect website (Report Brain Phase 2). The /m/<slug>
+    # Public face = the Canary Detect website (Bespoke Leak Report, Phase 2). The /m/<slug>
     # CC page stays as the internal/admin view; shares + cockpit point at public_url.
     rep["public_url"] = f"https://canary-detect.com/reports/{slug}"
     print("cd_reports:", rest("POST", "/rest/v1/cd_reports", [rep],
