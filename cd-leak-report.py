@@ -113,9 +113,13 @@ def cmd_publish(d):
                                  "repair_date", "engineer", "odoo_order", "outcome"]}
     rep["methods"] = m.get("methods", [])
     rep["status"] = "published"; rep["url"] = f"/m/{slug}"
+    # Public face = the Canary Detect website (Report Brain Phase 2). The /m/<slug>
+    # CC page stays as the internal/admin view; shares + cockpit point at public_url.
+    rep["public_url"] = f"https://canary-detect.com/reports/{slug}"
     print("cd_reports:", rest("POST", "/rest/v1/cd_reports", [rep],
           {"Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"})[0])
-    print("LIVE:", f"https://commandcentre.info/m/{slug}")
+    print("LIVE (internal):", f"https://commandcentre.info/m/{slug}")
+    print("LIVE (public):  ", rep["public_url"])
 
 def cmd_community(arg):
     m = json.load(open(arg)) if os.path.exists(arg) else json.loads(arg)
