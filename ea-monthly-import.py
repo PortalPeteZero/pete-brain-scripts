@@ -213,7 +213,9 @@ def main():
                "categoryId": cat["id"] if cat else None,
                "categoryName": cat["name"] if cat else catname,
                "income": income, "expense": expense,
-               "isFin": bool(cat["isFin"]) if cat else False}
+               # FIN = money paid OUT to families only. A donation RECEIVED (income row in a
+               # Donation-category) is plain income — never FIN-flag a row with no expense.
+               "isFin": (bool(cat["isFin"]) if cat else False) and bool(expense)}
         parsed.append(rec)
         if defaulted:
             unknown.append(rec)
