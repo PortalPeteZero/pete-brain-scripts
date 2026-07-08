@@ -10,7 +10,9 @@ import sys, json, urllib.request, urllib.error
 import os
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-TOK = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
+# env-first, file-fallback (matches the clean-name secret convention). Lets a Railway cron that
+# only has SUPABASE_TOKEN in its env write via cc-sql.py without materialising a token file.
+TOK = (os.environ.get("SUPABASE_TOKEN") or "").strip() or open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
 REF = "zhexcaflgahdcbzvbyfq"
 sql = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
 req = urllib.request.Request(
