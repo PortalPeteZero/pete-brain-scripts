@@ -215,7 +215,9 @@ def main():
                "income": income, "expense": expense,
                # FIN = money paid OUT to families only. A donation RECEIVED (income row in a
                # Donation-category) is plain income — never FIN-flag a row with no expense.
-               "isFin": (bool(cat["isFin"]) if cat else False) and bool(expense)}
+               "isFin": (bool(cat["isFin"]) if cat else False) and bool(expense),
+               "isIncome": (bool(cat["isIncome"]) if cat else None),
+               "catIsFin": (bool(cat["isFin"]) if cat else False)}
         parsed.append(rec)
         if defaulted:
             unknown.append(rec)
@@ -245,6 +247,27 @@ def main():
                   f"in={r['income']} exp={r['expense']}  ->{r['categoryName']}")
     else:
         print("\n  ✓ all rows categorised from the sheet/memory.")
+
+    # --- category-nature sanity: the money column vs the category type ---------------
+    # Catches the slip class we hit repeatedly (a "Takings" income row tagged 'Wages';
+    # an 'Olivia Commission' expense tagged 'Income - Shop'). Totals are column-driven so
+    # these NEVER change the figures — but they pollute the by-category breakdown on the
+    # committee report. Surface them at dry-run so Michaela can fix the sheet before publish.
+    # Income tagged the 'Donation' (FIN) category is the legitimate "donation received" pattern
+    # (income, not a paid-out FIN) — do NOT flag those; only flag income sitting in a plain cost
+    # category (e.g. Takings → 'Wages') and expenses sitting in an income category (Olivia → 'Income - Shop').
+    mism = [r for r in parsed if (
+        (r["income"] and r["income"] > 0 and r["isIncome"] is False and not r["catIsFin"]) or
+        (r["expense"] and r["expense"] > 0 and not r["isFin"] and r["isIncome"] is True)
+    )]
+    if mism:
+        print(f"\n  ⚠ {len(mism)} row(s) look MIS-CATEGORISED (money column disagrees with the category "
+              f"type) — check with Michaela before publishing; totals are unaffected:")
+        for r in mism:
+            side = "income" if (r["income"] and r["income"] > 0) else "expense"
+            amt = r["income"] if side == "income" else r["expense"]
+            print(f"     {r['date']}  {str(r['description'])[:36]:<36} {side}=€{amt:,.2f}  "
+                  f"tagged '{r['categoryName']}' (a {'income' if r['isIncome'] else 'cost'} category)")
 
     # --- reconcile vs Sabadell (report only) ---
     if args.sabadell:
