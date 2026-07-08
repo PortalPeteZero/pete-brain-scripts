@@ -6,19 +6,33 @@ Handles the MECHANICAL parts so each report is fast; the HTML content is still h
 section-by-section with Pete (every community differs — flexibility by design).
 Operating contract: vault_notes [[cd-leak-report-engine]].
 
+The LEARN-AND-GROW loop (so report N+1 beats N):
+  START a repeat community with `pull-community` (durable facts + reusable plan URLs + past
+  reports + captured lessons). ADD any new plan/map image with `community-asset`. `publish`
+  then writes back to the community record (report history, last_report, optional what-changed
+  note), stores per-report learnings, and regenerates the cockpit — so nothing drifts. Capture
+  a lesson any time with `learn`.
+
 Commands:
   pull-job <sale-order-id|S0xxxx>     Pull job facts (partner, dates, lines, total) from Odoo
-  publish <dir>                       Publish a report folder (see report.json shape below) to the CC:
-                                        uploads images to the PUBLIC 'leak-reports' bucket, writes the
-                                        modules row + module_content (html + report.css), registers cd_reports.
+  pull-community <community-slug>     Brief for a (repeat) community: facts + plan URLs + reports + lessons
+  publish <dir>                       Publish a report folder to the CC (uploads images to the PUBLIC
+                                        'leak-reports' bucket; writes modules + module_content + cd_reports;
+                                        writes back community memory; regenerates the cockpit)
   community <json>                    Upsert a public.cd_communities row from a JSON string/file
+  community-asset <slug> <file> [--type schematic|satellite|house-numbers] [--year YYYY]
+                                        Store a reusable plan/map image ONCE (public bucket) + record its URL
+  learn <report-slug> "<note>"        Capture a lesson on a report (read next time via pull-community)
+  cockpit                             Rebuild the /m/leak-reports index from the registry (auto-run on publish)
   list [reports|communities]          List the registry
 
 A report <dir> holds: preview.html, report.css, NN-*.{jpg,png} assets, and report.json:
   { "slug":"las-margaritas-2026-06-17", "community_slug":"las-margaritas",
     "title":"...", "ref":"CD-LM-2026-0617", "report_type":"survey-repair",
     "survey_date":"2026-06-17", "repair_date":"2026-06-22", "engineer":"Tom",
-    "odoo_order":"S01630", "methods":["pressure","acoustic","gas"], "outcome":"leak-found-repaired" }
+    "odoo_order":"S01630", "methods":["pressure","acoustic","gas"], "outcome":"leak-found-repaired",
+    // optional, feed the learn-and-grow loop:
+    "community_updates":"new isolation valve found at block C", "learnings":["ES caption font too small"] }
 """
 import json, os, re, sys, mimetypes, subprocess, urllib.request, urllib.error
 
@@ -77,6 +91,136 @@ def odoo(model, method, args, kwargs=None):
     uid = rpc("common", "authenticate", [cfg["db"], cfg["login"], cfg["key"], {}])
     return rpc("object", "execute_kw", [cfg["db"], uid, cfg["key"], model, method, args, kwargs or {}])
 
+# ── Bespoke Leak Report: registry + community-memory helpers ─────────────────
+def _pub_url(path):
+    return f"{CC_URL}/storage/v1/object/public/{PUBLIC_BUCKET}/{path}"
+
+def _get(table, query):
+    st, body = rest("GET", f"/rest/v1/{table}?{query}")
+    return json.loads(body) if st == 200 and body else []
+
+def _patch(table, filt, payload):
+    return rest("PATCH", f"/rest/v1/{table}?{filt}", payload,
+                {"Content-Type": "application/json", "Prefer": "return=minimal"})[0]
+
+COCKPIT_STYLE = (
+    ".wrap{max-width:900px;margin:0 auto;padding:8px 4px 40px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;}"
+    ".head h1{font-size:22px;margin:0 0 4px;color:var(--ink,#1b2340);}"
+    ".head p{font-size:13px;color:var(--ink2,#5b647a);margin:0 0 18px;}"
+    ".comm{border:1px solid var(--line,#e6e8ef);border-radius:12px;margin-bottom:14px;overflow:hidden;background:var(--panel,#fff);}"
+    ".ch{padding:12px 16px;background:var(--bg-alt,#f6f7fb);border-bottom:1px solid var(--line,#e6e8ef);display:flex;flex-direction:column;gap:2px;}"
+    ".cn{font-weight:700;font-size:15px;color:var(--ink,#1b2340);}"
+    ".ca{font-size:12px;color:var(--ink2,#5b647a);}"
+    ".reps{padding:8px;display:flex;flex-direction:column;gap:6px;}"
+    ".rep{display:block;text-decoration:none;padding:10px 12px;border-radius:8px;border:1px solid var(--line,#e6e8ef);transition:.12s;}"
+    ".rep:hover{background:var(--bg-alt,#f6f7fb);border-color:#c9ced9;}"
+    ".rt{font-weight:600;font-size:13.5px;color:var(--ink,#1b2340);}"
+    ".rd{font-size:11.5px;color:var(--ink2,#5b647a);margin-top:2px;}"
+)
+
+def _esc(s):
+    return (str(s or "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+def cockpit_gen(verbose=True):
+    """Rebuild the /m/leak-reports index straight from the registry (cd_communities +
+    cd_reports). DB-driven — called at the end of every publish so it can NEVER drift."""
+    comms = _get("cd_communities", "select=slug,name,managing_agent,location&order=name")
+    reps = _get("cd_reports", "select=slug,community_slug,title,ref,report_type,outcome,public_url,url,survey_date&status=eq.published&order=survey_date.desc")
+    by_comm = {}
+    for r in reps:
+        by_comm.setdefault(r["community_slug"], []).append(r)
+    blocks = []
+    for c in comms:
+        rows = by_comm.get(c["slug"], [])
+        if not rows:
+            continue
+        reps_html = "".join(
+            f'<a class="rep" href="{_esc(r.get("public_url") or r.get("url"))}">'
+            f'<div class="rt">{_esc(r.get("title") or r["slug"])}</div>'
+            f'<div class="rd">{_esc(r.get("ref",""))} · {_esc(r.get("report_type",""))} · {_esc(r.get("outcome",""))}</div></a>'
+            for r in rows)
+        agent = _esc(c.get("managing_agent") or "")
+        loc = f' · {_esc(c["location"])}' if c.get("location") else ""
+        blocks.append(
+            f'<div class="comm"><div class="ch"><span class="cn">{_esc(c["name"])}</span>'
+            f'<span class="ca">{agent}{loc}</span></div>'
+            f'<div class="reps">{reps_html}</div></div>')
+    ncomm = len({r["community_slug"] for r in reps})
+    html = (f'<div class="wrap"><div class="head"><h1>Bespoke Leak Reports</h1>'
+            f'<p>Bespoke Leak Report — every report, indexed. {len(reps)} report(s) across {ncomm} community(ies). '
+            f'Public pages on canary-detect.com.</p></div>{"".join(blocks)}</div><style>{COCKPIT_STYLE}</style>')
+    st = _patch("module_content", "module_key=eq.leak-reports", {"html": html})
+    if verbose:
+        print(f"cockpit: {st} ({len(reps)} reports / {ncomm} communities)")
+    return len(reps), ncomm
+
+def cmd_cockpit():
+    cockpit_gen()
+
+def cmd_community_asset(slug, filepath, atype=None, year=None):
+    """Store a reusable plan/map image ONCE in the public bucket + record its real URL on
+    the community, so every future report opens with the maps in hand (no Drive re-hunt)."""
+    fn = os.path.basename(filepath)
+    key = f"community/{slug}/plans/{fn}"
+    data = open(filepath, "rb").read()
+    ct = mimetypes.guess_type(fn)[0] or "application/octet-stream"
+    st, _ = rest("POST", f"/storage/v1/object/{PUBLIC_BUCKET}/{key}", data, {"Content-Type": ct, "x-upsert": "true"}, raw=True)
+    url = _pub_url(key)
+    rows = _get("cd_communities", f"slug=eq.{slug}&select=plan_assets")
+    if not rows:
+        print("no such community:", slug); return
+    assets = [a for a in (rows[0].get("plan_assets") or []) if a.get("file") != fn]  # dedupe by filename
+    entry = {"file": fn, "url": url, "type": atype or "plan"}
+    if year:
+        entry["year"] = year
+    assets.append(entry)
+    print(f"upload {fn}: {st} | plan_assets: {_patch('cd_communities', f'slug=eq.{slug}', {'plan_assets': assets})}")
+    print("  " + url)
+
+def cmd_pull_community(slug):
+    """Open a new job with EVERYTHING in hand: durable facts + reusable plan URLs + past
+    reports + lessons captured on this community. Run this FIRST for a repeat community."""
+    rows = _get("cd_communities", f"slug=eq.{slug}&select=*")
+    if not rows:
+        print("no such community:", slug); return
+    c = rows[0]
+    reps = _get("cd_reports", f"community_slug=eq.{slug}&select=slug,ref,report_type,survey_date,outcome,public_url,extra&order=survey_date.desc")
+    print(f"\n=== {c['name']}  ({slug}) ===")
+    print(f"Managing agent : {c.get('managing_agent')}")
+    print(f"Location       : {c.get('location')}")
+    print(f"Odoo partner   : {c.get('odoo_partner_id')}")
+    print(f"Drive folder   : {c.get('drive_folder_url')}")
+    print(f"Integrity test : {c.get('integrity_method')}")
+    print(f"Network        : {c.get('network_setup')}")
+    if c.get("sectional_notes"):
+        print(f"Sectional notes: {json.dumps(c['sectional_notes'])}")
+    if c.get("notes"):
+        print(f"Notes          : {c['notes']}")
+    print("\n-- Plan / map assets (reuse these) --")
+    for a in (c.get("plan_assets") or []):
+        yr = f"/{a['year']}" if a.get("year") else ""
+        print(f"  [{a.get('type','plan')}{yr}] {a.get('file')}")
+        print("      " + (a["url"] if a.get("url") else "(filename only — not stored yet; run community-asset to upload)"))
+    lessons = []
+    print(f"\n-- Reports ({len(reps)}) --")
+    for r in reps:
+        print(f"  {r.get('survey_date')}  {r.get('ref')}  {r.get('report_type')}  {r.get('outcome')}  -> {r.get('public_url')}")
+        for l in (r.get("extra") or {}).get("learnings", []):
+            lessons.append((r["slug"], l))
+    if lessons:
+        print("\n-- Lessons captured (read BEFORE building) --")
+        for s, l in lessons:
+            print(f"  • ({s}) {l}")
+
+def cmd_learn(report_slug, note):
+    """Capture a lesson on a report so the next job reads it (via pull-community)."""
+    rows = _get("cd_reports", f"slug=eq.{report_slug}&select=extra")
+    if not rows:
+        print("no such report:", report_slug); return
+    extra = rows[0].get("extra") or {}
+    extra.setdefault("learnings", []).append(note)
+    print(f"learn [{report_slug}]: {_patch('cd_reports', f'slug=eq.{report_slug}', {'extra': extra})} ({len(extra['learnings'])} lesson(s))")
+
 def cmd_pull_job(order):
     dom = [["name", "=", order]] if str(order).upper().startswith("S") else [["id", "=", int(order)]]
     ids = odoo("sale.order", "search", [dom])
@@ -118,6 +262,32 @@ def cmd_publish(d):
     rep["public_url"] = f"https://canary-detect.com/reports/{slug}"
     print("cd_reports:", rest("POST", "/rest/v1/cd_reports", [rep],
           {"Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"})[0])
+
+    # ── community-memory write-back: grow the durable record every publish ──
+    crow = _get("cd_communities", f"slug=eq.{m['community_slug']}&select=extra,notes")
+    if crow:
+        cextra = crow[0].get("extra") or {}
+        hist = [h for h in cextra.get("report_history", []) if h.get("slug") != slug]  # dedupe
+        hist.append({"slug": slug, "ref": m.get("ref"), "date": m.get("survey_date"), "public_url": rep["public_url"]})
+        cextra["report_history"] = hist
+        cextra["last_report"] = slug
+        cpayload = {"extra": cextra}
+        upd = m.get("community_updates")  # optional free-text: what changed this job (new valve, revised plan)
+        if upd:
+            existing = crow[0].get("notes") or ""
+            cpayload["notes"] = (existing + "\n" if existing else "") + f"[{m.get('survey_date')}] {upd}"
+        print("community write-back:", _patch("cd_communities", f"slug=eq.{m['community_slug']}", cpayload))
+
+    # optional per-report learnings straight from report.json
+    if m.get("learnings"):
+        rex = _get("cd_reports", f"slug=eq.{slug}&select=extra")[0].get("extra") or {}
+        ls = m["learnings"] if isinstance(m["learnings"], list) else [m["learnings"]]
+        rex["learnings"] = rex.get("learnings", []) + ls
+        print("learnings:", _patch("cd_reports", f"slug=eq.{slug}", {"extra": rex}))
+
+    # rebuild the index from the registry so the cockpit can never drift
+    cockpit_gen()
+
     print("LIVE (internal):", f"https://commandcentre.info/m/{slug}")
     print("LIVE (public):  ", rep["public_url"])
 
@@ -133,9 +303,17 @@ def cmd_list(what="reports"):
 
 if __name__ == "__main__":
     a = sys.argv[1:] or ["help"]
+    def _opt(flag):
+        return a[a.index(flag) + 1] if flag in a and a.index(flag) + 1 < len(a) else None
     try:
-        {"pull-job": lambda: cmd_pull_job(a[1]), "publish": lambda: cmd_publish(a[1]),
-         "community": lambda: cmd_community(a[1]), "list": lambda: cmd_list(a[1] if len(a) > 1 else "reports"),
+        {"pull-job": lambda: cmd_pull_job(a[1]),
+         "publish": lambda: cmd_publish(a[1]),
+         "community": lambda: cmd_community(a[1]),
+         "community-asset": lambda: cmd_community_asset(a[1], a[2], _opt("--type"), _opt("--year")),
+         "pull-community": lambda: cmd_pull_community(a[1]),
+         "learn": lambda: cmd_learn(a[1], a[2]),
+         "cockpit": lambda: cmd_cockpit(),
+         "list": lambda: cmd_list(a[1] if len(a) > 1 else "reports"),
          "help": lambda: print(__doc__)}[a[0]]()
     except KeyError:
         print(__doc__); sys.exit(1)
