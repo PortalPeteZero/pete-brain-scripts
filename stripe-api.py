@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Stripe API helper — Camello Blanco S.L. account (Canary Detect entity).
 
-Cross-project: any Pete/Camello Blanco project's session calls this for Stripe.
+Cross-project: any Pete/Camello Blanco project's session calls this for Stripe. This account is the
+Stripe SSOT for LeakGuard / Canary Detect billing — the same account the LeakGuard CRM edge functions
+(stripe-webhook, stripe-checkout-session, mark-paid-bacs, founder subs, etc.) transact on.
 Reads keys from Library/processes/secrets/stripe-camello-blanco.json.
-Test mode by default; pass --live to use the live keys (once they exist).
+LIVE mode is ACTIVE (cutover 24 May 2026 — functions run on live keys). The helper defaults to TEST for
+ad-hoc safety; pass --live for live data. Any HTTP method works (get/post/delete), so it can read AND
+write live: e.g. cancel a subscription with `--live delete /v1/subscriptions/<id>` (done 9 Jul 2026 to
+cancel a test customer's live sub during data cleanup).
 
 Usage:
   stripe-api.py get  /v1/products
-  stripe-api.py get  /v1/products limit=1
+  stripe-api.py --live get /v1/subscriptions/sub_XXX            # read a live subscription
+  stripe-api.py --live delete /v1/subscriptions/sub_XXX         # cancel a live subscription immediately
   stripe-api.py post /v1/products name="LeakGuard Install"
   stripe-api.py post /v1/prices product=prod_X unit_amount=35000 currency=eur
-  stripe-api.py post /v1/prices product=prod_X unit_amount=12000 currency=eur "recurring[interval]=year" tax_behavior=exclusive
   stripe-api.py post /v1/tax_rates display_name=IGIC percentage=7 inclusive=false jurisdiction=ES-CN
   stripe-api.py --live get /v1/account
 
