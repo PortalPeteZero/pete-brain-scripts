@@ -58,13 +58,14 @@ def main():
         else g.send(to, a.get("subject") or "Your training enquiry", body, cc=cc, html=html)
     sid = res.get("id") if isinstance(res, dict) else None
     sm = g.get_message(sid); sh = {x["name"].lower(): x["value"] for x in sm.get("payload", {}).get("headers", [])}
-    _pj = json.dumps(sm.get("payload", {}))
     # ee-html.py (clean template, Pete 2026-07-07) always wraps the body in color:#1a1a2e and uses #003366 links.
-    # Check for those markers — but NEVER abort the capture on a miss (that skipped te-log on every clean send).
-    formatted = ("#1a1a2e" in _pj) or ("#003366" in _pj)
+    # Check the HTML WE rendered (`html`) — the sent body is base64 in the payload, so a marker never appears there
+    # (which is why the old #1B2340-in-payload check ALWAYS failed and sys.exit(3)'d before te-log).
+    # And NEVER abort the capture on a miss — aborting is the bug that skipped te-log on every clean send.
+    formatted = ("#1a1a2e" in html) or ("#003366" in html)
     print(f"=== ee-send · SENT · {sid} · To {sh.get('to')} · formatted={formatted} ===")
     if not formatted:
-        print("  ⚠ note: sent HTML didn't match the ee-html clean-template markers — worth a glance at the render. Capture still proceeding.")
+        print("  ⚠ note: ee-html didn't produce the clean-template markers — worth a glance at the render. Capture still proceeding.")
     a["final_text"] = body; p["activity"] = a; json.dump(p, open(inpath, "w"))
     print("  → capturing via te-log --apply …")
     r = subprocess.run(["python3", f"{VAULT}/te-log.py", "--in", inpath, "--apply", "--manifest", "/tmp/ee-live-manifest.jsonl"],
