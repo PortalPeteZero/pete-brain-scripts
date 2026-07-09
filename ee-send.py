@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """ee-send.py — the ONE sanctioned path for an Enquiry-Engine reply. Formatting is not optional.
 
-Every EE reply is FORMATTED (ee-html.to_html → the Morning-Briefing house style: navy header, section
-cards, button links, bold figures) and, by default, DRAFTED into Gmail for Pete to review (Mode B).
+Every EE reply is rendered by ee-html.to_html → a CLEAN, SIMPLE email (Pete 2026-07-07: no navy banner,
+no cards; readable paragraphs, underlined worded links, bold figures) and, by default, DRAFTED into
+Gmail for Pete to review (Mode B).
 On Pete's OK, --apply sends + captures via te-log. Recipient is always the enquiry's own `email`
 (never derived from the thread — that's what mis-addressed web-form replies back to info@).
 
@@ -57,10 +58,13 @@ def main():
         else g.send(to, a.get("subject") or "Your training enquiry", body, cc=cc, html=html)
     sid = res.get("id") if isinstance(res, dict) else None
     sm = g.get_message(sid); sh = {x["name"].lower(): x["value"] for x in sm.get("payload", {}).get("headers", [])}
-    formatted = "#1B2340" in json.dumps(sm.get("payload", {}))
+    _pj = json.dumps(sm.get("payload", {}))
+    # ee-html.py (clean template, Pete 2026-07-07) always wraps the body in color:#1a1a2e and uses #003366 links.
+    # Check for those markers — but NEVER abort the capture on a miss (that skipped te-log on every clean send).
+    formatted = ("#1a1a2e" in _pj) or ("#003366" in _pj)
     print(f"=== ee-send · SENT · {sid} · To {sh.get('to')} · formatted={formatted} ===")
     if not formatted:
-        print("  ⛔ WARNING: sent message is not the formatted template — investigate."); sys.exit(3)
+        print("  ⚠ note: sent HTML didn't match the ee-html clean-template markers — worth a glance at the render. Capture still proceeding.")
     a["final_text"] = body; p["activity"] = a; json.dump(p, open(inpath, "w"))
     print("  → capturing via te-log --apply …")
     r = subprocess.run(["python3", f"{VAULT}/te-log.py", "--in", inpath, "--apply", "--manifest", "/tmp/ee-live-manifest.jsonl"],
