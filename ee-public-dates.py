@@ -81,9 +81,15 @@ def sweep_calendars(cal, facts):
             start = (e.get("start") or {}).get("date") or ((e.get("start") or {}).get("dateTime") or "")[:10]
             if not start:
                 continue
-            m = re.search(r"\((\d+)\s+[Dd]elegate", summ)
+            # Parse the booked count from summary OR description; accept "(7 Delegates)", "7 delegates",
+            # "(7)" after 'Course'. Genuinely count-less entries (e.g. "Public Course - Day 2") stay NULL —
+            # NULL means "count unknown": it is NEVER quoted to a customer as availability (the reply says
+            # "I'll confirm seats"); the reconciler treats a defined-NULL as not-drift.
+            desc = e.get("description") or ""
+            m = (re.search(r"\((\d+)\s*[Dd]elegate", summ) or re.search(r"(\d+)\s*[Dd]elegates?", summ)
+                 or re.search(r"\((\d+)\s*[Dd]elegate", desc) or re.search(r"(\d+)\s*[Dd]elegates?", desc))
             booked = int(m.group(1)) if m else None
-            fam, code = family_from_text(summ + " " + (e.get("description") or ""), facts)
+            fam, code = family_from_text(summ + " " + desc, facts)
             rows.append({
                 "key": f"{start}|{name}",
                 "course_date": start, "trainer": name, "venue": e.get("location") or None,

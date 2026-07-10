@@ -30,7 +30,9 @@ Payload shape (one enquiry):
                                                  #   the latest outbound reply off the Gmail thread (--no-gmail disables)
      "outcome": "sent",                          # optional
      "occurred_at": "2026-06-26T09:00:00Z",      # optional; default now
-     "follow_up_at": "2026-07-01"                # optional; sets CRM follow_up + a CC chase task
+     "follow_up_at": "2026-07-01"                # optional; sets the CRM follow_up ONLY. Per Pete's D2 decision
+                                                 #   (2026-07-09) NO chase task is created unless the --create-chase
+                                                 #   flag is passed explicitly — do NOT pass follow_up_at expecting a task.
   },
   "knowledge": "Free-text thread summary + corrections to learn from (optional; defaults to activity.body)",
   "thread_id": "gmail-thread-id",                # optional; reply auto-pulled + thread auto-FILED on --apply
@@ -103,6 +105,7 @@ def lit_arr(xs):
 # thread_id but no body, pull the latest OUTBOUND message off the thread and bank THAT.
 NO_GMAIL = False
 NO_FILE = False
+CREATE_CHASE = False   # D2 (Pete, 2026-07-09): no per-enquiry chase tasks; --create-chase opts in explicitly
 _GMAIL = None
 def _gmail():
     global _GMAIL
@@ -439,7 +442,9 @@ def log_enquiry(p, apply, manifest):
                             returning id""")
         if isinstance(closed, list) and closed:
             print(f"   • closed {len(closed)} prior open chase(s) for this enquiry")
-    if a.get("follow_up_at"):
+    if a.get("follow_up_at") and not CREATE_CHASE:
+        print("   • follow_up_at set on the CRM activity only — NO chase task (D2; pass --create-chase to override)")
+    if a.get("follow_up_at") and CREATE_CHASE:
         tname = f"Chase enquiry — {name} ({a.get('subject','')})".replace("'", "")[:120]
         # Enquiry chases are UNDATED (2026-07 task model): they're only touched when the Enquiry Engine runs,
         # which evaluates which chases are due from the interval note + created_at — NOT from a due_on. Writing
@@ -458,11 +463,14 @@ def log_enquiry(p, apply, manifest):
     return rel
 
 def main():
-    global NO_GMAIL, NO_FILE
+    global NO_GMAIL, NO_FILE, CREATE_CHASE
     args = sys.argv[1:]
+    if "--help" in args or "-h" in args:
+        print(__doc__); sys.exit(0)
     apply = "--apply" in args
     NO_GMAIL = "--no-gmail" in args
     NO_FILE = "--no-file" in args
+    CREATE_CHASE = "--create-chase" in args
     inpath = None; manpath = None
     for i, x in enumerate(args):
         if x == "--in": inpath = args[i + 1]

@@ -31,18 +31,18 @@ MODEL = {
     "C001":       {"family": "cat1",         "cert": "Sygma in-house (£0)",                    "note": "Genny & CAT / HSG47 / cable avoidance — one CAT & Genny day serving the family."},
     "C049":       {"family": "cat1",         "cert": "Sygma in-house (£0)",                    "note": "HSG47 Locating Underground Services — CAT & Genny family."},
     "C001-VSCAN": {"family": "cat1",         "cert": "Sygma in-house (£0)",                    "note": "Vscan — genuinely separate course; own agenda to be built."},
-    "C013":       {"family": "cat1",         "cert": "ProQual (details TBC — Pete owes)",      "note": "ProQual Cat 1 — SAME DELIVERY as EUS Cat 1 (C004); different agenda + cert. Zero history — draft from this model. Agenda: build pending (reworded EUS Cat 1 replica)."},
-    "C008":       {"family": "cat2",         "cert": "EUSR Cat 2 (£34pp reg)",                 "note": "EUS/EUSR Category 2 (safe digging) — the Cat 2 family day. Cat 2 on-site → also link /agendas/cat2-delivery-and-site-requirements."},
-    "C015":       {"family": "cat2",         "cert": "ProQual (details TBC — Pete owes)",      "note": "ProQual Cat 2 — SAME DELIVERY as EUS Cat 2 (C008); different agenda + cert."},
-    "C009":       {"family": "combined",     "cert": "EUSR £34pp — ONE cert fee for the combined (NOT per qualification; Pete 2026-07-07)", "note": "EUS Cat 1 & 2 Combined — NOT a third product: the Cat 1 day + the Cat 2 day, priced as two days. ⚠ Cert = ONE EUSR fee (£34pp) for the combined, not £34 per category."},
-    "C010":       {"family": "combined",     "cert": "EUSR £34pp — ONE cert fee for the combined (NOT per qualification)", "note": "EUS Cat 1 & 2 Combined (variant of C009). ⚠ ONE cert fee (£34pp)."},
+    "C013":       {"family": "cat1",         "cert": "ProQual Accredited Certificate (£35pp — Pete 2026-07-10)", "note": "ProQual Cat 1 — SAME DELIVERY as EUS Cat 1 (C004); different agenda + cert. Zero history — draft from this model. Agenda: build pending (reworded EUS Cat 1 replica)."},
+    "C008":       {"family": "cat2",         "cert": "EUSR Cat 2 (£34pp reg)",                 "note": "EUS/EUSR Category 2 (safe digging) — the Cat 2 family day. Cat 2 on-site → also link https://sygma-solutions.com/agendas/cat2-delivery-and-site-requirements."},
+    "C015":       {"family": "cat2",         "cert": "ProQual Accredited Certificate (£35pp — Pete 2026-07-10)", "note": "ProQual Cat 2 — SAME DELIVERY as EUS Cat 2 (C008); different agenda + cert."},
+    "C009":       {"family": "combined",     "cert": "EUSR — CONDITIONAL (D1, Pete 2026-07-09): back-to-back days = ONE £34pp; split/staggered days = 2 × £34pp", "note": "EUS Cat 1 & 2 Combined — NOT a third product: the Cat 1 day + the Cat 2 day, priced as two days. ⚠ Cert fee depends on the dates: consecutive = one £34pp, split = two courses = 2×£34pp."},
+    "C010":       {"family": "combined",     "cert": "EUSR — CONDITIONAL (D1): back-to-back = ONE £34pp; split days = 2 × £34pp", "note": "EUS Cat 1 & 2 Combined (variant of C009). ⚠ Same conditional cert fee as C009."},
     "C036":       {"family": "super-user",   "cert": "Sygma in-house (£0)",                    "note": "Super User Utility Location Coach (2-day) — coaching/assessing/supervisor competency. NOT a train-the-trainer product. ⚠ ON-SITE ONLY (never a public/open course), max 6 delegates (Pete, 2026-07-07)."},
     "C037":       {"family": "super-user",   "cert": "EUSR-endorsed (£34pp)",                  "note": "Super User Coach (EUSR-endorsed) — agenda covers both C036 + C037. ⚠ ON-SITE ONLY (never a public/open course), max 6 delegates."},
-    "C017":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award (full 2-day) — CAT & Genny family (NOT Cat 2). Day 1 = the CAT & Genny day; Day 2 = award completers. Agenda: build pending."},
+    "C017":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award (full 2-day) — CAT & Genny family (NOT Cat 2). Day 1 = the CAT & Genny day; Day 2 = award completers."},
     "C051":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award 1-day refresher — rides the standard CAT & Genny day (a delivery/scheduling matter, no own agenda)."},
 }
 # supporting links dropped into replies alongside the agenda (not a course agenda itself)
-SUPPORTING = {"C008": ["/agendas/cat2-delivery-and-site-requirements"]}
+SUPPORTING = {"C008": ["https://sygma-solutions.com/agendas/cat2-delivery-and-site-requirements"]}
 
 def portal_q(sql):
     req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{PORTAL_REF}/database/query",
