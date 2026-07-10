@@ -174,7 +174,7 @@ class GarminWorkoutBuilder:
         }
 
     # ---- push / schedule / manage ------------------------------------------
-    def push(self, name, sport, spec, schedule_date=None):
+    def push(self, name, sport, spec, schedule_date=None, code=None):
         wo = self.build(name, sport, spec)
         res = self.client.upload_workout(wo)
         wid = res.get("workoutId") if isinstance(res, dict) else None
@@ -186,7 +186,7 @@ class GarminWorkoutBuilder:
         # Record the built session in the CC so the training-feedback loop can reference what was
         # prescribed when feedback is logged later (planned-vs-delivered). CC-only, non-fatal.
         if wid:
-            _record_planned_session(wid, name, sport, spec, schedule_date)
+            _record_planned_session(wid, name, sport, spec, schedule_date, code)
         return out
 
     def verify(self, wid):
@@ -196,7 +196,7 @@ class GarminWorkoutBuilder:
                 "steps": len(segs[0]["workoutSteps"]) if segs else 0}
 
 
-def _record_planned_session(wid, name, sport, spec, schedule_date):
+def _record_planned_session(wid, name, sport, spec, schedule_date, code):
     """Upsert the built session into the CC `health_planned_session` table so the
     [[training-feedback-loop]] can look up what was prescribed when feedback is logged later.
     Keyed on the scheduled (activity) date. CC-only, Drive-free, non-fatal."""
@@ -214,7 +214,7 @@ def _record_planned_session(wid, name, sport, spec, schedule_date):
         existing = json.loads(urllib.request.urlopen(urllib.request.Request(q, headers=hdr), timeout=20).read())
         seq = max([r["seq"] for r in existing], default=0) + 1
         row = {"date": schedule_date, "seq": seq, "source": "built-workout",
-               "spec": {"name": name, "sport": sport, "steps": spec},
+               "spec": {"name": name, "sport": sport, "steps": spec, "code": code},
                "garmin_workout_id": wid, "scheduled_date": schedule_date}
         urllib.request.urlopen(urllib.request.Request(base + "/rest/v1/health_planned_session",
             data=json.dumps(row).encode(), headers={**hdr, "Prefer": "return=minimal"}, method="POST"), timeout=20)
@@ -229,6 +229,7 @@ def main():
     ap.add_argument("--name", default="Workout")
     ap.add_argument("--sport", default="cycling", choices=list(SPORTS))
     ap.add_argument("--schedule", help="YYYY-MM-DD to schedule on")
+    ap.add_argument("--code", help="canonical session_code slug for the training-stats grouping key")
     ap.add_argument("--dry-run", action="store_true", help="print JSON, do not upload")
     ap.add_argument("--list", action="store_true", help="list recent workouts")
     ap.add_argument("--delete", help="delete a workout by id")
@@ -243,7 +244,7 @@ def main():
     spec = json.loads(Path(a.spec).read_text())
     if a.dry_run:
         print(json.dumps(wb.build(a.name, a.sport, spec), indent=2)); return
-    out = wb.push(a.name, a.sport, spec, a.schedule)
+    out = wb.push(a.name, a.sport, spec, a.schedule, a.code)
     print("PUSHED:", json.dumps(out))
     if out.get("workoutId"):
         print("VERIFY:", json.dumps(wb.verify(out["workoutId"])))
