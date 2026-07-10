@@ -125,7 +125,16 @@ INTERNAL_FORWARD_ACTION = re.compile(
     r"please\s+(check|review|approve|pay|action)|"
     r"can\s+you\s+(check|look\s+at|approve)|"
     r"asap|"
-    r"urgent"
+    r"urgent|"
+    # payment-escalation vocabulary (10 Jul 2026 first live run: the ProQual
+    # 'Overdue Account' forward drafted info-only; a forwarded supplier
+    # escalation is a decision even with no comment from the forwarder)
+    r"overdue|"
+    r"escalation\s+process|"
+    r"must\s+be\s+settled|"
+    r"final\s+reminder|"
+    r"breach\s+of\s+[\w'’]+\s*(payment\s+)?terms|"
+    r"outstanding\s+balance"
     r")\b",
     re.I,
 )
@@ -288,6 +297,22 @@ def classify_thread(thread: dict, pete_email: str = PETE_DEFAULT) -> dict:
                       has_actions, has_linked_task,
                       "info-only",
                       "Cold sales / newsletter pattern in body.")
+
+    # Rule 11 (10 Jul 2026, first live run): conversation in flight — the latest
+    # message is external ON A THREAD WHERE PETE HAS A PRIOR OUTBOUND (he is
+    # mid-conversation and the counterparty just continued it). Tom Delaney's
+    # enquiry reply carried no "?" and fell to the info-only default. Guard:
+    # never fires on auto-replies/OOO (subject) — those are noise, not turns.
+    prior_pete_outbound = bool(thread.get("prior_pete_outbound"))
+    if not prior_pete_outbound and isinstance(thread.get("messages"), list) and len(thread["messages"]) > 1:
+        prior_pete_outbound = any(is_pete(m.get("from", ""), pete_email)
+                                  for m in thread["messages"][:-1])
+    if (latest_direction == "external" and prior_pete_outbound
+            and not re.search(r"out of office|automatic reply|auto[- ]?reply", subject, re.I)):
+        return _result(tid, msg_count, latest_direction, pete_replied_since, open_question,
+                      has_actions, has_linked_task,
+                      "reply",
+                      "Conversation in flight: counterparty replied on a thread Pete has already written on — ball is Pete's.")
 
     # Rule 7: internal-staff forwards with action language
     if latest_direction == "internal-forward" and INTERNAL_FORWARD_ACTION.search(last_body[:1500]):

@@ -64,6 +64,20 @@ def _pat_hit(rule, text):
     return None
 
 
+# Signature markers: content from the first of these onward is boilerplate, not
+# the message. 10 Jul 2026 first live run: the enquiry pattern matched the
+# course-flipbook line in Sue's SIGNATURE on an internal FYI — content rules
+# must never fire on signature blocks.
+_SIG_MARKERS = re.compile(
+    r"(\n-- ?\n|Click on our flipbook|Visit Website\b|digital book of training courses|"
+    r"\bThis email and any files transmitted\b|\bLinkedIn <http)", re.I)
+
+
+def _strip_signature(text):
+    m = _SIG_MARKERS.search(text or "")
+    return text[:m.start()] if m else (text or "")
+
+
 def lint(action):
     """Returns (ok, report). report = {"passed": bool, "failures": [{"rule","reason","detail"}],
     "overridden": {...}} -- bank the report to the decision row's lint_report."""
@@ -79,7 +93,7 @@ def lint(action):
             return  # interactive override with a written reason -- banked, not blocking
         failures.append({"rule": rule_id, "reason": r.get("reason", rule_id), "detail": detail})
 
-    blob = f"{action.get('subject','')}\n{action.get('body_text','')}"
+    blob = f"{action.get('subject','')}\n{_strip_signature(action.get('body_text',''))}"
 
     # --- all auto paths ---
     if auto:

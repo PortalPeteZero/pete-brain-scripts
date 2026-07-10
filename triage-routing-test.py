@@ -26,7 +26,8 @@ Exit codes: 0 all pass · 1 failures · 2 harness error.
 """
 import os, sys, json, re
 
-sys.path.insert(0, os.environ.get("VAULT", "/tmp/pbs"))
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
+sys.path.insert(0, VAULT)
 import importlib
 tl = importlib.import_module("triage_lib")
 
@@ -45,6 +46,34 @@ def load_cases():
 
 
 def run_case(c):
+    # --- ask-classification cases (10 Jul 2026: corrections are not only about
+    # fact routing — the classifier's ask and the lint's patterns regress too) ---
+    if c.get("expect_ask"):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("tac", os.path.join(VAULT, "triage-action-classify.py"))
+        tac = importlib.util.module_from_spec(spec); spec.loader.exec_module(tac)
+        thread = {"thread_id": "regression-case", "subject": c.get("subject", ""),
+                  "from_last": c.get("from_last") or c["sender"],
+                  "last_body": c.get("body_sample", ""),
+                  "prior_pete_outbound": bool(c.get("prior_pete_outbound")),
+                  "msgs": c.get("msgs", 2)}
+        got = tac.classify_thread(thread)["ask_classification"]
+        if got != c["expect_ask"]:
+            return False, f"ask={got} (expect {c['expect_ask']})"
+        if not c.get("expect_lint_clean"):
+            return True, f"ask={got} (expect {c['expect_ask']})"
+        # fall through: a case may assert BOTH the ask and lint cleanliness
+    # --- lint-clean cases: the named rules must NOT fire on the sample ---
+    if c.get("expect_lint_clean"):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("tlint", os.path.join(VAULT, "triage-lint.py"))
+        tlint = importlib.util.module_from_spec(spec); spec.loader.exec_module(tlint)
+        ok, report = tlint.lint({"level": "L2", "thread_id": "regression-case",
+                                 "subject": c.get("subject", ""), "body_text": c.get("body_sample", ""),
+                                 "ask": c.get("ask", "info-only"), "verb": "Clear", "label": None})
+        fired = [f["rule"] for f in report.get("failures", [])]
+        bad = [r for r in c["expect_lint_clean"] if r in fired]
+        return (not bad), (f"rules fired: {fired}" if bad else f"clean of {c['expect_lint_clean']} (fired: {fired})")
     fact = tl.match_fact(c["sender"])
     if c.get("expect_no_auto"):
         if fact is None:
@@ -82,7 +111,9 @@ def add_case(case_json):
         return 0
     cases.append(case)
     new_fence = "```" + FENCE + "\n" + json.dumps(cases, indent=2) + "\n```"
-    new_body = re.sub(r"```" + re.escape(FENCE) + r"\s*\n.*?```", new_fence, body, flags=re.S)
+    # lambda replacement: banked cases contain JSON \u escapes which re.sub would
+    # misread as regex escapes in a string replacement (first-live-run bug, 10 Jul 2026)
+    new_body = re.sub(r"```" + re.escape(FENCE) + r"\s*\n.*?```", lambda _m: new_fence, body, flags=re.S)
     tl.cc_sql("UPDATE vault_notes SET body=$trtbody$" + new_body +
               "$trtbody$, updated_at=now() WHERE vault_path='" + NOTE_PATH + "'")
     print(f"banked case for {case.get('sender')} — {len(cases)} cases total")
