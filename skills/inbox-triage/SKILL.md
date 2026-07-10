@@ -106,6 +106,15 @@ Full manual: [[email-workflow#send--forward-gates]]. EE sends run outside triage
 
 ## The triage loop
 
+### Step 0.5: Mode check — ASK, never assume (Pete, 10 Jul 2026)
+
+Before any stage executes, ask Pete ONE question: **"Are we running auto or confirming?"**
+
+- **Confirming (THE DEFAULT):** present each stage's ops table and WAIT for his `go` / `except #N` / `cancel` before executing that stage. Decisions are `decided_by='pete'`. Never batch-execute past a presented stage.
+- **Auto (only on Pete's explicit say-so in THIS session):** offline-runner semantics — execute reversible actions lint-gated, queue anything vetoed, everything into the digest with undo, `decided_by='cron-auto'`. Nothing irreversible, no tasks, no filters.
+
+A standing goal, an autonomous context, or Pete being away is NOT auto-consent for an interactive triage — if he invoked `triage` and is present, he chooses. (First live run, 10 Jul 2026: a session goal caused autonomous completion of a run Pete expected to confirm.)
+
 ### Step 1: Pull inbox
 
 `gmail-api.py search "in:inbox" 100` -- the limit is a POSITIONAL argument (not `--max-results`); paginate further if needed.
