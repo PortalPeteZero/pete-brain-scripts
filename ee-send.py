@@ -39,6 +39,29 @@ def main():
     cc = p.get("cc") or a.get("cc")
     thread_id = p.get("thread_id")
 
+    # --- P3 gate 1: RETRIEVAL RECEIPT — no draft leaves without proof Step-1 retrieval happened ---
+    refs = p.get("retrieval_refs") or a.get("retrieval_refs")
+    if a.get("kind") in ("reply", "quote", "enquiry") and not refs:
+        print("⛔ no retrieval receipt. Run Step 1 first:")
+        print("   VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py semantic \"<course + scenario + people + location>\" --limit 6")
+        print("   then put the note slugs you actually READ into the payload: \"retrieval_refs\": [\"slug1\", \"slug2\"]")
+        sys.exit(2)
+
+    # --- P3 gate 2: DRAFT-LINT — the banked rules, mechanically enforced (each block names its rule) ---
+    lintmod = _load("eelint", f"{VAULT}/ee-lint.py")
+    lint_ok, lint_report = lintmod.lint(body, p)
+    if not lint_ok:
+        print("⛔ lint BLOCKED — fix the draft, or override a rule with a reason (\"lint_overrides\": {\"<id>\": \"why\"}):")
+        for f in lint_report["failures"]:
+            print(f"   ✗ [{f['id']}] {f['reason']}" + (f"  → {f['detail']}" if f.get("detail") else ""))
+        sys.exit(2)
+    if lint_report.get("overridden"):
+        for o in lint_report["overridden"]:
+            print(f"   ◦ lint override [{o['id']}]: {o['overridden']}")
+    a["retrieval_refs"] = refs
+    a["lint_passed"] = True
+    a["lint_report"] = lint_report
+
     h = _load("eeh", f"{VAULT}/ee-html.py")
     gm = _load("gm", f"{VAULT}/gmail-api.py")
     html = h.to_html(body)                # ← always the house-style formatted HTML
