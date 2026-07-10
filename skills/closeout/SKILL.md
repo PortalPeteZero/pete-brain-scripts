@@ -164,6 +164,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 | I1 | every message/email sent this session had To verified + render tested | verify |
 | I2 | a draft meant to go was left unsent | surface |
 | I3 | an enquiry (EE) reply sent this session: `te-log --apply` triple-write landed, `draft_text` captured (I3a), AND the EE sign-off is clean — no source-bearing edit left with `source_fixed IS NOT TRUE` (I3b). Only `kind IN ('reply','quote')` carry a draft — handoff/chase/note/correction are exempt. Gate: `VAULT=/tmp/pbs python3 /tmp/pbs/ee-signoff.py --since <session start>` exits 0 | verify → "run te-log --apply / ee-signoff?" |
+| I4 | the session touched triage (any decision, override, sync action, or auto path): the Triage Engine sign-off is clean — ledger complete (no stuck applying/sending rows), every override banked with BOTH its `override_reason` AND a `triage-routing-test` regression case, tray reconciled. Gate: `VAULT=/tmp/pbs python3 /tmp/pbs/triage-signoff.py` exits 0 (Pete's gate is the printed PASS/BLOCK lines) | verify → "run triage-signoff?" |
 
 ### New-build mode (only when a brand-new property is detected — kept OUT of the everyday report)
 project row + General bucket · Drive folder + seeded knowledge home · Sentry first-wire ·
