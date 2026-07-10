@@ -94,6 +94,19 @@ def main():
         print(f"        ⛔ {d['n']}× {(d['notes'] or '')[:80]}")
     blocking += len(dup)
 
+    # (5) alias regression harness (hardening plan P1) — the facts index must resolve the whole
+    # probe set; a mis-resolution here means the NEXT enquiry could quote the wrong course.
+    ar = subprocess.run(["python3", f"{VAULT}/ee-alias-test.py"], capture_output=True, text=True,
+                        env={**os.environ, "VAULT": VAULT})
+    alias_ok = ar.returncode == 0
+    tail = (ar.stdout or "").strip().split("\n")[-1]
+    print(f"\n[{'OK ' if alias_ok else 'BLOCK'}] (5) alias regression: {tail}   ← must be all-pass")
+    if not alias_ok:
+        for ln in (ar.stdout or "").split("\n"):
+            if ln.startswith("FAIL"):
+                print(f"        ⛔ {ln}")
+        blocking += 1
+
     # (1)+(3) Replies tray — informational live-Gmail heuristic (a lingering worked thread = a send
     #  not put through te-log, which auto-files on --apply). Fail-soft.
     try:

@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""ee-facts.py — the Enquiry Engine FACTS INDEX lookup (plan §4A).
+"""ee-facts.py — the Enquiry Engine FACTS INDEX lookup (plan §4A; hardening plan P1).
 
 The retrieval backbone: facts are LOOKED UP deterministically, phrasing is retrieved from the
 worked-reply corpus (never facts from examples). This helper is the "looked up" half.
 
-The facts index IS the Portal `public.courses` table (§4A.2) — code · name · duration_days ·
-max_delegates(cap) · location_type, plus the M4-added `agenda_url` + `aliases`. This tool resolves
-a customer's wording → the right course code (deterministic longest-alias match, NOT fuzzy semantic
-search — that's what bled a neighbouring course/stale price in the 2026-07-07 test) → returns the
-EXACT current facts + the agenda link + the course-model family.
+The facts index IS the Portal `public.courses` table — code · name · duration_days ·
+max_delegates(cap) · location_type · agenda_url · aliases · family · cert_line · model_note ·
+supporting_links · facts_provenance. Since the 2026-07-10 P1 migration this tool holds ZERO
+course facts in code: everything comes off the DB row, so a Portal edit changes the answer with
+no code change (the C017-class drift is structurally impossible).
+
+Resolution is a deterministic longest-alias match, NOT fuzzy semantic search. Two guards:
+- AMBIGUITY: if the enquiry contains a variant word (refresher / endorsed / plus / combined) the
+  matched course doesn't carry, the tool says "qualify with the customer" instead of answering.
+- FACTS INCOMPLETE: a matched course whose family/cert_line columns are NULL prints a loud
+  banner — silent Nones never reach a draft.
 
 **PRICES are NOT here** (§4A.7): they live in the CC (`ee-pricing` course defaults + the
 `ee-customer-rates` exceptions layer). This tool returns a `price_ref` pointer, never a number.
@@ -23,26 +29,9 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SB_TOKEN = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
 PORTAL_REF = "rsczwfstwkthaybxhszy"
 
-# --- §4A.3 course model (verified with Pete 2026-07-07 — do NOT deviate without a re-confirm).
-# Highest-consequence data in the system: a wrong family quotes the wrong course. Keyed by course
-# code. cert £ figures per §4A.7 (EUSR £34 flat / ProQual L2 £35 / Sygma in-house £0).
-MODEL = {
-    "C004":       {"family": "cat1",         "cert": "EUSR Cat 1 (£34pp reg)",                 "note": "EUS/EUSR Category 1 — the Cat 1 family base day."},
-    "C001":       {"family": "cat1",         "cert": "Sygma in-house (£0)",                    "note": "Genny & CAT / HSG47 / cable avoidance — one CAT & Genny day serving the family."},
-    "C049":       {"family": "cat1",         "cert": "Sygma in-house (£0)",                    "note": "HSG47 Locating Underground Services — CAT & Genny family."},
-    "C001-VSCAN": {"family": "cat1",         "cert": "Sygma in-house (£0)",                    "note": "Vscan — genuinely separate course; own agenda to be built."},
-    "C013":       {"family": "cat1",         "cert": "ProQual Accredited Certificate (£35pp — Pete 2026-07-10)", "note": "ProQual Cat 1 — SAME DELIVERY as EUS Cat 1 (C004); different agenda + cert. Zero history — draft from this model. Agenda: build pending (reworded EUS Cat 1 replica)."},
-    "C008":       {"family": "cat2",         "cert": "EUSR Cat 2 (£34pp reg)",                 "note": "EUS/EUSR Category 2 (safe digging) — the Cat 2 family day. Cat 2 on-site → also link https://sygma-solutions.com/agendas/cat2-delivery-and-site-requirements."},
-    "C015":       {"family": "cat2",         "cert": "ProQual Accredited Certificate (£35pp — Pete 2026-07-10)", "note": "ProQual Cat 2 — SAME DELIVERY as EUS Cat 2 (C008); different agenda + cert."},
-    "C009":       {"family": "combined",     "cert": "EUSR — CONDITIONAL (D1, Pete 2026-07-09): back-to-back days = ONE £34pp; split/staggered days = 2 × £34pp", "note": "EUS Cat 1 & 2 Combined — NOT a third product: the Cat 1 day + the Cat 2 day, priced as two days. ⚠ Cert fee depends on the dates: consecutive = one £34pp, split = two courses = 2×£34pp."},
-    "C010":       {"family": "combined",     "cert": "EUSR — CONDITIONAL (D1): back-to-back = ONE £34pp; split days = 2 × £34pp", "note": "EUS Cat 1 & 2 Combined (variant of C009). ⚠ Same conditional cert fee as C009."},
-    "C036":       {"family": "super-user",   "cert": "Sygma in-house (£0)",                    "note": "Super User Utility Location Coach (2-day) — coaching/assessing/supervisor competency. NOT a train-the-trainer product. ⚠ ON-SITE ONLY (never a public/open course), max 6 delegates (Pete, 2026-07-07)."},
-    "C037":       {"family": "super-user",   "cert": "EUSR-endorsed (£34pp)",                  "note": "Super User Coach (EUSR-endorsed) — agenda covers both C036 + C037. ⚠ ON-SITE ONLY (never a public/open course), max 6 delegates."},
-    "C017":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award (full 2-day) — CAT & Genny family (NOT Cat 2). Day 1 = the CAT & Genny day; Day 2 = award completers."},
-    "C051":       {"family": "cat1-award",   "cert": "ProQual L2 Award (£35pp)",               "note": "ProQual Level 2 Award 1-day refresher — rides the standard CAT & Genny day (a delivery/scheduling matter, no own agenda)."},
-}
-# supporting links dropped into replies alongside the agenda (not a course agenda itself)
-SUPPORTING = {"C008": ["https://sygma-solutions.com/agendas/cat2-delivery-and-site-requirements"]}
+# Variant words that MUST be reflected by the matched course (name, or family for 'combined').
+# If the customer says one and the matched course doesn't carry it, we qualify instead of guessing.
+VARIANT_WORDS = ("refresher", "endorsed", "plus", "combined")
 
 def portal_q(sql):
     req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{PORTAL_REF}/database/query",
@@ -57,13 +46,27 @@ def _norm(s):
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", s)).strip()
 
 def load_index():
-    rows = portal_q("SELECT code, name, duration_days, max_delegates, location_type, agenda_url, aliases "
-                    "FROM public.courses WHERE is_active AND aliases IS NOT NULL AND cardinality(aliases) > 0")
-    return rows
+    return portal_q(
+        "SELECT code, name, duration_days, max_delegates, location_type, agenda_url, aliases, "
+        "family, cert_line, model_note, supporting_links "
+        "FROM public.courses WHERE is_active AND aliases IS NOT NULL AND cardinality(aliases) > 0")
+
+def _variant_gap(text, row):
+    """Return the variant words the enquiry carries that the matched course does NOT."""
+    nt_words = set(_norm(text).split())
+    nname = _norm(row.get("name"))
+    gaps = []
+    for w in VARIANT_WORDS:
+        if w in nt_words:
+            ok = w in nname or (w == "combined" and (row.get("family") == "combined"))
+            if not ok:
+                gaps.append(w)
+    return gaps
 
 def lookup(text):
     """Deterministic resolve: the LONGEST alias that appears in the enquiry wins — so
-    'cat 1 and 2 combined' matches the combined course (alias 'cat 1 and 2'), never Cat 1 alone."""
+    'cat 1 and 2 combined' matches the combined course (alias 'cat 1 and 2'), never Cat 1 alone.
+    Returns a dict; on a variant mismatch returns {'ambiguous': True, ...}."""
     nt = _norm(text)
     best = None  # (alias_len, code, row, matched_alias)
     for r in load_index():
@@ -76,18 +79,25 @@ def lookup(text):
     if not best:
         return None
     _, code, r, matched = best
-    m = MODEL.get(code, {})
+    gaps = _variant_gap(text, r)
+    if gaps:
+        return {"ambiguous": True, "code": code, "name": r["name"], "matched_alias": matched,
+                "variant_words": gaps,
+                "action": "qualify with the customer — the enquiry mentions a variant the matched course does not carry"}
     return {
         "code": code, "name": r["name"], "duration_days": r["duration_days"],
         "max_delegates": r["max_delegates"], "cap": r["max_delegates"], "location_type": r["location_type"],
-        "family": m.get("family"), "cert": m.get("cert"), "model_note": m.get("note"),
+        "family": r.get("family"), "cert": r.get("cert_line"), "model_note": r.get("model_note"),
+        "facts_incomplete": (not r.get("family")) or (not r.get("cert_line")),
         "agenda_url": r.get("agenda_url"), "agenda_status": "live" if r.get("agenda_url") else "build-pending",
-        "supporting_links": SUPPORTING.get(code, []),
+        "supporting_links": r.get("supporting_links") or [],
         "matched_alias": matched,
         "price_ref": "ee-pricing (course default) + ee-customer-rates (exceptions) — §4A.7; NEVER from public.courses",
     }
 
 def main():
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print(__doc__); sys.exit(0)
     args = [a for a in sys.argv[1:] if a != "--json"]
     as_json = "--json" in sys.argv
     if not args:
@@ -97,7 +107,15 @@ def main():
         print(json.dumps(res, indent=1)); return
     if not res:
         print("no course matched — qualify with the customer, or add an alias to public.courses"); sys.exit(1)
+    if res.get("ambiguous"):
+        print(f"⚠ AMBIGUOUS — the enquiry mentions {', '.join(res['variant_words'])!r} but the closest match "
+              f"({res['code']} {res['name']}, via alias \"{res['matched_alias']}\") does not carry it.")
+        print("  → qualify with the customer before quoting; do not guess between the base course and the variant.")
+        sys.exit(1)
     print(f"■ {res['code']} — {res['name']}")
+    if res.get("facts_incomplete"):
+        print("  ⛔ FACTS INCOMPLETE — this course's family/cert columns are NULL in public.courses.")
+        print("     Do NOT draft from this result; fill the columns (or ask Pete) first.")
     print(f"  family:   {res['family']}   (matched on \"{res['matched_alias']}\")")
     print(f"  duration: {res['duration_days']} day(s)   cap: {res['cap']}   {res['location_type'] or ''}")
     print(f"  cert:     {res['cert']}")
