@@ -133,6 +133,16 @@ def main():
         missing = []
         for t in etray:
             try:
+                # PRIMARY test: the thread is CRM-covered when a ledger touch links it to a
+                # contact (the intake writes exactly that). The from-address heuristic below
+                # is only the fallback for a thread with NO touches — a website-form enquiry's
+                # first message is FROM info@sygma-solutions.com (the form notifier), so the
+                # address lookup alone false-blocks properly-intaken threads (found 10 Jul 2026
+                # on the Tom Delaney thread, contact + arrival touch both present).
+                linked = _tl.cc_sql(
+                    f"SELECT 1 FROM enquiry_touches WHERE thread_id='{t['id']}' AND contact_id IS NOT NULL LIMIT 1")
+                if linked:
+                    continue
                 full = g.get_thread(t["id"])
                 hdrs = {h["name"].lower(): h["value"] for h in full["messages"][0]["payload"]["headers"]}
                 m = _re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", hdrs.get("from", ""))
