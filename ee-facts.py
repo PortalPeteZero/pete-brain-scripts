@@ -16,8 +16,10 @@ Resolution is a deterministic longest-alias match, NOT fuzzy semantic search. Tw
 - FACTS INCOMPLETE: a matched course whose family/cert_line columns are NULL prints a loud
   banner — silent Nones never reach a draft.
 
-**PRICES are NOT here** (§4A.7): they live in the CC (`ee-pricing` course defaults + the
-`ee-customer-rates` exceptions layer). This tool returns a `price_ref` pointer, never a number.
+**PRICES are live from the Portal DB** (since 2026-07-10, superseding the old §4A.7 "prices in the
+CC notes / never Portal" rule): `public.price_list` (standard) + `public.customer_pricing` (honour +
+negotiated overrides). `lookup()` returns a live `price` book; `resolve_line(item_key, thread_id=…,
+contact_ref=…)` resolves one line incl. overrides. Empty `price` = DB unreadable → never quote blind.
 
 Usage:
   VAULT=/tmp/pbs python3 ee-facts.py "EUSR Cat 1 & 2, private on-site, 6 delegates"
@@ -63,6 +65,49 @@ def _variant_gap(text, row):
                 gaps.append(w)
     return gaps
 
+def _sql_str(v):
+    """Escape a string for safe inline SQL (internal values only: item_keys, our own thread/uuid ids)."""
+    return "'" + str(v).replace("'", "''") + "'"
+
+# ── PRICING — live from the Portal price_list / customer_pricing tables (the SSOT since 2026-07-10) ──
+# Replaces the old ee-pricing/ee-customer-rates NOTE-scraping. Prices are DATA in the DB, resolved here.
+def price_book():
+    """Current standard price list, live from public.price_list. {item_key: {amount, unit, category, label}}.
+    Empty dict on DB failure — callers must treat empty as 'SSOT unreadable' and fall back, never quote blind."""
+    try:
+        rows = portal_q("SELECT item_key, amount, unit, category, label FROM price_list "
+                        "WHERE course_ref IS NULL AND now() <@ tstzrange(effective_from, effective_to, '[)')")
+        return {r["item_key"]: {"amount": float(r["amount"]), "unit": r["unit"],
+                                "category": r["category"], "label": r["label"]} for r in rows}
+    except Exception:
+        return {}
+
+def resolve_line(item_key, thread_id=None, contact_ref=None):
+    """Resolve ONE priced line to its amount. A matched customer_pricing override (thread OR contact,
+    per-line, honour + negotiated rates) wins over the standard price_list; else the list at now().
+    Returns (amount: float|None, source: str). PER-LINE by design so an open-course honour can never
+    bleed onto a different course/item the same customer later enquires about."""
+    try:
+        keys = []
+        if thread_id:   keys.append("thread_id = %s"   % _sql_str(thread_id))
+        if contact_ref: keys.append("customer_ref = %s" % _sql_str(contact_ref))
+        if keys:
+            ov = portal_q(
+                "SELECT agreed_amount, discount_pct FROM customer_pricing WHERE item_key=%s AND (%s) "
+                "AND now() <@ tstzrange(effective_from, effective_to, '[)') "
+                "ORDER BY (thread_id = %s) DESC, (course_ref IS NOT NULL) DESC, (agreed_amount IS NOT NULL) DESC, "
+                "effective_from DESC, created_at DESC LIMIT 1"
+                % (_sql_str(item_key), " OR ".join(keys), _sql_str(thread_id or "")))
+            if ov and ov[0].get("agreed_amount") is not None:
+                return float(ov[0]["agreed_amount"]), "customer-override"
+        st = portal_q("SELECT amount FROM price_list WHERE item_key=%s AND course_ref IS NULL "
+                      "AND now() <@ tstzrange(effective_from, effective_to, '[)') LIMIT 1" % _sql_str(item_key))
+        if st:
+            return float(st[0]["amount"]), "list"
+    except Exception:
+        pass
+    return None, "unreadable"
+
 def lookup(text):
     """Deterministic resolve: the LONGEST alias that appears in the enquiry wins — so
     'cat 1 and 2 combined' matches the combined course (alias 'cat 1 and 2'), never Cat 1 alone.
@@ -92,7 +137,10 @@ def lookup(text):
         "agenda_url": r.get("agenda_url"), "agenda_status": "live" if r.get("agenda_url") else "build-pending",
         "supporting_links": r.get("supporting_links") or [],
         "matched_alias": matched,
-        "price_ref": "ee-pricing (course default) + ee-customer-rates (exceptions) — §4A.7; NEVER from public.courses",
+        "price": price_book(),  # live standard figures from public.price_list (the SSOT)
+        "price_note": ("Standard figures above are live from public.price_list. For a customer/thread that "
+                       "has an honour or negotiated rate, resolve each line with resolve_line(item_key, "
+                       "thread_id=…, contact_ref=…). Empty 'price' = DB unreadable → do NOT quote blind."),
     }
 
 def main():
@@ -122,7 +170,13 @@ def main():
     print(f"  agenda:   {res['agenda_url'] or '(no agenda page yet — do NOT promise one; ask Pete before quoting an agenda)'}  [{res['agenda_status']}]")
     if res["supporting_links"]:
         print(f"  also:     {', '.join(res['supporting_links'])}")
-    print(f"  price:    {res['price_ref']}")
+    pb = res.get("price") or {}
+    if pb:
+        figs = " · ".join(f"{k} £{v['amount']:g}/{v['unit']}" for k, v in sorted(pb.items()))
+        print(f"  price:    {figs}   [live from public.price_list]")
+        print(f"            honour/negotiated → resolve_line(item_key, thread_id=…, contact_ref=…)")
+    else:
+        print(f"  price:    ⛔ price_list unreadable — do NOT quote blind")
     print(f"  model:    {res['model_note']}")
 
 if __name__ == "__main__":

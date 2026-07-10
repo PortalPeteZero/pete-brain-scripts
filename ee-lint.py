@@ -39,28 +39,39 @@ def _doc_rules():
         return [{"id": "rules-block-unparseable", "pattern": ".^", "reason": "the ee-lint-rules JSON in workflow-design failed to parse — fix it", "always_fail": True}]
 
 def _allowed_prices():
-    """£ amounts DERIVED LIVE from the price SSOT notes — ee-pricing (course defaults)
-    + ee-customer-rates (negotiated exceptions) — never hardcoded here. Every £ figure
-    in either note becomes a base, plus small multiples (per-head cert sums, multi-day,
-    small groups). A price change in the note propagates with zero code change (SSOT).
-    Returns None if the SSOT can't be read, which makes the price cross-check a no-op
-    rather than blocking every send on a transient DB blip."""
-    rows = _cc("SELECT body FROM vault_notes WHERE slug IN ('ee-pricing','ee-customer-rates')")
-    if not rows:
+    """£ amounts DERIVED LIVE from the Portal price SSOT tables — public.price_list (standard)
+    + public.customer_pricing (honour + negotiated overrides) — never hardcoded here. Every
+    amount becomes a base, plus VAT (×1.2) and small multiples/sums (per-head cert sums,
+    multi-day, small groups). A price change in the DB propagates with zero code change.
+    Returns None if the SSOT can't be read → price cross-check becomes a no-op rather than
+    blocking every send on a transient DB blip. (Repointed CC-notes → Portal-DB 2026-07-10.)"""
+    import importlib.util as _u
+    try:
+        _s = _u.spec_from_file_location("_ef", f"{VAULT}/ee-facts.py")
+        _ef = _u.module_from_spec(_s)
+        try: _s.loader.exec_module(_ef)
+        except SystemExit: pass
+        pb = _ef.price_book()  # {item_key: {amount,...}} live from price_list
+        base = {int(round(v["amount"])) for v in pb.values() if v.get("amount") is not None}
+        ov = _ef.portal_q("SELECT DISTINCT agreed_amount FROM customer_pricing WHERE agreed_amount IS NOT NULL")
+        base |= {int(round(float(r["agreed_amount"]))) for r in ov}
+    except Exception:
         return None
-    base = set()
-    for r in rows:
-        for m in re.finditer(r"£\s?([\d,]+)", r.get("body", "") or ""):
-            try:
-                base.add(int(m.group(1).replace(",", "")))
-            except ValueError:
-                pass
     if not base:
         return None
     allowed = set(base)
     for b in base:
-        for k in range(2, 11):
+        allowed.add(int(round(b * 1.2)))          # inc-VAT twin
+        for k in range(2, 13):                     # multi-day / multi-head (cap 12)
             allowed.add(b * k)
+    # sums of a delivery/list base + n cert/reg fees (n up to cap) — real composite quote totals
+    small = {b for b in base if b <= 40}           # cert/reg fees
+    biggish = {b for b in base if b > 40}          # delivery/list rates
+    for d in biggish:
+        for c in small:
+            for n in range(1, 13):
+                allowed.add(d + c * n)
+                allowed.add(int(round((d + c * n) * 1.2)))
     return allowed
 
 def lint(body, payload=None):
