@@ -101,7 +101,7 @@ def main():
     print(f"  family:   {res['family']}   (matched on \"{res['matched_alias']}\")")
     print(f"  duration: {res['duration_days']} day(s)   cap: {res['cap']}   {res['location_type'] or ''}")
     print(f"  cert:     {res['cert']}")
-    print(f"  agenda:   {res['agenda_url'] or '(build pending — Pete owes)'}  [{res['agenda_status']}]")
+    print(f"  agenda:   {res['agenda_url'] or '(no agenda page yet — do NOT promise one; ask Pete before quoting an agenda)'}  [{res['agenda_status']}]")
     if res["supporting_links"]:
         print(f"  also:     {', '.join(res['supporting_links'])}")
     print(f"  price:    {res['price_ref']}")
