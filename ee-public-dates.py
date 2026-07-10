@@ -28,9 +28,22 @@ Usage:
 import os, sys, re, json, subprocess, datetime as dt, importlib.util
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
-SHEET = "1_kS3-typOQs42PHNjWDe_x7uWqZWPVNeUNcTPCOATiU"
+SHEET = "1_kS3-typOQs42PHNjWDe_x7uWqZWPVNeUNcTPCOATiU"  # infra config: master-bookings Sheet id (stable)
 WINDOW_DAYS = 120
-CAP = 8
+
+def _public_cap():
+    """Public/open-course cap (the EUSR awarding-body rule) resolved LIVE from courses.max_delegates
+    of the EUS Category 1 course (C004, the public course) — not a bare literal. Fallback 8 if unreadable."""
+    try:
+        import importlib.util as _u
+        _s = _u.spec_from_file_location("_ef", f"{VAULT}/ee-facts.py"); _ef = _u.module_from_spec(_s)
+        try: _s.loader.exec_module(_ef)
+        except SystemExit: pass
+        r = _ef.portal_q("SELECT max_delegates FROM courses WHERE code='C004'")
+        return int(r[0]["max_delegates"]) if r and r[0].get("max_delegates") else 8
+    except Exception:
+        return 8
+CAP = _public_cap()
 
 def _load(name, path):
     s = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m

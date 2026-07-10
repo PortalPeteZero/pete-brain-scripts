@@ -261,6 +261,20 @@ def stage_id(name):
         raise ValueError(f"unknown stage '{name}' — valid stages: {sorted(_STAGES)}. Nothing written for this item.")
     return sid
 
+def stage_name(sid):
+    """Reverse of stage_id: a stage id → its Title-cased name, live from pipeline_stages (never hardcoded)."""
+    global _STAGES
+    if _STAGES is None:
+        _STAGES = {r["name"].lower(): r["id"] for r in portal_get("pipeline_stages", select="id,name")}
+    for nm, i in _STAGES.items():
+        if i == sid:
+            return nm.title()
+    return "—"
+
+def _open_deal_stage_ids():
+    """Stage ids that count as an OPEN deal (Quoted + Customer) — resolved live, not hardcoded 2/3."""
+    return {i for i in (stage_id("Quoted"), stage_id("Customer")) if i is not None}
+
 def ensure_tag(name, apply, manifest):
     rows = portal_get("tags", select="id,name", name=f"eq.{urllib.parse.quote(name)}")
     if rows: return rows[0]["id"]
@@ -358,7 +372,6 @@ def write_knowledge(p, contact_id, apply, aid=None):
     return rel, slug
 
 # ---- CRM-first company read (P2) ------------------------------------------------------------
-_STAGE_NAMES = {1: "New", 2: "Quoted", 3: "Customer", 4: "Lost"}
 def crm_first(p):
     """BEFORE any write: show the email-domain's contact family + recent colleague activity
     (Sue often acts first). Returns {'family': [...], 'open_deal': contact-or-None}."""
@@ -375,9 +388,9 @@ def crm_first(p):
     open_deal = None
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
     for c in fam:
-        st = _STAGE_NAMES.get(c.get("stage_id"), "—")
+        st = stage_name(c.get("stage_id"))
         print(f"      · {c['full_name']} <{c['email']}> stage={st}")
-        if c.get("stage_id") in (2, 3) and (c.get("email") or "").lower() != em:
+        if c.get("stage_id") in _open_deal_stage_ids() and (c.get("email") or "").lower() != em:
             open_deal = open_deal or c
         try:
             acts = portal_get("contact_activities", select="occurred_at,subject,created_by_name",
@@ -425,7 +438,7 @@ def log_enquiry(p, apply, manifest):
         od = info["open_deal"]
         raise ValueError(
             f"domain already has an open deal: {od['full_name']} <{od['email']}> at stage "
-            f"{_STAGE_NAMES.get(od.get('stage_id'))} — attach this touch to the deal owner "
+            f"{stage_name(od.get('stage_id'))} — attach this touch to the deal owner "
             f"(or pass --new-deal if this genuinely is a separate deal). Nothing written.")
     if existing:
         cid = existing["id"]

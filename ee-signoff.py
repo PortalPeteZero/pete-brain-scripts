@@ -26,7 +26,16 @@ Usage:
 import os, sys, json, subprocess, datetime as dt
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
-SOURCE_BEARING = ("pricing", "dates", "factual", "routing", "structure")
+def _source_bearing():
+    """Source-bearing correction categories, derived LIVE from the CC CHECK ee_sourcebearing_needs_ref
+    (the authority) so ee-signoff and the DB can never disagree. Minimal fallback if unreadable."""
+    try:
+        import re as _re
+        d = cc("SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conname='ee_sourcebearing_needs_ref'")[0]["d"]
+        cats = tuple(sorted(set(_re.findall(r"'([a-z]+)'::ee_correction_category", d))))
+        return cats or ("pricing","dates","factual","routing","structure")
+    except Exception:
+        return ("pricing","dates","factual","routing","structure")
 
 def cc(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql], capture_output=True, text=True,
@@ -55,7 +64,7 @@ def main():
             since = args[i + 1]
     ts = since_clause(since)
     W = f"source='live' AND created_at >= '{ts}'"
-    inlist = ",".join(f"'{c}'" for c in SOURCE_BEARING)
+    inlist = ",".join(f"'{c}'" for c in _source_bearing())
 
     print(f"=== EE sign-off — reconciling touches since {ts} ===\n")
 
@@ -112,7 +121,7 @@ def main():
     _sp = _ilu.spec_from_file_location("telog", f"{VAULT}/te-log.py")
     _tl = _ilu.module_from_spec(_sp); _sp.loader.exec_module(_tl)
     verb_rows = cc(f"SELECT kind, contact_id, vault_path FROM public.enquiry_touches WHERE {W} AND kind IN ('won','booked','lost') AND contact_id IS NOT NULL")
-    want = {"won": 3, "booked": 3, "lost": 4}
+    want = {v: _tl.stage_id(_tl.VERB_STAGE[v]) for v in ("won", "booked", "lost")}
     stage_drift = []
     for v in verb_rows:
         c = _tl.portal_get("contacts", select="stage_id,full_name", id=f"eq.{v['contact_id']}")

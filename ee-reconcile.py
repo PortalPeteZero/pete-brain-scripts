@@ -77,7 +77,7 @@ def main():
         drift.append(f"(tray check unavailable: {type(e).__name__} — verify Gmail access)")
 
     # 2. quoted-and-quiet — judged COMPANY-wide (a chase to a colleague counts for the deal)
-    quoted = tl.portal_get("contacts", select="id,full_name,email,updated_at", stage_id="eq.2")
+    quoted = tl.portal_get("contacts", select="id,full_name,email,updated_at", stage_id=f"eq.{tl.stage_id('Quoted')}")
     tray_emails = {s for s, _ in tray_senders.values() if s}
     for c in quoted:
         em = (c.get("email") or "").lower()
@@ -115,7 +115,7 @@ def main():
         if re.search(r"\bbooked\b|\bbooking confirmed\b|\bwon\b", text) and a["contact_id"] not in seen:
             seen.add(a["contact_id"])
             c = tl.portal_get("contacts", select="full_name,email,stage_id", id=f"eq.{a['contact_id']}")
-            if c and c[0].get("stage_id") != 3:
+            if c and c[0].get("stage_id") != tl.stage_id("Customer"):
                 drift.append(f"sue-says-booked: {c[0]['full_name']} <{c[0].get('email')}> — '{(a.get('body') or a.get('subject'))[:60]}' by {a.get('created_by_name')} but stage is {c[0].get('stage_id')} not Customer")
 
     # 5. ledger orphans
