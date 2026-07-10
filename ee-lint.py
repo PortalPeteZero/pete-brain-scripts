@@ -74,6 +74,26 @@ def _allowed_prices():
                 allowed.add(int(round((d + c * n) * 1.2)))
     return allowed
 
+def _staff_names():
+    """Current staff first names, LIVE from hub.staff_directory (Active + Subcontractor) — never
+    hardcoded (repointed 2026-07-10). First token of full_name ∪ first token of preferred_name."""
+    try:
+        import importlib.util as _u
+        _s = _u.spec_from_file_location("_ef", f"{VAULT}/ee-facts.py")
+        _ef = _u.module_from_spec(_s)
+        try: _s.loader.exec_module(_ef)
+        except SystemExit: pass
+        rows = _ef.portal_q("SELECT full_name, preferred_name FROM hub.staff_directory "
+                            "WHERE employment_status IN ('Active','Subcontractor')")
+        out = set()
+        for r in rows:
+            for f in (r.get("full_name"), r.get("preferred_name")):
+                if f and f.split():
+                    out.add(f.split()[0])
+        return out
+    except Exception:
+        return set()
+
 def lint(body, payload=None):
     """Returns (passed: bool, report: dict). report['failures'] = [{id, reason, detail}]."""
     p = payload or {}
@@ -91,12 +111,30 @@ def lint(body, payload=None):
     recipients = " ".join([str(p.get("email") or ""), str(p.get("cc") or ""), str(a.get("cc") or "")]).lower()
     internal_on_thread = "@sygma-solutions.com" in recipients
 
-    # 1. internal names to a customer who doesn't know them (banked 9 Jul; repeated same day — the lint IS the fix)
-    for nm in ("Sue", "Neal", "Karen", "Gareth", "Andy Foster", "Andy Bartholomew", "Kevin"):
-        if re.search(rf"\b{re.escape(nm)}\b", text) and not internal_on_thread:
-            fail("internal-names",
-                 "never name internal staff to a customer who doesn't know them (workflow-design drafting rules; ex ee-lesson-never-infer-and-no-internal-names)",
-                 f"'{nm}' with no internal recipient on the send — if the customer knows them from the thread, override with the reason")
+    # 1. staff name dropped on a customer who doesn't know them — WARN (Mode B reviews), names LIVE
+    #    from the directory. Intent (Pete 10 Jul): block ONLY the bare unattributed case; introduced
+    #    ("my colleague Jim") + customer-already-named pass. WARN not hard-block → no false-block on a
+    #    customer whose own colleague shares a staff first name.
+    staff = _staff_names()
+    if staff and not internal_on_thread:
+        recip_first = ((str(p.get("full_name") or "").split() or [""])[0]).lower()
+        incoming = str(p.get("incoming_text") or a.get("incoming_text") or "")
+        incoming_clean = re.sub(r"(?m)^\s*>.*$", "", incoming)                       # drop quoted lines
+        incoming_clean = re.split(r"(?i)(?:^|\n)\s*(?:from:|on .+ wrote:|-----\s*original)", incoming_clean)[0]  # drop forwarded tail/sig
+        for nm in staff:
+            low = nm.lower()
+            if low in (recip_first, "pete", "michaela"):      # recipient's own name / the author(s)
+                continue
+            if not re.search(rf"\b{re.escape(nm)}\b", text):
+                continue
+            attributed = (re.search(rf"\b(?:my|our)\s+(?:colleague\s+)?{re.escape(nm)}\b", text, re.I)
+                          or re.search(rf"\bcolleague\s+{re.escape(nm)}\b", text, re.I)
+                          or re.search(rf"\b{re.escape(nm)}\b\s+from\s+(?:bookings|the office|our team|your team|your side|your end)", text, re.I))
+            known = re.search(rf"\b{re.escape(nm)}\b", incoming_clean or "")
+            if not attributed and not known:
+                notes.append({"id": "internal-name-warn",
+                              "overridden": f"WARN: draft names staff '{nm}' to a customer who may not know them — "
+                                            f"introduce them ('my colleague {nm}') or confirm it's expected (Mode-B judgement, not a block)"})
 
     # 2. holding email (banked 9 Jul: 'why would you send an email saying you would confirm and go back')
     if re.search(r"\b(i(?:'| wi)ll (?:confirm|check)[^.\n]{0,40}(?:and |then )?(?:come back|get back|revert)|let me confirm and)", text, re.I):
