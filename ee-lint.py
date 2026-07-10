@@ -40,7 +40,7 @@ def _doc_rules():
 
 def _allowed_prices():
     """£ amounts derivable from ee-pricing: the base figures + small multiples (per-head cert sums etc.)."""
-    base = {965, 1930, 145, 34, 35}
+    base = {965, 1930, 175, 145, 34, 35}  # 175 = open-course pp (corrected 10 Jul 2026); 145 kept transitionally for pre-10-Jul quotes being honoured
     allowed = set(base)
     for b in base:
         for k in range(2, 11):

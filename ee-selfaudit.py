@@ -44,7 +44,7 @@ def main():
 
     # 2. SSOT spot checks
     pricing = tl.cc_sql("SELECT body FROM vault_notes WHERE slug='ee-pricing'")[0]["body"]
-    core_ok = all(x in pricing for x in ("£965", "£1,930", "£145", "£35pp")) and "back to back" in pricing.lower()
+    core_ok = all(x in pricing for x in ("£965", "£1,930", "£175", "£35pp")) and "back to back" in pricing.lower()
     sweep = tl.cc_sql("SELECT slug FROM vault_notes WHERE body ILIKE '%ONE EUSR fee (%' OR body ILIKE '%included in the combined quote%' OR body ILIKE '%included in the quoted cost%' ORDER BY slug")
     allowed = {"ee-hardening-plan", "ee-audit-findings-2026-07-09", "enquiry-engine-agenda-library-map"}
     sweep_bad = [r["slug"] for r in (sweep or []) if r["slug"] not in allowed]
