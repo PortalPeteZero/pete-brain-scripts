@@ -17,17 +17,27 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # ---------- CC SQL ----------
 
-def cc_sql(q):
-    """Run SQL against the CC; returns parsed JSON rows (list) or raises on ERROR."""
-    r = subprocess.run(["python3", os.path.join(VAULT, "cc-sql.py"), q],
-                       capture_output=True, text=True)
-    out = (r.stdout or "").strip()
-    if "ERROR" in out and not out.startswith("["):
-        raise RuntimeError(f"cc-sql: {out[:400]}")
-    try:
-        return json.loads(out) if out else []
-    except json.JSONDecodeError:
-        return []
+def cc_sql(q, _retries=3):
+    """Run SQL against the CC; returns parsed JSON rows (list) or raises on ERROR.
+    Transient upstream errors (5xx/timeouts) retry with backoff -- a cron must not
+    die on a single flaky round-trip."""
+    import time
+    last = ""
+    for attempt in range(_retries):
+        r = subprocess.run(["python3", os.path.join(VAULT, "cc-sql.py"), q],
+                           capture_output=True, text=True)
+        out = (r.stdout or "").strip()
+        if "ERROR" in out and not out.startswith("["):
+            last = out
+            if any(t in out for t in ("503", "504", "502", "timeout", "reset")):
+                time.sleep(2 * (attempt + 1))
+                continue
+            raise RuntimeError(f"cc-sql: {out[:400]}")
+        try:
+            return json.loads(out) if out else []
+        except json.JSONDecodeError:
+            return []
+    raise RuntimeError(f"cc-sql (after {_retries} retries): {last[:400]}")
 
 
 def esc(s):

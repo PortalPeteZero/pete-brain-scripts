@@ -68,6 +68,32 @@ _ACTIONABLE_ASKS = {'reply', 'decision', 'review', 'rsvp'}
 _REPLY_SHAPED_ASKS = {'reply', 'rsvp'}
 
 
+def _load_fence_matrix():
+    """Triage Engine P3: the ask<->verb matrix lives in the `json triage-lint-rules`
+    fence in the email-workflow note (ONE rule source, shared with triage-lint.py).
+    The built-in sets above are the OFFLINE FALLBACK -- never break a triage batch on
+    a flaky CC round-trip. Returns the matrix dict or None."""
+    try:
+        import importlib, os as _os, sys as _sys
+        _sys.path.insert(0, _os.environ.get('VAULT', '/tmp/pbs'))
+        tl = importlib.import_module('triage_lib')
+        for r in tl.load_lint_rules():
+            if r.get('id') == 'ask-verb-matrix':
+                return r.get('matrix')
+    except Exception:
+        return None
+    return None
+
+
+_FENCE_MATRIX = _load_fence_matrix()
+if _FENCE_MATRIX:
+    _VALID_ASKS = set(_FENCE_MATRIX.keys())
+    _ACTIONABLE_ASKS = {a for a, verbs in _FENCE_MATRIX.items()
+                        if any(v in ('Reply', 'Task', 'Hand to') for v in verbs)}
+    _REPLY_SHAPED_ASKS = {a for a, verbs in _FENCE_MATRIX.items()
+                          if 'Task' not in verbs and 'Reply' in verbs}
+
+
 def _is_allowed_verb(action: str) -> bool:
     a = (action or '').strip()
     if a in _EXACT_VERBS:
