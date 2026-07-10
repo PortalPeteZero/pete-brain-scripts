@@ -47,7 +47,7 @@ SECRETS = f"{VAULT}/Library/processes/secrets"
 PORTAL = json.load(open(f"{SECRETS}/sygma-portal-supabase-keys.json"))
 PORTAL_URL, PORTAL_KEY = PORTAL["url"], PORTAL["service_role"]
 CC_REF = "zhexcaflgahdcbzvbyfq"
-SB_TOKEN = open(f"{SECRETS}/supabase-token").read().strip()
+SB_TOKEN = (os.environ.get("SUPABASE_TOKEN") or "").strip() or open(f"{SECRETS}/supabase-token").read().strip()
 
 # CRM activity_type is CHECK-constrained to these only -- map our richer kinds onto them,
 # carrying the real kind in the subject so nothing is lost. (Verified live 27 Jun.)

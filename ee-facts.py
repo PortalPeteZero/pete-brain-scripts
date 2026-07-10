@@ -26,7 +26,7 @@ Usage:
 import os, sys, json, re, urllib.request
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
-SB_TOKEN = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
+SB_TOKEN = (os.environ.get("SUPABASE_TOKEN") or "").strip() or open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
 PORTAL_REF = "rsczwfstwkthaybxhszy"
 
 # Variant words that MUST be reflected by the matched course (name, or family for 'combined').
