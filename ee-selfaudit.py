@@ -73,6 +73,13 @@ def main():
     lines.append(("✅" if disc == 0 else "🔴") + f" sends missing retrieval-receipt or lint-pass since P3: {disc}")
     red += 0 if disc == 0 else 1
 
+    # 6. regenerate the workflow-design banked index from the DB (P5.5 — it can never lag again)
+    if not dry:
+        rg = subprocess.run(["python3", f"{VAULT}/ee-index-gen.py"], capture_output=True, text=True,
+                            env={**os.environ, "VAULT": VAULT})
+        lines.append(("✅" if rg.returncode == 0 else "🔴") + " banked-knowledge index regenerated from the DB")
+        red += 0 if rg.returncode == 0 else 1
+
     body = f"## EE self-audit — {'ALL GREEN' if red == 0 else str(red) + ' RED'}\n" + "\n".join(f"- {l}" for l in lines)
     print(body)
     if not dry:
