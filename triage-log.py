@@ -95,6 +95,12 @@ def capture(dec, apply=False, manifest=None):
 
     # 1) ledger row FIRST (write-order rule): applying
     ov = bool(dec.get("overridden"))
+    # lint bank: the payload's lint verdict MUST land on the row (ledger spec; found
+    # dropped 10 Jul 2026 by triage-health goal 3 — 9 applied auto rows, NULL lint)
+    lint_rep = dec.get("lint_report")
+    lint_passed = dec.get("lint_passed", (lint_rep or {}).get("passed") if isinstance(lint_rep, dict) else None)
+    lp = "NULL" if lint_passed is None else ("true" if lint_passed else "false")
+    lr = "NULL" if lint_rep is None else "'" + tl.esc(json.dumps(lint_rep)) + "'::jsonb"
     if row:  # pending proposal being finalised
         tl.cc_sql("UPDATE triage_decisions SET "
                   f"final_ask={q(fin.get('ask'))}, final_verb={q(fin.get('verb'))}, "
@@ -103,19 +109,22 @@ def capture(dec, apply=False, manifest=None):
                   f"overridden={'true' if ov else 'false'}, "
                   f"overridden_at={'now()' if ov else 'NULL'}, "
                   f"override_reason={a(dec.get('override_reason'))}, "
+                  f"lint_passed={lp}, lint_report={lr}, basis_refs={a(dec.get('basis_refs'))}, "
                   f"apply_status='applying', decided_at=now() WHERE message_id='{tl.esc(mid)}'")
     else:
         tl.cc_sql("INSERT INTO triage_decisions (thread_id, sender, message_id, fact_id, "
                   "proposed_ask, proposed_verb, proposed_label, proposed_project, proposed_priority, "
                   "final_ask, final_verb, final_label, final_project, final_priority, "
-                  "overridden, overridden_at, override_reason, decided_by, apply_status) VALUES ("
+                  "overridden, overridden_at, override_reason, decided_by, "
+                  "lint_passed, lint_report, basis_refs, apply_status) VALUES ("
                   f"{q(dec['thread_id'])}, {q(dec.get('sender'))}, {q(mid)}, {fact_id}, "
                   f"{q(pro.get('ask'))}, {q(pro.get('verb'))}, {q(pro.get('label'))}, "
                   f"{q(pro.get('project'))}, {q(pro.get('priority'))}, "
                   f"{q(fin.get('ask'))}, {q(fin.get('verb'))}, {q(fin.get('label'))}, "
                   f"{q(fin.get('project'))}, {q(fin.get('priority'))}, "
                   f"{'true' if ov else 'false'}, {'now()' if ov else 'NULL'}, "
-                  f"{a(dec.get('override_reason'))}, {q(dec.get('decided_by') or 'pete')}, 'applying')")
+                  f"{a(dec.get('override_reason'))}, {q(dec.get('decided_by') or 'pete')}, "
+                  f"{lp}, {lr}, {a(dec.get('basis_refs'))}, 'applying')")
     if manifest:
         manifest.write(json.dumps({"step": "ledger", "message_id": mid}) + "\n")
 

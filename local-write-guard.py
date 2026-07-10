@@ -218,7 +218,7 @@ def _candidates_from_tool(tool_name, ti):
 # candidate is only kept when it is unmistakably a FILESYSTEM PATH (has a separator / ~ / ./ , or is
 # a bare filename WITH an extension). This drops SQL comparisons (`WHERE ts > '2026-07-05'`), numeric
 # tests (`[ $x > 5 ]`), and package args (`pip install foo bar`) — none of which are path-like.
-_REDIR_RE = re.compile(r"(?<![0-9&])>>?\s*([^\s;|&><]+)")          # > file / >> file (not 2>&1, >&2)
+_REDIR_RE = re.compile(r"(?<![0-9&<=-])>>?\s*([^\s;|&><]+)")       # > file / >> file (not 2>&1, >&2, ->, =>, <>)
 _TEE_RE = re.compile(r"\btee\s+(?:-a\s+)?([^\s;|&><]+)")
 _CPMV_RE = re.compile(r"\b(?:cp|mv)\s+(?:-[A-Za-z]+\s+)*.*?\s([^\s;|&><]+)\s*(?:;|\||&|$)")  # NOT install/rsync
 _PYOPEN_RE = re.compile(r"""open\(\s*['"]([^'"]+)['"]\s*,\s*['"][aw]""")
@@ -231,14 +231,53 @@ def _pathlike(t):
     return bool(_PATHLIKE_RE.search(t))
 
 
+_HEREDOC_RE = re.compile(r"<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?\n.*?\n\1(?:\n|$)", re.S)
+_SQUOTE_RE = re.compile(r"'[^']*'")
+_DQUOTE_RE = re.compile(r'"[^"]*"')
+
+
+def _mask_shell_data(cmd):
+    """Mask heredoc BODIES and quoted strings — text there is DATA, so a `>` inside it is
+    not a redirect (10 Jul 2026: '2k->8.1k' / '17/17' / print(...,'->',...) inside quoted
+    args and heredocs each false-positive-blocked a legitimate command). Quoted segments
+    are masked with RESOLVABLE tokens: a quoted string can't CONTAIN an operator, but it
+    can BE an operator's target (`cp x "/home/y.md"`), so a captured token resolves back
+    to its content. Heredoc bodies mask to nothing — stdin data is never a shell target."""
+    masked = _HEREDOC_RE.sub(" __HDOC__ ", cmd)
+    lookup = {}
+
+    def _tok(m):
+        key = "@Q%d@" % len(lookup)
+        lookup[key] = m.group(0)[1:-1]  # content without the quotes
+        return key
+
+    masked = _SQUOTE_RE.sub(_tok, masked)
+    masked = _DQUOTE_RE.sub(_tok, masked)
+    return masked, lookup
+
+
+_QTOK_RE = re.compile(r"^@Q(\d+)@$")
+
+
 def _write_targets_from_shell(cmd):
     targets = []
-    for rx in (_REDIR_RE, _TEE_RE, _CPMV_RE, _PYOPEN_RE):
-        for m in rx.finditer(cmd):
-            t = m.group(1).strip().strip('"\'')
+    # redirects / tee / cp / mv are SHELL syntax → scan the masked text (operators can't
+    # hide inside quotes/heredocs; a quoted TARGET comes back via the token lookup).
+    # python open(...,'w') is python syntax that legitimately lives INSIDE quotes and
+    # heredocs → scan the original text.
+    masked, lookup = _mask_shell_data(cmd)
+    for rx, text in ((_REDIR_RE, masked), (_TEE_RE, masked),
+                     (_CPMV_RE, masked), (_PYOPEN_RE, cmd)):
+        for m in rx.finditer(text):
+            t = m.group(1).strip()
+            if t in lookup:
+                t = lookup[t]
+            t = t.strip().strip('"\'')
             # unexpanded shell var / command-substitution ($VAR, ${VAR}, $(...), `...`) — the guard
             # can't know where it resolves, so per the CONSERVATISM RULE it must ALLOW, not block.
             if "$" in t or "`" in t:
+                continue
+            if t == "__HDOC__" or _QTOK_RE.match(t):
                 continue
             if t and t not in _IGNORE_TARGETS and not t.startswith("/dev/") and _pathlike(t):
                 targets.append(t)
