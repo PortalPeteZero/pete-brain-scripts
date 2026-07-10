@@ -362,7 +362,8 @@ def _result(tid, msg_count, latest_direction, pete_replied_since, open_question,
     }
 
 
-def classify_inbox(inbox_dump: Iterable[dict], pete_email: str = PETE_DEFAULT) -> list[dict]:
+def classify_inbox(inbox_dump: Iterable[dict], pete_email: str = PETE_DEFAULT,
+                   use_facts: bool = True) -> list[dict]:
     out = []
     for t in inbox_dump:
         r = classify_thread(t, pete_email=pete_email)
@@ -372,8 +373,56 @@ def classify_inbox(inbox_dump: Iterable[dict], pete_email: str = PETE_DEFAULT) -
         subject = (msgs[-1].get("subject") if msgs else "") or ""
         last_body = (msgs[-1].get("body") if msgs else "") or ""
         r["suggested_verb"] = _suggest_verb(r.get("ask_classification"), subject, last_body)
+        if use_facts:
+            sender = ""
+            for msg in msgs:
+                frm = msg.get("from") or msg.get("from_addr") or ""
+                m = re.search(r"[\w.+-]+@[\w.-]+", frm)
+                if m and not is_pete(m.group(0), pete_email):
+                    sender = m.group(0).lower()
+            r.update(facts_route(sender))
         out.append(r)
     return out
+
+
+# ---------- Triage Engine P1: facts-first routing layer ----------
+#
+# FACTS ROUTE, CONTENT CLASSIFIES. The triage_routing_facts table supplies the
+# ROUTING proposal (label / verb / project / priority) for a known sender; the
+# ASK always comes from the content heuristics above and is never short-circuited
+# by a fact -- the content-anomaly veto (triage-lint) depends on the ask being
+# computed for every message regardless of sender-fact confidence.
+# Ambiguity guard: no fact, or a matched fact with NULL routing columns
+# ("facts incomplete" -- the EE silent-Nones lesson) => propose, never assert.
+
+def facts_route(sender_addr: str) -> dict:
+    base = {"sender": sender_addr or None, "fact_id": None, "fact_confidence": None,
+            "routing_source": "uncovered", "facts_incomplete": False,
+            "fact_label": None, "fact_mode": None, "fact_verb": None,
+            "fact_project": None, "fact_priority": None}
+    if not sender_addr:
+        return base
+    try:
+        import importlib, os as _os, sys as _sys
+        _sys.path.insert(0, _os.environ.get("VAULT", "/tmp/pbs"))
+        tl = importlib.import_module("triage_lib")
+        fact = tl.match_fact(sender_addr)
+    except Exception:
+        return base  # DB unreachable -- heuristics-only, honestly labelled uncovered
+    if not fact:
+        return base
+    base.update({
+        "fact_id": fact["id"], "fact_confidence": float(fact.get("confidence") or 0),
+        "routing_source": "fact",
+        "fact_label": fact.get("gmail_label"), "fact_mode": fact.get("filter_mode"),
+        "fact_verb": fact.get("default_verb"), "fact_project": fact.get("default_project_slug"),
+        "fact_priority": fact.get("default_priority"),
+    })
+    if not fact.get("gmail_label"):
+        # matched row with NULL routing columns: LOUD, never a silent None
+        base["facts_incomplete"] = True
+        base["routing_source"] = "fact-incomplete"
+    return base
 
 
 def main():
