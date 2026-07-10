@@ -39,8 +39,24 @@ def _doc_rules():
         return [{"id": "rules-block-unparseable", "pattern": ".^", "reason": "the ee-lint-rules JSON in workflow-design failed to parse — fix it", "always_fail": True}]
 
 def _allowed_prices():
-    """£ amounts derivable from ee-pricing: the base figures + small multiples (per-head cert sums etc.)."""
-    base = {965, 1930, 175, 145, 34, 35}  # 175 = open-course pp (corrected 10 Jul 2026); 145 kept transitionally for pre-10-Jul quotes being honoured
+    """£ amounts DERIVED LIVE from the price SSOT notes — ee-pricing (course defaults)
+    + ee-customer-rates (negotiated exceptions) — never hardcoded here. Every £ figure
+    in either note becomes a base, plus small multiples (per-head cert sums, multi-day,
+    small groups). A price change in the note propagates with zero code change (SSOT).
+    Returns None if the SSOT can't be read, which makes the price cross-check a no-op
+    rather than blocking every send on a transient DB blip."""
+    rows = _cc("SELECT body FROM vault_notes WHERE slug IN ('ee-pricing','ee-customer-rates')")
+    if not rows:
+        return None
+    base = set()
+    for r in rows:
+        for m in re.finditer(r"£\s?([\d,]+)", r.get("body", "") or ""):
+            try:
+                base.add(int(m.group(1).replace(",", "")))
+            except ValueError:
+                pass
+    if not base:
+        return None
     allowed = set(base)
     for b in base:
         for k in range(2, 11):
@@ -75,14 +91,16 @@ def lint(body, payload=None):
     if re.search(r"\b(i(?:'| wi)ll (?:confirm|check)[^.\n]{0,40}(?:and |then )?(?:come back|get back|revert)|let me confirm and)", text, re.I):
         fail("holding-email", "never send a holding 'I'll confirm and come back' email — answer or ask, in one email (workflow-design; ex ee-lesson-no-holding-emails)")
 
-    # 3. price cross-check vs ee-pricing
-    for m in re.finditer(r"£\s?([\d,]+)", text):
-        try:
-            v = int(m.group(1).replace(",", ""))
-        except ValueError:
-            continue
-        if v not in _allowed_prices():
-            fail("price-not-in-ssot", "every £ figure must derive from ee-pricing (base rate, cert fee, or a simple multiple)", f"£{v}")
+    # 3. price cross-check vs the SSOT notes (derived live; None = SSOT unreadable, skip)
+    allowed_prices = _allowed_prices()
+    if allowed_prices is not None:
+        for m in re.finditer(r"£\s?([\d,]+)", text):
+            try:
+                v = int(m.group(1).replace(",", ""))
+            except ValueError:
+                continue
+            if v not in allowed_prices:
+                fail("price-not-in-ssot", "every £ figure must derive from ee-pricing / ee-customer-rates (base rate, cert fee, or a simple multiple)", f"£{v}")
 
     # 4. availability claims need a live seat check
     if re.search(r"\b(\w+|\d+)\s+(seat|place)s?\s+(left|remaining|available)\b", text, re.I) and not p.get("availability_checked"):

@@ -20,7 +20,7 @@ Checks (each one line, green/red):
 
 Run by hand:  VAULT=/tmp/pbs python3 /tmp/pbs/ee-selfaudit.py [--dry]
 """
-import os, sys, json, subprocess, datetime as dt, importlib.util, urllib.request
+import os, sys, json, re, subprocess, datetime as dt, importlib.util, urllib.request
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
@@ -44,7 +44,11 @@ def main():
 
     # 2. SSOT spot checks
     pricing = tl.cc_sql("SELECT body FROM vault_notes WHERE slug='ee-pricing'")[0]["body"]
-    core_ok = all(x in pricing for x in ("£965", "£1,930", "£175", "£35pp")) and "back to back" in pricing.lower()
+    # structural, NOT value-pinned: the note must still parse to several £ figures and carry
+    # its rule anchors. No price VALUE is hardcoded here — that would just be another SSOT mirror.
+    _figs = set(re.findall(r"£\s?[\d,]+", pricing))
+    core_ok = (len(_figs) >= 4 and "back to back" in pricing.lower()
+               and "per person" in pricing.lower() and "per day" in pricing.lower())
     sweep = tl.cc_sql("SELECT slug FROM vault_notes WHERE body ILIKE '%ONE EUSR fee (%' OR body ILIKE '%included in the combined quote%' OR body ILIKE '%included in the quoted cost%' ORDER BY slug")
     allowed = {"ee-hardening-plan", "ee-audit-findings-2026-07-09", "enquiry-engine-agenda-library-map"}
     sweep_bad = [r["slug"] for r in (sweep or []) if r["slug"] not in allowed]
