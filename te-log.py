@@ -53,7 +53,15 @@ SB_TOKEN = open(f"{SECRETS}/supabase-token").read().strip()
 # carrying the real kind in the subject so nothing is lost. (Verified live 27 Jun.)
 ACTIVITY_MAP = {"enquiry": "email", "reply": "email", "quote": "email", "email": "email",
                 "chase": "task", "handoff": "note", "correction": "note", "note": "note",
-                "call": "call", "meeting": "meeting", "booked": "note"}
+                "call": "call", "meeting": "meeting", "booked": "note",
+                "won": "note", "lost": "note", "scrub": "note"}
+# --- transaction verbs (hardening plan P2): every outcome updates all three systems -----------
+# stage a verb implies (unless the payload explicitly passes one); scrub/handoff leave stage alone
+VERB_STAGE = {"won": "Customer", "booked": "Customer", "lost": "Lost"}
+# ledger outcome enum (ee_outcome: booked | lost | no-decision)
+VERB_OUTCOME = {"won": "booked", "booked": "booked", "lost": "lost", "scrub": "no-decision"}
+FREEMAIL = {"gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "yahoo.co.uk", "icloud.com",
+            "aol.com", "live.com", "live.co.uk", "btinternet.com", "hotmail.co.uk", "outlook.co.uk"}
 PROJECT_SLUG = "SY-Training-Enquiries"
 BUCKET = "Enquiries"
 ENGINE = "Enquiry Engine"
@@ -106,6 +114,9 @@ def lit_arr(xs):
 NO_GMAIL = False
 NO_FILE = False
 CREATE_CHASE = False   # D2 (Pete, 2026-07-09): no per-enquiry chase tasks; --create-chase opts in explicitly
+NEW_DEAL = False       # P2: creating a staged contact on a domain with an open deal needs --new-deal
+FAILURES = []          # P2: post-transaction ✗ lines collect here; main() exits non-zero if any
+_LAST_MSG_ID = None    # P2: Gmail message-id of the auto-pulled reply (idempotency key)
 _GMAIL = None
 def _gmail():
     global _GMAIL
@@ -146,6 +157,8 @@ def fetch_reply_body(thread_id, sender_match="sygma-solutions"):
         outbound = [m for m in t.get("messages", []) if sender_match in _from(m).lower()]
         if not outbound:
             return ""
+        global _LAST_MSG_ID
+        _LAST_MSG_ID = outbound[-1]["id"]
         raw = base64.urlsafe_b64decode(g.get_message(outbound[-1]["id"], fmt="raw")["raw"].encode())
         msg = _email.message_from_bytes(raw)
         txt = ""
@@ -236,10 +249,17 @@ BACKFILL = False
 # ---- stages / tags cache ------------------------------------------------------------------
 _STAGES = None
 def stage_id(name):
+    """Resolve a stage NAME to its id. An explicit-but-UNKNOWN name is a hard error (P2) — it used
+    to silently default to New, which demoted contacts ('Won' → New). Only an ABSENT name defaults."""
     global _STAGES
     if _STAGES is None:
         _STAGES = {r["name"].lower(): r["id"] for r in portal_get("pipeline_stages", select="id,name")}
-    return _STAGES.get((name or "New").lower(), _STAGES.get("new"))
+    if not name:
+        return _STAGES.get("new")
+    sid = _STAGES.get(name.lower())
+    if sid is None:
+        raise ValueError(f"unknown stage '{name}' — valid stages: {sorted(_STAGES)}. Nothing written for this item.")
+    return sid
 
 def ensure_tag(name, apply, manifest):
     rows = portal_get("tags", select="id,name", name=f"eq.{urllib.parse.quote(name)}")
@@ -253,7 +273,8 @@ def ensure_tag(name, apply, manifest):
 # ---- dedupe lookup (Rule #1) --------------------------------------------------------------
 def find_contact(p):
     if p.get("email"):
-        r = portal_get("contacts", select="id,full_name,email,stage_id", email=f"eq.{urllib.parse.quote(p['email'])}")
+        # ilike with no wildcard = case-insensitive equality (P2: HR@ vs hr@ created a duplicate person)
+        r = portal_get("contacts", select="id,full_name,email,stage_id", email=f"ilike.{urllib.parse.quote(p['email'])}")
         if r: return r[0], "email"
     for fld in ("mobile", "phone"):
         if p.get(fld):
@@ -328,11 +349,76 @@ def write_knowledge(p, contact_id, apply, aid=None):
         f.write("---\n" + "\n".join(fm_lines) + "\n---\n\n" + body)
     return rel, slug
 
+# ---- CRM-first company read (P2) ------------------------------------------------------------
+_STAGE_NAMES = {1: "New", 2: "Quoted", 3: "Customer", 4: "Lost"}
+def crm_first(p):
+    """BEFORE any write: show the email-domain's contact family + recent colleague activity
+    (Sue often acts first). Returns {'family': [...], 'open_deal': contact-or-None}."""
+    em = (p.get("email") or "").lower()
+    dom = em.split("@")[-1] if "@" in em else None
+    if not dom or dom in FREEMAIL:
+        return {"family": [], "open_deal": None}
+    fam = portal_get("contacts", select="id,full_name,email,stage_id",
+                     email=f"ilike.*%40{dom}")
+    if not fam:
+        print(f"   ◦ CRM-first: no existing contacts @{dom}")
+        return {"family": [], "open_deal": None}
+    print(f"   ◦ CRM-first: {len(fam)} contact(s) @{dom} — read before writing:")
+    open_deal = None
+    cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for c in fam:
+        st = _STAGE_NAMES.get(c.get("stage_id"), "—")
+        print(f"      · {c['full_name']} <{c['email']}> stage={st}")
+        if c.get("stage_id") in (2, 3) and (c.get("email") or "").lower() != em:
+            open_deal = open_deal or c
+        try:
+            acts = portal_get("contact_activities", select="occurred_at,subject,created_by_name",
+                              contact_id=f"eq.{c['id']}", occurred_at=f"gte.{cutoff}",
+                              order="occurred_at.desc", limit="3")
+            for x in acts:
+                who = x.get("created_by_name") or "?"
+                flag = "👤" if "engine" not in who.lower() else "·"
+                print(f"         {flag} [{str(x.get('occurred_at'))[:16]}] {who}: {(x.get('subject') or '')[:60]}")
+        except Exception:
+            pass
+    return {"family": fam, "open_deal": open_deal}
+
 # ---- the commit point ---------------------------------------------------------------------
 def log_enquiry(p, apply, manifest):
     name = p.get("full_name") or p.get("company_name") or p.get("email") or "(unknown)"
-    print(f"\n■ {name}  <{p.get('email','no-email')}>  [{p.get('activity',{}).get('kind','touch')}]")
+    kind = p.get("activity", {}).get("kind", "touch")
+    print(f"\n■ {name}  <{p.get('email','no-email')}>  [{kind}]")
+    # P2: a transaction verb implies its stage unless the payload explicitly sets one
+    if kind in VERB_STAGE and not p.get("stage"):
+        p["stage"] = VERB_STAGE[kind]
+        print(f"   ◦ verb '{kind}' → stage {p['stage']} (implied)")
+    # 🔴 auto-pull the reply body from Gmail FIRST (also yields the message-id for idempotency)
+    a = p.get("activity", {})
+    if a and not a.get("body") and p.get("thread_id") and not NO_GMAIL:
+        pulled = fetch_reply_body(p["thread_id"])
+        if pulled:
+            a["body"] = pulled; p["activity"] = a
+            print(f"   ↳ auto-pulled reply body from Gmail thread ({len(pulled)} chars)")
+        else:
+            print(f"   ⚠ no body passed and nothing auto-pulled from thread {p['thread_id']}")
+    # P2 idempotent capture: same Gmail message + same kind = already captured → full no-op
+    msg_id = p.get("message_id") or _LAST_MSG_ID
+    if apply and msg_id and a.get("kind"):
+        dupe = cc_sql(f"SELECT id, vault_path FROM public.enquiry_touches "
+                      f"WHERE message_id = {lit(msg_id)} AND kind = {lit(a.get('kind'))} LIMIT 1")
+        if isinstance(dupe, list) and dupe:
+            print(f"   ↳ IDEMPOTENT SKIP — message {msg_id} already captured as touch {dupe[0]['id']} "
+                  f"({dupe[0]['vault_path']}). Nothing written.")
+            return dupe[0]["vault_path"]
+    info = crm_first(p)
     existing, by = find_contact(p)
+    # P2 guard: don't create a NEW staged contact when the company already has an open deal
+    if (not existing) and p.get("stage") and info.get("open_deal") and not NEW_DEAL:
+        od = info["open_deal"]
+        raise ValueError(
+            f"domain already has an open deal: {od['full_name']} <{od['email']}> at stage "
+            f"{_STAGE_NAMES.get(od.get('stage_id'))} — attach this touch to the deal owner "
+            f"(or pass --new-deal if this genuinely is a separate deal). Nothing written.")
     if existing:
         cid = existing["id"]
         print(f"   ↳ MATCH on {by}: contact {cid} ({existing.get('full_name')}) — append activity, no duplicate")
@@ -364,15 +450,7 @@ def log_enquiry(p, apply, manifest):
     # stage move (on an existing contact, if specified and different)
     if existing and p.get("stage") and apply:
         portal_patch("contacts", {"stage_id": stage_id(p["stage"])}, id=f"eq.{cid}")
-    # 🔴 auto-pull the reply body from Gmail when we didn't pass one (removes "forgot to paste" knowledge-loss)
     a = p.get("activity", {})
-    if a and not a.get("body") and p.get("thread_id") and not NO_GMAIL:
-        pulled = fetch_reply_body(p["thread_id"])
-        if pulled:
-            a["body"] = pulled; p["activity"] = a
-            print(f"   ↳ auto-pulled reply body from Gmail thread ({len(pulled)} chars)")
-        else:
-            print(f"   ⚠ no body passed and nothing auto-pulled from thread {p['thread_id']}")
     # ⛔ HTML-rule backstop: a customer reply/quote must be HTML (Pete 2026-07-07). This is the mandatory
     # gate, so it catches a plain-text send even when ee-send.py was bypassed.
     if apply and not BACKFILL and a.get("kind") in ("reply", "quote") and p.get("thread_id") and not NO_GMAIL:
@@ -411,25 +489,51 @@ def log_enquiry(p, apply, manifest):
         src_fix   = a.get("source_fix")
         src_fixed = a.get("source_fixed")                       # true only when the SSOT was actually corrected
         src_mode  = "backfill" if BACKFILL else "live"
+        # P2: transaction outcome (ee_outcome enum) — verbs write it; replies/quotes stay NULL (open)
+        ledger_outcome = VERB_OUTCOME.get(a.get("kind"))
+        # P5.2 classification back-pressure: auto-fill course_cluster/scenario from the facts index + tags
+        cluster = a.get("course_cluster")
+        scenario = a.get("scenario")
+        if not cluster or not scenario:
+            try:
+                import importlib.util as _ilu
+                _sp = _ilu.spec_from_file_location("ef", f"{VAULT}/ee-facts.py")
+                _ef = _ilu.module_from_spec(_sp); _sp.loader.exec_module(_ef)
+                probe_text = " ".join([a.get("subject") or "", " ".join(p.get("tags") or []), (a.get("body") or "")[:300]])
+                hit = _ef.lookup(probe_text)
+                if hit and not hit.get("ambiguous"):
+                    cluster = cluster or hit.get("family")
+            except Exception:
+                pass
+            tags_l = [t.lower() for t in (p.get("tags") or [])]
+            if not scenario:
+                scenario = ("private-onsite" if "on-site" in tags_l
+                            else "public-with-venue" if "open-course" in tags_l else None)
+            if cluster or scenario:
+                print(f"   ◦ classified: cluster={cluster or '—'} scenario={scenario or '—'} (auto)")
         cc_sql(
             "INSERT INTO public.enquiry_touches "
-            "(vault_path, slug, thread_id, contact_id, activity_id, kind, "
+            "(vault_path, slug, thread_id, contact_id, activity_id, kind, message_id, "
             " incoming_text, draft_text, edited_text, sent_text, "
             " edited, edit_distance, edit_ratio, correction_category, correction_note, "
             " source_ref, source_fix, source_fixed, source_fix_at, "
+            " outcome, outcome_at, "
             " course_cluster, scenario, ee_stage, pipeline_stage, source, occurred_at) VALUES ("
-            f"{lit(rel)}, {lit(slug)}, {lit(p.get('thread_id'))}, {lit(cid)}, {lit(aid)}, {lit(a.get('kind'))}, "
+            f"{lit(rel)}, {lit(slug)}, {lit(p.get('thread_id'))}, {lit(cid)}, {lit(aid)}, {lit(a.get('kind'))}, {lit(msg_id)}, "
             f"{lit(a.get('incoming_text'))}, {lit(draft)}, {lit(a.get('edited_text'))}, {lit(final)}, "
             f"{lit(edited)}, {lit(dist)}, {lit(ratio)}, {lit(cat)}, {lit(a.get('correction_note'))}, "
             f"{lit_arr(src_ref)}, {lit(src_fix)}, {lit(src_fixed)}, {('now()' if src_fixed else 'NULL')}, "
-            f"{lit(a.get('course_cluster'))}, {lit(a.get('scenario'))}, {lit(a.get('ee_stage'))}, {lit(p.get('stage'))}, "
+            f"{lit(ledger_outcome)}, {('now()' if ledger_outcome else 'NULL')}, "
+            f"{lit(cluster)}, {lit(scenario)}, {lit(a.get('ee_stage'))}, {lit(p.get('stage'))}, "
             f"{lit(src_mode)}, {lit(a.get('occurred_at') or now_iso())}) "
             "ON CONFLICT (vault_path) DO UPDATE SET "
             "draft_text=EXCLUDED.draft_text, edited_text=EXCLUDED.edited_text, sent_text=EXCLUDED.sent_text, "
             "edited=EXCLUDED.edited, edit_distance=EXCLUDED.edit_distance, edit_ratio=EXCLUDED.edit_ratio, "
             "correction_category=EXCLUDED.correction_category, correction_note=EXCLUDED.correction_note, "
             "source_ref=EXCLUDED.source_ref, source_fix=EXCLUDED.source_fix, source_fixed=EXCLUDED.source_fixed, "
-            "source_fix_at=EXCLUDED.source_fix_at, updated_at=now()"
+            "source_fix_at=EXCLUDED.source_fix_at, outcome=EXCLUDED.outcome, outcome_at=EXCLUDED.outcome_at, "
+            "message_id=EXCLUDED.message_id, course_cluster=EXCLUDED.course_cluster, scenario=EXCLUDED.scenario, "
+            "updated_at=now()"
         )
         manifest and manifest.write(json.dumps({"kind": "enquiry_touch", "vault_path": rel}) + "\n")   # reversibility parity
     # chase task lifecycle (CC public.tasks): the LATEST touch defines the current chase. First close any
@@ -460,10 +564,34 @@ def log_enquiry(p, apply, manifest):
     # task above is the follow-up tracker; the tray entry is now redundant. --no-file opts out.
     if apply and p.get("thread_id") and not NO_FILE:
         file_dealt_thread(p["thread_id"])
+    # --- P2 post-transaction check: re-read all three systems, ✓/✗ per line; any ✗ → non-zero exit ---
+    if apply and not BACKFILL:
+        checks = []
+        if p.get("stage") and cid not in ("(new)", None):
+            want = stage_id(p["stage"])
+            live = portal_get("contacts", select="stage_id", id=f"eq.{cid}")
+            checks.append(("CRM stage = " + p["stage"], bool(live) and live[0].get("stage_id") == want))
+        if aid:
+            checks.append(("CRM activity written", bool(portal_get("contact_activities", select="id", id=f"eq.{aid}"))))
+        lrow = cc_sql(f"SELECT id FROM public.enquiry_touches WHERE vault_path = {lit(rel)} LIMIT 1")
+        checks.append(("CC ledger row written", isinstance(lrow, list) and bool(lrow)))
+        checks.append(("CC knowledge note file", os.path.exists(os.path.join(VAULT, rel))))
+        stray = cc_sql(f"SELECT count(*) AS n FROM tasks WHERE source='enquiry-engine' AND status='todo' "
+                       f"AND notes LIKE {lit('%CRM contact ' + str(cid) + '%')}")
+        expect_open = 1 if (a.get("follow_up_at") and CREATE_CHASE) else 0
+        checks.append((f"chase tasks for this contact = {expect_open}",
+                       isinstance(stray, list) and stray and stray[0]["n"] == expect_open))
+        bad = [c for c, ok in checks if not ok]
+        for c, ok in checks:
+            print(f"   {'✓' if ok else '✗'} post-check: {c}")
+        if bad:
+            FAILURES.append(f"{name}: " + "; ".join(bad))
+            print(f"   ⛔ POST-CHECK FAILED — repair with: te-log --in <same payload> --apply (idempotent), "
+                  f"then verify the ✗ lines above by hand if it fails again.")
     return rel
 
 def main():
-    global NO_GMAIL, NO_FILE, CREATE_CHASE
+    global NO_GMAIL, NO_FILE, CREATE_CHASE, NEW_DEAL
     args = sys.argv[1:]
     if "--help" in args or "-h" in args:
         print(__doc__); sys.exit(0)
@@ -471,6 +599,7 @@ def main():
     NO_GMAIL = "--no-gmail" in args
     NO_FILE = "--no-file" in args
     CREATE_CHASE = "--create-chase" in args
+    NEW_DEAL = "--new-deal" in args
     inpath = None; manpath = None
     for i, x in enumerate(args):
         if x == "--in": inpath = args[i + 1]
@@ -481,12 +610,15 @@ def main():
     print(f"=== te-log: {len(items)} enquiry touch(es) — {'APPLY (writing live)' if apply else 'DRY RUN (no writes)'} ===")
     manifest = open(manpath, "a") if (apply and manpath) else None
     notes = []
+    errors = 0
     for it in items:
         try:
             notes.append(log_enquiry(it, apply, manifest))
         except urllib.error.HTTPError as e:
+            errors += 1
             print(f"   ✖ HTTP {e.code}: {e.read().decode()[:200]}")
         except Exception as e:
+            errors += 1
             print(f"   ✖ {type(e).__name__}: {e}")
     if manifest: manifest.close()
     # ingest + embed the knowledge notes (walk the enquiries dir — reliable vs passing file paths)
@@ -496,6 +628,13 @@ def main():
         subprocess.run(["python3", f"{VAULT}/cc-knowledge-ingest.py", "Library/projects/SY-Training-Enquiries/enquiries/"], cwd=VAULT, env=env)
         subprocess.run(["python3", f"{VAULT}/cc-knowledge-embed-backfill.py"], cwd=VAULT, env=env)
     print(f"\n=== done: {len([n for n in notes if n])} note(s) {'written' if apply else 'planned'} ===")
+    # P2: a failed write is a FAILED RUN — never exit 0 with an item errored or a post-check ✗
+    # (this is the root fix for "ee-send claims success when capture failed"; ee-send propagates this code)
+    if errors or FAILURES:
+        for f in FAILURES:
+            print(f"⛔ post-check failure: {f}")
+        print(f"⛔ te-log exiting NON-ZERO: {errors} error(s), {len(FAILURES)} post-check failure(s).")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
