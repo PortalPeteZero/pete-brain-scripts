@@ -107,18 +107,47 @@ def main():
                 print(f"        ⛔ {ln}")
         blocking += 1
 
-    # (1)+(3) Replies tray — informational live-Gmail heuristic (a lingering worked thread = a send
-    #  not put through te-log, which auto-files on --apply). Fail-soft.
+    # (6) session STAGE DRIFT (P4.2, blocking): a verb touch whose contact stage disagrees with the verb
+    import importlib.util as _ilu
+    _sp = _ilu.spec_from_file_location("telog", f"{VAULT}/te-log.py")
+    _tl = _ilu.module_from_spec(_sp); _sp.loader.exec_module(_tl)
+    verb_rows = cc(f"SELECT kind, contact_id, vault_path FROM public.enquiry_touches WHERE {W} AND kind IN ('won','booked','lost') AND contact_id IS NOT NULL")
+    want = {"won": 3, "booked": 3, "lost": 4}
+    stage_drift = []
+    for v in verb_rows:
+        c = _tl.portal_get("contacts", select="stage_id,full_name", id=f"eq.{v['contact_id']}")
+        if c and c[0].get("stage_id") != want[v["kind"]]:
+            stage_drift.append(f"{v['kind']} touch but {c[0].get('full_name')} is at stage {c[0].get('stage_id')} ({v['vault_path']})")
+    print(f"\n[{'OK ' if not stage_drift else 'BLOCK'}] (6) session stage drift = {len(stage_drift)}   ← must be 0")
+    for s in stage_drift:
+        print(f"        ⛔ {s}")
+    blocking += len(stage_drift)
+
+    # (7) tray-vs-CRM (P4.2, blocking): every ENQUIRY-tray thread's sender must exist in the CRM
     try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("gmail_api_mod", f"{VAULT}/gmail-api.py")
-        gm = importlib.util.module_from_spec(spec); spec.loader.exec_module(gm)
+        import re as _re
+        spec = _ilu.spec_from_file_location("gmail_api_mod", f"{VAULT}/gmail-api.py")
+        gm = _ilu.module_from_spec(spec); spec.loader.exec_module(gm)
         g = gm.GmailAPI()
-        tray = g.search_threads("label:Replies OR label:Actions", max_results=50) if hasattr(g, "search_threads") else []
-        n_tray = len(tray) if isinstance(tray, list) else 0
-        print(f"\n[i ] Replies tray: {n_tray} waiting (informational — worked enquiries must be de-trayed by te-log --apply)")
+        etray = g.search_threads("label:Projects/SY-Training-Enquiries label:Replies", max_results=30) or []
+        missing = []
+        for t in etray:
+            try:
+                full = g.get_thread(t["id"])
+                hdrs = {h["name"].lower(): h["value"] for h in full["messages"][0]["payload"]["headers"]}
+                m = _re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", hdrs.get("from", ""))
+                if m and not _tl.portal_get("contacts", select="id", email=f"ilike.{m.group(0).lower()}"):
+                    missing.append(f"{t['id']} from {m.group(0)}")
+            except Exception:
+                pass
+        print(f"\n[{'OK ' if not missing else 'BLOCK'}] (7) tray threads with no CRM contact = {len(missing)}   ← must be 0 (run intake)")
+        for x in missing:
+            print(f"        ⛔ {x}")
+        blocking += len(missing)
+        tray = g.search_threads("label:Replies OR label:Actions", max_results=50) or []
+        print(f"\n[i ] Replies tray: {len(tray)} waiting (informational — worked enquiries must be de-trayed by te-log --apply)")
     except Exception as e:
-        print(f"\n[i ] Replies tray: (could not read live — {type(e).__name__}) — verify manually")
+        print(f"\n[i ] tray checks: (could not read live — {type(e).__name__}) — verify manually")
 
     # tone/other edits — eyeball only, non-blocking
     diffuse = cc(f"SELECT vault_path, correction_category FROM public.enquiry_touches WHERE {W} AND edited IS TRUE AND correction_category IN ('tone','other') ORDER BY created_at")

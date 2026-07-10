@@ -283,8 +283,16 @@ def find_contact(p):
                 r = portal_get("contacts", select="id,full_name,%s,stage_id" % fld, **{fld: f"ilike.*{digits}*"})
                 if r: return r[0], fld
     if p.get("full_name"):
-        r = portal_get("contacts", select="id,full_name,stage_id", full_name=f"eq.{urllib.parse.quote(p['full_name'])}")
-        if r: return r[0], "name"
+        r = portal_get("contacts", select="id,full_name,email,stage_id", full_name=f"eq.{urllib.parse.quote(p['full_name'])}")
+        # P2 hardening: a bare name-match is dangerous (two different 'Emma Jones' existed at two
+        # companies — a payload for one was captured onto the other). Accept a name-match ONLY when
+        # the email domains corroborate (or one side has no email at all).
+        for cand in r:
+            pe, ce = (p.get("email") or "").lower(), (cand.get("email") or "").lower()
+            if not pe or not ce or (pe.split("@")[-1] == ce.split("@")[-1]):
+                return cand, "name"
+        if r:
+            print(f"   ◦ name matches {len(r)} contact(s) but the email domain differs — treating as a NEW person")
     return None, None
 
 # ---- knowledge note (CC vault_notes via md -> ingest -> embed) -----------------------------
