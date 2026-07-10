@@ -7,7 +7,7 @@
 # entity: personal
 # schedule: 15 7 * * *
 # timezone: Atlantic/Canary
-# secrets: GOOGLE_SA_JSON, SUPABASE_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERID
+# secrets: GOOGLE_SA_JSON, SUPABASE_TOKEN
 # CRON-META-END
 """triage-sync.py -- the Triage Engine's scheduled sync (P0; design: [[triage-engine-design]]).
 
