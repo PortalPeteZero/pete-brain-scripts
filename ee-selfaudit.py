@@ -62,6 +62,17 @@ def main():
     lines.append(("✅" if not fic else "🔴") + " ee-facts.py holds zero hardcoded course facts")
     red += 0 if not fic else 1
 
+    # 3b. data-parity gate — no EE reference data hardcoded (prices/staff/stage-ids/source-bearing all live-sourced)
+    try:
+        pr = subprocess.run(["python3", f"{VAULT}/ee-data-parity.py"], capture_output=True, text=True,
+                            env={**os.environ, "VAULT": VAULT})
+        parity_ok = pr.returncode == 0
+        lines.append(("✅" if parity_ok else "🔴") + " ee-data-parity: no hardcoded EE reference data"
+                     + ("" if parity_ok else " — " + (pr.stdout.strip().splitlines() or [""])[0]))
+        red += 0 if parity_ok else 1
+    except Exception as e:
+        lines.append("🔴 ee-data-parity gate could not run: " + str(e)[:50]); red += 1
+
     # 4. ledger parity (7 days)
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     lrows = tl.cc_sql(f"SELECT count(*) n FROM enquiry_touches WHERE kind IN ('reply','quote') AND source='live' AND occurred_at >= '{cutoff}'")[0]["n"]
