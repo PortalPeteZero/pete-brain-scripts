@@ -90,6 +90,14 @@ in one reply. Distinguish **"I'll do X on your OK"** (closeout executes it) from
 need to…"** (hands-on). Destructive items (delete / send / bin a note or plan) are asked
 **separately, one explicit yes each** — never bundled into "all recommended".
 
+> [!important] Never put a future-dated PD on the menu.
+> A PD already auto-surfaces when it comes due, so it is NOT a "your call" item. **Exclude any
+> PD whose `due_on > today`** from the menu, the "Recorded for you" line, and any "open item"
+> mention. Surface a PD ONLY when it is due or overdue (`due_on <= today`). If excluding it
+> leaves the menu empty, say "nothing needs a call" — do not pad with a scheduled PD. (Pete,
+> 11 Jul 2026: "I don't want to hear about PD tasks again until they are due or overdue.")
+> This binds H1/H2/H3 too — a not-yet-due PD is never a surface item.
+
 ### Step 6 — Optional light resume note
 
 Offer once: "Save a resume note too? (y)". If yes, write a light `daily_log` resume note
