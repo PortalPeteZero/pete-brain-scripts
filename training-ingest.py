@@ -163,16 +163,18 @@ def recovery_lows(activity_id, g, step_bounds):
     return out
 
 # ---------- session_code cascade ----------
-def derive_session_code(workout_id, sport, session_name):
+def derive_session_code(workout_id, sport, session_name, activity_id=None):
+    # (i) prescription spec.code when non-null
     if workout_id:
         rows = sql(f"SELECT spec->>'code' AS code FROM health_planned_session WHERE garmin_workout_id={int(workout_id)} AND (spec->>'code') IS NOT NULL LIMIT 1")
         if rows and rows[0].get('code'): return rows[0]['code']
-    # map rules
-    for kind, val in (('workout-id', str(workout_id) if workout_id else None),):
+    # (ii) persistent map: activity-id pin (most specific), then workout-id
+    for kind, val in (('activity-id', str(activity_id) if activity_id else None),
+                      ('workout-id', str(workout_id) if workout_id else None)):
         if val:
             rows = sql(f"SELECT code FROM training_session_code_map WHERE match_kind={q_lit(kind)} AND match_value={q_lit(val)} LIMIT 1")
             if rows: return rows[0]['code']
-    # name-pattern rules
+    # (iii) name-pattern rules
     rows = sql("SELECT match_value, code FROM training_session_code_map WHERE match_kind='name-pattern'")
     for r in rows:
         if r['match_value'].lower() in (session_name or '').lower():
@@ -249,7 +251,7 @@ def ingest(activity_id, dry=False):
             sess['was_planned'] = True
         except Exception:
             steps = []
-    sess['session_code'] = derive_session_code(wkt_id, sport, sess['session_name'])
+    sess['session_code'] = derive_session_code(wkt_id, sport, sess['session_name'], activity_id)
     # planned_* mirror
     if wkt_id:
         pr = sql(f"SELECT date, seq FROM health_planned_session WHERE garmin_workout_id={int(wkt_id)} LIMIT 1")
