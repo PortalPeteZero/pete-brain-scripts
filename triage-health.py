@@ -51,7 +51,7 @@ def main():
 
     # 4. Every touch keeps the systems in sync
     rec = tl.cc_sql("SELECT content FROM daily_log WHERE cron_name='triage-reconcile' "
-                    "ORDER BY date DESC, content LIMIT 1")
+                    "ORDER BY created_at DESC LIMIT 1")
     if rec:
         first = rec[0]["content"].splitlines()
         drift_free = any("zero drift" in l.lower() for l in first)
