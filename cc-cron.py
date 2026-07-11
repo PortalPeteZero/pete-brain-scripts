@@ -90,6 +90,28 @@ def set_instance(sid, fields):
     rw('mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s,environmentId:$e,input:$i) }',
        {"s": sid, "e": ENVN, "i": fields})
 
+# Scoped Railway watch paths. This repo is a monorepo: EVERY service auto-deploys on EVERY push,
+# so one commit used to rebuild all ~50 services and 50x-multiplied the odds of a transient Railway
+# builder failure (the 28-Jun / 11-Jul "Build failed" email bursts). Scoping watchPatterns makes a
+# push rebuild ONLY the services whose code changed. Long-running services (no schedule) stay []
+# (always-rebuild) by design. SOP: vault_notes 'Scoped Railway watch paths (monorepo deploy)' +
+# plan-railway-scoped-watch-paths. Generous textual detection: a false extra rebuild is free, a
+# miss runs stale code, so bias to include.
+WATCH_BUILD_INPUTS = ["railway-bootstrap.py", "requirements.txt", "runtime.txt", "railway.json"]
+
+def compute_watch_patterns(script):
+    base = os.path.basename(script)
+    pats = {base}
+    try:
+        txt = (HERE / base).read_text(errors="ignore")
+        repo_py = {p.name for p in HERE.glob("*.py")}
+        pats |= {f for f in repo_py if f in txt}      # every repo file the script names → watch it
+    except OSError:
+        pass
+    for b in WATCH_BUILD_INPUTS:
+        if (HERE / b).exists(): pats.add(b)
+    return sorted(pats)
+
 def ensure_trigger(sid):
     """Best-effort: make sure a main-branch GitHub auto-deploy trigger exists (so future pushes redeploy).
     serviceCreate(source:repo) usually creates one; this is belt-and-braces and never fatal."""
@@ -252,6 +274,15 @@ def cmd_deploy(a):
     if not is_service:
         set_instance(sid, {"restartPolicyType": "NEVER"})
     print("  env set: CC url/key, TZ, CRON_SCRIPT" + ("" if is_service else ", restartPolicy=NEVER"))
+
+    # scoped watch paths — a monorepo push only rebuilds services whose code changed (crons only;
+    # long-running services stay [] = always-rebuild). Keeps the 50x build fan-out from coming back.
+    if is_service:
+        print("  watch paths: [] (always-rebuild long-running service — by design)")
+    else:
+        wp = compute_watch_patterns(script)
+        set_instance(sid, {"watchPatterns": wp})
+        print(f"  watch paths scoped: {len(wp)} globs → {wp}")
 
     utc = None
     if is_service:
