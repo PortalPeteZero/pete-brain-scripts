@@ -218,7 +218,7 @@ Or call the equivalent function library-side. The output is a JSON file with one
 
 ### Step 4.6: Enquiry-reply recognition (NEW — hand tracked enquiries to the Engine)
 
-A training enquiry — whether a **brand-new inbound** (website contact-form submission, cold course enquiry) OR a **reply** on one we already sent — is NOT a generic inbox row. It belongs to the **[[workflow-design|Enquiry Engine]]** (lifecycle in the Portal CRM, learning in `vault_notes`). Before Action-verb selection, flag each thread that is an enquiry. A thread is a tracked enquiry if ANY of:
+A training enquiry — whether a **brand-new inbound** (website contact-form submission, cold course enquiry) OR a **reply** on one we already sent — is NOT a generic inbox row. It belongs to the **[[workflow-design|Enquiry Engine]]** (lifecycle in the Portal CRM; knowledge in the CC EE tables — `ee_rates`/`ee_customer_rates`/`ee_catalogue`/`ee_phrases`/`ee_rules`, edited via `ee-learn.py`; the worked-reply phrasing corpus stays in `vault_notes`). Before Action-verb selection, flag each thread that is an enquiry. A thread is a tracked enquiry if ANY of:
 
 1. **Thread id match** — the Gmail `thread_id` appears in an enquiry note's frontmatter:
    `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "select title from vault_notes where type='enquiry' and frontmatter->>'thread_id' = '<thread_id>'"`

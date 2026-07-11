@@ -2,7 +2,7 @@
 # CRON-META
 # what: Weekly Enquiry Engine self-audit — re-runs the alias regression harness, the 10-fact SSOT spot checks, and ledger↔CRM parity, and reports green/red to the morning brief (daily_log). Audits the auditor so the hardening work doesn't rot.
 # why: The 2026-07-09 audit found the previous build plan had drifted invisibly (facts index unreachable for sold courses, contradictory fee rules across notes). A weekly mechanical re-check catches rot the week it appears, not months later (hardening plan P4.4).
-# reads: CC vault_notes (ee-alias-regression, ee-pricing) + enquiry_touches, Portal public.courses + contact_activities, the live sygma-solutions.com/agendas index
+# reads: CC ee_rates + vault_notes (ee-alias-regression) + enquiry_touches, Portal public.courses + contact_activities, the live sygma-solutions.com/agendas index
 # writes: CC daily_log (cron_name='ee-selfaudit', one report per run)
 # entity: sygma
 # schedule: 0 7 * * 1
