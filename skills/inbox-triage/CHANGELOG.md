@@ -2,6 +2,9 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-07-11
+- **Step 0.7 — review the Sorter's unattended runs (the cron review pass).** Every manual triage now STARTS by pulling what the `triage-engine-run` cron proposed/auto-filed since the last human pass, presenting it for confirm/correct, and folding a correction through the normal decided_by='pete' + regression-case path so the Sorter learns. Links the new [[Triage — Front Door]] orientation note. Cron now 5×/day (6/10/14/18/22 Canary), auto-mode on (proposes only until senders earn trust). Project-aware filing unchanged (kept).
+
 ## 2026-06-30
 - De-staled: `email-workflow-state.md` → the CC `email-workflow-state` note; `Projects/{…}/`·`Personal/{area}/` folder matching → live CC projects/areas; archived `*-General` + `SY-AppearOnline` examples → live ones.
 

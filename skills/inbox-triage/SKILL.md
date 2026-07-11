@@ -115,6 +115,21 @@ Before any stage executes, ask Pete ONE question: **"Are we running auto or conf
 
 A standing goal, an autonomous context, or Pete being away is NOT auto-consent for an interactive triage — if he invoked `triage` and is present, he chooses. (First live run, 10 Jul 2026: a session goal caused autonomous completion of a run Pete expected to confirm.)
 
+### Step 0.7: Review the Sorter's unattended runs (NEW — the cron review pass)
+
+The **Sorter** (the `triage-engine-run` cron, 5×/day, 6/10/14/18/22 Canary) runs while Pete is away and PROPOSES routings — and, for the senders Pete has enabled, auto-files them. **Every manual triage session STARTS here**, by reviewing what the Sorter did since the last human pass. This is the review-and-correct step: where the Sorter's mistakes get caught and where it learns. (Terminology + the whole map: [[Triage — Front Door (START HERE: how it works + where everything lives)]].)
+
+1. Pull the Sorter's decisions since the last manual review:
+   `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT thread_id, sender, proposed_ask, proposed_verb, proposed_label, final_verb, final_label, apply_status, decided_by, created_at FROM triage_decisions WHERE decided_by IN ('cron-proposed','cron-auto') AND created_at > '<last manual triage date>' ORDER BY created_at"`
+   (Same view on the cockpit: commandcentre.info/m/triage-engine.)
+2. Present them to Pete grouped by proposed destination — a short "here is what the Sorter did / would do" list.
+3. For each, Pete confirms or corrects:
+   - **Confirm** → the proposal stands; the row already carries it.
+   - **Correct a misroute** → run the corrected routing through the SAME execution path as a normal row (Step 6.2 / `triage-log.py`), which rewrites the decision to `decided_by='pete'`, `overridden=true`, `override_reason[]`, AND bank the regression case in the same breath (`triage-routing-test.py --add '<case>'`). **That is the learning** — a corrected Sorter mistake can never repeat, and that sender's confidence adjusts (via `triage-learn.py`).
+   - **Wrong auto-FILE** → undo it (re-add `INBOX`, remove the wrong label) as part of the correction, then re-route correctly.
+
+Only after the Sorter's work is reviewed do you pull the *remaining* inbox (Step 1) — the threads it left for a human.
+
 ### Step 1: Pull inbox
 
 `gmail-api.py search "in:inbox" 100` -- the limit is a POSITIONAL argument (not `--max-results`); paginate further if needed.
