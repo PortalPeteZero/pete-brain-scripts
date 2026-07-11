@@ -5,7 +5,7 @@
 # reads: Gmail (in:inbox, enriched via triage-pull --full), triage_routing_facts, triage_decisions, config (triage-auto-mode re-read before EVERY action)
 # writes: triage_decisions (proposals + auto rows), triage_digests, Gmail (ONLY for Pete-enabled facts, lint-gated), CC daily_log
 # entity: personal
-# schedule: 0 9,13,17 * * *
+# schedule: 0 6,10,14,18,22 * * *
 # timezone: Atlantic/Canary
 # secrets: GOOGLE_SA_JSON, SUPABASE_TOKEN
 # CRON-META-END
