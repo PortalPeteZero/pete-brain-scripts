@@ -561,9 +561,11 @@ def log_enquiry(p, apply, manifest):
         )
         manifest and manifest.write(json.dumps({"kind": "enquiry_touch", "vault_path": rel}) + "\n")   # reversibility parity
         if edited:
-            print("   ⚠ EDITED SEND — make the correction permanent NOW: add a lint rule (workflow-design")
-            print("     ```json ee-lint-rules``` block) or an alias row ([[ee-alias-regression]]) so this class")
-            print("     of mistake can never ship again. The source-fix fields cover the SSOT; this covers the drafts.")
+            print("   ⚠ EDITED SEND — make the correction permanent NOW as a DB EDIT (never a note):")
+            print("     • price / phrase / rule / course-fact → ee-learn.py <rate|phrase|rule|catalogue> … --why … --touch <this touch> --apply")
+            print("       (ee-learn writes the fix AND sets source_fixed=true on this touch, so ee-signoff can clear)")
+            print("     • alias / wording resolution          → add an alias row (public.courses.aliases + [[ee-alias-regression]])")
+            print("     The source-fix fields cover the SSOT; ee-learn is how you edit it.")
     # chase task lifecycle (CC public.tasks): the LATEST touch defines the current chase. First close any
     # open chase for this contact (so they never pile up stale / never more than one open per enquiry), then
     # set a fresh one only if a follow-up is due. Tasks carry [no-sync-close] so email-task-sync leaves them

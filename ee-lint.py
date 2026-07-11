@@ -39,22 +39,22 @@ def _doc_rules():
         return [{"id": "rules-block-unparseable", "pattern": ".^", "reason": "the ee-lint-rules JSON in workflow-design failed to parse — fix it", "always_fail": True}]
 
 def _allowed_prices():
-    """£ amounts DERIVED LIVE from the Portal price SSOT tables — public.price_list (standard)
-    + public.customer_pricing (honour + negotiated overrides) — never hardcoded here. Every
+    """£ amounts DERIVED LIVE from the EE price SSOT tables — CC public.ee_rates (standard)
+    + CC public.ee_customer_rates (per-customer/per-thread specials) — never hardcoded here. Every
     amount becomes a base, plus VAT (×1.2) and small multiples/sums (per-head cert sums,
     multi-day, small groups). A price change in the DB propagates with zero code change.
     Returns None if the SSOT can't be read → price cross-check becomes a no-op rather than
-    blocking every send on a transient DB blip. (Repointed CC-notes → Portal-DB 2026-07-10.)"""
+    blocking every send on a transient DB blip. (Repointed Portal-DB → CC ee_rates 2026-07-11.)"""
     import importlib.util as _u
     try:
         _s = _u.spec_from_file_location("_ef", f"{VAULT}/ee-facts.py")
         _ef = _u.module_from_spec(_s)
         try: _s.loader.exec_module(_ef)
         except SystemExit: pass
-        pb = _ef.price_book()  # {item_key: {amount,...}} live from price_list
+        pb = _ef.price_book()  # {item_key: {amount,...}} live from CC ee_rates
         base = {int(round(v["amount"])) for v in pb.values() if v.get("amount") is not None}
-        ov = _ef.portal_q("SELECT DISTINCT agreed_amount FROM customer_pricing WHERE agreed_amount IS NOT NULL")
-        base |= {int(round(float(r["agreed_amount"]))) for r in ov}
+        ov = _ef.cc_q("SELECT DISTINCT rate FROM ee_customer_rates")
+        base |= {int(round(float(r["rate"]))) for r in ov}
     except Exception:
         return None
     if not base:
@@ -149,7 +149,7 @@ def lint(body, payload=None):
             except ValueError:
                 continue
             if v not in allowed_prices:
-                fail("price-not-in-ssot", "every £ figure must derive from ee-pricing / ee-customer-rates (base rate, cert fee, or a simple multiple)", f"£{v}")
+                fail("price-not-in-ssot", "every £ figure must derive from ee_rates / ee_customer_rates (base rate, cert fee, or a simple multiple)", f"£{v}")
 
     # 4. availability claims need a live seat check
     if re.search(r"\b(\w+|\d+)\s+(seat|place)s?\s+(left|remaining|available)\b", text, re.I) and not p.get("availability_checked"):

@@ -13,7 +13,7 @@
 
 Checks (each one line, green/red):
   1. alias regression harness — every probe resolves as expected
-  2. SSOT spot list — the D1 conditional fee is vault-wide-consistent; core £ figures present in ee-pricing
+  2. SSOT spot list — the D1 conditional fee is vault-wide-consistent; core £ figures present in ee_rates
   3. facts-in-code — ee-facts.py still holds zero hardcoded course facts
   4. ledger parity — last 7 days: enquiry_touches reply/quote rows ↔ Engine CRM activities
   5. send discipline — post-P3 sends all carry retrieval receipt + lint pass
@@ -42,19 +42,19 @@ def main():
     lines.append(("✅" if ok else "🔴") + f" alias regression: {tail}")
     red += 0 if ok else 1
 
-    # 2. SSOT spot checks
-    pricing = tl.cc_sql("SELECT body FROM vault_notes WHERE slug='ee-pricing'")[0]["body"]
-    # structural, NOT value-pinned: the note must still parse to several £ figures and carry
-    # its rule anchors. No price VALUE is hardcoded here — that would just be another SSOT mirror.
-    _figs = set(re.findall(r"£\s?[\d,]+", pricing))
-    core_ok = (len(_figs) >= 4 and "back to back" in pricing.lower()
-               and "per person" in pricing.lower() and "per day" in pricing.lower())
+    # 2. SSOT spot checks — prices live in CC ee_rates / ee_customer_rates (the EE SSOT since 2026-07-11)
+    # structural, NOT value-pinned: the SSOT must still carry the core items + the D1 rule. No price
+    # VALUE is hardcoded here — that would just be another SSOT mirror.
+    rates = tl.cc_sql("SELECT item_key, note FROM ee_rates") or []
+    keys = {r["item_key"] for r in rates}
+    core_ok = (len(rates) >= 4 and {"open_course_pp", "onsite_day_rate", "eusr_reg", "sygma_inhouse"} <= keys)
+    d1_ok = any("back-to-back" in (r.get("note") or "").lower() for r in rates)
     sweep = tl.cc_sql("SELECT slug FROM vault_notes WHERE body ILIKE '%ONE EUSR fee (%' OR body ILIKE '%included in the combined quote%' OR body ILIKE '%included in the quoted cost%' ORDER BY slug")
     allowed = {"ee-hardening-plan", "ee-audit-findings-2026-07-09", "enquiry-engine-agenda-library-map"}
     sweep_bad = [r["slug"] for r in (sweep or []) if r["slug"] not in allowed]
-    lines.append(("✅" if core_ok else "🔴") + " ee-pricing core figures + D1 conditional present")
+    lines.append(("✅" if core_ok and d1_ok else "🔴") + " ee_rates core figures + D1 conditional present")
     lines.append(("✅" if not sweep_bad else "🔴") + f" vault-wide fee sweep clean{'' if not sweep_bad else ': ' + ', '.join(sweep_bad)}")
-    red += (0 if core_ok else 1) + (0 if not sweep_bad else 1)
+    red += (0 if core_ok and d1_ok else 1) + (0 if not sweep_bad else 1)
 
     # 3. facts-in-code
     ef = open(f"{VAULT}/ee-facts.py").read()
