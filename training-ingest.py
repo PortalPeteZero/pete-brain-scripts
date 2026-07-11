@@ -299,6 +299,27 @@ def ingest(activity_id, dry=False):
                 'recovery_hr_low': lows[i-1] if role in ('recovery',) else None,
                 'avg_speed_kmh': (round(m['dist']/m['dur']*3.6,2) if m['dur'] and m['dist'] else None),
             })
+
+    # RULE (Pete, 10 Jul 2026): if no intensity was specified — the usual case for swims and
+    # any unstructured session — count it as COMFORTABLE (zone_source='default', so a real
+    # prescription or a Pete-set manual zone always wins). This gives every session a visible
+    # by-intensity band and supersedes the v1 "unzoned swim" behaviour.
+    if not reps:
+        reps = [{
+            'rep_index': 1, 'step_role': 'work',
+            'zone_slug': 'comfortable', 'zone_source': 'default', 'zone_confidence': 'low',
+            'zone_label': sess.get('session_name'),
+            'duration_s': sess.get('duration_s'), 'distance_m': sess.get('distance_m'),
+            'avg_hr': sess.get('avg_hr'), 'max_hr': sess.get('max_hr'),
+            'avg_pace_s_per_km': sess.get('avg_pace_s_per_km'),
+            'avg_pace_s_per_100m': sess.get('avg_pace_s_per_100m'),
+            'avg_speed_kmh': sess.get('avg_speed_kmh'),
+        }]
+    else:
+        for r in reps:
+            if not r.get('zone_slug') and r.get('zone_source') != 'manual':
+                r['zone_slug'] = 'comfortable'; r['zone_source'] = 'default'; r['zone_confidence'] = 'low'
+
     if dry:
         print(json.dumps({'session': sess, 'n_steps': len(steps), 'n_reps': len(reps),
                           'reps':[{'i':r['rep_index'],'role':r['step_role'],'zone':r['zone_slug'],
