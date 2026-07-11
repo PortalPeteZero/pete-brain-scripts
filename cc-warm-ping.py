@@ -84,3 +84,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+# watch-path canary 2026-07-11 (validation no-op; safe to keep)
