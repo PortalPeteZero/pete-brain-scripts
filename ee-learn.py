@@ -23,7 +23,7 @@ Usage:
   ee-learn.py customer-rate --thread <id> open_course_pp 145 --why "honour" --touch <touch_id> --apply
   ee-learn.py add-column ee_catalogue prereq text --why "capture a prereq nuance" --apply
 """
-import sys, os, json, urllib.request, urllib.error
+import sys, os, re, json, urllib.request, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 TOK = (os.environ.get("SUPABASE_TOKEN") or "").strip() or open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
@@ -79,6 +79,26 @@ def has(name):
     return name in sys.argv
 
 
+VALUE_FLAGS = {"--why", "--touch", "--customer", "--thread"}
+BOOL_FLAGS = {"--apply"}
+ALLOWED_ADD_TYPES = {"text", "numeric", "integer", "boolean", "jsonb", "timestamptz", "date"}
+
+
+def positionals():
+    """The non-flag args after the subcommand, in order. Flags (and the value after a value-flag)
+    are stripped, so flag ORDER never shifts a positional; an unknown --flag is a hard error — so a
+    stray --touch can never be swallowed as a value and written to a live row (audit MED, 2026-07-11)."""
+    out, i, a = [], 2, sys.argv
+    while i < len(a):
+        t = a[i]
+        if t in VALUE_FLAGS: i += 2; continue
+        if t in BOOL_FLAGS: i += 1; continue
+        if t.startswith("--"):
+            print(f"ERROR: unknown flag {t!r}."); sys.exit(2)
+        out.append(t); i += 1
+    return out
+
+
 def logedit(table, row_key, field, old, new, why):
     cc_sql("INSERT INTO ee_edits (target_table,row_key,field,old_value,new_value,why,session) VALUES "
            f"({lit(table)},{lit(row_key)},{lit(field)},"
@@ -87,8 +107,11 @@ def logedit(table, row_key, field, old, new, why):
 
 
 def fix_touch(touch_id, why):
-    cc_sql(f"UPDATE enquiry_touches SET source_fixed=true, source_fix={lit(why)} WHERE id={lit(touch_id)}")
-    print(f"  ↳ enquiry_touches {touch_id}: source_fixed=true")
+    r = cc_sql(f"UPDATE enquiry_touches SET source_fixed=true, source_fix={lit(why)} WHERE id={lit(touch_id)} RETURNING id")
+    if r:
+        print(f"  ↳ enquiry_touches {touch_id}: source_fixed=true")
+    else:
+        print(f"  ⚠ enquiry_touches {touch_id}: NO ROW matched — source_fixed NOT set (check the touch id; ee-signoff will stay blocked)")
 
 
 def main():
@@ -103,9 +126,16 @@ def main():
 
     # ── add-column: deliberate schema change ──────────────────────────────────────────
     if cmd == "add-column":
-        table, col, coltype = sys.argv[2], sys.argv[3], sys.argv[4]
+        pos = positionals()
+        if len(pos) < 3:
+            print("usage: add-column <table> <column> <type> --why …"); sys.exit(2)
+        table, col, coltype = pos[0], pos[1], pos[2].lower()
         if table not in ADD_COLUMN_TABLES:
             print(f"ERROR: {table} not an EE table."); sys.exit(2)
+        if not re.match(r"^[a-z_][a-z0-9_]*$", col):
+            print("ERROR: column name must be a plain identifier (a-z, 0-9, underscore)."); sys.exit(2)
+        if coltype not in ALLOWED_ADD_TYPES:
+            print(f"ERROR: type must be one of {sorted(ALLOWED_ADD_TYPES)}."); sys.exit(2)
         sql = f"ALTER TABLE public.{table} ADD COLUMN IF NOT EXISTS {col} {coltype}"
         print(f"PROPOSED (schema): {sql}   why: {why}")
         if not apply:
@@ -117,7 +147,10 @@ def main():
 
     # ── customer-rate: upsert a per-customer / per-thread special ──────────────────────
     if cmd == "customer-rate":
-        item_key, rate = sys.argv[2], sys.argv[3]
+        pos = positionals()
+        if len(pos) < 2:
+            print("usage: customer-rate --customer <ref>|--thread <id> <item_key> <rate> --why …"); sys.exit(2)
+        item_key, rate = pos[0], pos[1]
         cust, thread = flag("--customer"), flag("--thread")
         if bool(cust) == bool(thread):
             print("ERROR: pass exactly one of --customer / --thread."); sys.exit(2)
@@ -125,6 +158,8 @@ def main():
         keycol, keyval = ("customer_ref", cust) if cust else ("thread_id", thread)
         old = cc_sql(f"SELECT rate FROM ee_customer_rates WHERE {keycol}={lit(keyval)} AND item_key={lit(item_key)}")
         oldv = str(old[0]["rate"]) if old else None
+        if oldv is not None and str(oldv) == str(rate):
+            print(f"no change: ee_customer_rates[{keycol}={keyval}, {item_key}] already {rate}."); return
         print(f"PROPOSED: ee_customer_rates[{keycol}={keyval}, {item_key}]  {oldv} -> {rate}   why: {why}")
         if touch: print(f"  will set source_fixed on enquiry_touches {touch}")
         if not apply:
@@ -140,13 +175,18 @@ def main():
     # ── field edit on a keyed knowledge row (rate/catalogue/phrase/rule) ───────────────
     if cmd in TARGETS:
         table, keycol = TARGETS[cmd]
-        keyval, field, newval = sys.argv[2], sys.argv[3], sys.argv[4]
+        pos = positionals()
+        if len(pos) < 3:
+            print(f"usage: {cmd} <key> <field> <value> --why …"); sys.exit(2)
+        keyval, field, newval = pos[0], pos[1], pos[2]
         if field not in ALLOWED_COLS[table]:
             print(f"ERROR: {field} not editable on {table}. Allowed: {sorted(ALLOWED_COLS[table])}"); sys.exit(2)
         old = cc_sql(f"SELECT {field}::text v FROM public.{table} WHERE {keycol}={lit(keyval)}")
         if not old:
             print(f"ERROR: no {table} row with {keycol}={keyval}. (This tool edits existing rows; add a new row deliberately.)"); sys.exit(2)
         oldv = old[0]["v"]
+        if str(oldv).strip() == str(newval).strip():
+            print(f"no change: {table}[{keyval}].{field} already set to that value."); return
         vsql = valsql(table, field, newval)
         print(f"PROPOSED: {table}[{keyval}].{field}   {oldv} -> {newval}   why: {why}")
         if touch: print(f"  will set source_fixed on enquiry_touches {touch}")
