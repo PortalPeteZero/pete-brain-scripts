@@ -73,13 +73,18 @@ def main():
     except Exception as e:
         lines.append("🔴 ee-data-parity gate could not run: " + str(e)[:50]); red += 1
 
-    # 4. ledger parity (7 days)
+    # 4. ledger capture (7 days) — every Engine-sent email has a ledger capture. An activity counts as
+    #    captured if its id is a ledger activity_id OR its contact has any live ledger touch in-window.
+    #    Robust to CRM duplicates + the enquiry/handoff email kinds (the old reply/quote-vs-ALL-email
+    #    count structurally false-RED'd on every arrival/handoff/duplicate — retired 2026-07-11).
     cutoff = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    lrows = tl.cc_sql(f"SELECT count(*) n FROM enquiry_touches WHERE kind IN ('reply','quote') AND source='live' AND occurred_at >= '{cutoff}'")[0]["n"]
-    arows = len(tl.portal_get("contact_activities", select="id", created_by_name="eq.Enquiry%20Engine",
-                              occurred_at=f"gte.{cutoff}", activity_type="eq.email"))
-    par_ok = abs(lrows - arows) <= 2
-    lines.append(("✅" if par_ok else "🔴") + f" ledger parity 7d: {lrows} ledger reply/quote vs {arows} Engine email activities")
+    acts = tl.portal_get("contact_activities", select="id,contact_id", created_by_name="eq.Enquiry%20Engine",
+                         occurred_at=f"gte.{cutoff}", activity_type="eq.email")
+    linked = {str(r["activity_id"]) for r in tl.cc_sql(f"SELECT DISTINCT activity_id FROM enquiry_touches WHERE activity_id IS NOT NULL AND occurred_at >= '{cutoff}'")}
+    led_contacts = {str(r["contact_id"]) for r in tl.cc_sql(f"SELECT DISTINCT contact_id FROM enquiry_touches WHERE source='live' AND contact_id IS NOT NULL AND occurred_at >= '{cutoff}'")}
+    missed = [a for a in acts if str(a["id"]) not in linked and str(a.get("contact_id")) not in led_contacts]
+    par_ok = len(missed) == 0
+    lines.append(("✅" if par_ok else "🔴") + f" ledger capture 7d: {len(acts)} Engine emails, {len(missed)} uncaptured")
     red += 0 if par_ok else 1
 
     # 5. send discipline since P3 (2026-07-10)
