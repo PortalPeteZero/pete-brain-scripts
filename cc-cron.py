@@ -29,7 +29,7 @@ PROJECT = "b2d89898-cc67-43a7-b900-af2c2c8e4a66"
 ENVN = "7b0fd4ed-0f4a-41a4-8eb0-86e713397380"
 REPO = "PortalPeteZero/pete-brain-scripts"
 RW_GQL = "https://backboard.railway.app/graphql/v2"
-NEVER_FIRE = "0 0 30 2 *"            # Feb 30 never exists → a valid cron that never runs (= paused)
+NEVER_FIRE = "0 0 29 2 *"            # Feb 29 → fires only on a leap year (next 2028); Railway-valid, effectively paused
 TERMINAL = {"SUCCESS", "FAILED", "CRASHED", "REMOVED"}
 # crons that write a CC table → read its freshness for a TRUE last-run (Railway cron runs reuse the
 # deployment context and don't surface a fresh deployment row). Ported from cc-cron-sync.py.
