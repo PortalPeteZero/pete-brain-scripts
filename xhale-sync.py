@@ -1314,12 +1314,14 @@ def run(dry: bool = False):
                 except Exception as e:
                     errors.append(f"delete {uid}: {e}")
                     continue
-                # Either way (deleted-now or already-gone), the ledger should
-                # drop the entry so it doesn't keep being retried.
                 if result == "deleted":
                     counts["deletions"] += 1
-            entry["removed_from_feed_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
-            ledger[uid] = entry
+                # Either way (deleted-now OR already-gone), drop the entry from the
+                # ledger so it isn't retried on every future run. Without this pop,
+                # already-cancelled events lived in the ledger forever and re-surfaced
+                # as phantom "deletions" each run (the swim-block ghost, 2026-07-14).
+                # Matches the filtered / rest-day delete paths above.
+                ledger.pop(uid, None)
 
         if not dry:
             save_ledger(ledger)
