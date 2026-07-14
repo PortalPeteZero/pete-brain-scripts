@@ -8,17 +8,22 @@ Sources (all live):
   - GA4         : sessions/users/conversions + traffic-source split + per-page views (28d)
   - Google Ads  : ad-group + landing-page performance + 7-day spend (30d / 7d)
 
-Output:
-  - Markdown report -> Properties/Sygma Solutions Website/data/health-report-{YYYY-MM-DD}.md
+Output (post-cutover homes, verified 14 Jul 2026):
+  - Markdown report -> /tmp/health-report-{YYYY-MM-DD}.md (ephemeral working copy)
+  - AUTO-PUBLISHED -> CC reports.snapshots (report_key='sygma-health', one immutable
+    row per run) -> rendered at commandcentre.info/m/sygma-reports, "Health reports" tab.
+    Previous reports = SELECT period_date FROM reports.snapshots WHERE report_key='sygma-health'.
   - Headline summary -> stdout (for the triggering session to read + narrate)
 
 Run:
-  python3 Library/skills/sygma-health-report/scripts/build_report.py
+  VAULT=/tmp/pbs python3 /tmp/pbs/skills/sygma-health-report/scripts/build_report.py
 
 The four "deep-dive" cluster pages are defined in PAGES below; edit that list to
 re-point the report at different pages. Everything else is derived live.
-Tokens: Ahrefs read from ahrefs-api-configuration.md; helper APIs from the standard
-vault locations. Helper-first per [[external-service-routing]].
+Tokens: Ahrefs token = CC public.secrets 'ahrefs-token', materialised by the boot
+kernel to $VAULT/Library/processes/secrets/ahrefs-token. Helper APIs (gsc/ga4/ads)
+auth themselves the same way. Helper-first per [[external-service-routing]].
+State docs (ads ledger, non-issues) are read LIVE from vault_notes, not files.
 Surfer dropped 2026-06-08 (Pete's call — audit quota perpetually exceeded, data not
 needed here). See [[surfer-api-configuration]] § Quota & limits.
 """
@@ -52,15 +57,17 @@ PAGES = [
                "hsg 47 training", "hsg47"]},
 ]
 
-# Authoritative state docs the report cross-references so it doesn't re-flag fixed issues.
-ADS_LEDGER_PATH = f"{VAULT}/Properties/Sygma Solutions Website/data/google-ads-account.md"
-NON_ISSUES_PATH = f"{VAULT}/Properties/Sygma Solutions Website/seo-non-issues.md"
+# Authoritative state docs live in CC vault_notes and are read LIVE via _vault_note_body():
+#   - ads ledger    -> "Sygma Google Ads -- Account State" (## Recent changes ledger)
+#   - non-issues    -> "Sygma Solutions -- SEO non-issues and pre-work checks"
+#   - state of play -> "Sygma SEO -- State of Play (single source of truth; update IN PLACE)"
 
-# URLs with locked "no-work" decisions. Flagging anything against these URLs requires reading the linked decision first.
+# URLs with locked/restricted decisions. Flagging anything against these URLs requires reading the linked decision first.
 NO_WORK_URLS = {
     "/knowledge-hub/hsg47-explained":
-        "Locked 2026-05-07 — informational page, no CTR / Surfer / title work. "
-        "See Library/decisions/2026-05-07-hsg47-explained-no-work.md.",
+        "No RANKING/CTR pitches (non-intent page; traffic doesn't convert) — but normal technical "
+        "hygiene (title length, broken links, audit errors) IS fine, rule relaxed 7 Jul 2026. "
+        "See vault_notes 'No Active Work on /knowledge-hub/hsg47-explained' + feedback_hsg47_explained_no_ranking_pitches.",
 }
 
 # Residue threshold — landing pages with no paid click in this window are pre-fix residue ageing out of the 30d rolling window.
@@ -68,13 +75,16 @@ RESIDUE_DAYS = 14
 
 # ----------------------------- tokens / helpers -----------------------------
 def _ahrefs_token():
+    # SSOT = CC public.secrets 'ahrefs-token', materialised by the boot kernel. No hardcoded fallback:
+    # a baked-in key silently outlives rotation and leaks in git.
     try:
         v = open(f"{VAULT}/Library/processes/secrets/ahrefs-token").read().strip()
         if v:
             return v
     except Exception:
         pass
-    return "lGssv7YX4gEWyDhKaBhDLcmLfs14q-yqlZTzsMQa"
+    sys.exit("ahrefs-token not materialised — run the boot kernel (pete-session-bootstrap.py); "
+             "SSOT is CC public.secrets 'ahrefs-token'.")
 
 AHREFS_TOKEN = _ahrefs_token()
 
@@ -302,8 +312,7 @@ def build_md(A, G, GA, ADS):
     ledger = ADS.get("ledger", [])
     if ledger:
         L.append("## Recent ad-account changes (last 30d)\n")
-        L.append("Pulled from the live ads ledger at "
-                 "[[Properties/Sygma Solutions Website/data/google-ads-account#Recent changes ledger]]. "
+        L.append("Pulled live from vault_notes [[Sygma Google Ads -- Account State]] (## Recent changes ledger). "
                  "**Read these BEFORE flagging anything below — if a finding sits inside this window, "
                  "it has already been investigated or actioned.**\n")
         for e in ledger[:12]:
@@ -455,17 +464,31 @@ def main():
     with open(out_path, "w") as f:
         f.write(md)
 
+    # Auto-publish the snapshot to the CC (reports.snapshots, report_key='sygma-health'
+    # -> /m/sygma-reports "Health reports" tab). Non-fatal: warn loudly, never die.
+    import html as _html
+    try:
+        cc = _load("ccpublish", f"{SCRIPTS}/cc_publish.py")
+        body = ("<pre style='font:13px/1.55 ui-monospace,Menlo,monospace;white-space:pre-wrap;"
+                "padding:18px'>" + _html.escape(md) + "</pre>")
+        ok = cc.publish("sygma-health", today, {"subject": f"Sygma health report — {today}", "html": body})
+        print(f"\nCC publish: {'OK — verify the ' + today + ' chip at commandcentre.info/m/sygma-reports (Health reports tab)' if ok else '⚠️ FAILED — publish manually via cc_publish.publish(\"sygma-health\", …)'}")
+    except Exception as e:
+        print(f"\nCC publish: ⚠️ FAILED ({e}) — publish manually via cc_publish.publish('sygma-health', …)")
+
     # headline summary to stdout
     print("\n===== HEADLINE =====")
     print(f"DR {A.get('dr')} | tracked {A.get('tracked')} kw | "
           f"top-10 {A['buckets']['1-3']+A['buckets']['4-10']}")
 
-    print("\n--- MANDATORY READS BEFORE NARRATING ---")
+    print("\n--- MANDATORY READS BEFORE NARRATING (all in CC vault_notes / daily_log) ---")
     print("Cross-check every finding against these before flagging:")
-    print("  - Properties/Sygma Solutions Website/data/google-ads-account.md (Recent changes ledger)")
-    print("  - Properties/Sygma Solutions Website/seo-non-issues.md")
-    print("  - Library/decisions/2026-05-07-hsg47-explained-no-work.md")
-    print("  - Last 3 Daily/YYYY-MM-DD.md notes")
+    print("  - 'Sygma SEO -- State of Play (single source of truth; update IN PLACE)'  [vault_notes]")
+    print("  - 'Sygma Solutions -- SEO non-issues and pre-work checks' (9 traps)       [vault_notes]")
+    print("  - 'Sygma Google Ads -- Account State' (## Recent changes ledger)          [vault_notes]")
+    print("  - 'No Active Work on /knowledge-hub/hsg47-explained' (relaxed 7 Jul 26)   [vault_notes]")
+    print("  - Last 3 session rows in CC daily_log (cc-sql.py)")
+    print("  Fetch: VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py \"<title>\"")
 
     ledger = ADS.get("ledger", [])
     if ledger:
