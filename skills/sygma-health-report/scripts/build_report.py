@@ -204,6 +204,20 @@ def pull_gsc():
             out["page_queries"][p["path"]] = gsc.page_queries(GSC_PROP, f"https://{SITE_DOMAIN}{p['path']}", days=28)[:8]
         except Exception:
             out["page_queries"][p["path"]] = []
+    # Daily by-query positions for each head term — the mandatory cross-check for any
+    # Ahrefs movement (judge on GSC, never Ahrefs alone; see Notes in the report).
+    out["kw_daily"] = {}
+    for p in PAGES:
+        try:
+            fg = [{"filters": [{"dimension": "query", "operator": "equals", "expression": p["kw"]}]}]
+            rows = gsc.query(GSC_PROP, ["date"], date_range=14, limit=31, filters=fg)
+            out["kw_daily"][p["kw"]] = [
+                {"date": r["keys"][0], "position": round(r["position"], 1),
+                 "impressions": r["impressions"], "clicks": r["clicks"]}
+                for r in rows or []]
+        except Exception:
+            out["kw_daily"][p["kw"]] = []
+    out["latest_day"] = max((r["date"] for rows in out["kw_daily"].values() for r in rows), default=None)
     return out
 
 def pull_ga4():
@@ -348,6 +362,30 @@ def build_md(A, G, GA, ADS):
             L.append(f"\n*Head term \"{p['kw']}\" currently ranks via* `{slug(head[1])}`")
         L.append("")
 
+    # ---- GSC daily cross-check (the judge for any Ahrefs movement) ----
+    kwd = G.get("kw_daily", {})
+    if any(kwd.values()):
+        L.append("## GSC daily cross-check — head terms (the judge)\n")
+        L.append("**Rule: judge movement on GSC, never on Ahrefs alone.** Ahrefs trajectory rows repeat "
+                 "between its actual crawls — a flat run of identical values is carried-forward samples, so a "
+                 "Δ7d is two single-location snapshots, not a trend. The table below is Google's own daily "
+                 "blended average position per query. GSC lags 2–3 days: if an Ahrefs step-change happened "
+                 f"after **{G.get('latest_day') or 'the latest GSC day'}**, GSC cannot confirm or refute it yet — "
+                 "say exactly that, do not narrate the Ahrefs move as fact.\n")
+        all_dates = sorted({r["date"] for rows in kwd.values() for r in rows})
+        terms = [p["kw"] for p in PAGES]
+        L.append("| Date | " + " | ".join(terms) + " |")
+        L.append("|" + "---|" * (len(terms) + 1))
+        bydate = {t: {r["date"]: r for r in kwd.get(t, [])} for t in terms}
+        for d in all_dates:
+            cells = []
+            for t in terms:
+                r = bydate[t].get(d)
+                cells.append(f"{r['position']} ({r['impressions']})" if r and r["impressions"] else "–")
+            L.append(f"| {d[5:]} | " + " | ".join(cells) + " |")
+        L.append("\n*Cell = GSC avg position (impressions) for the exact query that day. Positions on <5 "
+                 "impressions bounce hard — read the band, not single days.*\n")
+
     # ---- GSC detail ----
     L.append("## GSC — top pages (28d)\n")
     L.append("| Clicks | Impr | CTR% | Pos | Page |")
@@ -398,6 +436,7 @@ def build_md(A, G, GA, ADS):
     L.append("- Position arrows: ↑ = improved (smaller number), ↓ = dropped. Δ7d compares oldest vs newest capture in window.")
     L.append("- GSC position/CTR are 28-day blended averages across all queries a page appears for — read alongside the live Ahrefs head-term position.")
     L.append("- Ahrefs site-metrics organic counts lag post-migration; GSC is the organic source of truth.")
+    L.append("- **Judge movement on GSC, never Ahrefs alone.** Any Ahrefs step-change (several terms moving the same day) MUST be read against the GSC daily cross-check table before it is narrated. Ahrefs flat runs = carried-forward crawls; the step is the gap between two single-location samples. If the step post-dates the latest GSC day, its reality is UNCONFIRMED — report it as such.")
     L.append("- Landing-page \"Note\" column: \"decaying residue\" = URL has no paid clicks in the last "
              f"{RESIDUE_DAYS} days and is ageing out of the 30-day rolling window; the spend is pre-fix history, not live waste. \"locked no-work page\" = decision-locked, do not propose work.")
     L.append("- Before flagging any finding: cross-check it against the Recent ad-account changes section + [[Properties/Sygma Solutions Website/seo-non-issues]]. If it appears in either, it has been investigated.")
@@ -462,9 +501,15 @@ def main():
         f0 = next((A["perday"][d].get(p["kw"].lower()) for d in days_asc if A["perday"][d].get(p["kw"].lower())), None)
         ln = A["perday"][days_asc[-1]].get(p["kw"].lower())
         d7 = (ln[0]-f0[0]) if (f0 and ln and f0[0] is not None and ln[0] is not None) else None
+        # GSC 3-day read for the same head term (the judge — see report Notes)
+        kwrows = G.get("kw_daily", {}).get(p["kw"], [])
+        tail = [r for r in kwrows if r["impressions"]][-3:]
+        gsc_str = " ".join(f"{r['date'][5:]}:{r['position']}" for r in tail) or "no GSC data"
         print(f"  {p['label']:16s} head '{p['kw']}' pos {latest[0] if latest else '—'} "
               f"(Δ7d {('—' if d7 is None else ('+'+str(d7) if d7>0 else str(d7)))}) "
-              f"via {slug(latest[1]) if latest else '—'}")
+              f"via {slug(latest[1]) if latest else '—'}  ||  GSC daily: {gsc_str}")
+    print(f"\n⚖️  JUDGE ON GSC, NEVER AHREFS ALONE. Latest GSC day: {G.get('latest_day')} (lags 2-3d).")
+    print("   An Ahrefs step-change after that date is UNCONFIRMED until GSC covers it — narrate it that way.")
     print(f"\nReport saved: {out_path}")
 
 if __name__ == "__main__":

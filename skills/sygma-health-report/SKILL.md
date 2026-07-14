@@ -44,6 +44,7 @@ Default deep-dive pages (the "recently worked on" cluster): **EUSR CAT1, Cat & G
 - **`/knowledge-hub/hsg47-explained` is a no-work page.** State its data factually if it appears (it often intercepts "hsg47 training"); never propose optimising it. Decision locked: [[2026-05-07-hsg47-explained-no-work]].
 - **No backlink suggestions** for Sygma (Appear Online owns off-site). See `feedback_no_backlinks`.
 - **GSC position/CTR are 28-day blended averages.** Always read them alongside the live Ahrefs head-term position before concluding a page is "stuck".
+- **Judge movement on GSC, never Ahrefs alone (hard rule, learned 14 Jul 2026).** Ahrefs trajectory rows repeat between its actual crawls — a flat run of identical values is carried-forward samples, so a Δ7d "drop" is two single-location snapshots, not a trend. The report includes a **GSC daily cross-check** table (Google's own daily position per head term) — every Ahrefs step-change MUST be read against it before narrating. GSC lags 2–3 days; if the Ahrefs step post-dates the latest GSC day, the move is **unconfirmed** — say exactly that, never present the Ahrefs number as a fait accompli. (Origin: 12 Jul 2026 Ahrefs "crash" for cat-and-genny that GSC showed as normal page-2 volatility.)
 
 ---
 
@@ -83,7 +84,7 @@ Read the generated `.md` and present it to Pete with interpretation, not just th
 
 1. **Site overview** — DR, organic vs paid split, conversion volume. One line on overall health.
 2. **Per-page scorecard** — the four cluster pages at a glance.
-3. **Movement** — for each page, is it moving? Call out the Δ7d direction and any **step-changes** (a date where several terms jump together usually = a Google re-crawl rewarding recent work). Note the **ranking URL** per head term — if a term ranks via a *different* Sygma page than its intended one, that's **cannibalisation** (the four are the same physical course, so this is common and structural).
+3. **Movement** — for each page, is it moving? Call out the Δ7d direction and any **step-changes** (a date where several terms jump together usually = a Google re-crawl rewarding recent work). Note the **ranking URL** per head term — if a term ranks via a *different* Sygma page than its intended one, that's **cannibalisation** (the four are the same physical course, so this is common and structural). **Before narrating ANY Ahrefs movement, verdict it against the "GSC daily cross-check" table in the report**: (a) GSC confirms → narrate as real; (b) GSC shows the term was already bouncing in that band → normal volatility, not a step; (c) the Ahrefs step post-dates the latest GSC day → unconfirmed, say so and offer a re-check in 2–3 days.
 4. **What's working / what's at risk** — tie movement back to recent commits where known (read the property README's HEAD history). For ad-spend findings, cross-check the Recent ad-account changes section before calling anything wasteful; a row marked "decaying residue" in the Landing pages table is pre-fix history ageing out of the rolling 30-day window, not live waste.
 5. **Publish the snapshot to the Command Centre** (since 11 Jun 2026 — the Sygma Reports page's "Health reports" tab):
    ```bash
