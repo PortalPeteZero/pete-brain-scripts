@@ -59,12 +59,13 @@ class TriageOpsError(ValueError):
 _EXACT_VERBS = ('Clear', 'Skip', '-')
 # Verb prefixes — the verb may be bare or carry a label / project / person / Pn after.
 # 'Reply' has no trailing space so it matches both bare "Reply" and "Reply in {project}".
-_PREFIX_VERBS = ('Reply', 'Task ', 'Hand to ', 'File ', 'Keep ')
+_PREFIX_VERBS = ('Reply', 'Task ', 'Hand to ', 'File ', 'Keep ', 'Route')
 _ALL_VERBS_DISPLAY = ('Reply', 'Task Pn', 'Hand to {person}', 'File {label}',
-                      'Keep {label}', 'Clear', 'Skip', '-')
+                      'Keep {label}', 'Route {engine}', 'Clear', 'Skip', '-')
 
-_VALID_ASKS = {'none', 'info-only', 'reply', 'decision', 'review', 'rsvp'}
-_ACTIONABLE_ASKS = {'reply', 'decision', 'review', 'rsvp'}
+# v6: 'route' = hand a tracked enquiry/backlink to its Engine (EE/BL); verb Route.
+_VALID_ASKS = {'none', 'info-only', 'reply', 'decision', 'review', 'rsvp', 'route'}
+_ACTIONABLE_ASKS = {'reply', 'decision', 'review', 'rsvp', 'route'}
 _REPLY_SHAPED_ASKS = {'reply', 'rsvp'}
 
 
@@ -89,7 +90,7 @@ _FENCE_MATRIX = _load_fence_matrix()
 if _FENCE_MATRIX:
     _VALID_ASKS = set(_FENCE_MATRIX.keys())
     _ACTIONABLE_ASKS = {a for a, verbs in _FENCE_MATRIX.items()
-                        if any(v in ('Reply', 'Task', 'Hand to') for v in verbs)}
+                        if any(v in ('Reply', 'Task', 'Hand to', 'Route') for v in verbs)}
     _REPLY_SHAPED_ASKS = {a for a, verbs in _FENCE_MATRIX.items()
                           if 'Task' not in verbs and 'Reply' in verbs}
 
@@ -139,9 +140,10 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
         is_reply_verb = action.startswith('Reply')
         is_task_verb = action.startswith('Task ')
         is_hand_verb = action.startswith('Hand to ')
+        is_route_verb = action.startswith('Route')          # v6: hand to the EE/BL engine
         is_task_permitted = is_reply_verb or is_task_verb   # a Task cell may appear
         is_task_required = is_task_verb                     # a Task cell MUST appear
-        is_actionable_verb = is_reply_verb or is_task_verb or is_hand_verb
+        is_actionable_verb = is_reply_verb or is_task_verb or is_hand_verb or is_route_verb
 
         # 1. Allowed-verb rule
         if not _is_allowed_verb(action):
