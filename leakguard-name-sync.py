@@ -62,7 +62,11 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     apply = "--apply" in sys.argv
     target = args[0] if args else "all"
-    where = "" if target == "all" else f" WHERE d.device_number = '{target}'"
+    # MULTI-METER: the ThingsLog device NAME is one physical field per logger. Drive it from the
+    # MAIN meter (tl_output_index=0) only — a sub-meter row (port>0) has its own display name via
+    # thingslog_name_override and must NOT push its name to the shared physical device or stomp the
+    # port-0 CRM name. So scope the whole sync to port-0 rows.
+    where = " WHERE d.tl_output_index = 0" + ("" if target == "all" else f" AND d.device_number = '{target}'")
     rows = _db(f"""SELECT d.device_number, d.device_name AS current_crm, d.thingslog_name_override,
         p.city, p.property_name, p.address_line1, p.house_number, p.unit
         FROM devices d LEFT JOIN properties p ON p.id = d.property_id{where}
@@ -89,7 +93,7 @@ def main():
     print("\nAPPLYING...")
     for num, old, new in changes:
         applied = set_name_thingslog(m, base, tok, cid, num, new)
-        _db(f"UPDATE devices SET device_name = '{new.replace(chr(39), chr(39)+chr(39))}' WHERE device_number = '{num}'")
+        _db(f"UPDATE devices SET device_name = '{new.replace(chr(39), chr(39)+chr(39))}' WHERE device_number = '{num}' AND tl_output_index = 0")
         print(f"  {num}: '{old}' -> '{applied}'  (CRM device_name updated)")
     print(f"\nDone. {len(changes)} devices renamed in ThingsLog + CRM.")
 
