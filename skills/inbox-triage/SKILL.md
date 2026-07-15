@@ -43,7 +43,7 @@ User says any of:
 ## Dependencies
 
 - Gmail API helper: `/tmp/pbs/gmail-api.py` (always available via service account DWD)
-- **Triage action classifier helper: `/tmp/pbs/triage-action-classify.py`** (runs the History pre-pass, emits a draft `Ask` per thread)
+- **Read-in-full round: `/tmp/pbs/triage-pull.py --round`** (pages the whole inbox, extracts every message full, computes `facts` per thread, writes the round file — Step 1). Classification is READ-AND-JUDGE over that file (the regex classifier `triage-action-classify.py` is retired).
 - Calendar API helper: `/tmp/pbs/calendar-api.py`
 - CC task store: `public.tasks`, CRUD via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py`.
 - Read/Write/Edit tools for vault operations
@@ -115,20 +115,9 @@ Before any stage executes, ask Pete ONE question: **"Are we running auto or conf
 
 A standing goal, an autonomous context, or Pete being away is NOT auto-consent for an interactive triage — if he invoked `triage` and is present, he chooses. (First live run, 10 Jul 2026: a session goal caused autonomous completion of a run Pete expected to confirm.)
 
-### Step 0.7: Review the Sorter's unattended runs (NEW — the cron review pass)
+### Step 0.7: (retired 15 Jul 2026 — the Sorter cron is PAUSED)
 
-The **Sorter** (the `triage-engine-run` cron, 5×/day, 6/10/14/18/22 Canary) runs while Pete is away and PROPOSES routings — and, for the senders Pete has enabled, auto-files them. **Every manual triage session STARTS here**, by reviewing what the Sorter did since the last human pass. This is the review-and-correct step: where the Sorter's mistakes get caught and where it learns. (Terminology + the whole map: [[Triage — Front Door (START HERE: how it works + where everything lives)]].)
-
-1. Pull the Sorter's decisions since the last manual review:
-   `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT thread_id, sender, proposed_ask, proposed_verb, proposed_label, final_verb, final_label, apply_status, decided_by, created_at FROM triage_decisions WHERE decided_by IN ('cron-proposed','cron-auto') AND created_at > '<last manual triage date>' ORDER BY created_at"`
-   (Same view on the cockpit: commandcentre.info/m/triage-engine.)
-2. Present them to Pete grouped by proposed destination — a short "here is what the Sorter did / would do" list.
-3. For each, Pete confirms or corrects:
-   - **Confirm** → the proposal stands; the row already carries it.
-   - **Correct a misroute** → run the corrected routing through the SAME execution path as a normal row (Step 6.2 / `triage-log.py`), which rewrites the decision to `decided_by='pete'`, `overridden=true`, `override_reason[]`, AND bank the regression case in the same breath (`triage-routing-test.py --add '<case>'`). **That is the learning** — a corrected Sorter mistake can never repeat, and that sender's confidence adjusts (via `triage-learn.py`).
-   - **Wrong auto-FILE** → undo it (re-add `INBOX`, remove the wrong label) as part of the correction, then re-route correctly.
-
-Only after the Sorter's work is reviewed do you pull the *remaining* inbox (Step 1) — the threads it left for a human.
+The unattended **Sorter** (`triage-engine-run`) is PAUSED (never-fire schedule on Railway). Gmail Mode B auto-filters bin the junk on arrival; everything else waits in the inbox for a manual triage. So there is no Sorter run to review — go straight to Step 1. (The Sorter returns in a later phase, on the same brain, once it has earned trust — Pete's separate go.)
 
 ### Step 1: Pull inbox — READ-IN-FULL round (shipped 15 Jul 2026)
 
@@ -175,28 +164,31 @@ Within each category, thread-level grouping (same sender + same topic, transacti
 
 Pete can override at any time: "give me everything in one go" -- collapse to single round.
 
-### Step 4: History pre-pass (NEW in v1.8) -- mandatory, structural
+### Step 4: Read-and-judge over the round file (shipped 15 Jul 2026 — replaced the regex classifier)
 
-For every thread, BEFORE choosing an Action verb, run the history classifier:
-
-```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/triage-action-classify.py /tmp/inbox-bodies.json > /tmp/triage-ask.json
-```
-
-Or call the equivalent function library-side. The output is a JSON file with one entry per thread:
+For EVERY thread, BEFORE choosing an Action verb, **READ its full content from the round file**
+(`/tmp/triage-round-<session_id>.json`, written by Step 1's `triage-pull.py --round`). Each thread
+carries `messages[].body` (every message, full text, HTML-stripped, quoted history removed) and a
+computed `facts` block:
 
 ```json
-{
-  "thread_id": "19de322f2b2f3697",
-  "msg_count": 3,
-  "latest_direction": "external",          // "external" | "pete-sent" | "internal-forward"
-  "pete_replied_since_last_external": false,
-  "open_question_in_latest": true,
-  "has_actions_label": false,
-  "ask_classification": "review",          // see vocabulary below
-  "ask_reason": "External party (Regan @ surveyequipment.uk) sent quote PDF and 'feel free to ask' -- review needed before any decision."
-}
+"facts": { "last_direction": "external|team-sent|pete-sent",
+           "pete_replied_since": false, "team_replied_since": true, "msg_count": 3 }
 ```
+
+Judge each thread's **Ask** from its ACTUAL body + facts — never the subject, the snippet, or a
+form's "Enquiry Type" field. The deterministic facts settle the reply-state; you settle the content:
+
+- **`team_replied_since: true`** → the TEAM already handled it (bookings@/a staff member replied).
+  Ask = `none`; do NOT flag it for Pete. (This is what the old classifier couldn't see.)
+- **`pete_replied_since: true`** or `last_direction: pete-sent` → Ask = `none` (ball on the other side).
+- A finished deliverable a colleague sent **TO Pete** ("here it is / let me know") → ball with Pete → `review`.
+- A website contact-form submission → judge the **message body**: a genuine training request routes to
+  the Enquiry Engine (`route`); an SEO/marketing pitch that merely ticked a training type is spam → `clear`.
+- An external party's explicit ask (invoice / "please send" / an invite) is NEVER `info-only`.
+- A thread flagged `partial_content`/`truncated`/`body_absent` → say so in the ops table; judge on what you have.
+
+The Ask vocabulary + heuristics below are the JUDGEMENT guide (now applied by reading, not regex):
 
 **`Ask` vocabulary (fixed -- 6 values, no others permitted):**
 
@@ -226,7 +218,7 @@ Or call the equivalent function library-side. The output is a JSON file with one
 
 **The classifier emits a DRAFT.** Claude reviews each `ask_classification` against the body content and corrects in-line before building the ops table. The draft is a starting point, not a final answer.
 
-**Without `/tmp/triage-ask.json` (or equivalent in-memory equivalent) populated for every thread, the round cannot be built.** Step 5 refuses to render. Step 6.0 validates that every row carries a non-empty `Ask` cell with a value from the vocabulary.
+**Without the round file read for every thread, the round cannot be built.** Judge each Ask from the thread's full body + facts. Step 6.0 validates that every row carries a non-empty `Ask` cell with a value from the vocabulary.
 
 ### Step 4.6: Enquiry-reply recognition (NEW — hand tracked enquiries to the Engine)
 
@@ -440,7 +432,7 @@ Then ask: `go` (proceed), `cancel` (stop), or `change row N` (adjust). One confi
 > **A customer / supplier / project thread is NOT filed until `vault-enricher.py {thread} {entity}` has run — the Gmail label alone logs NOTHING into the entity's home.** (1 Jul 2026: Clancy threads got the label but no enrich, so the SY-Clancy home captured nothing.) The enrich is a verb side-effect below, not an afterthought.
 
 > [!important] Triage Engine capture — EVERY decision is logged (P2, live 10 Jul 2026)
-> Every ops-table row — every proposal + Pete's final call, confirmed OR overridden — is captured to the `triage_decisions` ledger via **`triage-log.py`** as part of execution: build the decision payload per row (thread_id, the triggering **message_id** — the idempotency key, sender, `proposed` from the classifier draft incl. its fact routing, `final` from the confirmed ops table, `decided_by:'pete'`, and on an override `overridden:true` + `override_reason[]` one entry per corrected field), then `VAULT=/tmp/pbs python3 /tmp/pbs/triage-log.py --in <batch.json> --apply`. The tool does the Gmail mutation + task close/create (create ONLY on Pete's explicit confirmation) + ledger row as ONE triple-write with a ✓/✗ post-check per system, exits non-zero on any ✗, and is a full no-op on re-run. **The classifier's proposal (`triage-action-classify.py`, facts-first since P1) is what goes in `proposed`** — the proposed-vs-final delta is the engine's learning signal, so a decision that skips the ledger starves the learning loop. On any override, ALSO bank the regression case in the same breath: `triage-routing-test.py --add '<case>'` (triage-signoff blocks a session ending with an override missing either half).
+> Every ops-table row — every proposal + Pete's final call, confirmed OR overridden — is captured to the `triage_decisions` ledger via **`triage-log.py`** as part of execution: build the decision payload per row (thread_id, the triggering **message_id** — the idempotency key, sender, `proposed` from the classifier draft incl. its fact routing, `final` from the confirmed ops table, `decided_by:'pete'`, and on an override `overridden:true` + `override_reason[]` one entry per corrected field), then `VAULT=/tmp/pbs python3 /tmp/pbs/triage-log.py --in <batch.json> --apply`. The tool does the Gmail mutation + task close/create (create ONLY on Pete's explicit confirmation) + ledger row as ONE triple-write with a ✓/✗ post-check per system, exits non-zero on any ✗, and is a full no-op on re-run. **Your read-and-judge call is what goes in `proposed`/`final`** — the proposed-vs-final delta is the engine's learning signal, so a decision that skips the ledger starves the learning loop. On an override, `triage-log` banks the correction as a `triage_cases` exemplar automatically (the brain reads it next round); for a routing correction ALSO bank the regression case: `triage-routing-test.py --add '<case>'`. `triage-signoff --session <id>` blocks a session ending with an override missing its exemplar. Payload verbs: File / Keep / Clear / Skip / Reply / Reply+Task (`create_task` with `tags:['reply']`) / Task / Hand-to / Route (`engine:'ee'|'bl'`); Replies-tray actions are `action:'walker'` with an `outcome`. Stamp each row with the round's `session_id` and a `body_quote` (a phrase from the body you judged on) for load-bearing asks.
 
 Single-shape batch loops are forbidden. Iterate row-by-row with the verb→primitive map (unchanged from v1.7):
 
@@ -673,7 +665,7 @@ Home decision per entity type (default proposal, Pete can override):
 ## Rules
 
 1. **SWEEP IS SACRED -- on-command ONLY.** Triage MUST NOT call `sweep`, MUST NOT offer `sweep`, MUST NOT chain to anything that calls `sweep`. The point of `Keep X` is the thread STAYS in inbox until Pete acts. An auto-sweep defeats the verb. Sweep happens when Pete types `sweep` -- never otherwise. End-of-triage offers `sync` (which doesn't sweep), opt-in only.
-2. **Mandatory History pre-pass + Ask classification.** Step 4 must run for every thread before Step 5 builds the table. Without `Ask` populated from the fixed vocabulary, the row is malformed and Step 6.0 refuses.
+2. **Mandatory read-in-full + Ask judgement.** Step 4 must READ every thread's full body + facts from the round file before Step 5 builds the table. Without `Ask` populated from the fixed vocabulary, the row is malformed and Step 6.0 refuses. Judging off a snippet/subject/form-field is the exact failure this replaced.
 3. **Mode A/B reminder block at the top of every triage.** Print verbatim before any other work. Drift caused mid-round confusion.
 4. **Staged batches, 10-row hard cap.** Stages run in fixed order (1 noise → 2 relationships → 3 internal → 4 personal). Each stage gets its own go/cancel. No more 25-row tables.
 5. **Never auto-execute structural changes without confirmation.** Filters, labels, folders, new `project_slug` values -- all require Pete's y/edit before creation.
@@ -687,7 +679,7 @@ Home decision per entity type (default proposal, Pete can override):
 13. **Pull attachments + body extracts into vault.** Filing isn't done when the Gmail label is applied. See Step 5 Vault. Skip signature cruft.
 14. **Matter granularity.** Substantial topics get matter folders; one-offs go in `general/`. Threshold: 3+ messages OR ongoing topic OR significant attachments OR live commercial outcome.
 15. **Ops table is the source of truth for execution.** Step 6 iterates the table row-by-row, never a generic batch loop. Bare-label verbs (`Label: X`) forbidden. Pre-execution diff (Step 6.1) mandatory.
-16. **Read full thread, not just the latest message.** History pre-pass is structural. "Pete already replied" alone is sufficient to default `Ask = none`.
+16. **Read full thread, not just the latest message.** The round file carries every message in full + `facts`; reading is structural. `pete_replied_since`/`team_replied_since` = true is sufficient to default `Ask = none` (Pete OR the team already handled it).
 
 ## Vocabulary (single-verb actions outside the triage loop)
 
@@ -714,7 +706,7 @@ Pete can invoke specific actions without full triage:
 - Label scheme: `[[gmail-label-scheme]]`
 - Sister skill: `email-task-sync` (reconciliation engine; END-OF-TRIAGE OFFERS this, does not auto-chain)
 - State file: `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`
-- History classifier helper: `/tmp/pbs/triage-action-classify.py`
+- Read-in-full round + facts: `/tmp/pbs/triage-pull.py --round` (regex classifier retired 15 Jul 2026)
 - Validator helper: `/tmp/pbs/triage-validator.py`
 - Build history (archived): 
 
