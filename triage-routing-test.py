@@ -36,13 +36,10 @@ FENCE = "json triage-routing-cases"
 
 
 def load_cases():
-    rows = tl.cc_sql(f"SELECT body FROM vault_notes WHERE vault_path='{NOTE_PATH}'")
-    if not rows:
-        raise RuntimeError(f"regression note not found at {NOTE_PATH}")
-    m = re.search(r"```" + re.escape(FENCE) + r"\s*\n(.*?)```", rows[0]["body"], re.S)
-    if not m:
-        raise RuntimeError(f"no `{FENCE}` fence in the note")
-    return json.loads(m.group(1)), rows[0]["body"]
+    """v6: cases live in the triage_cases table (payload jsonb, verbatim), NOT the vault-note
+    fence. Mechanical replay is ROUTING cases only -- content cases run through --acceptance."""
+    rows = tl.cc_sql("SELECT payload FROM triage_cases WHERE active AND type='routing' ORDER BY created_at")
+    return [r["payload"] for r in rows], None
 
 
 def run_case(c):
@@ -102,21 +99,24 @@ def replay():
 
 
 def add_case(case_json):
+    """Bank a routing case into triage_cases. Dedupe key = sender + expect_label + expect_no_auto
+    (a corrected mistake can re-bank with a different expectation; identical is a no-op)."""
     case = json.loads(case_json)
-    cases, body = load_cases()
-    if any(c.get("sender") == case.get("sender") and
-           c.get("expect_label") == case.get("expect_label") and
-           bool(c.get("expect_no_auto")) == bool(case.get("expect_no_auto")) for c in cases):
-        print("case already banked — no-op")
+    pj = "'" + tl.esc(json.dumps(case)) + "'::jsonb"
+    sender = case.get("sender")
+    dup = tl.cc_sql(
+        "SELECT id FROM triage_cases WHERE type='routing' AND active"
+        f" AND payload->>'sender' IS NOT DISTINCT FROM {'NULL' if sender is None else chr(39)+tl.esc(sender)+chr(39)}"
+        f" AND payload->>'expect_label' IS NOT DISTINCT FROM "
+        f"{'NULL' if case.get('expect_label') is None else chr(39)+tl.esc(case['expect_label'])+chr(39)}"
+        f" AND (payload->>'expect_no_auto' IS NOT DISTINCT FROM {'true' if case.get('expect_no_auto') else 'NULL'})")
+    if dup:
+        tl.cc_sql(f"UPDATE triage_cases SET payload={pj} WHERE id='{dup[0]['id']}'")
+        print(f"case updated for {sender}")
         return 0
-    cases.append(case)
-    new_fence = "```" + FENCE + "\n" + json.dumps(cases, indent=2) + "\n```"
-    # lambda replacement: banked cases contain JSON \u escapes which re.sub would
-    # misread as regex escapes in a string replacement (first-live-run bug, 10 Jul 2026)
-    new_body = re.sub(r"```" + re.escape(FENCE) + r"\s*\n.*?```", lambda _m: new_fence, body, flags=re.S)
-    tl.cc_sql("UPDATE vault_notes SET body=$trtbody$" + new_body +
-              "$trtbody$, updated_at=now() WHERE vault_path='" + NOTE_PATH + "'")
-    print(f"banked case for {case.get('sender')} — {len(cases)} cases total")
+    tl.cc_sql(f"INSERT INTO triage_cases (type, sender, payload) VALUES ('routing', "
+              f"{'NULL' if sender is None else chr(39)+tl.esc(sender)+chr(39)}, {pj})")
+    print(f"banked routing case for {sender}")
     return 0
 
 
