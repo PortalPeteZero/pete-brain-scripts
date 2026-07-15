@@ -120,6 +120,41 @@ def add_case(case_json):
     return 0
 
 
+def acceptance(record=None):
+    """v6 content-acceptance: runs the NEW extraction + compute_thread_facts over the STORED
+    fixture payloads (deterministic, immune to live-mailbox drift), mechanically asserts the
+    team-reply fact, and presents each for the session's read-and-judge. --record stamps the
+    per-fixture verdicts so '7/7' is a re-runnable SELECT, not a chat claim."""
+    rows = tl.cc_sql("SELECT id, source_message_id, payload FROM triage_cases WHERE active AND type='content' "
+                     "ORDER BY created_at")
+    print(f"CONTENT ACCEPTANCE — {len(rows)} fixtures (mechanical fact-check + read-and-judge):\n")
+    mech_ok = True
+    for r in rows:
+        p = r["payload"]
+        msgs = p.get("messages", [])
+        facts = tl.compute_thread_facts(msgs, tl.team_emails()) if msgs else p.get("facts", {})
+        exp = p.get("expected_ask")
+        # mechanical assertion: a 'none' (team-handled) fixture MUST show team_replied_since=true
+        want_team = (exp == "none")
+        got_team = bool(facts.get("team_replied_since"))
+        mok = (got_team == want_team) if exp in ("none",) else True
+        mech_ok = mech_ok and mok
+        print(f"  [{r['source_message_id'][:16]:16}] expected={exp:9} team_replied={got_team} "
+              f"{'✓mech' if mok else '✗MECH'}  — {p.get('why','')[:60]}")
+    print(f"\n  mechanical fact-check: {'PASS' if mech_ok else 'FAIL'}")
+    if record:
+        verdicts = json.loads(record)
+        for sid, res in verdicts.items():
+            tl.cc_sql(f"UPDATE triage_cases SET last_run_at=now(), last_result='{tl.esc(res)}' "
+                      f"WHERE source_message_id='{tl.esc(sid)}' AND type='content'")
+        passed = sum(1 for v in verdicts.values() if v == "pass")
+        print(f"\n  RECORDED: {passed}/{len(verdicts)} content fixtures pass "
+              f"(re-check: SELECT source_message_id,last_result FROM triage_cases WHERE type='content')")
+        return 0 if (mech_ok and passed == len(rows)) else 1
+    print("  (pass --record '<json source_id->verdict>' to stamp the judged verdicts)")
+    return 0 if mech_ok else 1
+
+
 def demo():
     """P1 gate: live proof the classification moves with the DB, no code change."""
     print("P1 GATE DEMO — facts move with the DB")
@@ -153,6 +188,9 @@ def main():
         return demo()
     if "--add" in sys.argv:
         return add_case(sys.argv[sys.argv.index("--add") + 1])
+    if "--acceptance" in sys.argv:
+        rec = sys.argv[sys.argv.index("--record") + 1] if "--record" in sys.argv else None
+        return acceptance(rec)
     return replay()
 
 
