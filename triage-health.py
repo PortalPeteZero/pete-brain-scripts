@@ -66,7 +66,7 @@ def main():
     tr = tl.cc_sql(
         "SELECT count(*) FILTER (WHERE decided_at >= now() - interval '7 days') AS n7, "
         "count(*) FILTER (WHERE decided_at >= now() - interval '7 days' AND overridden) AS o7 "
-        "FROM triage_decisions WHERE decided_by='pete'")[0]
+        "FROM triage_decisions WHERE decided_by='pete' AND action IS DISTINCT FROM 'walker'")[0]
     rate = f"{tr['o7']}/{tr['n7']} overridden this week" if tr["n7"] else "no decision history yet (engine is new)"
     ok5 = reg_ok
     checks.append((ok5, f"5. Constantly learns — override rate: {rate}; regression harness: "

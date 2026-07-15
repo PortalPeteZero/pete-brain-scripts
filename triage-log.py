@@ -67,16 +67,79 @@ def row_is_pending(row):
             and row["apply_status"] is None and row["send_status"] is None)
 
 
+def bank_exemplar(dec):
+    """On an override, upsert a triage_cases exemplar -- the learning substrate the brain reads.
+    Lives in triage_cases (NOT on the mutable ledger row), so a later re-decision can never
+    unlearn it. Keyed on the source message_id (a second correction updates the same case)."""
+    mid = dec["message_id"]
+    fin = dec.get("final") or {}
+    reason = dec.get("correction_reason") or (dec.get("override_reason") or [None])[0]
+    payload = {"ask": fin.get("ask"), "verb": fin.get("verb"), "label": fin.get("label"),
+               "project": fin.get("project"), "priority": fin.get("priority"), "reason": reason,
+               "sender": dec.get("sender"), "subject_gist": dec.get("subject_gist"),
+               "body_gist": dec.get("body_gist")}
+    pj = "'" + tl.esc(json.dumps(payload)) + "'::jsonb"
+    if tl.cc_sql(f"SELECT id FROM triage_cases WHERE source_message_id='{tl.esc(mid)}'"):
+        tl.cc_sql(f"UPDATE triage_cases SET payload={pj}, type='content', sender={q(dec.get('sender'))}, "
+                  f"subject_gist={q(dec.get('subject_gist'))}, body_gist={q(dec.get('body_gist'))}, "
+                  f"active=true WHERE source_message_id='{tl.esc(mid)}'")
+    else:
+        tl.cc_sql("INSERT INTO triage_cases (type, sender, subject_gist, body_gist, payload, source_message_id) "
+                  f"VALUES ('content', {q(dec.get('sender'))}, {q(dec.get('subject_gist'))}, "
+                  f"{q(dec.get('body_gist'))}, {pj}, {q(mid)})")
+
+
+def capture_walker(dec, apply=False, manifest=None):
+    """Append-only Replies-tray event row: one row per (thread, outcome), synthetic timestamped
+    message_id (collision-proof under UNIQUE(message_id)); excluded from learning metrics."""
+    outcome = dec.get("outcome") or "defer"
+    tid = dec["thread_id"]
+    syn = dec.get("message_id") or f"{tid}:walker:{outcome}:{dt.datetime.now(dt.timezone.utc).isoformat()}"
+    lines = [f"  walker[{outcome}] {tid[:20]}…"]
+    if not apply:
+        lines.append("  DRY would append walker row")
+        return True, lines
+    tl.cc_sql("INSERT INTO triage_decisions (thread_id, message_id, sender, decided_by, action, "
+              "outcome, parent_id, apply_status, applied_at) VALUES ("
+              f"{q(tid)}, {q(syn)}, {q(dec.get('sender'))}, 'pete', 'walker', {q(outcome)}, "
+              f"{q(dec.get('parent_id'))}, 'applied', now())")
+    if manifest:
+        manifest.write(json.dumps({"step": "walker", "thread_id": tid, "outcome": outcome}) + "\n")
+    if outcome in ("send", "de-tray", "already-done") and not dec.get("no_gmail"):
+        try:
+            g = tl.gmail()
+            labels = {l["name"]: l["id"] for l in g.list_labels()}
+            g.modify_thread(tid, remove=[labels.get("Replies", "Replies")])
+        except Exception as e:
+            lines.append(f"  ✗ Gmail strip Replies: {e}")
+            return False, lines
+    lines.append("  ✓ walker row appended")
+    return True, lines
+
+
 def capture(dec, apply=False, manifest=None):
     """Process one decision. Returns (ok, lines)."""
     lines = []
+    # Walker event rows (Replies-tray send/de-tray/already-done/defer) are append-only,
+    # keyed on their own synthetic message_id -- they never touch the no-op / re-decision path.
+    if dec.get("action") == "walker":
+        return capture_walker(dec, apply, manifest)
     mid = dec["message_id"]
     fin = dec.get("final") or {}
     pro = dec.get("proposed") or {}
+
     row = existing_row(mid)
     if row and not row_is_pending(row):
-        lines.append(f"  = {mid[:24]}… already captured (non-pending row) — FULL NO-OP")
-        return True, lines
+        # v6 cross-round re-decision: the SAME message re-triaged in a later session. If the
+        # disposition is unchanged it is a true no-op; if it changed, UPDATE the row in place and
+        # re-execute the verb (no carry-forward, no new round entity -- message_id IS the key).
+        same = (row.get("final_verb") == fin.get("verb")
+                and row.get("final_label") == fin.get("label")
+                and row.get("final_ask") == fin.get("ask"))
+        if same:
+            lines.append(f"  = {mid[:24]}… unchanged re-decision — FULL NO-OP")
+            return True, lines
+        lines.append(f"  ↻ {mid[:24]}… re-decision ({row.get('final_verb')}→{fin.get('verb')}) — updating in place")
 
     if not apply:
         lines.append(f"  DRY {mid[:24]}… would write decision row + verb '{fin.get('verb')}' "
@@ -101,7 +164,15 @@ def capture(dec, apply=False, manifest=None):
     lint_passed = dec.get("lint_passed", (lint_rep or {}).get("passed") if isinstance(lint_rep, dict) else None)
     lp = "NULL" if lint_passed is None else ("true" if lint_passed else "false")
     lr = "NULL" if lint_rep is None else "'" + tl.esc(json.dumps(lint_rep)) + "'::jsonb"
-    if row:  # pending proposal being finalised
+    # v6 columns (read-in-full / learning): session scope + read-proof + partial-content mark
+    sid = q(dec.get("session_id"))
+    bq = q(dec.get("body_quote"))
+    sg = q(dec.get("subject_gist"))
+    bg = q(dec.get("body_gist"))
+    cr = q(dec.get("correction_reason"))
+    pc = "true" if dec.get("partial_content") else "false"
+    eng = q(dec.get("engine"))
+    if row:  # pending proposal OR a cross-round re-decision being finalised
         tl.cc_sql("UPDATE triage_decisions SET "
                   f"final_ask={q(fin.get('ask'))}, final_verb={q(fin.get('verb'))}, "
                   f"final_label={q(fin.get('label'))}, final_project={q(fin.get('project'))}, "
@@ -110,13 +181,16 @@ def capture(dec, apply=False, manifest=None):
                   f"overridden_at={'now()' if ov else 'NULL'}, "
                   f"override_reason={a(dec.get('override_reason'))}, "
                   f"lint_passed={lp}, lint_report={lr}, basis_refs={a(dec.get('basis_refs'))}, "
+                  f"session_id={sid}, body_quote={bq}, subject_gist={sg}, body_gist={bg}, "
+                  f"correction_reason={cr}, partial_content={pc}, engine={eng}, "
                   f"apply_status='applying', decided_at=now() WHERE message_id='{tl.esc(mid)}'")
     else:
         tl.cc_sql("INSERT INTO triage_decisions (thread_id, sender, message_id, fact_id, "
                   "proposed_ask, proposed_verb, proposed_label, proposed_project, proposed_priority, "
                   "final_ask, final_verb, final_label, final_project, final_priority, "
                   "overridden, overridden_at, override_reason, decided_by, "
-                  "lint_passed, lint_report, basis_refs, apply_status) VALUES ("
+                  "lint_passed, lint_report, basis_refs, session_id, body_quote, subject_gist, "
+                  "body_gist, correction_reason, partial_content, engine, apply_status) VALUES ("
                   f"{q(dec['thread_id'])}, {q(dec.get('sender'))}, {q(mid)}, {fact_id}, "
                   f"{q(pro.get('ask'))}, {q(pro.get('verb'))}, {q(pro.get('label'))}, "
                   f"{q(pro.get('project'))}, {q(pro.get('priority'))}, "
@@ -124,9 +198,13 @@ def capture(dec, apply=False, manifest=None):
                   f"{q(fin.get('project'))}, {q(fin.get('priority'))}, "
                   f"{'true' if ov else 'false'}, {'now()' if ov else 'NULL'}, "
                   f"{a(dec.get('override_reason'))}, {q(dec.get('decided_by') or 'pete')}, "
-                  f"{lp}, {lr}, {a(dec.get('basis_refs'))}, 'applying')")
+                  f"{lp}, {lr}, {a(dec.get('basis_refs'))}, {sid}, {bq}, {sg}, {bg}, {cr}, {pc}, {eng}, "
+                  "'applying')")
     if manifest:
         manifest.write(json.dumps({"step": "ledger", "message_id": mid}) + "\n")
+    # On an override, bank the correction as a triage_cases exemplar (decoupled from this row).
+    if ov:
+        bank_exemplar(dec)
 
     ok = True
     # 2) Gmail mutation per verb (skipped for demo/no-gmail payloads)
@@ -139,8 +217,16 @@ def capture(dec, apply=False, manifest=None):
             add, remove = [], []
             if fin.get("label") and fin["label"] in labels:
                 add.append(labels[fin["label"]])
-            if verb.startswith("reply"):
+            if verb.startswith("reply"):                    # Reply / Reply+Task -> Replies tray
                 add.append(labels.get("Replies", "Replies")); remove.append("INBOX")
+            elif verb.startswith("hand"):                   # Hand to {person} -> Delegated, keep INBOX
+                add.append(labels.get("Delegated", "Delegated"))
+            elif verb == "route":                           # engine intake (EE): TE label + Replies, keep INBOX
+                add.append(labels.get("Replies", "Replies"))
+            elif verb == "keep":                            # add filing label, KEEP in inbox
+                pass
+            elif verb in ("skip", "-", ""):                 # defer: no Gmail change
+                add, remove = [], []
             elif verb.startswith(("file", "task")):
                 remove.append("INBOX")
             elif verb == "clear":
@@ -165,10 +251,10 @@ def capture(dec, apply=False, manifest=None):
     if dec.get("create_task"):
         t = dec["create_task"]
         rows = tl.cc_sql("INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, "
-                         "project_slug, status, source, notes) VALUES (gen_random_uuid(), "
+                         "project_slug, status, source, tags, notes) VALUES (gen_random_uuid(), "
                          f"{q(t['name'])}, {q(t.get('priority') or 'P3')}, {q(t.get('priority') or 'P3')}, "
                          f"NULL, {q(t.get('entity_slug'))}, {q(t.get('project_slug') or 'General')}, "
-                         f"'todo', 'claude', {q(t.get('notes'))}) RETURNING id")
+                         f"'todo', 'claude', {a(t.get('tags'))}, {q(t.get('notes'))}) RETURNING id")
         task_id = rows[0]["id"] if rows else None
         tl.cc_sql(f"UPDATE triage_decisions SET task_id={q(task_id)} WHERE message_id='{tl.esc(mid)}'")
         if manifest:

@@ -51,7 +51,7 @@ def main():
         "count(*) FILTER (WHERE decided_at >= now() - interval '7 days' AND overridden) AS o7, "
         "count(*) FILTER (WHERE decided_at >= now() - interval '14 days' AND decided_at < now() - interval '7 days') AS n14, "
         "count(*) FILTER (WHERE decided_at >= now() - interval '14 days' AND decided_at < now() - interval '7 days' AND overridden) AS o14 "
-        "FROM triage_decisions WHERE decided_by='pete'")[0]
+        "FROM triage_decisions WHERE decided_by='pete' AND action IS DISTINCT FROM 'walker'")[0]
     def rate(o, n):
         return f"{o}/{n} ({o/n:.0%})" if n else "no data"
     lines.append(f"- override rate: this week {rate(tr['o7'], tr['n7'])}, last week {rate(tr['o14'], tr['n14'])} "
