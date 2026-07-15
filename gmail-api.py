@@ -125,16 +125,27 @@ class GmailAPI:
         if body is not None:
             headers["Content-Type"] = "application/json"
             data = json.dumps(body).encode()
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(req) as r:
-                raw = r.read()
-                if not raw:
-                    return None
-                return json.loads(raw)
-        except urllib.error.HTTPError as e:
-            msg = e.read().decode(errors="replace")
-            raise RuntimeError(f"Gmail API {method} {path} -> HTTP {e.code}: {msg}") from e
+        # Bounded retry with backoff on transient failures (429 / 5xx / SSL / URLError).
+        # A single blip mid-pull used to abort a whole triage round (14 Jul 2026).
+        import time as _time, ssl as _ssl
+        attempt = 0
+        while True:
+            req = urllib.request.Request(url, data=data, headers=headers, method=method)
+            try:
+                with urllib.request.urlopen(req) as r:
+                    raw = r.read()
+                    if not raw:
+                        return None
+                    return json.loads(raw)
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                    attempt += 1; _time.sleep(0.5 * (2 ** attempt)); continue
+                msg = e.read().decode(errors="replace")
+                raise RuntimeError(f"Gmail API {method} {path} -> HTTP {e.code}: {msg}") from e
+            except (urllib.error.URLError, _ssl.SSLError, ConnectionError) as e:
+                if attempt < 3:
+                    attempt += 1; _time.sleep(0.5 * (2 ** attempt)); continue
+                raise RuntimeError(f"Gmail API {method} {path} -> transient: {e}") from e
 
     # --- labels ---------------------------------------------------------------
 
@@ -186,6 +197,21 @@ class GmailAPI:
 
     def search_threads(self, q, max_results=20):
         return self._call("GET", "/threads", query={"q": q, "maxResults": max_results}).get("threads", [])
+
+    def search_threads_all(self, q):
+        """Paginate the FULL result set for q (follows nextPageToken to exhaustion).
+        Returns (threads, exhausted): exhausted is True only when no page token remained,
+        so the round pull can prove it captured every in-scope thread (no silent 100 cap)."""
+        out, token = [], None
+        while True:
+            query = {"q": q, "maxResults": 100}
+            if token:
+                query["pageToken"] = token
+            resp = self._call("GET", "/threads", query=query) or {}
+            out.extend(resp.get("threads", []))
+            token = resp.get("nextPageToken")
+            if not token:
+                return out, True
 
     def audit_sent_unlabeled(self, days=14, max_results=100):
         """

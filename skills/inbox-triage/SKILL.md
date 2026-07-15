@@ -130,13 +130,25 @@ The **Sorter** (the `triage-engine-run` cron, 5×/day, 6/10/14/18/22 Canary) run
 
 Only after the Sorter's work is reviewed do you pull the *remaining* inbox (Step 1) — the threads it left for a human.
 
-### Step 1: Pull inbox
+### Step 1: Pull inbox — READ-IN-FULL round (shipped 15 Jul 2026)
 
-`gmail-api.py search "in:inbox" 100` -- the limit is a POSITIONAL argument (not `--max-results`); paginate further if needed.
+> [!important] Run the read-in-full round FIRST — never judge from snippets/subjects/form fields
+> `VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py --round`
+> This pages the ENTIRE inbox (no 100 cap), extracts EVERY message of EVERY thread in full
+> (text/plain, HTML fallback, quoted-history stripped, ~15k/msg), computes per-thread facts
+> (`last_direction`, `pete_replied_since`, **`team_replied_since`** — the team set is the live
+> Sygma staff directory + bookings@), flags partial/attachment-only threads, and writes a round
+> file `/tmp/triage-round-<session_id>.json`. It prints the session_id + round_file path.
+> **Then, for EVERY thread, READ its `messages[].body` and `facts` from the round file BEFORE
+> choosing an Ask.** A `team_replied_since:true` thread is TEAM-HANDLED (do not flag it for Pete);
+> a finished deliverable sent TO Pete is ball-with-Pete; judge a website form by its message body,
+> never the "Enquiry Type" field. Judging off the snippet is the exact failure this replaced
+> (14 Jul 2026). The legacy `gmail-api.py search "in:inbox"` bare pull is retired for triage.
+> (Ledger capture + signoff gates land with the next build phase; until then still capture via
+> the existing Step 6.2 flow.)
 
-Filter out:
+Filter out (unchanged for now):
 - Threads already labelled with the `Replies` or `Delegated` label (already in-flight workflow, accessible via the Replies sidebar view; shown separately if Pete asks).
-- Threads older than 30 days (avoid drowning in ancient backlog).
 
 ### Step 2: Group by category (NOT by sender clusters first)
 

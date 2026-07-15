@@ -43,6 +43,52 @@ def cc_sql(q, _retries=3):
 def esc(s):
     return str(s).replace("'", "''")
 
+# ---------- thread facts (the ONE home; used by the pull + the acceptance run) ----------
+PETE_EMAIL = "pete.ashcroft@sygma-solutions.com"
+
+def team_emails():
+    """The Sygma team set for team_replied_since: staff_directory work emails
+    (lower-normalised, NULLs skipped, EXCLUDING Pete) + bookings@. info@ is
+    deliberately NOT here -- it is the website form's envelope sender, so form
+    mail is read as the ENQUIRER, not the team."""
+    rows = cc_sql("SELECT lower(work_email) AS e FROM public.staff_directory "
+                  "WHERE work_email IS NOT NULL AND work_email <> ''")
+    s = {r["e"] for r in rows if r.get("e")}
+    s.discard(PETE_EMAIL)
+    s.add("bookings@sygma-solutions.com")
+    return s
+
+def _addr(v):
+    import re
+    m = re.search(r"[\w.+-]+@[\w.-]+", v or "")
+    return m.group(0).lower() if m else ""
+
+def compute_thread_facts(messages, team_set, pete=PETE_EMAIL):
+    """messages: ordered list of dicts each carrying a 'from' (or 'from_last'/'sender').
+    Returns last-sender direction + pete/team replied-since. team_replied_since is
+    true when the newest team message is later than the newest external one (so a
+    single team-only message -- e.g. bookings@ answering a web enquiry -- counts)."""
+    def cat(msg):
+        a = _addr(msg.get("from") or msg.get("from_last") or msg.get("sender") or "")
+        if a == pete:
+            return "pete"
+        if a in team_set:
+            return "team"
+        return "external"
+    cats = [cat(m) for m in messages]
+    def last_idx(k):
+        idxs = [i for i, c in enumerate(cats) if c == k]
+        return idxs[-1] if idxs else -1
+    ext, team, pet = last_idx("external"), last_idx("team"), last_idx("pete")
+    last_direction = cats[-1] if cats else "external"
+    return {
+        "last_direction": ("pete-sent" if last_direction == "pete"
+                           else "team-sent" if last_direction == "team" else "external"),
+        "pete_replied_since": pet > ext and pet >= 0,
+        "team_replied_since": team > ext and team >= 0,
+        "msg_count": len(messages),
+    }
+
 
 # ---------- config keys ----------
 
