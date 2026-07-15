@@ -30,6 +30,24 @@ tl = importlib.import_module("triage_lib")
 
 def main():
     problems, warnings = [], []
+    # optional --session <uuid>: scope the ledger checks to one session's rows
+    session_id = None
+    if "--session" in sys.argv:
+        session_id = sys.argv[sys.argv.index("--session") + 1]
+    sess_and = f" AND session_id='{tl.esc(session_id)}'" if session_id else ""
+
+    # S3b (v6 read-proof): every load-bearing decision this session carries a body_quote
+    # (ask other than info-only/none, not partial-content, not a walker/skip/keep row).
+    if session_id:
+        missing = tl.cc_sql(
+            "SELECT count(*) AS n FROM triage_decisions WHERE "
+            f"session_id='{tl.esc(session_id)}' AND decided_by='pete' AND action IS DISTINCT FROM 'walker' "
+            "AND NOT partial_content AND coalesce(final_ask,'') NOT IN ('info-only','none') "
+            "AND lower(coalesce(final_verb,'')) NOT IN ('skip','keep','-','') "
+            "AND (body_quote IS NULL OR length(body_quote) < 1)")[0]["n"]
+        if missing:
+            problems.append(f"S3b read-proof: {missing} load-bearing decision(s) this session with NO "
+                            f"body_quote — a decision made without quoting the body it read")
 
     # S3 first (cheap): stuck rows
     stuck = tl.cc_sql("SELECT count(*) AS n FROM triage_decisions WHERE apply_status='applying' OR send_status='sending'")[0]["n"]
@@ -37,24 +55,18 @@ def main():
     if stuck:
         problems.append(f"S3 ledger: {stuck} row(s) stuck mid-mutation (applying/sending)")
 
-    # S2: overrides today must each have a regression case for their sender
-    rows = tl.cc_sql("SELECT sender, override_reason FROM triage_decisions WHERE overridden AND "
-                     "overridden_at >= date_trunc('day', now())")
-    if rows:
-        try:
-            note = tl.cc_sql("SELECT body FROM vault_notes WHERE vault_path="
-                             "'Projects/PA-Command-Centre/triage-routing-regression.md'")[0]["body"]
-            m = re.search(r"```json triage-routing-cases\s*\n(.*?)```", note, re.S)
-            case_senders = {c.get("sender", "").lower() for c in json.loads(m.group(1))} if m else set()
-            case_domains = {s.split("@")[-1] for s in case_senders if "@" in s}
-        except Exception:
-            case_senders, case_domains = set(), set()
-        for r in rows:
-            s = (r.get("sender") or "").lower()
-            if s not in case_senders and s.split("@")[-1] not in case_domains:
-                problems.append(f"S2 override not banked: '{s}' overridden today "
-                                f"(reason {r.get('override_reason')}) but NO regression case — "
-                                f"run triage-routing-test.py --add")
+    # S2 (v6): every override today must have its triage_cases exemplar (triage-log banks it on
+    # override) -- content corrections are complete with the exemplar; a routing correction ALSO
+    # needs a routing case. Excludes walker rows (they are tray events, never overrides).
+    rows = tl.cc_sql("SELECT message_id, sender, override_reason FROM triage_decisions WHERE overridden "
+                     f"AND action IS DISTINCT FROM 'walker' AND overridden_at >= date_trunc('day', now()){sess_and}")
+    for r in rows:
+        mid, s = r.get("message_id") or "", (r.get("sender") or "").lower()
+        has_ex = tl.cc_sql(f"SELECT 1 FROM triage_cases WHERE active AND source_message_id='{tl.esc(mid)}' LIMIT 1")
+        if not has_ex:
+            problems.append(f"S2 override not banked: message {mid[:20]}… (sender '{s}', reason "
+                            f"{r.get('override_reason')}) overridden today but NO triage_cases exemplar — "
+                            f"the correction was not learned")
 
     # S4: tray threads whose linked task is done (sync gesture unapplied)
     try:

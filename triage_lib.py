@@ -209,8 +209,11 @@ def assemble_digest(kind="runner", deliver=True):
     runner's heartbeat -- a zero-action window still writes the row. Returns digest_id."""
     rows = cc_sql("INSERT INTO triage_digests (kind, sent_at) VALUES ('%s', now()) RETURNING digest_id" % esc(kind))
     did = rows[0]["digest_id"]
-    # sweep: every actioned decision row not yet digested + stuck rows
+    # sweep: every actioned CRON decision row not yet digested + stuck rows. v6: scope to cron
+    # rows -- the digest is a cron/runner concern; sweeping manual pete rows would, on the first
+    # future digest, bulk-claim months of manual decisions into one digest (R4 #24).
     cc_sql("UPDATE triage_decisions SET digest_id='%s' WHERE digest_id IS NULL AND "
+           "decided_by IN ('cron-auto','cron-proposed') AND "
            "(apply_status IS NOT NULL OR send_status IS NOT NULL)" % did)
     cc_sql("UPDATE triage_sync_actions SET digest_id='%s' WHERE digest_id IS NULL AND apply_status IS NOT NULL" % did)
     dec = cc_sql("SELECT id, thread_id, sender, final_verb, final_label, apply_status, send_status "

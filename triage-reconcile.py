@@ -51,7 +51,10 @@ def drift_lines(demo_seed=False):
         lines.append(f"stuck-rows: {stuck} row(s) crashed mid-mutation (applying/sending > 2h) — need a look.")
 
     # 2. digest-sweep backstop
+    # v6: scope to CRON rows only -- manual pete rows legitimately carry digest_id NULL forever
+    # (the digest sweep is a cron concern), so counting them was a permanent false drift signal.
     orphan = tl.cc_sql("SELECT count(*) AS n FROM triage_decisions WHERE apply_status='applied' "
+                       "AND decided_by IN ('cron-auto','cron-proposed') "
                        f"AND digest_id IS NULL AND applied_at < now() - interval '{RUNNER_WINDOW_HOURS} hours'")[0]["n"]
     if orphan:
         lines.append(f"undigested-applied: {orphan} applied row(s) with digest_id NULL older than one "
@@ -93,8 +96,10 @@ def drift_lines(demo_seed=False):
                       "WHERE reviewed_at IS NULL" % UNREVIEWED_TRIP_N)[0]["n"]
     if unrev >= UNREVIEWED_TRIP_N:
         trips.append(f"{unrev} consecutive action-carrying digests unreviewed")
-    undos = tl.cc_sql("SELECT (SELECT count(*) FROM triage_decisions WHERE overridden_at >= now() - interval '1 day') + "
-                      "(SELECT count(*) FROM triage_sync_actions WHERE undone_at >= now() - interval '1 day') AS n")[0]["n"]
+    # v6: the T2 ledger arm is RETIRED until Phase 4 -- a manual Pete correction is NOT a
+    # digest-undo click, and every correction-heavy manual session (the engine's whole point)
+    # would false-trip the kill switch. Only the sync-actions undo arm remains.
+    undos = tl.cc_sql("SELECT count(*) AS n FROM triage_sync_actions WHERE undone_at >= now() - interval '1 day'")[0]["n"]
     if undos >= UNDO_TRIP_PER_DAY:
         trips.append(f"{undos} digest-undo clicks in 24h (bound {UNDO_TRIP_PER_DAY})")
     ceil = tl.cc_sql("SELECT fact_id, count(*) AS n FROM triage_decisions WHERE send_status='sent' "
