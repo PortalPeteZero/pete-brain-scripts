@@ -24,6 +24,17 @@ description: >
 
 Interactive email triage walker. The verb `triage` runs this skill.
 
+> [!important] NON-NEGOTIABLE OUTPUT FORMAT — read this before anything else
+> The ONLY acceptable output of a triage is a **per-thread ops table** where EVERY thread gets a
+> proposed **verb** — `Reply` / `Task Pn` / `Reply + Task` / `Hand to {who}` / `Route` / `File` /
+> `Clear` / `Skip` — then you STOP and wait for Pete's `go` / `except #N` / `cancel`.
+> **Never narrate a prose summary of the inbox instead of the table.** Never describe threads in
+> sentences ("these need you… the team's on it…"). One row per thread, one proposed verb per row.
+> Columns: `# · Ask · From / Subject · Action(verb + dest) · Task · flags`. Present in staged
+> batches of ≤10 (Step 5.5), confirming mode is the DEFAULT. If you catch yourself writing
+> paragraphs about the inbox, STOP and render the table. This is the #1 recurring failure (Pete,
+> 15 Jul 2026) — the propose-a-verb-per-thread table IS the product.
+
 > **Operating manual**: see `[[email-workflow]]` for the full system overview (verbs, four decision lines, sweep behaviour, demand-driven label rule, delegation flow).
 >
 > **Routing rules**: `[[vault-routing]]`. Gmail-side rules: `[[gmail-label-scheme]]`.
