@@ -34,6 +34,14 @@ Interactive email triage walker. The verb `triage` runs this skill.
 > batches of ≤10 (Step 5.5), confirming mode is the DEFAULT. If you catch yourself writing
 > paragraphs about the inbox, STOP and render the table. This is the #1 recurring failure (Pete,
 > 15 Jul 2026) — the propose-a-verb-per-thread table IS the product.
+>
+> **MECHANICALLY ENFORCED — you do NOT hand-write the table.** After reading, write your per-thread
+> judgments (one entry per thread: ask + verb [+ label/task/hand_to/engine]) to a JSON file and run:
+> `VAULT=/tmp/pbs python3 /tmp/pbs/triage-ops-table.py <round_file> <judgments.json>`
+> It REFUSES unless every round thread has a judgment and every row passes the ask↔verb validator,
+> then PRINTS the canonical table and WRITES `/tmp/triage-ops-<session>.json`. Present that printed
+> table; on Pete's `go`, capture ONLY via `triage-log.py --in /tmp/triage-ops-<session>.json --apply`.
+> Capture cannot happen without the table having been rendered + validated first — that is the gate.
 
 > **Operating manual**: see `[[email-workflow]]` for the full system overview (verbs, four decision lines, sweep behaviour, demand-driven label rule, delegation flow).
 >
