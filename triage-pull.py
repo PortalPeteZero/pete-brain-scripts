@@ -8,6 +8,15 @@ labels, snippet, age_days} as JSON, ready to classify.
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py                       # in:inbox, 100
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py "label:Replies" 50    # any query + limit
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py "in:inbox" 100 --full # + per-message enrichment
+  VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py --round               # the READ-IN-FULL round (Step 1)
+  VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py --threads <id[,id2]>  # strays/new arrivals -> SAME extractor
+
+--round / --threads (the read-in-full extractor, 15-16 Jul 2026): every message body in full
+(text/plain, HTML fallback, quoted history stripped) PLUS any text/calendar (.ics) invite — parsed
+into a `📅 MEETING INVITE` banner + a `meeting_invite` flag + When/Where (handles attachment-only
+Outlook/Teams invites). `--round` pages the whole inbox; `--threads` runs the identical extraction for
+specific ids so a stray/new arrival mid-triage is NEVER judged off a bare get-thread. Writes a round
+file `/tmp/triage-round-<session>.json`; the summary lists `meeting_invites` loudly.
 
 --full (Triage Engine P5 — the auto-path guardrail inputs the bare pull cannot feed):
 per thread also returns the LATEST message's real From/Reply-To addresses, the To/Cc

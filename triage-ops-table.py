@@ -8,7 +8,10 @@ in the skill is just words that can be skipped. THIS tool makes the table code-p
   1. It takes the round file + a judgments JSON (one entry per thread: ask + proposed verb
      [+ label/task/hand_to/engine]).
   2. It REFUSES unless EVERY round-file thread has a judgment (no thread may be silently
-     dropped) and every row passes triage-validator (ask<->verb matrix).
+     dropped), every filing label RESOLVES to a real Gmail label (exact/unique-suffix — a
+     made-up name like 'Sygma' blocks HERE, not silently at capture; 16 Jul 2026), no
+     `meeting_invite` thread is judged info-only/File (an invite is an RSVP), and every row
+     passes triage-validator (ask<->verb matrix).
   3. It PRINTS the canonical staged ops table (# . Ask . From/Subject . Action . Task . flags),
      batches of <=10.
   4. It WRITES the capture-ready batch to /tmp/triage-ops-<session_id>.json -- the ONLY file
