@@ -213,30 +213,54 @@ def capture(dec, apply=False, manifest=None):
         try:
             g = tl.gmail()
             labels = {l["name"]: l["id"] for l in g.list_labels()}
+            def _resolve(name):
+                # exact name, else UNIQUE suffix match ("SY-Clancy" -> "Customers/SY-Clancy").
+                # Returns (label_id, error). A short/wrong name that can't resolve is an ERROR,
+                # never a silent no-op (16 Jul 2026: short names archived threads with NO label).
+                if not name:
+                    return None, None
+                if name in labels:
+                    return labels[name], None
+                hits = [n for n in labels if n == name or n.endswith("/" + name)]
+                if len(hits) == 1:
+                    return labels[hits[0]], None
+                return None, ("no label named/ending '%s'" % name if not hits
+                              else "%d labels match '%s' (ambiguous)" % (len(hits), name))
             verb = (fin.get("verb") or "").lower()
             add, remove = [], []
-            if fin.get("label") and fin["label"] in labels:
-                add.append(labels[fin["label"]])
-            if verb.startswith("reply"):                    # Reply / Reply+Task -> Replies tray
-                add.append(labels.get("Replies", "Replies")); remove.append("INBOX")
-            elif verb.startswith("hand"):                   # Hand to {person} -> Delegated, keep INBOX
-                add.append(labels.get("Delegated", "Delegated"))
-            elif verb == "route":                           # engine intake (EE): TE label + Replies, keep INBOX
-                add.append(labels.get("Replies", "Replies"))
-            elif verb == "keep":                            # add filing label, KEEP in inbox
-                pass
-            elif verb in ("skip", "-", ""):                 # defer: no Gmail change
-                add, remove = [], []
-            elif verb.startswith(("file", "task")):
-                remove.append("INBOX")
-            elif verb == "clear":
-                remove, add = ["INBOX"], []
-            if add or remove:
-                g.modify_thread(dec["thread_id"], add=add or None, remove=remove or None)
-                gmail_done = {"add": add, "remove": remove}
-                if manifest:
-                    manifest.write(json.dumps({"step": "gmail", "thread_id": dec["thread_id"],
-                                               "add": add, "remove": remove}) + "\n")
+            filing_id, label_err = _resolve(fin.get("label"))
+            if filing_id:
+                add.append(filing_id)
+            # verbs that MUST carry a resolvable filing label; if it doesn't resolve, REFUSE to
+            # mutate (leave the thread in the inbox) rather than archive it unlabelled.
+            needs_label = bool(fin.get("label")) and (
+                verb.startswith(("file", "task", "reply", "keep")) or verb == "route")
+            if needs_label and not filing_id:
+                ok = False
+                lines.append("  ✗ Gmail: filing label '%s' did not resolve (%s) -- NOT mutating "
+                             "(thread left in inbox, not archived)" % (fin.get("label"), label_err))
+            else:
+                if verb.startswith("reply"):                # Reply / Reply+Task -> filing label + Replies + archive
+                    add.append(labels.get("Replies")); remove.append("INBOX")
+                elif verb.startswith("hand"):               # Hand to {person} -> Delegated, keep INBOX
+                    add.append(labels.get("Delegated"))
+                elif verb == "route":                       # engine intake (EE): filing (TE) label + Replies + archive
+                    add.append(labels.get("Replies")); remove.append("INBOX")
+                elif verb == "keep":                        # add filing label, KEEP in inbox
+                    pass
+                elif verb in ("skip", "-", ""):             # defer: no Gmail change
+                    add, remove = [], []
+                elif verb.startswith(("file", "task")):     # filing label + archive
+                    remove.append("INBOX")
+                elif verb == "clear":                       # noise: archive, no label
+                    remove, add = ["INBOX"], []
+                add = [x for x in add if x]                 # drop any unresolved Replies/Delegated
+                if add or remove:
+                    g.modify_thread(dec["thread_id"], add=add or None, remove=remove or None)
+                    gmail_done = {"add": add, "remove": remove}
+                    if manifest:
+                        manifest.write(json.dumps({"step": "gmail", "thread_id": dec["thread_id"],
+                                                   "add": add, "remove": remove}) + "\n")
         except Exception as e:
             ok = False
             lines.append(f"  ✗ Gmail: {e}")
@@ -265,8 +289,10 @@ def capture(dec, apply=False, manifest=None):
               f"WHERE message_id='{tl.esc(mid)}'")
 
     # ---- POST-CHECK: re-read all three ----
-    fresh = existing_row(mid)
-    c1 = fresh is not None and fresh["apply_status"] == "applied"
+    # Direct committed SELECT (not existing_row, which returned stale/None and produced a FALSE ✗
+    # on applied rows -- 16 Jul 2026; the row was correct, the re-read was wrong).
+    fresh = tl.cc_sql("SELECT apply_status FROM triage_decisions WHERE message_id='%s'" % tl.esc(mid))
+    c1 = bool(fresh) and fresh[0].get("apply_status") == "applied"
     lines.append(f"  {'✓' if c1 else '✗'} ledger: row applied")
     c2 = True
     if gmail_done:
