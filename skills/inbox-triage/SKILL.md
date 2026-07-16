@@ -30,8 +30,9 @@ Interactive email triage walker. The verb `triage` runs this skill.
 > `Clear` / `Skip` — then you STOP and wait for Pete's `go` / `except #N` / `cancel`.
 > **Never narrate a prose summary of the inbox instead of the table.** Never describe threads in
 > sentences ("these need you… the team's on it…"). One row per thread, one proposed verb per row.
-> Columns: `# · Ask · From / Subject · Action(verb + dest) · Task · flags`. Present in staged
-> batches of ≤10 (Step 5.5), confirming mode is the DEFAULT. If you catch yourself writing
+> Columns: `# · Ask · From / Subject · Action(verb + dest) · Task · flags`. Present in ACTION-TYPE
+> groups, one at a time (Step 5.5) — no-action pile first, then team/reply/task groups — as markdown
+> tables IN THE CHAT MESSAGE (never a tool-output block). Confirming mode is the DEFAULT. If you catch yourself writing
 > paragraphs about the inbox, STOP and render the table. This is the #1 recurring failure (Pete,
 > 15 Jul 2026) — the propose-a-verb-per-thread table IS the product.
 >
@@ -239,6 +240,21 @@ The Ask vocabulary + heuristics below are the JUDGEMENT guide (now applied by re
 
 **Without the round file read for every thread, the round cannot be built.** Judge each Ask from the thread's full body + facts. Step 6.0 validates that every row carries a non-empty `Ask` cell with a value from the vocabulary.
 
+#### Banked judgment rules (16 Jul 2026 — from live corrections)
+
+1. **File by the CUSTOMER/entity the thread is ABOUT — never by which address Pete replied from.** M Group mail (`@mgroupltd.com`) files to Sygma even when Pete answered from his Canary Detect address. The sender domain + the relationship decide the home. (Bank the sender→home as a `triage-routing-test` case on any correction.)
+2. **Never override `pete_replied_since=True` (or `last_direction=pete-sent`) into a `Reply` on a content hunch.** When the facts say Pete replied, the default is `none`/File. Only propose a Reply if a DIRECT question is unanswered AND you've re-read the LIVE thread's newest messages to confirm he didn't already handle it. Lean to `none` when unsure — Pete flags the rare genuine follow-up himself. ("You never check what I've actually replied to" — the recurring failure.)
+3. **Empty-body forwards (`body_empty_after_strip`)** — the content is in the forwarded/attachment part the stripper drops (common for Michaela's finance forwards). Don't judge blind: enrich/open the attachment first, or surface it as "open this" — never silently File/Task a forward you couldn't read.
+4. **Check the calendar BEFORE proposing a calendar event** (`calendar-api events <day>`). A meeting invite often already created the event; proposing "add to calendar" would duplicate it.
+5. **In the judgments JSON, the Task verb must be written `Task P2`/`Task P3`** — bare `Task` fails the validator (the priority lives in the verb string).
+
+#### Known tool bugs to fix (found 16 Jul 2026 — code fixes, not yet done)
+
+- **`triage-log.py` ledger post-check gives a FALSE ✗** on the re-decision UPDATE path and fresh inserts (row lands correctly — `apply_status='applied'` — but it prints `✗ ledger` + exits non-zero). Verify the row directly before trusting a ✗; the fix is to re-read after commit.
+- **`triage-log.py` `Route` verb is incomplete** — it applies `Replies` but NOT the engine's filing label (e.g. `Projects/SY-Training-Enquiries`) and does not archive (remove INBOX). Until fixed, after a Route add the TE label + remove INBOX by hand.
+- **`vault-enricher.py` silently skips (exit 0) when passed an entity slug** — it now needs the real Drive folder path (resolve via `drive_files` / `vault-finder-link.py` first) and returns `skipped:true`, which reads as success. Treat `skipped:true` as a FAILURE to surface. The old Step-6.2 "enrich by slug" instruction is stale.
+- **Chunk `triage-log --apply` to ≤ ~8 threads/run** — a 17-thread apply exceeds a 2-min foreground timeout (it's idempotent, so re-running finishes the rest).
+
 ### Step 4.6: Enquiry-reply recognition (NEW — hand tracked enquiries to the Engine)
 
 A training enquiry — whether a **brand-new inbound** (website contact-form submission, cold course enquiry) OR a **reply** on one we already sent — is NOT a generic inbox row. It belongs to the **[[workflow-design|Enquiry Engine]]** (lifecycle in the Portal CRM; knowledge in the CC EE tables — `ee_rates`/`ee_customer_rates`/`ee_catalogue`/`ee_phrases`/`ee_rules`, edited via `ee-learn.py`; the worked-reply phrasing corpus stays in `vault_notes`). Before Action-verb selection, flag each thread that is an enquiry. A thread is a tracked enquiry if ANY of:
@@ -329,43 +345,34 @@ Label-routing logic (which X to pick once verb is chosen):
 
 **Calendar** -- detect flights/hotels/cars/meetings; propose with default tz Atlantic/Canary, default calendar Pete's primary.
 
-### Step 5.5: Present the round in STAGES (NEW in v1.8)
+### Step 5.5: Present in ACTION-TYPE GROUPS, one group at a time (reworked 16 Jul 2026)
 
-The round is no longer a single 20+ row table. It's a sequence of stages, presented in fixed order, each stage capped at 10 rows per sub-batch.
+> [!important] Pete, 16 Jul 2026: "batch these into groups, not by number... I can't deal with so
+> many fucking thrown at me at once." Do NOT present by category (noise/relationship/internal/personal)
+> and do NOT dump 20+ rows. Batch by what Pete has to DO, pull the no-action pile out first, and show
+> ONE group per screen.
 
-**Stage 0: print the Mode A/B reminder block** (always, every triage).
+**Print the Mode A/B + verb reminder block** (always, every triage).
 
-**Stage 1: Auto-filter / Mode B candidates** -- recurring noise.
+**Then present in this fixed order, each as a TABLE IN THE CHAT MESSAGE (markdown), one group at a time:**
 
-```
-─── Stage 1 of 4 -- Mode B / auto-filter candidates (8 threads) ───
+1. **No-action group** — every `ask=none/info-only` → `File`/`Clear`. Render as ONE table (`# · From · Subject · → Destination · Why`), visible so Pete can eyeball + veto any, cleared with a single `go`. The "Why" column earns trust. **Confirm mode still SHOWS every row** — never bulk-file off a prose summary, and never bury the table in a tool-output panel (Pete's view collapses those). Filing/enrich runs on `go`.
+2. **Group A — pass to the team** (`Hand to` rows).
+3. **Group B — your reply / decision** (`Reply` / `Route→EE` / `rsvp`+calendar rows).
+4. **Group C — spin into a task** (`Task Pn` rows: infra, finance, review).
 
-Proposed filters first (these go in BEFORE we touch threads):
+Name the upcoming groups so Pete knows the shape, but only ask him to act on ONE group at a time. Never
+put more than ~3–5 decisions in front of him at once. Each group runs (capture) before the next appears.
 
-  Filter A:  from:*@stripe.com  →  Receipts          (Mode B, auto-archive)
-  Filter B:  from:*@medium.com  →  Newsletters       (Mode B, auto-archive)
-  ... (up to 5 filters per stage; more = next stage continuation)
+**Every table goes in the chat message as markdown — NOT in a Bash/tool-output block** (those collapse in
+Pete's client — 16 Jul: "you're not fucking showing them to me"). The `triage-ops-table.py` gate still
+validates every row; you transcribe its validated rows into the markdown table you present.
 
-Confirm filters? (y / except B / n)
-
-Then per-thread:
-
-| #  | Ask        | From / Subject (≤60ch)                  | Action                    | Task | Vault | Calendar |
-|----|------------|-----------------------------------------|---------------------------|------|-------|----------|
-| 1  | info-only  | Stripe -- April receipt                 | File Receipts       | -    | -     | -        |
-| 2  | info-only  | Medium digest                           | File Newsletters    | -    | -     | -        |
-| ... up to 10 rows per sub-batch
-
-Reply: go / except #N: <new verb> / cancel
-```
-
-**Stage 2: Customers / Suppliers / Projects / Accreditations** -- relationship mail (capped at 10 per sub-batch).
-
-**Stage 3: Internal Sygma / CD content** -- forwards and internal threads.
-
-**Stage 4: Personal + ambiguous one-offs**.
-
-**Each stage executes before the next is presented.** This is structural -- if Pete bails after Stage 1, Stages 2-4 never appear. He can resume by re-running `triage`.
+**Re-check the live inbox at EVERY group boundary.** Threads filed earlier can bounce back on a new inbound
+(a fresh reply re-adds INBOX — that is correctly a new reply-needed), and new mail arrives mid-triage. After
+each group's capture, diff `in:inbox` against the expected remainder and fold any stray/new thread into the
+right group before moving on (caught 3 strays on 16 Jul). Enquiry `Route` and `Reply` must leave the inbox
+(archive) — verify they did.
 
 Required ops-table columns: `#`, `Ask`, `From / Subject`, `Action`, `Task`, `Vault`, `Calendar`. Use `-` for empty cells.
 
@@ -686,7 +693,7 @@ Home decision per entity type (default proposal, Pete can override):
 1. **SWEEP IS SACRED -- on-command ONLY.** Triage MUST NOT call `sweep`, MUST NOT offer `sweep`, MUST NOT chain to anything that calls `sweep`. The point of `Keep X` is the thread STAYS in inbox until Pete acts. An auto-sweep defeats the verb. Sweep happens when Pete types `sweep` -- never otherwise. End-of-triage offers `sync` (which doesn't sweep), opt-in only.
 2. **Mandatory read-in-full + Ask judgement.** Step 4 must READ every thread's full body + facts from the round file before Step 5 builds the table. Without `Ask` populated from the fixed vocabulary, the row is malformed and Step 6.0 refuses. Judging off a snippet/subject/form-field is the exact failure this replaced.
 3. **Mode A/B reminder block at the top of every triage.** Print verbatim before any other work. Drift caused mid-round confusion.
-4. **Staged batches, 10-row hard cap.** Stages run in fixed order (1 noise → 2 relationships → 3 internal → 4 personal). Each stage gets its own go/cancel. No more 25-row tables.
+4. **Action-type groups, one at a time (see Step 5.5).** Pull the no-action pile out first (one visible table, single `go`), then present only the items that need Pete in small themed groups — A: pass to team · B: your reply/decision · C: spin into a task — ONE group per screen, each with its own go/cancel. Never a wall of 20+ rows; never batch by category. Re-check the live inbox at every group boundary.
 5. **Never auto-execute structural changes without confirmation.** Filters, labels, folders, new `project_slug` values -- all require Pete's y/edit before creation.
 6. **Apply existing labels to existing threads -- no confirmation needed.** The triage decision is the confirmation; the labelling itself is the action.
 7. **Respect "no" decisions.** Record declined suggestions in `the CC `email-workflow-state` note (vault_notes: "Email Workflow — Dynamic State")`. Never re-suggest.
