@@ -64,6 +64,37 @@ def main():
             print(f"  · {s}  (you put ask={a}, verb={v})")
         return 2
 
+    # GATE 1c: every filing label must resolve to a REAL Gmail label BEFORE the table renders.
+    # Root cause 16 Jul 2026: made-up short names ('SY-Clancy', 'Sygma', 'Team-Finances') were
+    # authored from memory, never checked against the live label list, and triage-log then
+    # silently archived the threads with NO label. This resolves each label the SAME way triage-log
+    # does (exact, then unique-suffix) and BLOCKS a name that resolves to nothing -- at proposal
+    # time, so a bad name can never reach capture.
+    _label_verbs = ("File", "Keep", "Reply", "Task", "Route")
+    labelled = [j for j in judg if j.get("label")
+                and (j.get("verb", "").split() or [""])[0] in _label_verbs]
+    if labelled:
+        try:
+            gm = _load("gmail-api.py", "gmail_api")
+            names = {l["name"] for l in gm.GmailAPI().list_labels()}
+        except Exception as e:
+            names = None
+            print(f"WARN: could not load Gmail labels to pre-validate ({e}); triage-log will still fail-loud on a bad label")
+        if names:
+            def _resolves(name):
+                if name in names:
+                    return True
+                return len([n for n in names if n == name or n.endswith("/" + name)]) == 1
+            bad = [(threads[j["thread_id"]].get("subject", "")[:50], j["label"])
+                   for j in labelled if not _resolves(j["label"])]
+            if bad:
+                print("BLOCKED: filing label(s) do not resolve to a real Gmail label -- use the FULL "
+                      "Gmail label name (e.g. 'Customers/SY-Clancy', not 'SY-Clancy'; "
+                      "'General/SY-General', not 'Sygma'):")
+                for s, l in bad:
+                    print(f"  · {s}  ->  label '{l}' not found")
+                return 2
+
     # GATE 2: validate every row through triage-validator (ask<->verb matrix)
     val = _load("triage-validator.py", "tv")
     ops = []
