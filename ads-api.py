@@ -62,7 +62,7 @@ DEV_TOKEN_PATH = os.path.join(SECRETS_DIR, "google-ads-developer-token")
 OAUTH_CLIENT_PATH = os.path.join(SECRETS_DIR, "google-ads-oauth-client.json")
 REFRESH_TOKEN_PATH = os.path.join(SECRETS_DIR, "google-ads-refresh-token")
 
-API_VERSION = os.environ.get("GOOGLE_ADS_API_VERSION", "v21")
+API_VERSION = os.environ.get("GOOGLE_ADS_API_VERSION", "v22")
 API_BASE = f"https://googleads.googleapis.com/{API_VERSION}"
 SCOPE = "https://www.googleapis.com/auth/adwords"
 
