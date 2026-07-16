@@ -83,16 +83,26 @@ def main():
     if not violations and not missing:
         print("PASS — no wording-rule violations."); return 0
 
-    for r, hit, snip in violations:
-        print(f"  ✗ [{r['severity']}] «{hit}»  {r['message']}")
-        print(f"      … {snip}")
-    for r in missing:
-        print(f"  ⚠ [missing] required: {r['message']}")
+    blocks = [(r, h, s) for (r, h, s) in violations if r["severity"] == "block"]
+    warns = [(r, h, s) for (r, h, s) in violations if r["severity"] != "block"]
 
-    blocked = [v for v in violations if v[0]["severity"] == "block"] or missing
-    print(f"\n{'BLOCK' if blocked else 'WARN'}: {len(violations)} hit(s), {len(missing)} missing. "
-          + ("Fix before shipping." if blocked else "Review the warnings."))
-    return 1 if blocked else 0
+    # SET rules — non-negotiable, fail the report.
+    if blocks:
+        print("SET RULES (must fix — apply to every Clancy report):")
+        for r, hit, snip in blocks:
+            print(f"  ✗ «{hit}»  {r['message']}")
+            print(f"      … {snip}")
+    # Advisory — flagged for a per-report judgement, never an auto-fail.
+    if warns or missing:
+        print("\nADVISORY (your call — corrected before, but reports differ; check it fits THIS one):")
+        for r, hit, snip in warns:
+            print(f"  • «{hit}»  {r['message']}")
+            print(f"      … {snip}")
+        for r in missing:
+            print(f"  • [missing] {r['message']}")
+
+    print(f"\n{'BLOCK — fix the set-rule hits before shipping.' if blocks else 'PASS with advisories — nothing blocking; review the flags and decide.'}")
+    return 1 if blocks else 0
 
 
 if __name__ == "__main__":

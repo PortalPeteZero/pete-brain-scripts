@@ -52,7 +52,10 @@ def main():
     ap.add_argument("--say", help="the correction / correct form (the rule message)")
     ap.add_argument("--kind", default="forbidden", choices=["forbidden", "require", "soften"])
     ap.add_argument("--exception", help="regex of allowed exceptions (e.g. a device feature or a quote)")
-    ap.add_argument("--severity", default="block", choices=["block", "warn"])
+    # Corrections default to ADVISORY (warn) — reports differ, so a one-off correction flags for
+    # review next time, it does not bind. Pass --severity block only for a genuine SET rule that
+    # applies to every Clancy report (terminology / partner tone / integrity).
+    ap.add_argument("--severity", default="warn", choices=["block", "warn"])
     ap.add_argument("--from", dest="frm", help="provenance note (which review taught this)")
     ap.add_argument("--damage", help="clancy_damages job_ref this correction came from")
     ap.add_argument("--list", action="store_true")
@@ -93,7 +96,11 @@ def main():
             if note not in na:
                 _req("PATCH", f"clancy_damages?id=eq.{d[0]['id']}", {"next_actions": na + [note]}, prefer="return=minimal")
                 print(f"  + noted on damage {args.damage}")
-    print("→ damage-review-lint will now enforce this on every future report.")
+    if args.severity == "warn":
+        print("→ banked as ADVISORY: damage-review-lint will FLAG this for review on future reports "
+              "(not block). Re-run with --severity block if it's a set rule for every Clancy report.")
+    else:
+        print("→ banked as a SET rule: damage-review-lint will BLOCK this on every future report.")
     return 0
 
 
