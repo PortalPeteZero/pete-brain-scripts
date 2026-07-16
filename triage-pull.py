@@ -104,60 +104,127 @@ def _attachments(msg):
     walk(msg.get("payload", {}))
     return out
 
-def build_round(query="in:inbox"):
-    """The read-in-full round: page EVERY in-scope thread, extract EVERY message,
-    compute team/pete facts, mint a session_id, write the round file. Returns the round dict."""
-    g = _load_gmail()
-    tl = _load_lib()
-    team = tl.team_emails()
-    threads, exhausted = g.search_threads_all(query)
-    today = datetime.date.today()
-    out_threads = []
-    for t in threads:
-        full = g.get_thread(t["id"])
-        msgs = full.get("messages", [])
-        if not msgs:
-            continue
-        kept = msgs[-THREAD_MSG_CAP:]
-        history_summarised = len(msgs) > THREAD_MSG_CAP
-        thread_flags = set()
-        emsgs = []
-        for m in kept:
-            text, flags = extract_message(m)
-            thread_flags |= flags
-            emsgs.append({
-                "from": _hdr(m, "From"), "to": _hdr(m, "To"), "cc": _hdr(m, "Cc"),
-                "reply_to": _hdr(m, "Reply-To"), "date": _hdr(m, "Date"),
-                "subject": _hdr(m, "Subject"), "body": text,
-                "attachments": _attachments(m), "flags": sorted(flags),
-            })
-        last = kept[-1]
-        facts = tl.compute_thread_facts(emsgs, team)
-        ts = int(last.get("internalDate", 0)) / 1000
-        d = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).date() if ts else None
-        out_threads.append({
-            "id": t["id"],
-            "newest_message_id": last.get("id"),
-            "from": _hdr(last, "From").split("<")[0].strip().strip('"'),
-            "subject": _hdr(last, "Subject"),
-            "date": d.isoformat() if d else None,
-            "age_days": (today - d).days if d else None,
-            "labels": last.get("labelIds", []),
-            "snippet": (last.get("snippet", "") or "")[:160],
-            "msgs": len(msgs), "kept_msgs": len(kept),
-            "facts": facts,
-            "flags": sorted(thread_flags),
-            "history_summarised": history_summarised,
-            "messages": emsgs,
+def _ics_unfold(raw):
+    out = []
+    for ln in raw.splitlines():
+        if ln[:1] in (" ", "\t") and out:
+            out[-1] += ln[1:]
+        else:
+            out.append(ln)
+    return out
+
+def _calendar_invite(msg, g):
+    """If the message carries a text/calendar (.ics) part, parse the meeting details.
+    Returns {summary, when, tzid, location} or None. Handles inline data AND an
+    attachment-only .ics (the Outlook/Teams shape — data lives behind an attachmentId).
+    This is what stops a meeting invite being judged off the text/plain snippet
+    ('call data will be shared shortly') and filed as info-only (16 Jul 2026)."""
+    cal = {"p": None}
+    def walk(p):
+        if cal["p"] is not None:
+            return
+        mt = p.get("mimeType", "")
+        fn = (p.get("filename") or "").lower()
+        if mt.startswith("text/calendar") or fn.endswith(".ics"):
+            cal["p"] = p; return
+        for sp in p.get("parts", []) or []:
+            walk(sp)
+    walk(msg.get("payload", {}))
+    part = cal["p"]
+    if not part:
+        return None
+    body = part.get("body", {})
+    data = body.get("data")
+    if not data and body.get("attachmentId"):
+        try:
+            att = g._call("GET", f"/messages/{msg['id']}/attachments/{body['attachmentId']}")
+            data = att.get("data")
+        except Exception:
+            return {"summary": None, "when": None, "tzid": None, "location": None, "unparsed": True}
+    if not data:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(data + "==").decode("utf-8", "replace")
+    except Exception:
+        return {"unparsed": True}
+    lines = _ics_unfold(raw)
+    def _val(prefix):
+        for l in lines:
+            if l.startswith(prefix) and ":" in l:
+                return l.split(":", 1)[1].strip()
+        return None
+    dtstart = tzid = None
+    for l in lines:
+        if l.startswith("DTSTART") and ":" in l:
+            v = l.split(":", 1)[1].strip()
+            if v[:2] == "20":  # a real event date, not the 16010101 VTIMEZONE-rule anchors
+                dtstart = v
+                mm = re.search(r"TZID=([^:;]+)", l); tzid = mm.group(1) if mm else None
+                break
+    when = None
+    if dtstart:
+        mm = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})", dtstart)
+        if mm:
+            when = f"{mm.group(1)}-{mm.group(2)}-{mm.group(3)} {mm.group(4)}:{mm.group(5)}"
+    return {"summary": _val("SUMMARY"), "when": when, "tzid": tzid, "location": _val("LOCATION")}
+
+def _process_thread(t, g, tl, team, today):
+    """Full read-in-full extraction for ONE thread: every message body PLUS any
+    text/calendar (.ics) invite surfaced as a loud MEETING INVITE banner + a
+    `meeting_invite` flag. The single unit both build_round and build_threads use, so a
+    stray/new arrival gets the IDENTICAL treatment as an in-round thread. Returns dict|None."""
+    full = g.get_thread(t["id"])
+    msgs = full.get("messages", [])
+    if not msgs:
+        return None
+    kept = msgs[-THREAD_MSG_CAP:]
+    history_summarised = len(msgs) > THREAD_MSG_CAP
+    thread_flags = set()
+    emsgs = []
+    for m in kept:
+        text, flags = extract_message(m)
+        cal = _calendar_invite(m, g)
+        if cal:
+            flags.add("meeting_invite")
+            text = ("📅 MEETING INVITE -- When: %s (tz: %s) -- Where: %s -- %s"
+                    % (cal.get("when") or "?", cal.get("tzid") or "?",
+                       cal.get("location") or "?", cal.get("summary") or "")).strip() + "\n\n" + text
+        thread_flags |= flags
+        emsgs.append({
+            "from": _hdr(m, "From"), "to": _hdr(m, "To"), "cc": _hdr(m, "Cc"),
+            "reply_to": _hdr(m, "Reply-To"), "date": _hdr(m, "Date"),
+            "subject": _hdr(m, "Subject"), "body": text,
+            "attachments": _attachments(m), "flags": sorted(flags), "calendar": cal,
         })
+    last = kept[-1]
+    facts = tl.compute_thread_facts(emsgs, team)
+    ts = int(last.get("internalDate", 0)) / 1000
+    d = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).date() if ts else None
+    return {
+        "id": t["id"],
+        "newest_message_id": last.get("id"),
+        "from": _hdr(last, "From").split("<")[0].strip().strip('"'),
+        "subject": _hdr(last, "Subject"),
+        "date": d.isoformat() if d else None,
+        "age_days": (today - d).days if d else None,
+        "labels": last.get("labelIds", []),
+        "snippet": (last.get("snippet", "") or "")[:160],
+        "msgs": len(msgs), "kept_msgs": len(kept),
+        "facts": facts,
+        "flags": sorted(thread_flags),
+        "history_summarised": history_summarised,
+        "messages": emsgs,
+    }
+
+def _write_round(threads_list, query, exhausted):
     session_id = str(uuid.uuid4())
     round_obj = {
         "session_id": session_id,
         "query": query,
         "pulled_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "pagination_exhausted": exhausted,
-        "thread_count": len(out_threads),
-        "threads": out_threads,
+        "thread_count": len(threads_list),
+        "threads": threads_list,
     }
     path = f"/tmp/triage-round-{session_id}.json"
     with open(path, "w") as f:
@@ -165,18 +232,50 @@ def build_round(query="in:inbox"):
     round_obj["round_file"] = path
     return round_obj
 
+def build_round(query="in:inbox"):
+    """The read-in-full round: page EVERY in-scope thread, extract EVERY message + any
+    calendar invite, compute team/pete facts, mint a session_id, write the round file."""
+    g = _load_gmail()
+    tl = _load_lib()
+    team = tl.team_emails()
+    threads, exhausted = g.search_threads_all(query)
+    today = datetime.date.today()
+    out_threads = [pt for t in threads if (pt := _process_thread(t, g, tl, team, today))]
+    return _write_round(out_threads, query, exhausted)
+
+def build_threads(ids):
+    """Same read-in-full extraction (incl. .ics invites) for SPECIFIC thread ids -- the
+    path for strays / new arrivals that appear mid-triage, so they are NEVER judged off a
+    bare get-thread. Returns a round dict."""
+    g = _load_gmail()
+    tl = _load_lib()
+    team = tl.team_emails()
+    today = datetime.date.today()
+    out = [pt for tid in ids if (pt := _process_thread({"id": tid}, g, tl, team, today))]
+    return _write_round(out, "threads:" + ",".join(ids), True)
+
+def _round_summary(r):
+    return {
+        "session_id": r["session_id"], "round_file": r["round_file"],
+        "thread_count": r["thread_count"], "pagination_exhausted": r.get("pagination_exhausted"),
+        "extraction_failed": [t["id"] for t in r["threads"] if "extraction_failed" in t["flags"]],
+        "needs_team_note": sum(1 for t in r["threads"] if t["facts"]["team_replied_since"]),
+        "meeting_invites": [{"id": t["id"], "subject": t["subject"]}
+                            for t in r["threads"] if "meeting_invite" in t["flags"]],
+    }
+
 def main():
+    if "--thread" in sys.argv or "--threads" in sys.argv:
+        # strays / new arrivals mid-triage go through the SAME extractor (never bare get-thread)
+        ids = []
+        for i, a in enumerate(sys.argv):
+            if a in ("--thread", "--threads") and i + 1 < len(sys.argv):
+                ids += [x for x in sys.argv[i + 1].split(",") if x]
+        print(json.dumps(_round_summary(build_threads(ids)), indent=2))
+        return
     if "--round" in sys.argv:
         q = next((a for a in sys.argv[1:] if not a.startswith("--")), "in:inbox")
-        r = build_round(q)
-        # summary to stdout; full data in the round file
-        blocked = [t["id"] for t in r["threads"] if "extraction_failed" in t["flags"]]
-        print(json.dumps({
-            "session_id": r["session_id"], "round_file": r["round_file"],
-            "thread_count": r["thread_count"], "pagination_exhausted": r["pagination_exhausted"],
-            "extraction_failed": blocked,
-            "needs_team_note": sum(1 for t in r["threads"] if t["facts"]["team_replied_since"]),
-        }, indent=2))
+        print(json.dumps(_round_summary(build_round(q)), indent=2))
         return
     args = [a for a in sys.argv[1:] if a != "--full"]
     full_mode = "--full" in sys.argv

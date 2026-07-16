@@ -48,6 +48,22 @@ def main():
             print(f"  · {threads[tid]['subject'][:60]}  ({tid})")
         return 2
 
+    # GATE 1b: a MEETING INVITE can NEVER be filed as info-only/none -- it is an RSVP.
+    # (16 Jul 2026: a Teams invite was judged info-only off the text/plain snippet and filed;
+    #  triage-pull now flags `meeting_invite`, and this refuses to render it as anything but rsvp.)
+    invite_bad = []
+    for j in judg:
+        t = threads.get(j["thread_id"])
+        if t and "meeting_invite" in (t.get("flags") or []):
+            if j.get("ask") in ("none", "info-only") or j.get("verb") in ("File", "Clear", "Skip"):
+                invite_bad.append((t.get("subject", "")[:60], j.get("ask"), j.get("verb")))
+    if invite_bad:
+        print("BLOCKED: a MEETING INVITE cannot be filed as info-only/none -- it is an RSVP "
+              "(reply/accept + a calendar event). Re-judge as ask=rsvp, verb=Reply (or Hand to):")
+        for s, a, v in invite_bad:
+            print(f"  · {s}  (you put ask={a}, verb={v})")
+        return 2
+
     # GATE 2: validate every row through triage-validator (ask<->verb matrix)
     val = _load("triage-validator.py", "tv")
     ops = []

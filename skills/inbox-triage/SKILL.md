@@ -374,6 +374,17 @@ each group's capture, diff `in:inbox` against the expected remainder and fold an
 right group before moving on (caught 3 strays on 16 Jul). Enquiry `Route` and `Reply` must leave the inbox
 (archive) — verify they did.
 
+> [!important] Strays go through the FULL extractor — never a bare `get-thread` (16 Jul 2026)
+> A new/stray thread that appears mid-triage MUST be pulled through the read-in-full extractor:
+> `VAULT=/tmp/pbs python3 /tmp/pbs/triage-pull.py --threads <id[,id2]>` — same treatment as an
+> in-round thread (every message body + any `.ics` calendar invite). NEVER judge a stray off
+> `gmail-api get-thread` (thin body, no headers, no `.ics`) — that is the snippet-read hole that
+> filed a live Teams meeting invite. `triage-pull` now surfaces a **`meeting_invite`** flag with the
+> parsed When/Where, and **`triage-ops-table` refuses to render a `meeting_invite` thread as
+> info-only/none/File/Clear** — an invite is an RSVP (reply/accept + a calendar event), full stop.
+> Also verify auto-created calendar times against the `.ics`: Outlook "GMT Standard Time" TZIDs
+> mis-map in Google (a 26 Marsh Lane invite landed 4h late in the calendar).
+
 Required ops-table columns: `#`, `Ask`, `From / Subject`, `Action`, `Task`, `Vault`, `Calendar`. Use `-` for empty cells.
 
 **Rendering rule (bed-in period):** task-bearing verbs always render with their destination tag — `Reply (tray)` / `Task P3 (CC only)` — so the tray/no-tray difference is loud in every table.
