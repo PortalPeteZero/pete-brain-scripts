@@ -248,11 +248,16 @@ The Ask vocabulary + heuristics below are the JUDGEMENT guide (now applied by re
 4. **Check the calendar BEFORE proposing a calendar event** (`calendar-api events <day>`). A meeting invite often already created the event; proposing "add to calendar" would duplicate it.
 5. **In the judgments JSON, the Task verb must be written `Task P2`/`Task P3`** — bare `Task` fails the validator (the priority lives in the verb string).
 
-#### Known tool bugs to fix (found 16 Jul 2026 — code fixes, not yet done)
+#### Tool fixes shipped 16 Jul 2026 (commit cf572ab / ffec3df)
 
-- **`triage-log.py` ledger post-check gives a FALSE ✗** on the re-decision UPDATE path and fresh inserts (row lands correctly — `apply_status='applied'` — but it prints `✗ ledger` + exits non-zero). Verify the row directly before trusting a ✗; the fix is to re-read after commit.
-- **`triage-log.py` `Route` verb is incomplete** — it applies `Replies` but NOT the engine's filing label (e.g. `Projects/SY-Training-Enquiries`) and does not archive (remove INBOX). Until fixed, after a Route add the TE label + remove INBOX by hand.
-- **`vault-enricher.py` silently skips (exit 0) when passed an entity slug** — it now needs the real Drive folder path (resolve via `drive_files` / `vault-finder-link.py` first) and returns `skipped:true`, which reads as success. Treat `skipped:true` as a FAILURE to surface. The old Step-6.2 "enrich by slug" instruction is stale.
+- **`triage-log.py` label resolution + fail-loud (was the worst bug):** filing labels resolved by EXACT name only, so a short name (`SY-Clancy` vs the real `Customers/SY-Clancy`) silently archived the thread with **NO label** and still reported ✓. FIXED: exact → unique-suffix match; an unresolvable label now **refuses to mutate** (thread stays in inbox) and prints a loud ✗. **Lesson: pass a real Gmail label name, or one that suffix-matches uniquely.**
+- **`triage-log.py` `Route` verb** now adds the resolved engine filing label (e.g. `Projects/SY-Training-Enquiries`) + `Replies` + archives (was Replies-only, no TE, no archive).
+- **`triage-log.py` ledger post-check false ✗** fixed — re-reads via a direct committed SELECT (was `existing_row`, which returned stale/None on applied rows).
+- **`triage-pull.py` parses `.ics` invites + `--threads` stray mode**; **`triage-ops-table.py` blocks filing a `meeting_invite`** (see the strays callout above).
+
+#### Still a usage requirement (not a bug)
+
+- **`vault-enricher.py` needs an ABSOLUTE resolved Drive path, never an entity slug** — it deliberately refuses a slug (returns `skipped:true`, exit 0). The caller must resolve the canonical home from `drive_files` first (e.g. `.../Shared drives/Sygma Hub/Customers and Suppliers/Clancy/…`) and pass that. Treat `skipped:true` as a surface-it failure, not success.
 - **Chunk `triage-log --apply` to ≤ ~8 threads/run** — a 17-thread apply exceeds a 2-min foreground timeout (it's idempotent, so re-running finishes the rest).
 
 ### Step 4.6: Enquiry-reply recognition (NEW — hand tracked enquiries to the Engine)
