@@ -2,6 +2,11 @@
 
 Append-only log of meaningful changes to this skill. Each entry: date + one-line summary. Add a new line above the existing entries when the SKILL.md is edited; bump the version stamp inside SKILL.md to match.
 
+## 2026-07-16 (v1.13)
+- **Presentation reworked to ACTION-TYPE groups (Step 5.5).** No-action pile first (one visible markdown table in the chat, single `go`), then A pass-to-team / B reply-decision / C spin-into-task, one group per screen — replaces category-staging + the 10-row cap (Pete: "I can't deal with so many at once"). Tables render in the chat message, never a tool-output block. Re-check the live inbox at every group boundary; strays go through the full extractor (`triage-pull --threads`).
+- **Banked judgment rules:** file by the customer/entity, not the reply-from address; never override `pete_replied_since=True` into a Reply without verifying the live thread; open empty-body forwards, don't file blind; check the calendar before proposing an event; a meeting invite is an RSVP.
+- **Tool fixes (pete-brain-scripts):** `triage-pull` parses `.ics` invites (+ `meeting_invite` flag, `--threads` stray mode); `triage-ops-table` pre-validates every filing label against the live Gmail labels + blocks filing a meeting invite; `triage-log` resolves labels by suffix + **fails loud** on an unresolvable label (was silently archiving unlabelled), fixes `Route` (adds the engine/TE filing label + archives) and the false-✗ ledger post-check.
+
 ## 2026-07-11
 - **Step 0.7 — review the Sorter's unattended runs (the cron review pass).** Every manual triage now STARTS by pulling what the `triage-engine-run` cron proposed/auto-filed since the last human pass, presenting it for confirm/correct, and folding a correction through the normal decided_by='pete' + regression-case path so the Sorter learns. Links the new [[Triage — Front Door]] orientation note. Cron now 5×/day (6/10/14/18/22 Canary), auto-mode on (proposes only until senders earn trust). Project-aware filing unchanged (kept).
 

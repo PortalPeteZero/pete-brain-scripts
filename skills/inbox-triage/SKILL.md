@@ -130,7 +130,7 @@ Full manual: [[email-workflow#send--forward-gates]]. EE sends run outside triage
 
 Before any stage executes, ask Pete ONE question: **"Are we running auto or confirming?"**
 
-- **Confirming (THE DEFAULT):** present each stage's ops table and WAIT for his `go` / `except #N` / `cancel` before executing that stage. Decisions are `decided_by='pete'`. Never batch-execute past a presented stage.
+- **Confirming (THE DEFAULT):** present each group's ops table and WAIT for his `go` / `except #N` / `cancel` before executing that group. Decisions are `decided_by='pete'`. Never batch-execute past a presented group.
 - **Auto (only on Pete's explicit say-so in THIS session):** offline-runner semantics — execute reversible actions lint-gated, queue anything vetoed, everything into the digest with undo, `decided_by='cron-auto'`. Nothing irreversible, no tasks, no filters.
 
 A standing goal, an autonomous context, or Pete being away is NOT auto-consent for an interactive triage — if he invoked `triage` and is present, he chooses. (First live run, 10 Jul 2026: a session goal caused autonomous completion of a run Pete expected to confirm.)
@@ -159,30 +159,18 @@ The unattended **Sorter** (`triage-engine-run`) is PAUSED (never-fire schedule o
 Filter out (unchanged for now):
 - Threads already labelled with the `Replies` or `Delegated` label (already in-flight workflow, accessible via the Replies sidebar view; shown separately if Pete asks).
 
-### Step 2: Group by category (NOT by sender clusters first)
+### Step 2 + 3: Group by ACTION-TYPE, not category (reworked 16 Jul 2026)
 
-In v1.8 the grouping is **by category for staging**, not by sender clusters. Categories drive the stage order in Step 5:
+Grouping for presentation is by **what Pete has to do**, not by sender category. Judge every thread
+first (Step 4), then present per the ACTION-TYPE group model in **Step 5.5**:
 
-| Category | Examples | Stage |
-|---|---|---|
-| Auto-filter / Mode B candidates | Receipts, newsletters, alerts, marketing, cold sales | **Stage 1** |
-| Customers / Suppliers / Projects / Accreditations | Relationship mail | **Stage 2** |
-| Internal Sygma / CD | Forwards from Michaela, Paul, Jane, Dave, Jim, Sue | **Stage 3** |
-| Personal + ambiguous one-offs | Lodge, charity, friend, can't-classify | **Stage 4** |
+1. **No-action pile** — every `ask=none/info-only` → `File`/`Clear`. ONE visible table, single `go`.
+2. **Group A — pass to team** (`Hand to`) · **Group B — reply/decision** (`Reply`/`Route`/`rsvp`) ·
+   **Group C — spin into a task** (`Task Pn`). One group per screen.
 
-Within each category, thread-level grouping (same sender + same topic, transactional repeats) still applies for clean presentation.
-
-### Step 3: Decide stage size (hard cap: 10)
-
-| Threads in stage | Behaviour |
-|---|---|
-| ≤ 10 | One sub-batch |
-| 11-20 | Two sub-batches of ~10 |
-| > 20 | Multiple sub-batches of ~10 with progress indicator (`Stage 1 of 4, sub-batch 2 of 3, 12 of 28 done`) |
-
-**Hard rule: never present more than 10 rows in a single chat-visible batch.** Pete called this out 1 May 2026 -- 25-row tables are useless. If the rule conflicts with logical grouping, split the group.
-
-Pete can override at any time: "give me everything in one go" -- collapse to single round.
+Never more than ~3–5 decisions in front of Pete at once; never a wall of 20+ rows; never batch by the
+old category-staging (superseded — that produced the 29-row wall on 16 Jul). Pete can still say "give me
+everything in one go" to collapse to a single table.
 
 ### Step 4: Read-and-judge over the round file (shipped 15 Jul 2026 — replaced the regex classifier)
 
@@ -536,9 +524,10 @@ Reason: Mimestream opens the source thread in one click; the Drive link opens th
 
 The filing and Calendar columns drive their own side-effects (see Step 5).
 
-### Step 7: Move to next stage (or finish)
+### Step 7: Move to the next GROUP (or finish)
 
-After Stage N executes, present Stage N+1's reminder + filter proposals + ops table. Repeat until all stages done.
+After a group's ops table executes (and the inbox is re-checked for strays — Step 5.5), present the next
+action-type group (no-action pile → A team → B reply/decision → C task). Repeat until every group is done.
 
 ### Step 8a: Replies walker — offer to deal with the tray (added 2026-06-06)
 
@@ -584,11 +573,11 @@ Run `sync` now to reconcile Gmail/CC task state? (y/n)
 ```
 Triage complete.
 
-Stages run: 4 of 4
-- Stage 1 (Mode B / noise):     8 filed (5 new filters created)
-- Stage 2 (relationships):       6 filed, 2 actioned (tray), 1 tasked (CC only)
-- Stage 3 (internal):            4 filed, 2 tasked (CC only)
-- Stage 4 (personal + one-off):  2 filed, 1 calendar event
+Groups run: no-action + A/B/C
+- No-action pile:   17 filed / cleared (nothing needed from you)
+- Group A (team):    3 handed off
+- Group B (reply):   3 to the Replies tray, 1 routed to the Enquiry Engine
+- Group C (task):    5 (2 infra handled, 3 tasks created)
 
 Total: 22 threads → 0 inbox.
 Replies added: 2 (label only — no task; tray now reflects them).
