@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-# CRON-META: name=cc-locator-audit schedule="30 6 * * *" tz=Atlantic/Canary what="Report-only CC Locator drift check: unhomed tables + dead/stale data_map homes" produces="report (stdout / CC page)" consumes="information_schema,data_map"
+# CRON-META
+# what: Report-only CC Locator drift check — unhomed populated tables + dead/stale data_map homes
+# why: Keeps the locator (data_map / whereis) self-maintaining — flags a new unhomed kind or a rotted home automatically, so Pete never has to remind
+# reads: information_schema + public.data_map (+ a count per public table)
+# writes: nothing (report-only — prints + exits with the gap count; surfaces at closeout/briefing)
+# entity: PA-Command-Centre
+# report: stdout (and the CC locator-audit surface)
+# schedule: 30 6 * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
 """cc-locator-audit.py — the CC Locator self-maintaining drift check (Pillar B / B2).
 
 REPORT-ONLY (the house pattern, like connection-parity.py): it prints a report and exits with a
