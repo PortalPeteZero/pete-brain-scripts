@@ -14,14 +14,25 @@ import sys, re, json, subprocess, os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-def q(sql):
+# A CC lookup that ERRORS must never be silently reported as an empty absence —
+# that false "NOTHING FOUND" is the exact signal that tells Claude a home doesn't
+# exist, and it's the root failure this tool exists to prevent. So distinguish
+# error from empty: retry once, then flag it so main() warns instead of claiming absence.
+_Q_ERROR = {"hit": False}
+
+def q(sql, _retry=True):
     r = subprocess.run([sys.executable, os.path.join(HERE, "cc-sql.py"), sql],
                        capture_output=True, text=True, env={**os.environ})
+    if r.returncode != 0:
+        if _retry:
+            return q(sql, _retry=False)   # one retry (transient throttle/network)
+        _Q_ERROR["hit"] = True            # genuine error — do NOT let this read count as "empty"
+        return []
     try:
         out = json.loads(r.stdout)
         return out if isinstance(out, list) else []
     except Exception:
-        return []
+        return []                         # returncode 0 but non-JSON = genuinely empty
 
 def main():
     term = " ".join(sys.argv[1:]).strip()
@@ -121,11 +132,29 @@ def main():
             print(f"  reader ←  /m/{rr['slug']}  reads {', '.join(m)}")
         print()
 
-    rows = q(f"SELECT domain, home, access FROM data_map "
-             f"WHERE domain ILIKE '{L}' OR home ILIKE '{L}' OR access ILIKE '{L}' OR notes ILIKE '{L}' ORDER BY sort LIMIT 8")
-    if rows:
-        hits += len(rows); print("DATA-MAP  (domain → home — HIGH-LEVEL; trust crons/pages above for component detail):")
-        for r in rows:
+    # DATA-MAP — the SSOT for "what kind of thing lives where". Token-matched (score domain>home>access+notes)
+    # over the small (~48-row) table so natural phrasings resolve ("family finance", "email routing rules",
+    # "bank statements", "my tasks"); whole-phrase ILIKE fallback so a bare-stopword/zero-token query never loses hits.
+    dm_rows = []
+    if _tokens:
+        dm = q("SELECT domain, home, access, notes FROM data_map ORDER BY sort")
+        scored = []
+        for r in dm:
+            dom = (r.get('domain') or '').lower(); home = (r.get('home') or '').lower()
+            rest = ((r.get('access') or '') + ' ' + (r.get('notes') or '')).lower()
+            score = (3 * sum(1 for t in _tokens if t in dom)
+                     + 2 * sum(1 for t in _tokens if t in home)
+                     + 1 * sum(1 for t in _tokens if t in rest))
+            if score:
+                scored.append((score, r))
+        scored.sort(key=lambda x: -x[0])
+        dm_rows = [r for _, r in scored[:8]]
+    if not dm_rows:
+        dm_rows = q(f"SELECT domain, home, access FROM data_map "
+                    f"WHERE domain ILIKE '{L}' OR home ILIKE '{L}' OR access ILIKE '{L}' OR notes ILIKE '{L}' ORDER BY sort LIMIT 8")
+    if dm_rows:
+        hits += len(dm_rows); print("DATA-MAP  (domain → home — the SSOT for what kind of thing lives where):")
+        for r in dm_rows:
             print(f"  • {r['domain']} → {r['home']}   ({r.get('access') or ''})")
         print()
 
@@ -144,7 +173,10 @@ def main():
             print(f"  • {str(r['title'])[:84]}  ({r.get('type') or ''})")
         print()
 
-    if not hits:
+    if _Q_ERROR["hit"]:
+        print("⚠ LOOKUP ERRORED (not empty). One or more reads failed (throttle/network) — this is NOT an "
+              "'it doesn't exist' answer. RE-RUN whereis before concluding a home is missing.")
+    elif not hits:
         print("NOTHING FOUND. The system has no record matching that term — you do NOT know where it lives.")
         print("Widen the term, or check drive_files / vault_notes directly. Do not guess and state it as fact.")
 
