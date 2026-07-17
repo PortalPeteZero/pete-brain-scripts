@@ -495,6 +495,9 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "INSERT INTO tasks (name, priority, ba
 
 The helper exists and is documented — what was missing in practice was the actual call during runs. The enricher call is a verb side-effect so context and files are always pulled into the durable layer when triage files a thread.
 
+> [!important] `vault-enricher` pulls the EMAIL — it does NOT update the customer's KNOWLEDGE section (Pete, 2026-07-17)
+> The enricher drops the raw email body + attachments into the entity's Drive folder. That is NOT the same as capturing the **substantive facts** of the exchange into the entity's living knowledge note. So for **every SUBSTANTIVE touch** (ask ∈ reply/decision/review/rsvp, or a Reply/Task/Hand-to verb, or an EE reply) on a customer/supplier/project **that has a CC knowledge home** (a `vault_notes` note of type customer/supplier/project), you MUST also **update that home's knowledge note with the durable new facts** — decisions, prices, agreed venues, dates, state changes, relationship shifts — and re-embed (`cc-embedder.py`). A routine info-only `File` needs no knowledge update; a real decision/reply does. This is not optional and not "when Pete reminds me" — it is enforced at sign-off by `entity-enrich-signoff.py` (below). The M Group EUSR Cat 2 venue (secured venue + £180/day + air-lance caveat) that had to be chased into the customer note on 17 Jul is the worked example.
+
 ```bash
 VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{target-entity}"
 ```
@@ -561,7 +564,15 @@ The walker is also invocable standalone at any time via the verb "replies" (or l
 
 ### Step 8b: End of triage -- OFFER sync, do NOT auto-chain
 
-After the walker (or its decline), present the summary (Step 9) and OFFER:
+After the walker (or its decline), **run the customer-enrichment sign-off gate BEFORE presenting the summary**:
+
+```
+VAULT=/tmp/pbs python3 /tmp/pbs/entity-enrich-signoff.py --since today
+```
+
+It lists every CC-present customer/supplier/project you had a **substantive** touch with this session and whether its knowledge section was updated. **It exits non-zero while any is outstanding — triage is NOT done until it exits 0.** For each `✗`, update that entity's `vault_notes` home note with the durable new facts, `cc-embedder.py`, and re-run the gate. (`–` = new/unmapped EE contact, nothing to enrich.) This is the enforcement half of the enrichment rule in Step 6.2 — it is why Pete no longer has to remind you.
+
+Then present the summary (Step 9) and OFFER:
 
 ```
 Triage complete.
