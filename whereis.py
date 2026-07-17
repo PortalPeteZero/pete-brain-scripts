@@ -74,10 +74,38 @@ def main():
     SQL_READERS = (f"SELECT slug, reads FROM modules "
                    f"WHERE EXISTS (SELECT 1 FROM unnest(reads) x WHERE x ILIKE '{L}') ORDER BY slug LIMIT 20")
     SQL_DATAMAP = "SELECT domain, home, access, notes FROM data_map ORDER BY sort"
-    SQL_DRIVE = f"SELECT drive, path FROM drive_files WHERE name ILIKE '{L}' ORDER BY path LIMIT 8"
+    SQL_DRIVE = f"SELECT drive, path FROM drive_files WHERE name ILIKE '{L}' OR path ILIKE '{L}' ORDER BY length(path) ASC LIMIT 8"
+    SQL_STAFF = (f"SELECT full_name, job_title, work_email, work_mobile, sub_business, employment_status, synced_at "
+                 f"FROM staff_directory WHERE full_name ILIKE '{L}' OR job_title ILIKE '{L}' ORDER BY full_name LIMIT 6")
     SQL_VNOTES = (f"SELECT title, type FROM vault_notes WHERE title ILIKE '{L}' OR slug ILIKE '{L}' "
                   f"ORDER BY updated_at DESC LIMIT 6")
-    _prefetch([SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES])
+    _prefetch([SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES, SQL_STAFF])
+
+    # CONFIG record-resolver — "the rules" / "CLAUDE.md" / "map" → public.config with the exact edit command.
+    # No 'rules' key exists; alias+normalise onto the real keys.
+    _cfg_norm = safe.lower().replace(".md", "").replace(".", "-").strip()
+    _CFG_ALIAS = {"rules": "claude-md", "the rules": "claude-md", "claude": "claude-md", "claude-md": "claude-md",
+                  "real claude": "claude-md", "map": "map-md", "map-md": "map-md", "orientation map": "map-md",
+                  "protected slugs": "protected-slugs", "protected-slugs": "protected-slugs",
+                  "triage auto mode": "triage-auto-mode", "triage sync mode": "triage-sync-mode"}
+    _cfg_key = _CFG_ALIAS.get(_cfg_norm)
+    if _cfg_key:
+        hits += 1
+        print("SYSTEM CONFIG  (public.config — the REAL operating rules / map source; edit IN PLACE, nothing generates it):")
+        print(f"  • key '{_cfg_key}' → CC public.config")
+        print(f"      edit:  VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py \"UPDATE config SET value=… WHERE key='{_cfg_key}'\"")
+        print("      (claude-md = the REAL CLAUDE operating rules; map-md = the orientation-map source.)\n")
+
+    # STAFF record-resolver — a named person / job title → the CC staff_directory mirror + the authoritative pointer.
+    staff = q(SQL_STAFF)
+    if staff:
+        hits += len(staff)
+        print("STAFF  (public.staff_directory — CC mirror; SSOT = the Sygma Platform hub.staff_directory, ref rsczwfstwkthaybxhszy):")
+        for s in staff:
+            fresh = str(s.get("synced_at") or "")[:10]
+            print(f"  • {s.get('full_name')}  — {s.get('job_title') or '?'}  [{s.get('sub_business') or ''}·{s.get('employment_status') or ''}]")
+            print(f"      {s.get('work_email') or ''}  {s.get('work_mobile') or ''}   (mirror synced {fresh}; verify against the hub if a joiner/leaver)")
+        print()
 
     if _tokens:
         props = q(SQL_PROPS)
