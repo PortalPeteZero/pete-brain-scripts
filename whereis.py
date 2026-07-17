@@ -11,6 +11,7 @@ you're about to make, you DON'T KNOW — say so, don't invent.
 Usage:  VAULT=/tmp/pbs python3 whereis.py "garmin"
 """
 import sys, re, json, subprocess, os
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -19,8 +20,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # exist, and it's the root failure this tool exists to prevent. So distinguish
 # error from empty: retry once, then flag it so main() warns instead of claiming absence.
 _Q_ERROR = {"hit": False}
+_QCACHE = {}
 
 def q(sql, _retry=True):
+    if sql in _QCACHE:                     # memoized (prefetch fills this so blocks read instantly)
+        return _QCACHE[sql]
     r = subprocess.run([sys.executable, os.path.join(HERE, "cc-sql.py"), sql],
                        capture_output=True, text=True, env={**os.environ})
     if r.returncode != 0:
@@ -30,9 +34,17 @@ def q(sql, _retry=True):
         return []
     try:
         out = json.loads(r.stdout)
-        return out if isinstance(out, list) else []
+        out = out if isinstance(out, list) else []
     except Exception:
-        return []                         # returncode 0 but non-JSON = genuinely empty
+        out = []                          # returncode 0 but non-JSON = genuinely empty
+    _QCACHE[sql] = out
+    return out
+
+def _prefetch(sqls):
+    # Run the independent block queries CONCURRENTLY (each spawns cc-sql once) so wall-time
+    # is ~1 round-trip, not 8 serial. Results land in _QCACHE; the blocks then read instantly.
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        list(ex.map(q, [s for s in sqls if s not in _QCACHE]))
 
 def main():
     term = " ".join(sys.argv[1:]).strip()
@@ -50,8 +62,25 @@ def main():
     _STOP = {"website", "site", "web", "app", "the", "main", "page", "form", "com",
              "www", "our", "my", "a", "of", "and", "repo", "github", "how", "connect", "where"}
     _tokens = [t for t in re.split(r"[^a-z0-9]+", safe.lower()) if len(t) >= 2 and t not in _STOP]
+
+    # Define the independent block queries once, then fire them CONCURRENTLY (latency: ~15s serial → ~2s).
+    SQL_PROPS = "SELECT name, f FROM property_declarations"
+    SQL_CRONS = (f"SELECT key, script_file, host, schedule, produces, consumes, status FROM crons "
+                 f"WHERE key ILIKE '{L}' OR script_file ILIKE '{L}' OR produces ILIKE '{L}' "
+                 f"OR consumes ILIKE '{L}' OR what ILIKE '{L}' ORDER BY key LIMIT 12")
+    SQL_MODS = (f"SELECT module_key, slug, title, section, reads FROM modules "
+                f"WHERE module_key ILIKE '{L}' OR slug ILIKE '{L}' OR title ILIKE '{L}' ORDER BY module_key LIMIT 12")
+    SQL_WRITERS = f"SELECT key, script_file, produces FROM crons WHERE produces ILIKE '{L}' ORDER BY key LIMIT 12"
+    SQL_READERS = (f"SELECT slug, reads FROM modules "
+                   f"WHERE EXISTS (SELECT 1 FROM unnest(reads) x WHERE x ILIKE '{L}') ORDER BY slug LIMIT 20")
+    SQL_DATAMAP = "SELECT domain, home, access, notes FROM data_map ORDER BY sort"
+    SQL_DRIVE = f"SELECT drive, path FROM drive_files WHERE name ILIKE '{L}' ORDER BY path LIMIT 8"
+    SQL_VNOTES = (f"SELECT title, type FROM vault_notes WHERE title ILIKE '{L}' OR slug ILIKE '{L}' "
+                  f"ORDER BY updated_at DESC LIMIT 6")
+    _prefetch([SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES])
+
     if _tokens:
-        props = q("SELECT name, f FROM property_declarations")
+        props = q(SQL_PROPS)
         scored = []
         for p in props:
             f = p.get("f") or {}
@@ -95,9 +124,7 @@ def main():
                     print(f"      analytics= {anal}")
             print()
 
-    rows = q(f"SELECT key, script_file, host, schedule, produces, consumes, status FROM crons "
-             f"WHERE key ILIKE '{L}' OR script_file ILIKE '{L}' OR produces ILIKE '{L}' "
-             f"OR consumes ILIKE '{L}' OR what ILIKE '{L}' ORDER BY key LIMIT 12")
+    rows = q(SQL_CRONS)
     if rows:
         hits += len(rows); print("CRONS  (the writer + data flow — script_file is the DEPLOYED script):")
         for r in rows:
@@ -106,8 +133,7 @@ def main():
             if r.get('consumes'): print(f"      reads  ← {str(r['consumes'])[:150]}")
         print()
 
-    rows = q(f"SELECT module_key, slug, title, section, reads FROM modules "
-             f"WHERE module_key ILIKE '{L}' OR slug ILIKE '{L}' OR title ILIKE '{L}' ORDER BY module_key LIMIT 12")
+    rows = q(SQL_MODS)
     if rows:
         hits += len(rows); print("CC PAGES  (commandcentre.info — clone fresh: command-centre repo, app/m/<slug>):")
         for r in rows:
@@ -119,9 +145,8 @@ def main():
 
     # LINEAGE — term names a table/feed: who WRITES it (cron) + who READS it (CC page).
     # Closes the page→feed→writer loop (modules.reads, Phase 5.3). Verified, not guessed.
-    writers = q(f"SELECT key, script_file, produces FROM crons WHERE produces ILIKE '{L}' ORDER BY key LIMIT 12")
-    readers = q(f"SELECT slug, reads FROM modules "
-                f"WHERE EXISTS (SELECT 1 FROM unnest(reads) x WHERE x ILIKE '{L}') ORDER BY slug LIMIT 20")
+    writers = q(SQL_WRITERS)
+    readers = q(SQL_READERS)
     if writers or readers:
         hits += len(writers) + len(readers)
         print("LINEAGE  (table/feed → writer cron + reader page — script_file is the DEPLOYED writer):")
@@ -137,7 +162,7 @@ def main():
     # "bank statements", "my tasks"); whole-phrase ILIKE fallback so a bare-stopword/zero-token query never loses hits.
     dm_rows = []
     if _tokens:
-        dm = q("SELECT domain, home, access, notes FROM data_map ORDER BY sort")
+        dm = q(SQL_DATAMAP)
         scored = []
         for r in dm:
             dom = (r.get('domain') or '').lower(); home = (r.get('home') or '').lower()
@@ -158,15 +183,14 @@ def main():
             print(f"  • {r['domain']} → {r['home']}   ({r.get('access') or ''})")
         print()
 
-    rows = q(f"SELECT drive, path FROM drive_files WHERE name ILIKE '{L}' ORDER BY path LIMIT 8")
+    rows = q(SQL_DRIVE)
     if rows:
         hits += len(rows); print("DRIVE FILES  (sample; full index = drive_files):")
         for r in rows:
             print(f"  • [{r['drive']}] {r['path']}")
         print()
 
-    rows = q(f"SELECT title, type FROM vault_notes WHERE title ILIKE '{L}' OR slug ILIKE '{L}' "
-             f"ORDER BY updated_at DESC LIMIT 6")
+    rows = q(SQL_VNOTES)
     if rows:
         hits += len(rows); print("KNOWLEDGE  (vault_notes — cc-knowledge-api.py for full text):")
         for r in rows:
