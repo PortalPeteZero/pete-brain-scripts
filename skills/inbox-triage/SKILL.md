@@ -539,6 +539,13 @@ Shall we look at your Replies? (N in the tray, oldest is {X}d)  (y/n)
 
 On **y**, walk the tray **one item at a time**:
 
+> [!important] HARD RULE — ONE item on screen, then STOP (Pete, 2026-07-17: "deal with one thing at a time")
+> The walker presents **exactly ONE tray item per message**, then WAITS for Pete's outcome (`send` / `defer` / `already done` / `de-tray` / an edit) before the next item is even named. This is the whole point of the walker — a per-item decision surface, not a batch.
+> - **NEVER** present two or more items in one message. **NEVER** preview / describe / tabulate the remaining tray in detail ("here are the other 5…"). A one-line orientation is the only exception: `Item {i} of {N} · {X} days` at the top of each item, nothing more about the others.
+> - Items the walker does NOT own (e.g. **training enquiries → the Enquiry Engine**) are set aside in **one line total** at the very start ("5 of these are enquiries, say `enquiries` to run them") — do not walk them, and do not detail them.
+> - After Pete's outcome on item {i}, act on it (send/de-tray/etc.), give a one-line result, THEN present item {i+1}. Repeat to the end, then the tray summary.
+> - Batching the tray (presenting 3 at once) is the exact failure this rule exists to stop (2026-07-17). If you catch yourself writing a second item's detail before Pete has answered the first, STOP.
+
 - **Group by thread (or by TASK in the overlap case)** — most tray items are now label-only (no task); a multi-thread overlap task (e.g. a DocuSign chased across 3 threads) is ONE walker item listing all its threads.
 - **Order: oldest last-message first** (most overdue at the top).
 - For each item present: the thread(s) summary, the linked task **if one exists** (priority + due) — most items are label-only — and a **suggested response** — a ready-to-iterate draft in Pete's voice. **Read [[voice-principles]] BEFORE drafting the first suggestion, and run the em-dash / en-dash / double-dash grep on every draft before presenting it.**
