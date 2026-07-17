@@ -32,6 +32,58 @@ def main():
     print(f"== whereis {safe!r} ==  (read-only; the system's own record)\n")
     hits = 0
 
+    # PROPERTIES — the SSOT for "where does this website/app live + how do I connect"
+    # (property_declarations). Runs FIRST and token-matches (name/domain/repo) so a natural
+    # query like "canary detect website" resolves to the repo+host+stack, not an old note.
+    # This is the fix for the recurring "grepped a mirror and cloned the wrong repo" failure.
+    _STOP = {"website", "site", "web", "app", "the", "main", "page", "form", "com",
+             "www", "our", "my", "a", "of", "and", "repo", "github", "how", "connect", "where"}
+    _tokens = [t for t in re.split(r"[^a-z0-9]+", safe.lower()) if len(t) >= 2 and t not in _STOP]
+    if _tokens:
+        props = q("SELECT name, f FROM property_declarations")
+        scored = []
+        for p in props:
+            f = p.get("f") or {}
+            name = (p.get("name") or "").lower()
+            doms = " ".join(f.get("domains") or []).lower()
+            gh = (f.get("github") or "").lower()
+            # Weight NAME > DOMAIN > REPO so the property the query actually NAMES ranks first.
+            # Deliberately NOT matching `department` -- every sibling property shares it, which made
+            # the whole department tie and buried the real match (the bug this fix exists to kill).
+            score = (3 * sum(1 for t in _tokens if t in name)
+                     + 2 * sum(1 for t in _tokens if t in doms)
+                     + 1 * sum(1 for t in _tokens if t in gh))
+            if score:
+                scored.append((score, p, f))
+        scored.sort(key=lambda x: -x[0])
+        if scored:
+            hits += len(scored)
+            print("PROPERTIES  (property_declarations — the SSOT for where a site/app lives + how to connect):")
+            for score, p, f in scored[:5]:
+                dec = f.get("declared") or {}
+                stack = dec.get("stack") or f.get("stack") or ""
+                print(f"  • {p['name']}  [{f.get('status') or '?'}]  domain(s): {', '.join(f.get('domains') or []) or '-'}")
+                print(f"      repo    = {f.get('github') or '-'}  (branch {f.get('prod_branch') or 'main'})")
+                host = f.get("hosting") or ""
+                vp = f.get("vercel_project") or ""
+                vt = f.get("vercel_team") or ""
+                print(f"      hosting = {host or '-'}"
+                      + (f"  · vercel project {vp}" if vp else "")
+                      + (f" (team {vt})" if vt else ""))
+                if f.get("supabase_ref"):
+                    print(f"      supabase= {f.get('supabase_ref')}")
+                if stack:
+                    print(f"      stack   = {stack}")
+                anal = ", ".join(x for x in [
+                    (f"GA4 {f.get('ga4')}" if f.get('ga4') else ""),
+                    (f"GTM {f.get('gtm')}" if f.get('gtm') else ""),
+                    (f"GSC {f.get('gsc')}" if f.get('gsc') else ""),
+                    (f"Ahrefs {f.get('ahrefs')}" if f.get('ahrefs') else ""),
+                ] if x)
+                if anal:
+                    print(f"      analytics= {anal}")
+            print()
+
     rows = q(f"SELECT key, script_file, host, schedule, produces, consumes, status FROM crons "
              f"WHERE key ILIKE '{L}' OR script_file ILIKE '{L}' OR produces ILIKE '{L}' "
              f"OR consumes ILIKE '{L}' OR what ILIKE '{L}' ORDER BY key LIMIT 12")
