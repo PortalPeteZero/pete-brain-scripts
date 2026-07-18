@@ -3,17 +3,18 @@
 # what: Report-only CC Locator drift check — unhomed populated tables + dead/stale data_map homes
 # why: Keeps the locator (data_map / whereis) self-maintaining — flags a new unhomed kind or a rotted home automatically, so Pete never has to remind
 # reads: information_schema + public.data_map (+ a count per public table)
-# writes: nothing (report-only — prints the report and always exits 0; gap count comes from --json)
+# writes: its own report line to daily_log (cron_name='cc-locator-audit') so the briefing/closeout can read it; NO domain data, ever
 # entity: PA-Command-Centre
 # report: stdout (and the CC locator-audit surface)
 # secrets: SUPABASE_TOKEN
-# schedule: 30 6 * * *
+# schedule: 56 8 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 """cc-locator-audit.py — the CC Locator self-maintaining drift check (Pillar B / B2).
 
-REPORT-ONLY (the house pattern, like connection-parity.py): it prints a report and exits with a
-gap count. It NEVER writes tasks or mutates anything — gaps surface at closeout/briefing for Pete.
+REPORT-ONLY (the house pattern, like connection-parity.py): it prints a report, records that
+report to daily_log so the briefing/closeout can read it, and ALWAYS exits 0 when it ran.
+It never creates tasks and never mutates domain data. Finding drift is this tool WORKING.
 
 Answers Requirement #2 ("keeps itself updated, no reminders"): every day it reconciles the LIVE
 system against data_map (the locator's SSOT) and flags drift, so a new kind or a rotted home is
@@ -30,9 +31,14 @@ Usage:  VAULT=/tmp/pbs python3 /tmp/pbs/cc-locator-audit.py [--json]
         exit 0  = the report RAN (whatever it found).  exit 99 = it could not check, so it
         refused to report at all. Read the gap count from --json ("count"), never from $?.
 """
-import os, sys, json, subprocess, re
+import os, sys, json, subprocess, re, datetime
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
+
+# What this check does NOT yet cover. Emitted as info[] so a "0 gaps" result can never be
+# mistaken for total coverage — the report states its own boundary.
+SCOPE_NOTE = ("scans CC public-schema tables and views only; Drive folders, storage buckets, "
+              "pages/crons/connectors and other databases are NOT yet covered")
 
 def q(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
@@ -92,11 +98,11 @@ def main():
         # populated? (skip genuinely empty internal tables)
         cnt = q(f'SELECT count(*) AS n FROM public."{name}"')
         if cnt is None:                      # errored ≠ empty: never silently treat as "nothing here"
-            gaps.append({"kind": "couldnt-check", "detail": f"{name}: row-count query ERRORED — cannot say whether it is homed; NOT counted as clean", "severity": "high"})
+            gaps.append({"rule": "couldnt-check", "subject": name, "detail": f"row-count query ERRORED — cannot say whether it is homed; NOT counted as clean", "severity": "high"})
             continue
         n = (cnt[0]["n"] if cnt else 0)
         if n and n > 0:
-            gaps.append({"kind": "unhomed-table", "detail": f"{name} ({n} rows) is populated but has NO data_map home and is not on the infra allow-list", "severity": "medium"})
+            gaps.append({"rule": "unhomed-table", "subject": name, "detail": f"{n} rows, populated but has NO data_map home and is not on the infra allow-list", "severity": "medium"})
 
     # (d) DEAD / STALE HOME — backing_ref table:public.X must exist AND be non-empty
     known = {t["name"] for t in tbls}
@@ -109,23 +115,45 @@ def main():
         # existence comes from the catalogue we already fetched — NOT from "the count query errored",
         # which conflates a retired table with a transient failure.
         if tn not in known:
-            gaps.append({"kind": "dead-home", "detail": f"'{r['domain']}' → backing_ref {ref}, but that table does not exist (retired?)", "severity": "high"})
+            gaps.append({"rule": "dead-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table does not exist (retired?)", "severity": "high"})
             continue
         cnt = q(f'SELECT count(*) AS n FROM public."{tn}"')
         if cnt is None:                      # errored ≠ dead: say so, never guess
-            gaps.append({"kind": "couldnt-check", "detail": f"'{r['domain']}' → {ref}: row-count query ERRORED — status unknown, NOT reported clean", "severity": "high"})
+            gaps.append({"rule": "couldnt-check", "subject": r["domain"], "detail": f"{ref}: row-count query ERRORED — status unknown, NOT reported clean", "severity": "high"})
         elif not cnt or cnt[0]["n"] == 0:
-            gaps.append({"kind": "empty-home", "detail": f"'{r['domain']}' → backing_ref {ref}, but that table is EMPTY (the Daily-notes/Asana class — home points at a table with no data)", "severity": "high"})
+            gaps.append({"rule": "empty-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table is EMPTY (home points at a table with no data)", "severity": "high"})
+
+    ordered = sorted(gaps, key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["severity"], 3))
+    info = [{"subject": "coverage", "detail": SCOPE_NOTE}]
 
     if as_json:
-        print(json.dumps({"gaps": gaps, "count": len(gaps)}, indent=1))
-    else:
-        print(f"=== CC Locator drift check (report-only) — {len(gaps)} gap(s) ===")
-        for g in sorted(gaps, key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["severity"], 3)):
-            print(f"  [{g['severity']:6}] {g['kind']}: {g['detail']}")
-        if not gaps:
-            print("  clean — every populated table is homed, and no data_map home points at a dead/empty table.")
-        print("\n(report-only — surfaces at closeout/briefing; no tasks created)")
+        # THE HOUSE CONSUMER CONTRACT — drift-check.py reads exactly this shape from
+        # connection-parity.py: gaps=INT (not a list), gap_types[], findings[{rule,subject}], info[].
+        # Emitting a list as "gaps" made the weekly digest print a garbled count.
+        print(json.dumps({
+            "gaps": len(gaps),
+            "gap_types": sorted({g["rule"] for g in gaps}),
+            "findings": ordered,
+            "info": info,
+        }, indent=1))
+        return                      # consumers only read; they must not trigger the daily_log record
+
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    body = f"CC LOCATOR {stamp} — " + (f"⚠ {len(gaps)} gap(s)" if gaps else "✓ all homed")
+    for g in ordered:
+        body += f"\n  [{g['severity']:6}] {g['rule']}: {g['subject']} — {g['detail']}"
+    if not gaps:
+        body += "\n  clean — every populated table is homed, and no data_map home points at a dead/empty table."
+    body += f"\n  (scope: {SCOPE_NOTE})"
+    print(body)
+
+    # Record the result so the morning briefing / closeout can READ it in milliseconds instead of
+    # re-running this check (~50s on the cron). Writing its own report line is exactly what
+    # drift-check.py does — it still mutates no domain data.
+    today = datetime.date.today().isoformat()
+    safe = body.replace("$$", "")
+    if q(f"INSERT INTO daily_log (date, cron_name, content) VALUES ('{today}','cc-locator-audit',$$%s$$)" % safe) is None:
+        sys.stderr.write("[cc-locator-audit] WARNING: ran fine but could NOT record the result to daily_log\n")
 
     # A successful REPORT always exits 0, however many gaps it found. Finding drift is the tool
     # working, not the tool failing — exiting non-zero made Railway stamp the cron FAILED and
