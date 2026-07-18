@@ -38,10 +38,10 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # What this check does NOT yet cover. Emitted as info[] so a "0 gaps" result can never be
 # mistaken for total coverage — the report states its own boundary.
-SCOPE_NOTE = ("covers CC public-schema tables/views, skills, helpers, projects, storage buckets, "
-              "properties (websites/apps) and entities. NOT yet covered: Drive folders, CC pages, "
-              "Railway crons, connectors, non-public schemas, and the other databases "
-              "(Sygma hub / CD-Leak / Odoo)")
+SCOPE_NOTE = ("covers CC public-schema tables/views, the app schemas in the same database, skills, "
+              "helpers, projects, storage buckets, properties (websites/apps), entities and "
+              "connectors. NOT yet covered: new Drive folders, CC pages, Railway crons, and the "
+              "other databases (Sygma hub / CD-Leak / Odoo)")
 
 def q(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
@@ -146,6 +146,34 @@ def check_rows(gaps, dm_text):
             unknown = sorted({(p.get("entity_slug") or "(none)") for p in projs} - known)
             if unknown:
                 add("project-unknown-owner", _summarise(unknown), f"{len(unknown)} project owner value(s) match no entity and no known routing label — those projects would be filed to the wrong drive")
+
+    # --- CONNECTORS (R4): a connection whose named secret does not exist cannot authenticate.
+    # "Reconcile against the registry" was circular — connectors IS a registry. The answerable
+    # question is whether each connector's secret actually exists in the one safe.
+    bad = q("SELECT name, secret FROM connectors WHERE coalesce(secret,'') <> '' "
+            "AND secret NOT IN (SELECT name FROM secrets) ORDER BY name")
+    if bad is None:
+        add("couldnt-check", "connectors", "connector/secret query ERRORED — could not verify connections", "high")
+    elif bad:
+        add("connector-missing-secret", _summarise([b["name"] for b in bad]),
+            f"{len(bad)} connector(s) name a secret that does not exist in public.secrets — they cannot authenticate")
+
+    # --- NON-PUBLIC SCHEMAS: Pete's own app schemas live in the SAME database and were invisible.
+    # auth/storage/realtime/etc are Supabase's own plumbing, not his data — excluded deliberately.
+    SUPABASE_OWN = "('auth','storage','realtime','extensions','graphql','graphql_public','vault','net','cron','pgbouncer','supabase_migrations','supabase_functions','pgsodium','pgsodium_masks')"
+    nps = q("SELECT n.nspname AS schema, c.relname AS name FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','v','m') "
+            f"AND n.nspname NOT IN ('public','pg_catalog','information_schema','pg_toast') "
+            f"AND n.nspname NOT IN {SUPABASE_OWN} ORDER BY n.nspname, c.relname")
+    if nps is None:
+        add("couldnt-check", "non-public schemas", "schema scan ERRORED — could not check app schemas", "high")
+    elif nps:
+        unhomed = sorted({f"{r['schema']}.{r['name']}" for r in nps
+                          if not _homed(r["schema"], dm_text) and not _homed(r["name"], dm_text)})
+        if unhomed:
+            schemas = sorted({u.split(".")[0] for u in unhomed})
+            add("unhomed-app-schema", _summarise(schemas),
+                f"{len(unhomed)} table(s) across {len(schemas)} app schema(s) in this database have no data_map home ({', '.join(schemas)})", "low")
 
     # --- PROPERTIES (websites/apps): the locator's original purpose. A declaration that cannot
     # answer "where does its code live and who serves it" is how the wrong-repo clone happened.
