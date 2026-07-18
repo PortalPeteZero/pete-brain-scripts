@@ -79,7 +79,18 @@ def main():
                  f"FROM staff_directory WHERE full_name ILIKE '{L}' OR job_title ILIKE '{L}' ORDER BY full_name LIMIT 6")
     SQL_VNOTES = (f"SELECT title, type FROM vault_notes WHERE title ILIKE '{L}' OR slug ILIKE '{L}' "
                   f"ORDER BY updated_at DESC LIMIT 6")
-    _prefetch([SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES, SQL_STAFF])
+    SQL_SKILLS = (f"SELECT name, path, coalesce(what,'') AS what FROM skills "
+                  f"WHERE name ILIKE '{L}' OR coalesce(what,'') ILIKE '{L}' ORDER BY name LIMIT 6")
+    SQL_HELPERS = (f"SELECT name, coalesce(what,'') AS what, coalesce(runs_where,'') AS runs FROM helpers "
+                   f"WHERE name ILIKE '{L}' OR coalesce(what,'') ILIKE '{L}' ORDER BY name LIMIT 6")
+    SQL_PROJECTS = (f"SELECT slug, coalesce(entity_slug,'?') AS ent, coalesce(drive,'') AS drive, "
+                    f"coalesce(drive_folder_url,'') AS url, coalesce(status,'') AS status FROM projects "
+                    f"WHERE slug ILIKE '{L}' OR coalesce(description,'') ILIKE '{L}' ORDER BY slug LIMIT 6")
+    SQL_ENTITIES = (f"SELECT slug, name, coalesce(trading_name,'') AS trading, coalesce(drive_home,'') AS home "
+                    f"FROM entities WHERE slug ILIKE '{L}' OR name ILIKE '{L}' OR coalesce(trading_name,'') ILIKE '{L}' "
+                    f"ORDER BY sort LIMIT 6")
+    SQL_BUCKETS = f"SELECT name, public FROM storage.buckets WHERE name ILIKE '{L}' ORDER BY name LIMIT 6"
+    _prefetch([SQL_SKILLS, SQL_HELPERS, SQL_PROJECTS, SQL_ENTITIES, SQL_BUCKETS, SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES, SQL_STAFF])
 
     # CONFIG record-resolver — "the rules" / "CLAUDE.md" / "map" → public.config with the exact edit command.
     # No 'rules' key exists; alias+normalise onto the real keys.
@@ -106,6 +117,28 @@ def main():
             print(f"  • {s.get('full_name')}  — {s.get('job_title') or '?'}  [{s.get('sub_business') or ''}·{s.get('employment_status') or ''}]")
             print(f"      {s.get('work_email') or ''}  {s.get('work_mobile') or ''}   (mirror synced {fresh}; verify against the hub if a joiner/leaver)")
         print()
+
+    # R5 findability parity — the locator DETECTS these kinds, so whereis must be able to answer
+    # for them too. Without this it flags a thing as unfiled that you then cannot look up.
+    for _sql, _hdr, _fmt in (
+        (SQL_SKILLS, "SKILLS  (public.skills — the registry; source of truth is skills/<name>/SKILL.md in pete-brain-scripts):",
+         lambda r: f"  • {r['name']}  → {r.get('path') or ''}\n      {(r.get('what') or '')[:150]}"),
+        (SQL_HELPERS, "HELPERS / SCRIPTS  (public.helpers — run as: VAULT=/tmp/pbs python3 /tmp/pbs/<name>):",
+         lambda r: f"  • {r['name']}  [{r.get('runs') or '?'}]\n      {(r.get('what') or '')[:170]}"),
+        (SQL_PROJECTS, "PROJECTS  (public.projects — slug, owning entity, and the Drive folder its documents live in):",
+         lambda r: f"  • {r['slug']}  [{r.get('ent')}·{r.get('status') or ''}]  drive={r.get('drive') or '(none)'}\n      {r.get('url') or 'NO DRIVE FOLDER RECORDED'}"),
+        (SQL_ENTITIES, "ENTITIES  (public.entities — the companies; slug is the key, trading name is what Pete says):",
+         lambda r: f"  • {r['slug']}  — {r.get('name')}" + (f"  (trades as {r.get('trading')})" if r.get('trading') else "") + f"\n      Drive home: {r.get('home') or 'NONE RECORDED'}"),
+        (SQL_BUCKETS, "STORAGE BUCKETS  (storage.buckets):",
+         lambda r: f"  • {r['name']}  ({'public' if r.get('public') else 'private'})"),
+    ):
+        _rows = q(_sql)
+        if _rows:
+            hits += len(_rows)
+            print(_hdr)
+            for _r in _rows:
+                print(_fmt(_r))
+            print()
 
     if _tokens:
         props = q(SQL_PROPS)
