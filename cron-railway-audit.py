@@ -6,9 +6,17 @@ cron schedule, the CRON_SCRIPT it runs, and the registry's reads/writes (consume
 every mismatch: a Railway service with no registry row, a live/ok cron with no Railway service, a
 deploy that isn't SUCCESS, a missing schedule, a missing consumes/produces.
 """
-import json, urllib.request
+import json, sys, urllib.request
 from pathlib import Path
 import os
+
+# --json emits ONLY machine output: this script prints as it goes, so capture and discard
+# the human text until the JSON block, otherwise the result is unparseable.
+import sys as _sys, io as _io
+_JSON_BUF = _io.StringIO()
+if "--json" in _sys.argv:
+    _sys.stdout = _JSON_BUF
+
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 SECRETS = Path(f"{VAULT}/Library/processes/secrets")
@@ -88,6 +96,20 @@ for key in sorted(crons):
         print(f"  ✗ {key:34s} status={c['status']} — NO RAILWAY SERVICE")
     else:
         print(f"  ✓ {key:34s} status={c['status']:5s} reads={(c.get('consumes') or '—')[:40]:40s} writes={(c.get('produces') or '—')[:45]}")
+
+# --json for consumers (the house contract: gaps=INT, gap_types[], findings[], info[]).
+# Added 18 Jul 2026 — the locator could not aggregate this tool without it.
+if "--json" in _sys.argv:
+    _sys.stdout = _sys.__stdout__
+    import json as _json
+    print(_json.dumps({
+        "gaps": len(problems),
+        "gap_types": sorted({t.split()[0].strip("⚠") for _n, ts in problems for t in ts}) if problems else [],
+        "findings": [{"rule": "cron-railway", "subject": n, "detail": "; ".join(t), "severity": "medium"}
+                     for n, t in problems],
+        "info": [{"subject": "coverage", "detail": "Railway services vs public.crons, both directions"}],
+    }, indent=1))
+    sys.exit(0)
 
 print(f"\n=== PROBLEMS: {len(problems)} ===")
 for n, t in problems:

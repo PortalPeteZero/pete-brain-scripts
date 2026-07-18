@@ -3,6 +3,15 @@
 mismatches (mis-firing / DST-flip breakage), missing schedule_local, Railway↔registry orphans,
 non-SUCCESS deploys, and stale runs. No mutations."""
 import importlib.util, os, datetime
+
+# --json emits ONLY machine output: this script prints as it goes, so capture and discard
+# the human text until the JSON block, otherwise the result is unparseable.
+import json
+import sys as _sys, io as _io
+_JSON_BUF = _io.StringIO()
+if "--json" in _sys.argv:
+    _sys.stdout = _JSON_BUF
+
 # 18 Jul 2026: this hardcoded /tmp/pbs, so it ran only in a local session and FileNotFound-ed on
 # Railway (where VAULT is the container repo dir). Matches sibling cron-railway-audit.py now.
 HERE = os.environ.get("VAULT", "/tmp/pbs")
@@ -63,5 +72,17 @@ show("DEPLOY not SUCCESS", bad_deploy, lambda r: f"{r[0]:32} {r[1]}")
 show("MISSING schedule_local (enabled cron — won't DST-self-heal)", no_local, lambda r: r)
 show("STALE last run (>2.2× interval)", stale, lambda r: f"{r[0]:32} age={r[1]}h interval={r[2]}h")
 print(f"\n   services (no schedule, correctly): {services}")
-verdict = "✅ CLEAN" if not (tz_bad or orphan or bad_deploy) else "⚠ ISSUES FOUND (see 🔴 above)"
+issues = list(tz_bad) + list(orphan) + list(bad_deploy)
+if "--json" in _sys.argv:
+    _sys.stdout = _sys.__stdout__
+    print(json.dumps({
+        "gaps": len(issues),
+        "gap_types": ([k for k, v in (("timezone", tz_bad), ("orphan", orphan), ("deploy", bad_deploy)) if v]),
+        "findings": [{"rule": "cron-fleet", "subject": str(i)[:80], "detail": "see cc-cron-audit output",
+                      "severity": "high"} for i in issues],
+        "info": [{"subject": "coverage", "detail": "registry vs Railway: timezone, orphans, deploy status"}],
+    }, indent=1))
+    sys.exit(0)
+verdict = "✅ CLEAN" if not issues else "⚠ ISSUES FOUND (see 🔴 above)"
 print(f"\n=== VERDICT: {verdict} ===")
+sys.exit(0 if not issues else 1)   # exit non-zero on issues so a caller can gate on it
