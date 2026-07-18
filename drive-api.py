@@ -410,11 +410,21 @@ def rename_file(file_id, new_name):
     """Rename a file/folder in place. Drive links are by ID, so a rename never breaks a link or
     a recorded drive_folder_id — but the drive_files index shows the OLD path until the next
     drive-changes-watch run."""
-    before = api("GET", f"/files/{file_id}", {"fields": "name", "supportsAllDrives": "true"})
+    before = api("GET", f"/files/{file_id}", {"fields": "name,mimeType", "supportsAllDrives": "true"})
+    old_name = before.get("name")
     result = api("PATCH", f"/files/{file_id}",
                  body={"name": new_name},
                  params={"fields": "id,name", "supportsAllDrives": "true"})
-    print(f"Renamed: '{before.get('name')}' → '{result['name']}' ({file_id})")
+    print(f"Renamed: '{old_name}' → '{result['name']}' ({file_id})")
+    if before.get("mimeType") == "application/vnd.google-apps.folder":
+        # drive_files.path is a denormalised string built from the parent chain. Renaming a FOLDER
+        # updates only that folder's own row on the next changes-watch; every descendant keeps the
+        # OLD path forever, because the descendants themselves never changed so are never re-upserted.
+        # Verified 18 Jul 2026: renaming SY-Portal-Development left 19 child rows on the stale path.
+        print("\n  ⚠ FOLDER rename — descendants in drive_files keep the OLD path and will NOT self-heal.")
+        print("    Repair the index now (replace <OLD>/<NEW> with the full paths):")
+        print("      UPDATE drive_files SET path = '<NEW>' || substring(path from length('<OLD>') + 1)")
+        print("      WHERE path LIKE '<OLD>%';")
 
 
 def move_file(file_id, dest_folder_id):
