@@ -46,14 +46,22 @@ C = "clancy"
 DRY = "--dry-run" in sys.argv
 CLANCY_DOMAINS = ("theclancygroup.co.uk", "anglianwater.co.uk")
 DOC_EXT = {"pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt"}
-ADDR_RE = re.compile(r'(?:"?([^"<>@]+?)"?\s*)?<?([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})>?')
+# Two shapes only: `"Name" <email>` (name captured) or a bare email (no name).
+# The old single pattern let the optional name group steal the first letter of bare
+# addresses ("R" + "ebecca.glendinning@…") and leak list separators into names
+# (", Samuel Pook") — 33 corrupt account_people rows by 18 Jul 2026. Fixed + data repaired.
+EMAIL = r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"
+ADDR_RE = re.compile(r'"?([^"<>@,;]*?)"?\s*<(' + EMAIL + r')>|(' + EMAIL + r")")
 
 
 def parse_addrs(val):
     out = []
     for m in ADDR_RE.finditer(val or ""):
-        name = (m.group(1) or "").strip().strip('"').strip()
-        out.append((name, m.group(2).lower()))
+        if m.group(3):  # bare address — no display name present
+            out.append(("", m.group(3).lower()))
+        else:
+            name = (m.group(1) or "").strip().strip('"').strip(" ,;")
+            out.append((name, m.group(2).lower()))
     return out
 
 
