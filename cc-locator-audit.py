@@ -29,7 +29,8 @@ Checks:
 
 Usage:  VAULT=/tmp/pbs python3 /tmp/pbs/cc-locator-audit.py [--json]
         exit 0  = the report RAN (whatever it found).  exit 99 = it could not check, so it
-        refused to report at all. Read the gap count from --json ("count"), never from $?.
+        refused to report at all. Read the gap count from --json ("gaps" — an INT), never from $?. An abort emits valid JSON too,
+        with "aborted": true and gaps=1, because being unable to check IS a gap.
 """
 import os, sys, json, subprocess, re, datetime
 
@@ -80,6 +81,13 @@ INFRA_ALLOW = {
 # Without this map a naive slug-equality check rejects every legitimate project.
 LABEL_TO_SLUG = {"Personal": "personal", "One System": "one-system", "El Atico": "el-atico",
                  "Canary Detect": "camello-blanco", "Sygma": "sygma-solutions"}
+
+
+def _homed(name, dm_text):
+    """Word-boundary match. A raw substring test lets a short generic name (a table or bucket
+    called 'events', 'state', 'rules') match unrelated prose in the map and read as FILED when
+    it is not. Used by BOTH the table check and the bucket check."""
+    return re.search(r"(?<![a-z0-9_])" + re.escape(name.lower()) + r"(?![a-z0-9_])", dm_text) is not None
 
 
 def _summarise(items, n=3):
@@ -158,7 +166,7 @@ def check_rows(gaps, dm_text):
     if bks is None:
         add("couldnt-check", "storage.buckets", "bucket list query ERRORED — could not check bucket homes", "high")
     else:
-        unhomed = sorted(b["name"] for b in bks if b["name"].lower() not in dm_text)
+        unhomed = sorted(b["name"] for b in bks if not _homed(b["name"], dm_text))
         if unhomed:
             add("unhomed-bucket", _summarise(unhomed), f"{len(unhomed)} storage bucket(s) with no data_map home")
 
@@ -171,8 +179,19 @@ def main():
     tbls = q("SELECT c.relname AS name, c.relkind AS kind FROM pg_class c "
              "JOIN pg_namespace n ON n.oid=c.relnamespace "
              "WHERE n.nspname='public' AND c.relkind IN ('r','v','m') ORDER BY c.relname")
-    if dm is None or tbls is None:
-        print("cc-locator-audit: a lookup ERRORED — aborting (not reporting false drift). Re-run.")
+    if dm is None or tbls is None or not tbls:
+        why = ("a lookup ERRORED" if (dm is None or tbls is None) else
+               "the table list came back EMPTY — impossible for this database, so the lookup lied")
+        msg = f"cc-locator-audit: {why} — aborting (not reporting false drift). Re-run."
+        if as_json:
+            # An abort must still be VALID JSON, or a consumer breaks at exactly the moment the
+            # check failed. And it must NOT read as 'gaps: 0' — being unable to check IS a gap.
+            print(json.dumps({"gaps": 1, "gap_types": ["aborted"],
+                              "findings": [{"rule": "aborted", "subject": "cc-locator-audit",
+                                            "detail": msg, "severity": "high"}],
+                              "info": [], "aborted": True}, indent=1))
+        else:
+            print(msg)
         sys.exit(99)
 
     # (a) COMPLETENESS
@@ -182,7 +201,7 @@ def main():
         name = t["name"]
         if name in INFRA_ALLOW:
             continue
-        if name.lower() in dm_text:          # named anywhere in a data_map row = homed
+        if _homed(name, dm_text):            # word-boundary match, not a raw substring
             continue
         # populated? (skip genuinely empty internal tables)
         cnt = q(f'SELECT count(*) AS n FROM public."{name}"')
@@ -231,7 +250,10 @@ def main():
         return                      # consumers only read; they must not trigger the daily_log record
 
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    body = f"CC LOCATOR {stamp} — " + (f"⚠ {len(gaps)} gap(s)" if gaps else "✓ all homed")
+    # Railway sets CRON_SCRIPT on the service; a hand-run does not. Without this stamp a person
+    # running the tool leaves a fresh-looking row that hides a silently-dead 06:30 cron.
+    source = "scheduled" if os.environ.get("CRON_SCRIPT") else "manual"
+    body = f"CC LOCATOR {stamp} [{source}] — " + (f"⚠ {len(gaps)} gap(s)" if gaps else "✓ all homed")
     for g in ordered:
         body += f"\n  [{g['severity']:6}] {g['rule']}: {g['subject']} — {g['detail']}"
     if not gaps:
