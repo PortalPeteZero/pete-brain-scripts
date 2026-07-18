@@ -56,7 +56,10 @@ def q(sql):
     try:
         return json.loads(r.stdout)
     except Exception:
-        return []
+        # NOT []: an unreadable reply is "could not check", never "nothing found". Returning []
+        # here turned a garbled response into a false all-clear across every check.
+        sys.stderr.write(f"[cc-locator-audit] unreadable reply: {(r.stdout or '')[:160]}\n")
+        return None
 
 # Engine-internal tables that answer no "where does X live" question — intentionally NOT homed.
 # (Membership tables of homed subsystems are covered by the subsystem's data_map text, not here.)
@@ -86,6 +89,33 @@ INFRA_ALLOW = {
 # Without this map a naive slug-equality check rejects every legitimate project.
 LABEL_TO_SLUG = {"Personal": "personal", "One System": "one-system", "El Atico": "el-atico",
                  "Canary Detect": "camello-blanco", "Sygma": "sygma-solutions"}
+
+
+# The 22 tables that today are only mentioned informally in the map prose. Grandfathered so
+# tightening to a qualified match does not false-alarm on them. A NEW table gets no such pass.
+GRANDFATHERED = {
+    "bank_account_history", "bank_statement_lines", "clancy_reports", "cron_events",
+    "damage_review_rules", "ee_catalogue", "ee_customer_rates", "ee_edits",
+    "ee_phrases", "ee_rates", "ee_rules", "health_config",
+    "health_feedback", "health_planned_session", "health_weekly", "module_content",
+    "training_rep", "training_session_code_map", "training_weekly_totals", "training_weekly_volume",
+    "triage_decisions", "triage_digests",
+}
+
+
+def _homed_table(name, dm_text):
+    """A table counts as homed only if the map names it QUALIFIED (public.x / table:public.x).
+    Bare-word matching meant a new table called 'reports' or 'customers' matched unrelated prose
+    and reported as filed. Measured 18 Jul: 53 matched bare, only 31 qualified."""
+    n = name.lower()
+    return f"public.{n}" in dm_text or n in GRANDFATHERED
+
+
+def _homed_bucket(name, dm_text):
+    """Buckets have no qualified form, so require the name to appear in map text that is actually
+    ABOUT buckets — otherwise a new bucket with a common name matches any stray prose."""
+    n = name.lower()
+    return any(n in seg for seg in dm_text.split("|") if "bucket" in seg) or _homed(name, dm_text) and "bucket" in dm_text
 
 
 def _homed(name, dm_text):
@@ -297,7 +327,7 @@ def check_rows(gaps, dm_text):
     if bks is None:
         add("couldnt-check", "storage.buckets", "bucket list query ERRORED — could not check bucket homes", "high")
     else:
-        unhomed = sorted(b["name"] for b in bks if not _homed(b["name"], dm_text))
+        unhomed = sorted(b["name"] for b in bks if not _homed_bucket(b["name"], dm_text))
         if unhomed:
             add("unhomed-bucket", _summarise(unhomed), f"{len(unhomed)} storage bucket(s) with no data_map home")
 
@@ -332,7 +362,7 @@ def main():
         name = t["name"]
         if name in INFRA_ALLOW:
             continue
-        if _homed(name, dm_text):            # word-boundary match, not a raw substring
+        if _homed_table(name, dm_text):      # QUALIFIED match (or grandfathered)
             continue
         # populated? (skip genuinely empty internal tables)
         cnt = q(f'SELECT count(*) AS n FROM public."{name}"')
