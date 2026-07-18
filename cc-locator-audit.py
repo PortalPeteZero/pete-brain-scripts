@@ -48,7 +48,10 @@ def q(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
                        env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True)
     if r.returncode != 0:
-        sys.stderr.write(f"[cc-locator-audit] query failed: {r.stderr[:160]}\n")
+        # cc-sql.py prints its error to STDOUT ("ERROR 400 ..."), so stderr alone is usually
+        # EMPTY — a dead login, a dropped table and a rate-limit blip all looked identical.
+        _why = (r.stderr or "").strip() or (r.stdout or "").strip()
+        sys.stderr.write(f"[cc-locator-audit] query failed: {_why[:220]}\n")
         return None            # None = errored (distinct from [] empty) so we never mis-report
     try:
         return json.loads(r.stdout)
@@ -191,6 +194,14 @@ def check_rows(gaps, dm_text):
             raw = re.sub(r"\([^)]*\)", "", c["secret"])          # drop notes like "(CC secrets)"
             names = [n.strip() for n in re.split(r"[,/]", raw) if n.strip()]
             names = [n for n in names if n not in {"-", "—", "n/a", "N/A", "none"}]
+            # An explicit none-marker is the NO-CREDENTIAL case, handled below with its own
+            # exemptions — not a missing secret. Only a field that is purely a NOTE
+            # ("(stored in Railway env)") documented a location while naming no secret.
+            if c["secret"].strip() in {"-", "—", "n/a", "N/A", "none", ""}:
+                continue
+            if c["secret"].strip() and not names:
+                missing.append(f"{c['name']} (secret field is only a note: {c['secret'].strip()[:40]})")
+                continue
             gone = [n for n in names if n not in have]
             if gone:
                 missing.append(f"{c['name']} ({', '.join(gone)})")

@@ -37,7 +37,10 @@ def q(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
                        env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
-        sys.stderr.write(f"[drive-path-rebuild] query failed: {r.stderr[:200]}\n")
+        # cc-sql.py prints its error to STDOUT ("ERROR 400 ..."), so stderr alone is usually
+        # EMPTY — a dead login, a dropped table and a rate-limit blip all looked identical.
+        _why = (r.stderr or "").strip() or (r.stdout or "").strip()
+        sys.stderr.write(f"[drive-path-rebuild] query failed: {_why[:220]}\n")
         return None                      # None = errored, NEVER an empty result
     try:
         return json.loads(r.stdout)

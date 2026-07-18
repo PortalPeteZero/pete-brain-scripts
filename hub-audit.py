@@ -45,12 +45,6 @@ HUB_RULES_ID = "1Kv2QJ6lUPLS33fMdIawsf9ZvkFtcIbCE"
 HUB_README_ID = "1zLZbBFBS-G-W1yxMzoBYSEbaX2WYMOVB"
 INDEX_VAULT_PATH = VAULT_ROOT / "Library" / "processes" / "hub-content-index.md"
 
-# DERIVED, not hardcoded. It used to be a hand-typed list of 12 names: anything not on it was
-# DISCARDED, so a new Hub folder produced warnings that editing the docs could never clear, and
-# the list had to be hand-edited (which is exactly the rot this audit exists to catch). It is now
-# filled from the LIVE Hub top-levels in audit(), so a new folder enters the comparison by itself
-# and is flagged as missing-from-docs until someone documents it.
-EXPECTED_TOP_LEVELS = set()
 
 def read_hub_index():
     """Fetch the hub-content-index markdown from vault_notes (its home since the Business-OS
@@ -143,9 +137,9 @@ def parse_map_top_levels(map_md):
     """Extract top-level folder names from the MAP top-level structure block.
 
     Walks the first ``` ``` fenced block after a 'Top-level structure' header;
-    matches lines like '├── Foo/' or '└── Bar/'. Only counts names that are in
-    EXPECTED_TOP_LEVELS (treats the audit as 'does the doc agree with the 12
-    canonical top-levels?').
+    matches lines like '├── Foo/' or '└── Bar/'. Reads EVERY row unfiltered: the
+    comparison against live Drive decides what is wrong, so a doc entry naming a
+    DELETED folder still surfaces (filtering it out is what hid that check).
     """
     found = set()
     in_header = False
@@ -162,7 +156,7 @@ def parse_map_top_levels(map_md):
         if in_header and in_fence:
             m = re.search(r"[├└]── ([A-Za-z][A-Za-z0-9 &/_.\-]*?)/", line)
             if m:
-                # UNFILTERED: filtering by the live set (which EXPECTED_TOP_LEVELS now is)
+                # UNFILTERED: filtering these rows by a name list
                 # made a doc entry for a DELETED folder invisible, so the stale-entry check
                 # could never fire. Read every row; the comparison decides what is wrong.
                 found.add(m.group(1).strip())
@@ -173,9 +167,8 @@ def parse_index_top_levels(index_md):
     """Extract top-level folders + Drive IDs from hub-content-index.md.
 
     Only parses the FIRST markdown table in the doc (the 'At a glance' table).
-    Stops at the first blank line after the table starts. Restricts to names
-    matching EXPECTED_TOP_LEVELS so the parser doesn't false-match on later
-    sub-tables (Library subfolders).
+    Stops at the first blank line after the table starts — that bound, not a name
+    filter, is what keeps later sub-tables (Library subfolders) out.
     """
     found = {}
     in_table = False
@@ -200,19 +193,14 @@ def audit():
     print("Fetching live Hub state...", file=sys.stderr)
     root_items = list_children(HUB_DRIVE_ID)
     live_dirs = {i["name"]: i["id"] for i in root_items if i["mimeType"] == "application/vnd.google-apps.folder"}
-    # The doc parsers restrict to these names so they do not false-match on later sub-tables.
-    # Sourcing from LIVE means the set can never go stale behind the drive.
-    EXPECTED_TOP_LEVELS.clear()
-    EXPECTED_TOP_LEVELS.update(live_dirs.keys())
     live_files = [i for i in root_items if i["mimeType"] != "application/vnd.google-apps.folder"]
 
-    # Expected top-levels check
-    extra_on_hub = set()   # meaningless now the expected set IS the live set
-    missing_on_hub = EXPECTED_TOP_LEVELS - set(live_dirs)
-    for n in sorted(extra_on_hub):
-        findings.append({"severity": "info", "kind": "unexpected-top-level", "message": f"Hub has top-level '{n}' not in EXPECTED_TOP_LEVELS (this constant in hub-audit.py may need updating)"})
-    for n in sorted(missing_on_hub):
-        findings.append({"severity": "high", "kind": "missing-top-level", "message": f"Expected top-level '{n}' is NOT on Hub"})
+    # NOTE: there is deliberately no "expected top-level missing from Hub" check any more.
+    # It compared a hand-maintained list against live Drive; that list was the rot this audit
+    # exists to catch (it silently discarded 4 real folders until 18 Jul 2026). The same
+    # information now comes from the doc parsers, which read EVERY row unfiltered: a MAP or
+    # index entry naming a folder that no longer exists surfaces as map-stale-top-level /
+    # index-stale-top-level below. Live Drive is the truth; the docs are what get checked.
 
     # Root files check
     expected_roots = {"HUB-RULES.md", "MAP.md", "README.md"}
