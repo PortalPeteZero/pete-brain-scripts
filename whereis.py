@@ -82,11 +82,16 @@ def main():
     # Token matching: the registry names are hyphenated/underscored, so a plain-English query
     # ("drive path rebuild") never matched the exact name. Match ANY token, keeping the whole
     # phrase as a fallback — the same shape the properties/data_map blocks already use.
+    # Kind-words say WHAT you are asking for, not WHICH thing — "closeout skill" is a question
+    # about 'closeout'. Requiring every token (AND) made those phrasings return NOTHING; matching
+    # any token (OR) matched almost everything. Drop the kind-words, then AND what remains.
+    _KINDWORDS = {"skill", "skills", "helper", "helpers", "script", "scripts", "tool", "tools",
+                  "project", "projects", "entity", "entities", "company", "bucket", "buckets",
+                  "folder", "folders", "table", "tables", "note", "notes", "page", "pages"}
+
     def _tok_or(col):
-        """ALL tokens must appear (AND), not any (OR). OR across a description matched almost
-        everything — 'drive path rebuild' returned ads-api.py because its text says 'Ads'.
-        AND on the name finds the hyphenated record; the whole phrase remains the fallback."""
-        parts = [f"{col} ILIKE '%{t}%'" for t in _tokens] or [f"{col} ILIKE '{L}'"]
+        toks = [t for t in _tokens if t not in _KINDWORDS] or _tokens
+        parts = [f"{col} ILIKE '%{t}%'" for t in toks] or [f"{col} ILIKE '{L}'"]
         return "(" + " AND ".join(parts) + ")"
 
     SQL_SKILLS = (f"SELECT name, path, coalesce(what,'') AS what FROM skills "

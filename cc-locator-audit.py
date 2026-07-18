@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # CRON-META
-# what: Report-only CC Locator drift check — unhomed populated tables + dead/stale data_map homes
+# what: Report-only CC Locator drift check — unhomed tables/app-schemas, dead or empty data_map homes, unregistered skills/helpers, projects + entities with no home, incomplete property declarations, connectors whose secret is missing, unhomed storage buckets, new top-level Drive folders, and Drive path integrity
 # why: Keeps the locator (data_map / whereis) self-maintaining — flags a new unhomed kind or a rotted home automatically, so Pete never has to remind
-# reads: information_schema + public.data_map (+ a count per public table)
+# reads: pg_class/information_schema, public.data_map, skills, helpers, projects, entities, property_declarations, connectors, secrets, storage.buckets, drive_files (+ a row count per table)
 # writes: its own report line to daily_log (cron_name='cc-locator-audit') so the briefing/closeout can read it; NO domain data, ever
 # entity: PA-Command-Centre
 # report: stdout (and the CC locator-audit surface)
@@ -113,14 +113,19 @@ def _homed_table(name, dm_text):
     return _homed(f"public.{n}", dm_text) or n in GRANDFATHERED
 
 
-def _homed_bucket(name, dm_text):
+def _homed_bucket(name, dm_rows):
     """Buckets have no qualified form, so require the name to appear in map text that is actually
     ABOUT buckets — otherwise a new bucket with a common name matches any stray prose."""
     n = name.lower()
-    # The earlier pipe-splitting could never work — dm_text is joined with SPACES, so there
-    # were no segments and it degenerated into a whole-text substring search that
-    # short-circuited the real check. Word-boundary match, scoped to a map that talks about buckets.
-    return _homed(name, dm_text) and "bucket" in dm_text
+    # Third attempt, and the first two were both no-ops. Pipe-splitting could never work (the
+    # text is space-joined). '"bucket" in dm_text' was global — the word appears SOMEWHERE in the
+    # map, so it was true for every bucket, always. Match PER ROW: the name must appear in a row
+    # that itself mentions buckets.
+    for r in dm_rows:
+        seg = ((r.get("home") or "") + " " + (r.get("notes") or "") + " " + (r.get("backing_ref") or "")).lower()
+        if "bucket" in seg and _homed(name, seg):
+            return True
+    return False
 
 
 def _homed(name, dm_text):
@@ -164,7 +169,7 @@ def _disk(kind):
         return None
 
 
-def check_rows(gaps, dm_text):
+def check_rows(gaps, dm_text, dm_rows):
     """ROW-granular checks. What Pete adds day to day is a ROW in an existing table, not a new
     table — so table-level completeness alone never sees it. READ-ONLY: this reconciles and
     reports, it never registers, writes or deletes anything."""
@@ -334,7 +339,7 @@ def check_rows(gaps, dm_text):
     if bks is None:
         add("couldnt-check", "storage.buckets", "bucket list query ERRORED — could not check bucket homes", "high")
     else:
-        unhomed = sorted(b["name"] for b in bks if not _homed_bucket(b["name"], dm_text))
+        unhomed = sorted(b["name"] for b in bks if not _homed_bucket(b["name"], dm_rows))
         if unhomed:
             add("unhomed-bucket", _summarise(unhomed), f"{len(unhomed)} storage bucket(s) with no data_map home")
 
@@ -405,7 +410,7 @@ def main():
             gaps.append({"rule": "empty-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table is EMPTY (home points at a table with no data)", "severity": "high"})
 
     # (r) ROW-GRANULAR — the everyday adds (a skill, a helper, a project, a bucket)
-    check_rows(gaps, dm_text)
+    check_rows(gaps, dm_text, dm)
 
     ordered = sorted(gaps, key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["severity"], 3))
     info = [{"subject": "coverage", "detail": SCOPE_NOTE}]
