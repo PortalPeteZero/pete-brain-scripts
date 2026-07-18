@@ -37,8 +37,9 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # What this check does NOT yet cover. Emitted as info[] so a "0 gaps" result can never be
 # mistaken for total coverage — the report states its own boundary.
-SCOPE_NOTE = ("scans CC public-schema tables and views only; Drive folders, storage buckets, "
-              "pages/crons/connectors and other databases are NOT yet covered")
+SCOPE_NOTE = ("covers CC public-schema tables/views, skills, helpers, projects and storage buckets. "
+              "NOT yet covered: Drive folders, CC pages, Railway crons, connectors, and the other "
+              "databases (Sygma hub / CD-Leak / Odoo)")
 
 def q(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
@@ -73,6 +74,79 @@ INFRA_ALLOW = {
     "health_config", "health_planned_session", "health_weekly",               # PF (anchors: health_journal/feedback)
     "module_content",                                                          # pages (anchor: modules)
 }
+
+# The 5 project-routing labels resolve to these entity slugs. Verified live 18 Jul 2026:
+# projects.entity_slug holds LABELS ("Canary Detect"), entities.slug holds SLUGS ("camello-blanco").
+# Without this map a naive slug-equality check rejects every legitimate project.
+LABEL_TO_SLUG = {"Personal": "personal", "One System": "one-system", "El Atico": "el-atico",
+                 "Canary Detect": "camello-blanco", "Sygma": "sygma-solutions"}
+
+
+def _summarise(items, n=3):
+    return ", ".join(items[:n]) + (f" (+{len(items) - n} more)" if len(items) > n else "")
+
+
+def _disk(kind):
+    """Files/dirs present in the repo. Returns None on failure — never an empty set, which
+    would read as 'nothing on disk' and wrongly flag every registry row as stale."""
+    try:
+        if kind == "skills":
+            d = os.path.join(VAULT, "skills")
+            return {n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n, "SKILL.md"))}
+        # helpers.name keeps the .py extension (verified: 'account_store.py'); skills.name does not.
+        return {n for n in os.listdir(VAULT) if n.endswith(".py")}
+    except Exception:
+        return None
+
+
+def check_rows(gaps, dm_text):
+    """ROW-granular checks. What Pete adds day to day is a ROW in an existing table, not a new
+    table — so table-level completeness alone never sees it. READ-ONLY: this reconciles and
+    reports, it never registers, writes or deletes anything."""
+    def add(rule, subject, detail, severity="medium"):
+        gaps.append({"rule": rule, "subject": subject, "detail": detail, "severity": severity})
+
+    # --- skills / helpers: a file on disk with no registry row is INVISIBLE to whereis + the map
+    for kind, table, label in (("skills", "skills", "skill"), ("helpers", "helpers", "helper")):
+        rows = q(f"SELECT name FROM {table}")
+        disk = _disk(kind)
+        if rows is None:
+            add("couldnt-check", table, f"{table} registry query ERRORED — could not reconcile against disk", "high"); continue
+        if disk is None:
+            add("couldnt-check", table, f"could not list {label} files on disk — could not reconcile", "high"); continue
+        missing = sorted(disk - {r["name"] for r in rows})
+        stale = sorted({r["name"] for r in rows} - disk)
+        if missing:
+            add(f"unregistered-{label}", _summarise(missing), f"{len(missing)} {label}(s) exist on disk with NO {table} row — invisible to the map and to whereis")
+        if stale:
+            add(f"stale-{label}-row", _summarise(stale), f"{len(stale)} {table} row(s) with no file on disk — the registry points at something gone", "low")
+
+    # --- projects: an active project with no Drive folder has nowhere to file its documents
+    projs = q("SELECT slug, entity_slug, drive_folder_id FROM projects WHERE coalesce(status,'') <> 'archived'")
+    if projs is None:
+        add("couldnt-check", "projects", "projects query ERRORED — could not check project homes", "high")
+    else:
+        homeless = sorted(p["slug"] for p in projs if not p.get("drive_folder_id"))
+        if homeless:
+            add("project-no-home", _summarise(homeless), f"{len(homeless)} active project(s) with no Drive folder — nowhere to file their documents")
+        ents = q("SELECT slug FROM entities")
+        if ents is None:
+            add("couldnt-check", "entities", "entities query ERRORED — could not validate project owners", "high")
+        else:
+            known = {e["slug"] for e in ents} | set(LABEL_TO_SLUG)
+            unknown = sorted({(p.get("entity_slug") or "(none)") for p in projs} - known)
+            if unknown:
+                add("project-unknown-owner", _summarise(unknown), f"{len(unknown)} project owner value(s) match no entity and no known routing label — those projects would be filed to the wrong drive")
+
+    # --- storage buckets: data_map homes buckets, so a NEW bucket must be homed too
+    bks = q("SELECT name FROM storage.buckets")
+    if bks is None:
+        add("couldnt-check", "storage.buckets", "bucket list query ERRORED — could not check bucket homes", "high")
+    else:
+        unhomed = sorted(b["name"] for b in bks if b["name"].lower() not in dm_text)
+        if unhomed:
+            add("unhomed-bucket", _summarise(unhomed), f"{len(unhomed)} storage bucket(s) with no data_map home")
+
 
 def main():
     as_json = "--json" in sys.argv
@@ -122,6 +196,9 @@ def main():
             gaps.append({"rule": "couldnt-check", "subject": r["domain"], "detail": f"{ref}: row-count query ERRORED — status unknown, NOT reported clean", "severity": "high"})
         elif not cnt or cnt[0]["n"] == 0:
             gaps.append({"rule": "empty-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table is EMPTY (home points at a table with no data)", "severity": "high"})
+
+    # (r) ROW-GRANULAR — the everyday adds (a skill, a helper, a project, a bucket)
+    check_rows(gaps, dm_text)
 
     ordered = sorted(gaps, key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["severity"], 3))
     info = [{"subject": "coverage", "detail": SCOPE_NOTE}]
