@@ -63,10 +63,11 @@ def infer_concepts(text):
     return out[:4]
 
 
-def write_note(sub, fname, ntype, title, concepts, source, body, extra_tags=""):
+def write_note(sub, fname, ntype, title, concepts, source, body, extra_tags="", audience="private"):
     os.makedirs(os.path.join(STAGE, sub), exist_ok=True)
     tags = f"[{TAGBASE}, {extra_tags}{', '.join(concepts)}]".replace(", ]", "]").replace(",  ", ", ")
-    fm = {"type": ntype, "entity": "Personal", "title": title, "tags": tags, "source": source}
+    fm = {"type": ntype, "entity": "Personal", "title": title, "tags": tags, "source": source,
+          "audience": audience}  # mirror-sync switch: private (cautious default) unless --audience shared
     out = "---\n" + "\n".join(f"{k}: {v}" for k, v in fm.items()) + "\n---\n\n"
     if concepts:
         out += "> Concepts: " + " · ".join(f"[[{c}]]" for c in concepts) + "\n\n"
@@ -123,13 +124,27 @@ def backup_drive(path, subfolder):
         return f"(drive backup failed: {e})"
 
 
+INFLUENCE_HINT = re.compile(r"(?i)\b(created by|developed by|coined by|popularised by|popularized by|author of|his book|her book|the book)\b[^\n]{0,120}")
+
 def ingest_and_embed(rel_paths, do_embed=True):
     roots = " ".join(f'"{p}"' for p in rel_paths)
     r = subprocess.run(f'cd "{VAULT}" && python3 cc-knowledge-ingest.py {roots}', shell=True, capture_output=True, text=True)
     print(r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[:200])
+    # v2 ritual (2026-07 execution plan Stage F): every drop self-links, keeps the walkable graph
+    # current, flags external-model mentions as influence candidates, and prints the gate snapshot.
+    for cand_rel in rel_paths:
+        try:
+            txt = open(os.path.join(VAULT, cand_rel), encoding="utf-8", errors="replace").read()
+            for m in INFLUENCE_HINT.finditer(txt):
+                print(f"  influence candidate? {os.path.basename(cand_rel)}: …{m.group(0)[:110]}")
+        except OSError:
+            pass
+    subprocess.run(f'cd "{VAULT}" && python3 pf-link-pass.py --apply', shell=True)
+    subprocess.run(f'cd "{VAULT}" && python3 cc-note-links-refresh.py --corpus', shell=True)
     if do_embed:
         e = subprocess.run(f'cd "{VAULT}" && python3 cc-knowledge-embed-backfill.py', shell=True, capture_output=True, text=True)
         print(e.stdout.strip().splitlines()[-1] if e.stdout.strip() else e.stderr[:200])
+    subprocess.run(f'cd "{VAULT}" && python3 pf-gates.py', shell=True)
 
 
 # ---------------- commands ----------------
@@ -148,7 +163,7 @@ def cmd_plaud(a):
             part = f" [{i}/{len(segs)}]" if len(segs) > 1 else ""
             sl = slug(title) + (f"-{i:02d}" if len(segs) > 1 else "")
             rels.append(write_note("seminars", f"{today()}-{sl}.md", "seminar",
-                        f"Seminar — {title}{part}", concepts, f"plaud:{os.path.basename(f)}", seg, "plaud-seminar, "))
+                        f"Seminar — {title}{part}", concepts, f"plaud:{os.path.basename(f)}", seg, "plaud-seminar, ", audience=a.audience))
         if a.drive:
             print("  drive:", backup_drive(f, "plaud-exports"))
         print(f"  {os.path.basename(f)} → {len(segs)} note(s), concepts={concepts}")
@@ -167,8 +182,8 @@ def cmd_doc(a):
         for i, seg in enumerate(segs, 1):
             part = f" [{i}/{len(segs)}]" if len(segs) > 1 else ""
             sl = slug(title) + (f"-{i:02d}" if len(segs) > 1 else "")
-            rels.append(write_note("docs", f"{today()}-{sl}.md", "concept",
-                        f"{title}{part}", concepts, f"drive:{os.path.basename(f)}", seg, "source-doc, "))
+            rels.append(write_note("docs", f"{today()}-{sl}.md", "source-doc",
+                        f"{title}{part}", concepts, f"drive:{os.path.basename(f)}", seg, "source-doc, ", audience=a.audience))
         print(f"  {os.path.basename(f)} → {len(segs)} note(s), concepts={concepts}")
     ingest_and_embed(rels, not a.no_embed)
 
@@ -180,7 +195,7 @@ def cmd_image(a):
     concepts = a.concept.split(",") if a.concept else infer_concepts(a.caption + " " + title)
     body = f"> Image snippet: `{os.path.basename(a.paths[0])}`\n\n{a.caption}"
     rel = write_note("images", f"{today()}-{slug(title)}.md", "concept-diagram",
-                     f"{title} (image)", concepts, f"image:{os.path.basename(a.paths[0])}", body, "images, ")
+                     f"{title} (image)", concepts, f"image:{os.path.basename(a.paths[0])}", body, "images, ", audience=a.audience)
     if a.drive:
         print("  drive:", backup_drive(a.paths[0], "concept-snippets"))
     print(f"  image → 1 note, concepts={concepts}")
@@ -212,7 +227,7 @@ def cmd_article(a):
     for i, seg in enumerate(segs, 1):
         part = f" [{i}/{len(segs)}]" if len(segs) > 1 else ""
         rels.append(write_note("articles", f"{today()}-{slug(title)}{('-%02d'%i) if len(segs)>1 else ''}.md",
-                    "concept", f"Article — {title}{part}", concepts, source, seg, "article, "))
+                    "source-doc", f"Article — {title}{part}", concepts, source, seg, "article, ", audience=a.audience))
     print(f"  article → {len(segs)} note(s), concepts={concepts}")
     ingest_and_embed(rels, not a.no_embed)
 
@@ -222,8 +237,8 @@ def cmd_text(a):
     if len(body.strip()) < 20:
         sys.exit("nothing on stdin.")
     concepts = a.concept.split(",") if a.concept else infer_concepts(body + " " + (a.title or ""))
-    rel = write_note("notes", f"{today()}-{slug(a.title)}.md", "concept",
-                     a.title, concepts, "pasted-snippet", body, "snippet, ")
+    rel = write_note("notes", f"{today()}-{slug(a.title)}.md", "source-doc",
+                     a.title, concepts, "pasted-snippet", body, "snippet, ", audience=a.audience)
     print(f"  snippet → 1 note, concepts={concepts}")
     ingest_and_embed([rel], not a.no_embed)
 
@@ -246,6 +261,7 @@ def main():
         sp.add_argument("--title", default="Passion Fit note")
         sp.add_argument("--no-embed", action="store_true")
         sp.add_argument("--drive", action="store_true")
+        sp.add_argument("--audience", default="private", choices=["private", "shared", "variant-needed"])
     a = p.parse_args()
     {"plaud": cmd_plaud, "doc": cmd_doc, "image": cmd_image, "article": cmd_article, "text": cmd_text, "status": cmd_status}[a.cmd](a)
 
