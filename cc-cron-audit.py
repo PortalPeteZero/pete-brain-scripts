@@ -82,7 +82,7 @@ if "--json" in _sys.argv:
                       "severity": "high"} for i in issues],
         "info": [{"subject": "coverage", "detail": "registry vs Railway: timezone, orphans, deploy status"}],
     }, indent=1))
-    sys.exit(0)
+    _sys.exit(0)
 verdict = "✅ CLEAN" if not issues else "⚠ ISSUES FOUND (see 🔴 above)"
 print(f"\n=== VERDICT: {verdict} ===")
-sys.exit(0 if not issues else 1)   # exit non-zero on issues so a caller can gate on it
+_sys.exit(0 if not issues else 1)   # exit non-zero on issues so a caller can gate on it

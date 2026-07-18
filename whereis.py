@@ -79,17 +79,27 @@ def main():
                  f"FROM staff_directory WHERE full_name ILIKE '{L}' OR job_title ILIKE '{L}' ORDER BY full_name LIMIT 6")
     SQL_VNOTES = (f"SELECT title, type FROM vault_notes WHERE title ILIKE '{L}' OR slug ILIKE '{L}' "
                   f"ORDER BY updated_at DESC LIMIT 6")
+    # Token matching: the registry names are hyphenated/underscored, so a plain-English query
+    # ("drive path rebuild") never matched the exact name. Match ANY token, keeping the whole
+    # phrase as a fallback — the same shape the properties/data_map blocks already use.
+    def _tok_or(col):
+        """ALL tokens must appear (AND), not any (OR). OR across a description matched almost
+        everything — 'drive path rebuild' returned ads-api.py because its text says 'Ads'.
+        AND on the name finds the hyphenated record; the whole phrase remains the fallback."""
+        parts = [f"{col} ILIKE '%{t}%'" for t in _tokens] or [f"{col} ILIKE '{L}'"]
+        return "(" + " AND ".join(parts) + ")"
+
     SQL_SKILLS = (f"SELECT name, path, coalesce(what,'') AS what FROM skills "
-                  f"WHERE name ILIKE '{L}' OR coalesce(what,'') ILIKE '{L}' ORDER BY name LIMIT 6")
+                  f"WHERE {_tok_or('name')} OR {_tok_or("coalesce(what,'')")} ORDER BY name LIMIT 6")
     SQL_HELPERS = (f"SELECT name, coalesce(what,'') AS what, coalesce(runs_where,'') AS runs FROM helpers "
-                   f"WHERE name ILIKE '{L}' OR coalesce(what,'') ILIKE '{L}' ORDER BY name LIMIT 6")
+                   f"WHERE {_tok_or('name')} OR {_tok_or("coalesce(what,'')")} ORDER BY name LIMIT 6")
     SQL_PROJECTS = (f"SELECT slug, coalesce(entity_slug,'?') AS ent, coalesce(drive,'') AS drive, "
                     f"coalesce(drive_folder_url,'') AS url, coalesce(status,'') AS status FROM projects "
-                    f"WHERE slug ILIKE '{L}' OR coalesce(description,'') ILIKE '{L}' ORDER BY slug LIMIT 6")
+                    f"WHERE {_tok_or('slug')} OR {_tok_or("coalesce(description,'')")} ORDER BY slug LIMIT 6")
     SQL_ENTITIES = (f"SELECT slug, name, coalesce(trading_name,'') AS trading, coalesce(drive_home,'') AS home "
-                    f"FROM entities WHERE slug ILIKE '{L}' OR name ILIKE '{L}' OR coalesce(trading_name,'') ILIKE '{L}' "
+                    f"FROM entities WHERE {_tok_or('slug')} OR {_tok_or('name')} OR {_tok_or("coalesce(trading_name,'')")} "
                     f"ORDER BY sort LIMIT 6")
-    SQL_BUCKETS = f"SELECT name, public FROM storage.buckets WHERE name ILIKE '{L}' ORDER BY name LIMIT 6"
+    SQL_BUCKETS = f"SELECT name, public FROM storage.buckets WHERE {_tok_or('name')} ORDER BY name LIMIT 6"
     _prefetch([SQL_SKILLS, SQL_HELPERS, SQL_PROJECTS, SQL_ENTITIES, SQL_BUCKETS, SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES, SQL_STAFF])
 
     # CONFIG record-resolver — "the rules" / "CLAUDE.md" / "map" → public.config with the exact edit command.

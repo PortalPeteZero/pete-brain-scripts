@@ -169,13 +169,19 @@ def check_rows(gaps, dm_text):
     # --- NEW DRIVE AREAS (R1): validating known homes never spots a folder nobody wrote down.
     # drive_files.indexed_at is set when a row is FIRST seen and is not touched by later updates
     # (verified 18 Jul), so a recent indexed_at on a TOP-LEVEL folder means a genuinely new area.
+    # LIMITATION, stated in the finding itself so it cannot mislead: this uses a 7-day window on
+    # indexed_at. Measured 18 Jul — a 30-day window returns ALL 175 top-level folders, because the
+    # index itself was bulk-built recently, so indexed_at only separates "new" from that build.
+    # Reconciling all 175 against data_map instead would flood (most are not individually homed).
+    # The correct fix needs a per-folder decision record (homed / deliberately ignored) and is a
+    # declared open item — NOT half-built here. No LIMIT, so the count is honest.
     newdirs = q("SELECT drive, name FROM drive_files WHERE is_folder AND path NOT LIKE '%/%' "
-                "AND indexed_at > now() - interval '7 days' ORDER BY indexed_at DESC LIMIT 20")
+                "AND indexed_at > now() - interval '7 days' ORDER BY indexed_at DESC")
     if newdirs is None:
         add("couldnt-check", "drive top-levels", "new-Drive-folder query ERRORED — could not check for new areas", "high")
     elif newdirs:
         add("new-drive-area", _summarise([f"{d['name']} ({d['drive']})" for d in newdirs]),
-            f"{len(newdirs)} new top-level Drive folder(s) appeared in the last 7 days — decide if each needs a home, or ignore it", "low")
+            f"{len(newdirs)} new top-level Drive folder(s) appeared in the last 7 days — decide if each needs a home, or ignore it. NOTE: this is a 7-DAY WINDOW, so an unactioned folder stops being reported after a week; it does not mean it got filed", "low")
 
     # --- CONNECTORS (R4): a connection whose named secret does not exist cannot authenticate.
     # "Reconcile against the registry" was circular — connectors IS a registry. The answerable
