@@ -406,6 +406,17 @@ def upload_text(content_or_path, folder_id, name, mime_type="text/markdown"):
     print(f"Uploaded text: {result['name']} (ID: {result['id']})")
     return result
 
+def rename_file(file_id, new_name):
+    """Rename a file/folder in place. Drive links are by ID, so a rename never breaks a link or
+    a recorded drive_folder_id — but the drive_files index shows the OLD path until the next
+    drive-changes-watch run."""
+    before = api("GET", f"/files/{file_id}", {"fields": "name", "supportsAllDrives": "true"})
+    result = api("PATCH", f"/files/{file_id}",
+                 body={"name": new_name},
+                 params={"fields": "id,name", "supportsAllDrives": "true"})
+    print(f"Renamed: '{before.get('name')}' → '{result['name']}' ({file_id})")
+
+
 def move_file(file_id, dest_folder_id):
     # Get current parents (supportsAllDrives required for shared-drive files).
     meta = api("GET", f"/files/{file_id}", {"fields": "parents,name", "supportsAllDrives": "true"})
@@ -548,6 +559,9 @@ def main():
     elif cmd == "move":
         if len(args) < 3: print("Usage: drive-api.py move FILE_ID DEST_FOLDER_ID"); sys.exit(1)
         move_file(args[1], args[2])
+    elif cmd == "rename":
+        if len(args) < 3: print("Usage: drive-api.py rename FILE_ID NEW_NAME"); sys.exit(1)
+        rename_file(args[1], args[2])
     elif cmd == "info":
         if len(args) < 2: print("Usage: drive-api.py info FILE_ID"); sys.exit(1)
         info(args[1])
