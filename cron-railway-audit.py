@@ -14,8 +14,24 @@ import os
 # the human text until the JSON block, otherwise the result is unparseable.
 import sys as _sys, io as _io
 _JSON_BUF = _io.StringIO()
+
+
+def _json_abort(exc):
+    """A crash in --json mode must still emit VALID JSON with a non-zero gap count — otherwise a
+    caller gets an empty, unparseable result at exactly the moment the fleet could not be checked."""
+    import json as _j
+    _sys.stdout = _sys.__stdout__
+    msg = f"cron-railway-audit aborted: {type(exc).__name__}: {exc}"
+    print(_j.dumps({"gaps": 1, "gap_types": ["aborted"],
+                    "findings": [{"rule": "aborted", "subject": "cron-railway-audit",
+                                  "detail": msg, "severity": "high"}],
+                    "info": [], "aborted": True}, indent=1))
+    _sys.exit(99)
+
 if "--json" in _sys.argv:
     _sys.stdout = _JSON_BUF
+    _ORIG_EXCEPTHOOK = _sys.excepthook
+    _sys.excepthook = lambda t, v, tb: _json_abort(v)
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 

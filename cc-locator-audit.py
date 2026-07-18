@@ -108,14 +108,19 @@ def _homed_table(name, dm_text):
     Bare-word matching meant a new table called 'reports' or 'customers' matched unrelated prose
     and reported as filed. Measured 18 Jul: 53 matched bare, only 31 qualified."""
     n = name.lower()
-    return f"public.{n}" in dm_text or n in GRANDFATHERED
+    # word-boundary, NOT a plain substring: "public.task" is inside "public.tasks", so a new
+    # table named as the stem of an existing one read as filed.
+    return _homed(f"public.{n}", dm_text) or n in GRANDFATHERED
 
 
 def _homed_bucket(name, dm_text):
     """Buckets have no qualified form, so require the name to appear in map text that is actually
     ABOUT buckets — otherwise a new bucket with a common name matches any stray prose."""
     n = name.lower()
-    return any(n in seg for seg in dm_text.split("|") if "bucket" in seg) or _homed(name, dm_text) and "bucket" in dm_text
+    # The earlier pipe-splitting could never work — dm_text is joined with SPACES, so there
+    # were no segments and it degenerated into a whole-text substring search that
+    # short-circuited the real check. Word-boundary match, scoped to a map that talks about buckets.
+    return _homed(name, dm_text) and "bucket" in dm_text
 
 
 def _homed(name, dm_text):
@@ -128,7 +133,9 @@ def _homed(name, dm_text):
     return re.search(r"(?<![a-z0-9_\-])" + re.escape(name.lower()) + r"(?![a-z0-9_\-])", dm_text) is not None
 
 
-def _summarise(items, n=3):
+def _summarise(items, n=12):
+    """Name them ALL (up to a sane cap). Truncating at 3 meant a 4th unfiled site or connector
+    only moved a counter — Pete could see the number rise but never which one it was."""
     return ", ".join(items[:n]) + (f" (+{len(items) - n} more)" if len(items) > n else "")
 
 
@@ -369,7 +376,10 @@ def main():
         if cnt is None:                      # errored ≠ empty: never silently treat as "nothing here"
             gaps.append({"rule": "couldnt-check", "subject": name, "detail": f"row-count query ERRORED — cannot say whether it is homed; NOT counted as clean", "severity": "high"})
             continue
-        n = (cnt[0]["n"] if cnt else 0)
+        if not cnt:                          # readable but shapeless -> status unknown, NOT zero rows
+            gaps.append({"rule": "couldnt-check", "subject": name, "detail": "row count came back unreadable — cannot say whether this table is populated", "severity": "high"})
+            continue
+        n = cnt[0]["n"]
         if n and n > 0:
             gaps.append({"rule": "unhomed-table", "subject": name, "detail": f"{n} rows, populated but has NO data_map home and is not on the infra allow-list", "severity": "medium"})
 
