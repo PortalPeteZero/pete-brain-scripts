@@ -44,9 +44,15 @@ SCOPE_NOTE = ("covers CC public-schema tables/views, the app schemas in the same
               "NOT yet covered: CC pages, Railway crons, and the "
               "other databases (Sygma hub / CD-Leak / Odoo)")
 
-def q(sql):
+def q(sql, _retry=True):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
                        env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True)
+    if r.returncode != 0 and _retry:
+        # One retry before crying wolf. This fires dozens of queries per run, so without it a
+        # single transient blip produced a HIGH "could not check" alarm and a gap count that
+        # wobbled run to run. Same pattern whereis.py already uses.
+        import time as _t; _t.sleep(1.5)
+        return q(sql, _retry=False)
     if r.returncode != 0:
         # cc-sql.py prints its error to STDOUT ("ERROR 400 ..."), so stderr alone is usually
         # EMPTY — a dead login, a dropped table and a rate-limit blip all looked identical.
@@ -352,7 +358,7 @@ def main():
     tbls = q("SELECT c.relname AS name, c.relkind AS kind FROM pg_class c "
              "JOIN pg_namespace n ON n.oid=c.relnamespace "
              "WHERE n.nspname='public' AND c.relkind IN ('r','v','m') ORDER BY c.relname")
-    if dm is None or tbls is None or not tbls:
+    if dm is None or not dm or tbls is None or not tbls:
         why = ("a lookup ERRORED" if (dm is None or tbls is None) else
                "the table list came back EMPTY — impossible for this database, so the lookup lied")
         msg = f"cc-locator-audit: {why} — aborting (not reporting false drift). Re-run."

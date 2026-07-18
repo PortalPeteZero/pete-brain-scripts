@@ -31,10 +31,13 @@ def q(sql, _retry=True):
         if _retry:
             return q(sql, _retry=False)   # one retry (transient throttle/network)
         _Q_ERROR["hit"] = True            # genuine error — do NOT let this read count as "empty"
-        return []
+        _QCACHE[sql] = []                 # cache the failure: without this a throttled run re-fires
+        return []                         # the same failing query on every block that needs it
     try:
         out = json.loads(r.stdout)
-        out = out if isinstance(out, list) else []
+        if not isinstance(out, list):     # readable but wrong shape = could not check, not empty
+            _Q_ERROR["hit"] = True
+            out = []
     except Exception:
         # An UNREADABLE reply is not an empty one. Treating it as empty made whereis announce
         # "NOTHING FOUND — you do NOT know where it lives" with full confidence, which is the
