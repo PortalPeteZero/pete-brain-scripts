@@ -36,7 +36,11 @@ SCOPE = "https://www.googleapis.com/auth/drive"
 DRIVE_BASE = "https://www.googleapis.com/drive/v3"
 
 HUB_DRIVE_ID = "0APzpyHHfvUyIUk9PVA"
-HUB_MAP_ID = "1s2AgfL3SAw0gWCWtezFC2Ir43MBTWV-y"
+# 18 Jul 2026: this pointed at "MAP 2.md" (1s2AgfL3SAw0gWCWtezFC2Ir43MBTWV-y) — a stray DUPLICATE
+# at the Hub root, byte-identical to the real map (same md5) and absent from the drive_files index.
+# The canonical file is MAP.md. The audit was checking the copy, so any fix applied to the real map
+# would never have cleared its warnings.
+HUB_MAP_ID = "1yjJeuK0rR-TyonrwRT77sBMCcguYpGDV"  # MAP.md (canonical)
 HUB_RULES_ID = "1Kv2QJ6lUPLS33fMdIawsf9ZvkFtcIbCE"
 HUB_README_ID = "1zLZbBFBS-G-W1yxMzoBYSEbaX2WYMOVB"
 INDEX_VAULT_PATH = VAULT_ROOT / "Library" / "processes" / "hub-content-index.md"
@@ -45,6 +49,12 @@ EXPECTED_TOP_LEVELS = {
     "Accreditations", "Archive", "Course Records", "Courses",
     "Customer Specific Documentation", "Customers and Suppliers",
     "HR", "Library", "Marketing", "Media", "Reports", "Sales & Pipeline",
+    # Added 18 Jul 2026 — four live areas the Hub grew after this list was written. They are
+    # real and in use (App Data = the Platform's data store, 3,014 files; Enquiry Engine = one
+    # folder per course; Projects = the Sygma project folders; Property = Hindley Office).
+    # Until they were added here, every run reported them as unexpected AND the MAP/index edits
+    # could not clear the warning, because anything not in this set is discarded.
+    "App Data", "Enquiry Engine", "Projects", "Property",
 }
 
 def read_hub_index():
