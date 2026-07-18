@@ -3,7 +3,7 @@
 # what: Report-only CC Locator drift check — unhomed populated tables + dead/stale data_map homes
 # why: Keeps the locator (data_map / whereis) self-maintaining — flags a new unhomed kind or a rotted home automatically, so Pete never has to remind
 # reads: information_schema + public.data_map (+ a count per public table)
-# writes: nothing (report-only — prints + exits with the gap count; surfaces at closeout/briefing)
+# writes: nothing (report-only — prints the report and always exits 0; gap count comes from --json)
 # entity: PA-Command-Centre
 # report: stdout (and the CC locator-audit surface)
 # secrets: SUPABASE_TOKEN
@@ -27,7 +27,8 @@ Checks:
       that EXISTS and is NON-EMPTY (existence alone misses the Daily-notes class = real-but-empty).
 
 Usage:  VAULT=/tmp/pbs python3 /tmp/pbs/cc-locator-audit.py [--json]
-        echo $?     # 0 = clean, N = number of gaps (report-only; never a task)
+        exit 0  = the report RAN (whatever it found).  exit 99 = it could not check, so it
+        refused to report at all. Read the gap count from --json ("count"), never from $?.
 """
 import os, sys, json, subprocess, re
 
@@ -89,21 +90,30 @@ def main():
         if name.lower() in dm_text:          # named anywhere in a data_map row = homed
             continue
         # populated? (skip genuinely empty internal tables)
-        cnt = q(f"SELECT count(*) AS n FROM public.{name}")
+        cnt = q(f'SELECT count(*) AS n FROM public."{name}"')
+        if cnt is None:                      # errored ≠ empty: never silently treat as "nothing here"
+            gaps.append({"kind": "couldnt-check", "detail": f"{name}: row-count query ERRORED — cannot say whether it is homed; NOT counted as clean", "severity": "high"})
+            continue
         n = (cnt[0]["n"] if cnt else 0)
         if n and n > 0:
             gaps.append({"kind": "unhomed-table", "detail": f"{name} ({n} rows) is populated but has NO data_map home and is not on the infra allow-list", "severity": "medium"})
 
     # (d) DEAD / STALE HOME — backing_ref table:public.X must exist AND be non-empty
+    known = {t["name"] for t in tbls}
     for r in dm:
         ref = (r.get("backing_ref") or "")
         m = re.match(r"table:public\.([a-z_0-9]+)$", ref)
         if not m:
             continue
         tn = m.group(1)
-        cnt = q(f"SELECT count(*) AS n FROM public.{tn}")
-        if cnt is None:                      # table missing → query errors
+        # existence comes from the catalogue we already fetched — NOT from "the count query errored",
+        # which conflates a retired table with a transient failure.
+        if tn not in known:
             gaps.append({"kind": "dead-home", "detail": f"'{r['domain']}' → backing_ref {ref}, but that table does not exist (retired?)", "severity": "high"})
+            continue
+        cnt = q(f'SELECT count(*) AS n FROM public."{tn}"')
+        if cnt is None:                      # errored ≠ dead: say so, never guess
+            gaps.append({"kind": "couldnt-check", "detail": f"'{r['domain']}' → {ref}: row-count query ERRORED — status unknown, NOT reported clean", "severity": "high"})
         elif not cnt or cnt[0]["n"] == 0:
             gaps.append({"kind": "empty-home", "detail": f"'{r['domain']}' → backing_ref {ref}, but that table is EMPTY (the Daily-notes/Asana class — home points at a table with no data)", "severity": "high"})
 
@@ -117,7 +127,11 @@ def main():
             print("  clean — every populated table is homed, and no data_map home points at a dead/empty table.")
         print("\n(report-only — surfaces at closeout/briefing; no tasks created)")
 
-    sys.exit(len(gaps))
+    # A successful REPORT always exits 0, however many gaps it found. Finding drift is the tool
+    # working, not the tool failing — exiting non-zero made Railway stamp the cron FAILED and
+    # emailed Pete a "crash" for a healthy run. Consumers read the count from --json, never $?.
+    # Non-zero is reserved for a genuine abort (99 above), so the two can't be confused.
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
