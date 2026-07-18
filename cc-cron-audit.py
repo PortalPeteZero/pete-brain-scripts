@@ -3,7 +3,9 @@
 mismatches (mis-firing / DST-flip breakage), missing schedule_local, Railway↔registry orphans,
 non-SUCCESS deploys, and stale runs. No mutations."""
 import importlib.util, os, datetime
-HERE = "/tmp/pbs"
+# 18 Jul 2026: this hardcoded /tmp/pbs, so it ran only in a local session and FileNotFound-ed on
+# Railway (where VAULT is the container repo dir). Matches sibling cron-railway-audit.py now.
+HERE = os.environ.get("VAULT", "/tmp/pbs")
 spec = importlib.util.spec_from_file_location("cc", f"{HERE}/cc-cron.py"); cc = importlib.util.module_from_spec(spec)
 os.environ["VAULT"] = HERE; spec.loader.exec_module(cc)
 

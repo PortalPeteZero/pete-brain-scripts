@@ -38,9 +38,10 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 # What this check does NOT yet cover. Emitted as info[] so a "0 gaps" result can never be
 # mistaken for total coverage — the report states its own boundary.
-SCOPE_NOTE = ("covers CC public-schema tables/views, skills, helpers, projects and storage buckets. "
-              "NOT yet covered: Drive folders, CC pages, Railway crons, connectors, and the other "
-              "databases (Sygma hub / CD-Leak / Odoo)")
+SCOPE_NOTE = ("covers CC public-schema tables/views, skills, helpers, projects, storage buckets, "
+              "properties (websites/apps) and entities. NOT yet covered: Drive folders, CC pages, "
+              "Railway crons, connectors, non-public schemas, and the other databases "
+              "(Sygma hub / CD-Leak / Odoo)")
 
 def q(sql):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
@@ -145,6 +146,32 @@ def check_rows(gaps, dm_text):
             unknown = sorted({(p.get("entity_slug") or "(none)") for p in projs} - known)
             if unknown:
                 add("project-unknown-owner", _summarise(unknown), f"{len(unknown)} project owner value(s) match no entity and no known routing label — those projects would be filed to the wrong drive")
+
+    # --- PROPERTIES (websites/apps): the locator's original purpose. A declaration that cannot
+    # answer "where does its code live and who serves it" is how the wrong-repo clone happened.
+    props = q("SELECT name, coalesce(f->>'github','') AS github, coalesce(f->>'hosting','') AS hosting "
+              "FROM property_declarations WHERE coalesce(f->>'status','')='active'")
+    if props is None:
+        add("couldnt-check", "property_declarations", "property query ERRORED — could not check site/app declarations", "high")
+    else:
+        # wordpress/lovable-style hosting legitimately has no git repo — do not cry wolf there.
+        NO_REPO_HOSTING = {"wordpress", "lovable", "squarespace", "wix"}
+        no_repo = sorted(p["name"] for p in props
+                         if not p["github"] and p["hosting"].lower() not in NO_REPO_HOSTING)
+        no_host = sorted(p["name"] for p in props if not p["hosting"])
+        if no_repo:
+            add("property-no-repo", _summarise(no_repo), f"{len(no_repo)} active propert(ies) with no repo declared — nobody can tell where the code lives")
+        if no_host:
+            add("property-no-hosting", _summarise(no_host), f"{len(no_host)} active propert(ies) with no hosting declared — nobody can tell who serves it")
+
+    # --- ENTITIES: a live company with no Drive home has nowhere to file its documents.
+    ents = q("SELECT slug, coalesce(drive_home,'') AS home FROM entities WHERE coalesce(status,'')='active'")
+    if ents is None:
+        add("couldnt-check", "entities", "entities query ERRORED — could not check company homes", "high")
+    else:
+        homeless = sorted(e["slug"] for e in ents if not e["home"])
+        if homeless:
+            add("entity-no-home", _summarise(homeless), f"{len(homeless)} active entit(ies) with no Drive home — nowhere to file their documents")
 
     # --- Drive path integrity: renaming/moving a folder silently strands every descendant's
     # stored path (drive_files.path is denormalised and never recomputed). Delegated to
