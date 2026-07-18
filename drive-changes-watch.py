@@ -143,7 +143,7 @@ def process_drive(drive, did):
             fmap[fid] = (f["name"], (f.get("parents") or [None])[0])
     # Pass 2 -- build upserts/deletes with full paths, fetching any parent still unknown (a new
     # folder absent from this change batch) so brand-new files never land at a truncated/root path.
-    upserts = []; deletes = []
+    upserts = []; deletes = []; _unresolved = []
     for fid, removed, f in raw:
         if removed or (f and f.get("trashed")):
             deletes.append(fid); continue
@@ -156,16 +156,30 @@ def process_drive(drive, did):
         # false-deletes that includeItemsFromAllDrives=false caused.)
         if did is None and (f.get("driveId") or not f.get("ownedByMe")): continue
         par = (f.get("parents") or [None])[0]
-        cur = par; guard = 0
+        cur = par; guard = 0; chain_ok = True
         while cur and cur not in fmap and guard < 50:
             got = fetch_folder(cur)
-            if not got: break
+            if not got:
+                # ROOT CAUSE of the recurring path drift (18 Jul 2026). This used to break and
+                # then store the HALF-BUILT path as if it were fact, so a transient parent fetch
+                # failure permanently recorded a file at the wrong location — e.g.
+                # 'Customers and Suppliers/Customers/README.md' saved as 'Customers/README.md'.
+                # It cost 403 rows once and 158 more in a single afternoon.
+                # An unresolvable chain means WE DO NOT KNOW the path — so do not write one.
+                # parent_id is still correct, so drive-path-rebuild.py reconstructs it from the
+                # tree, and the daily locator check reports it meanwhile. Never assert a guess.
+                chain_ok = False
+                break
             fmap[cur] = got; cur = got[1]; guard += 1
         isf = f.get("mimeType") == FOLDER
         pp = path_of(fmap, par)
         fp = (pp + "/" + f["name"]) if pp else f["name"]
         if "_backups" in fp.split("/"): continue   # cold-backup folders are hidden from the file index (Pete, 2026-06-26)
-        upserts.append({"drive_file_id": fid, "name": f["name"], "path": fp, "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par})
+        row = {"drive_file_id": fid, "name": f["name"], "path": fp, "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par}
+        if not chain_ok:
+            row.pop("path")          # leave any existing path untouched rather than overwrite it with a guess
+            _unresolved.append(f["name"])
+        upserts.append(row)
     # de-dup: a file both changed+removed in window -> delete wins
     delset = set(deletes)
     upserts = [u for u in upserts if u["drive_file_id"] not in delset]
@@ -173,6 +187,11 @@ def process_drive(drive, did):
         cc("POST", "drive_files?on_conflict=drive_file_id", upserts[i:i + 500])
     for fid in deletes:
         cc("DELETE", f"drive_files?drive_file_id=eq.{fid}")
+    if _unresolved:
+        print(f"  !! {len(_unresolved)} file(s) had an UNRESOLVABLE parent chain — path left unwritten "
+              f"rather than guessed: {', '.join(_unresolved[:5])}"
+              + (f" (+{len(_unresolved)-5} more)" if len(_unresolved) > 5 else "")
+              + ". Run drive-path-rebuild.py --apply to fill them from the tree.")
     print(f"{drive}: {len(upserts)} upserts, {len(deletes)} deletes", flush=True)
     return len(upserts), len(deletes)
 

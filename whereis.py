@@ -36,7 +36,13 @@ def q(sql, _retry=True):
         out = json.loads(r.stdout)
         out = out if isinstance(out, list) else []
     except Exception:
-        out = []                          # returncode 0 but non-JSON = genuinely empty
+        # An UNREADABLE reply is not an empty one. Treating it as empty made whereis announce
+        # "NOTHING FOUND — you do NOT know where it lives" with full confidence, which is the
+        # exact confident-wrong-answer this tool exists to prevent. Flag it as an error so the
+        # caller is told the lookup could not be completed.
+        sys.stderr.write(f"[whereis] unreadable reply: {(r.stdout or '')[:140]}\n")
+        _Q_ERROR["hit"] = True
+        out = []
     _QCACHE[sql] = out
     return out
 
