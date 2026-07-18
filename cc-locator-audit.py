@@ -387,6 +387,13 @@ def main():
         n = cnt[0]["n"]
         if n and n > 0:
             gaps.append({"rule": "unhomed-table", "subject": name, "detail": f"{n} rows, populated but has NO data_map home and is not on the infra allow-list", "severity": "medium"})
+        else:
+            # An EMPTY unhomed table was passed silently — but a table created during a session is
+            # empty at exactly the moment closeout runs, so the most likely "something new went
+            # unfiled" case was the one case that stayed quiet. Low severity: it is a new thing to
+            # home, not a fault. Adds no noise today — every currently-empty unhomed table is
+            # already on the infra allow-list or grandfathered, so this loop never reaches them.
+            gaps.append({"rule": "unhomed-table-empty", "subject": name, "detail": "no rows yet, but it has NO data_map home — a table created this session looks exactly like this", "severity": "low"})
 
     # (d) DEAD / STALE HOME — backing_ref table:public.X must exist AND be non-empty
     known = {t["name"] for t in tbls}
