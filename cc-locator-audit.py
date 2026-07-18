@@ -89,7 +89,10 @@ def _homed(name, dm_text):
     """Word-boundary match. A raw substring test lets a short generic name (a table or bucket
     called 'events', 'state', 'rules') match unrelated prose in the map and read as FILED when
     it is not. Used by BOTH the table check and the bucket check."""
-    return re.search(r"(?<![a-z0-9_])" + re.escape(name.lower()) + r"(?![a-z0-9_])", dm_text) is not None
+    # Boundary excludes letters/digits/underscore/HYPHEN but NOT the dot: homes are written
+    # qualified ("public.daily_log"), so a preceding dot must still match, while a hyphen must
+    # NOT (bucket names are always hyphenated: "cc-modules" must not match "cc-modules-archive").
+    return re.search(r"(?<![a-z0-9_\-])" + re.escape(name.lower()) + r"(?![a-z0-9_\-])", dm_text) is not None
 
 
 def _summarise(items, n=3):
@@ -174,21 +177,37 @@ def check_rows(gaps, dm_text):
     # --- CONNECTORS (R4): a connection whose named secret does not exist cannot authenticate.
     # "Reconcile against the registry" was circular — connectors IS a registry. The answerable
     # question is whether each connector's secret actually exists in the one safe.
-    bad = q("SELECT name, secret FROM connectors WHERE coalesce(secret,'') <> '' "
-            "AND secret NOT IN (SELECT name FROM secrets) ORDER BY name")
-    if bad is None:
+    # connectors.secret is a LIST, not one name: comma-separated, sometimes slash-separated
+    # alternatives, sometimes with a parenthetical note, and an em-dash for none. Comparing the
+    # whole string flagged all 9 multi-secret connectors as broken when every secret existed.
+    conns = q("SELECT name, coalesce(secret,'') AS secret FROM connectors ORDER BY name")
+    known = q("SELECT name FROM secrets")
+    if conns is None or known is None:
         add("couldnt-check", "connectors", "connector/secret query ERRORED — could not verify connections", "high")
-    elif bad:
-        add("connector-missing-secret", _summarise([b["name"] for b in bad]),
-            f"{len(bad)} connector(s) name a secret that does not exist in public.secrets — they cannot authenticate")
+    else:
+        have = {k["name"] for k in known}
+        missing = []
+        for c in conns:
+            raw = re.sub(r"\([^)]*\)", "", c["secret"])          # drop notes like "(CC secrets)"
+            names = [n.strip() for n in re.split(r"[,/]", raw) if n.strip()]
+            names = [n for n in names if n not in {"-", "—", "n/a", "N/A", "none"}]
+            gone = [n for n in names if n not in have]
+            if gone:
+                missing.append(f"{c['name']} ({', '.join(gone)})")
+        if missing:
+            add("connector-missing-secret", _summarise(missing),
+                f"{len(missing)} connector(s) name a secret that does not exist in public.secrets — they cannot authenticate")
     # A connector with NO credential recorded at all passed clean before — nobody knows where its
     # access lives. 'browser' (Playwright) genuinely needs none; anything else is a real gap.
+    # These genuinely hold no stored credential: browser = Playwright; MCP connectors
+    # authenticate through the host app, not a key in the safe.
     NO_CREDENTIAL_OK = {"browser"}
-    blank = q("SELECT name FROM connectors WHERE coalesce(secret,'') = '' ORDER BY name")
+    def _no_cred_ok(n): return n in NO_CREDENTIAL_OK or "(mcp)" in n.lower()
+    blank = q("SELECT name FROM connectors WHERE btrim(coalesce(secret,'')) IN ('', '-', '—', 'n/a', 'N/A', 'none') ORDER BY name")
     if blank is None:
         add("couldnt-check", "connectors", "blank-credential query ERRORED", "high")
     else:
-        unexplained = sorted(b["name"] for b in blank if b["name"] not in NO_CREDENTIAL_OK)
+        unexplained = sorted(b["name"] for b in blank if not _no_cred_ok(b["name"]))
         if unexplained:
             add("connector-no-credential", _summarise(unexplained),
                 f"{len(unexplained)} connector(s) record NO credential at all — nobody knows where their access lives")
@@ -207,7 +226,7 @@ def check_rows(gaps, dm_text):
         # (a passing mention inside the Staff row) hide all 5 payroll tables, and 'reports'
         # hide another — 33 tables across 8 schemas were being reported as 26 across 6.
         unhomed = sorted({f"{r['schema']}.{r['name']}" for r in nps
-                          if f"{r['schema']}.{r['name']}".lower() not in dm_text})
+                          if not _homed(f"{r['schema']}.{r['name']}", dm_text)})
         if unhomed:
             schemas = sorted({u.split(".")[0] for u in unhomed})
             add("unhomed-app-schema", _summarise(schemas),
@@ -216,7 +235,7 @@ def check_rows(gaps, dm_text):
     # --- PROPERTIES (websites/apps): the locator's original purpose. A declaration that cannot
     # answer "where does its code live and who serves it" is how the wrong-repo clone happened.
     props = q("SELECT name, coalesce(f->>'github','') AS github, coalesce(f->>'hosting','') AS hosting "
-              "FROM property_declarations WHERE coalesce(f->>'status','')='active'")
+              "FROM property_declarations WHERE lower(coalesce(f->>'status','')) NOT IN ('archived','retired','retiring')")
     if props is None:
         add("couldnt-check", "property_declarations", "property query ERRORED — could not check site/app declarations", "high")
     else:
@@ -228,18 +247,18 @@ def check_rows(gaps, dm_text):
                          if not p["github"] and p["hosting"].lower() not in NO_REPO_HOSTING)
         no_host = sorted(p["name"] for p in props if not p["hosting"])
         if no_repo:
-            add("property-no-repo", _summarise(no_repo), f"{len(no_repo)} active propert(ies) with no repo declared — nobody can tell where the code lives")
+            add("property-no-repo", _summarise(no_repo), f"{len(no_repo)} live propert(ies) with no repo declared — nobody can tell where the code lives")
         if no_host:
-            add("property-no-hosting", _summarise(no_host), f"{len(no_host)} active propert(ies) with no hosting declared — nobody can tell who serves it")
+            add("property-no-hosting", _summarise(no_host), f"{len(no_host)} live propert(ies) with no hosting declared — nobody can tell who serves it")
 
     # --- ENTITIES: a live company with no Drive home has nowhere to file its documents.
-    ents = q("SELECT slug, coalesce(drive_home,'') AS home FROM entities WHERE coalesce(status,'')='active'")
+    ents = q("SELECT slug, coalesce(drive_home,'') AS home FROM entities WHERE lower(coalesce(status,'')) NOT IN ('archived','retired','dissolved','planned','related')")
     if ents is None:
         add("couldnt-check", "entities", "entities query ERRORED — could not check company homes", "high")
     else:
         homeless = sorted(e["slug"] for e in ents if not e["home"])
         if homeless:
-            add("entity-no-home", _summarise(homeless), f"{len(homeless)} active entit(ies) with no Drive home — nowhere to file their documents")
+            add("entity-no-home", _summarise(homeless), f"{len(homeless)} live entit(ies) with no Drive home — nowhere to file their documents")
 
     # --- Drive path integrity: renaming/moving a folder silently strands every descendant's
     # stored path (drive_files.path is denormalised and never recomputed). Delegated to
@@ -347,7 +366,7 @@ def main():
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     # Railway sets CRON_SCRIPT on the service; a hand-run does not. Without this stamp a person
     # running the tool leaves a fresh-looking row that hides a silently-dead 06:30 cron.
-    source = "scheduled" if os.environ.get("CRON_SCRIPT") else "manual"
+    source = "scheduled" if os.path.basename(os.environ.get("CRON_SCRIPT", "")) == os.path.basename(__file__) else "manual"
     body = f"CC LOCATOR {stamp} [{source}] — " + (f"⚠ {len(gaps)} gap(s)" if gaps else "✓ all homed")
     for g in ordered:
         body += f"\n  [{g['severity']:6}] {g['rule']}: {g['subject']} — {g['detail']}"
@@ -362,7 +381,9 @@ def main():
     today = datetime.date.today().isoformat()
     safe = body.replace("$$", "")
     if q(f"INSERT INTO daily_log (date, cron_name, content) VALUES ('{today}','cc-locator-audit',$$%s$$)" % safe) is None:
-        sys.stderr.write("[cc-locator-audit] WARNING: ran fine but could NOT record the result to daily_log\n")
+        sys.stderr.write("[cc-locator-audit] the report did NOT record to daily_log — the briefing would re-serve a stale row as today's\n")
+        print("  !! NOT RECORDED to daily_log — do not treat the briefing's newest row as today's")
+        sys.exit(98)
 
     # A successful REPORT always exits 0, however many gaps it found. Finding drift is the tool
     # working, not the tool failing — exiting non-zero made Railway stamp the cron FAILED and

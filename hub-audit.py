@@ -162,9 +162,10 @@ def parse_map_top_levels(map_md):
         if in_header and in_fence:
             m = re.search(r"[├└]── ([A-Za-z][A-Za-z0-9 &/_.\-]*?)/", line)
             if m:
-                name = m.group(1).strip()
-                if name in EXPECTED_TOP_LEVELS:
-                    found.add(name)
+                # UNFILTERED: filtering by the live set (which EXPECTED_TOP_LEVELS now is)
+                # made a doc entry for a DELETED folder invisible, so the stale-entry check
+                # could never fire. Read every row; the comparison decides what is wrong.
+                found.add(m.group(1).strip())
     return found
 
 
@@ -188,9 +189,7 @@ def parse_index_top_levels(index_md):
         if in_table:
             m = re.match(r"^\| ([A-Za-z][A-Za-z0-9 &/_.\-]*?)/ \| `([0-9A-Za-z_\-]+)` \|", stripped)
             if m:
-                name = m.group(1).strip()
-                if name in EXPECTED_TOP_LEVELS:
-                    found[name] = m.group(2).strip()
+                found[m.group(1).strip()] = m.group(2).strip()   # UNFILTERED — see above
     return found
 
 
