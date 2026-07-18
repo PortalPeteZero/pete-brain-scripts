@@ -6,6 +6,7 @@
 # writes: nothing (report-only — prints + exits with the gap count; surfaces at closeout/briefing)
 # entity: PA-Command-Centre
 # report: stdout (and the CC locator-audit surface)
+# secrets: SUPABASE_TOKEN
 # schedule: 30 6 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
