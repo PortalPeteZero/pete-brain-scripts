@@ -26,8 +26,11 @@ import json, sys, os, re, urllib.request, urllib.parse, urllib.error, base64, ti
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-VAULT_ROOT = SCRIPT_DIR.parent.parent.parent
-KEY_PATH = SCRIPT_DIR.parent / "secrets" / "google-seo-service-account.json"
+# Layout fix 18 Jul 2026: this script predates the flat /tmp/pbs layout. It assumed it lived at
+# vault/Library/processes/, so SCRIPT_DIR.parent.parent.parent resolved to "/" and the key path to
+# /private/tmp/secrets/ — it crashed on get_token() for every caller. Anchor on VAULT instead.
+VAULT_ROOT = Path(os.environ.get("VAULT", "/tmp/pbs"))
+KEY_PATH = VAULT_ROOT / "Library" / "processes" / "secrets" / "google-seo-service-account.json"
 IMPERSONATE = "pete.ashcroft@sygma-solutions.com"
 SCOPE = "https://www.googleapis.com/auth/drive"
 DRIVE_BASE = "https://www.googleapis.com/drive/v3"
@@ -43,6 +46,24 @@ EXPECTED_TOP_LEVELS = {
     "Customer Specific Documentation", "Customers and Suppliers",
     "HR", "Library", "Marketing", "Media", "Reports", "Sales & Pipeline",
 }
+
+def read_hub_index():
+    """Fetch the hub-content-index markdown from vault_notes (its home since the Business-OS
+    cutover). Returns the body, or None if it could not be read — None means 'could not check',
+    never 'the index is empty'."""
+    try:
+        r = subprocess.run(
+            ["python3", str(VAULT_ROOT / "cc-sql.py"),
+             "SELECT body FROM vault_notes WHERE slug='hub-content-index' LIMIT 1"],
+            env={**os.environ, "VAULT": str(VAULT_ROOT)},
+            capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return None
+        rows = json.loads(r.stdout)
+        return rows[0]["body"] if rows else None
+    except Exception:
+        return None
+
 
 _token = None
 _token_exp = 0
@@ -212,10 +233,12 @@ def audit():
     else:
         findings.append({"severity": "info", "kind": "map-parse-empty", "message": "Could not parse top-level block from MAP.md (regex didn't match anything -- format may have changed)"})
 
-    # Vault hub-content-index cross-check
-    if INDEX_VAULT_PATH.exists():
-        print("Reading vault hub-content-index.md...", file=sys.stderr)
-        index_md = INDEX_VAULT_PATH.read_text()
+    # hub-content-index cross-check. It moved from a vault FILE into vault_notes (a CC process
+    # note) at the Business-OS cutover, so read it from there — the old file path no longer exists
+    # anywhere, which meant this check reported a false 'index-missing' HIGH on every run.
+    index_md = read_hub_index()
+    if index_md is not None:
+        print("Reading hub-content-index from vault_notes...", file=sys.stderr)
         index_entries = parse_index_top_levels(index_md)
         if index_entries:
             for n, expected_id in sorted(index_entries.items()):
@@ -228,7 +251,7 @@ def audit():
         else:
             findings.append({"severity": "info", "kind": "index-parse-empty", "message": "Could not parse top-level table from vault hub-content-index"})
     else:
-        findings.append({"severity": "high", "kind": "index-missing", "message": f"Vault hub-content-index missing at {INDEX_VAULT_PATH}"})
+        findings.append({"severity": "high", "kind": "index-missing", "message": "Could not read hub-content-index from vault_notes (query failed or the note is gone) — cross-check NOT performed"})
 
     # Course Mapping.xlsx duplicate check (in Hub Courses/)
     courses_kids = list_children("1lVk2TtIRyGjJV5cNZMeTcj3gxAOCvani")
