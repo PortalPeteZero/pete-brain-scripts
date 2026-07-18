@@ -45,17 +45,12 @@ HUB_RULES_ID = "1Kv2QJ6lUPLS33fMdIawsf9ZvkFtcIbCE"
 HUB_README_ID = "1zLZbBFBS-G-W1yxMzoBYSEbaX2WYMOVB"
 INDEX_VAULT_PATH = VAULT_ROOT / "Library" / "processes" / "hub-content-index.md"
 
-EXPECTED_TOP_LEVELS = {
-    "Accreditations", "Archive", "Course Records", "Courses",
-    "Customer Specific Documentation", "Customers and Suppliers",
-    "HR", "Library", "Marketing", "Media", "Reports", "Sales & Pipeline",
-    # Added 18 Jul 2026 — four live areas the Hub grew after this list was written. They are
-    # real and in use (App Data = the Platform's data store, 3,014 files; Enquiry Engine = one
-    # folder per course; Projects = the Sygma project folders; Property = Hindley Office).
-    # Until they were added here, every run reported them as unexpected AND the MAP/index edits
-    # could not clear the warning, because anything not in this set is discarded.
-    "App Data", "Enquiry Engine", "Projects", "Property",
-}
+# DERIVED, not hardcoded. It used to be a hand-typed list of 12 names: anything not on it was
+# DISCARDED, so a new Hub folder produced warnings that editing the docs could never clear, and
+# the list had to be hand-edited (which is exactly the rot this audit exists to catch). It is now
+# filled from the LIVE Hub top-levels in audit(), so a new folder enters the comparison by itself
+# and is flagged as missing-from-docs until someone documents it.
+EXPECTED_TOP_LEVELS = set()
 
 def read_hub_index():
     """Fetch the hub-content-index markdown from vault_notes (its home since the Business-OS
@@ -206,10 +201,14 @@ def audit():
     print("Fetching live Hub state...", file=sys.stderr)
     root_items = list_children(HUB_DRIVE_ID)
     live_dirs = {i["name"]: i["id"] for i in root_items if i["mimeType"] == "application/vnd.google-apps.folder"}
+    # The doc parsers restrict to these names so they do not false-match on later sub-tables.
+    # Sourcing from LIVE means the set can never go stale behind the drive.
+    EXPECTED_TOP_LEVELS.clear()
+    EXPECTED_TOP_LEVELS.update(live_dirs.keys())
     live_files = [i for i in root_items if i["mimeType"] != "application/vnd.google-apps.folder"]
 
     # Expected top-levels check
-    extra_on_hub = set(live_dirs) - EXPECTED_TOP_LEVELS
+    extra_on_hub = set()   # meaningless now the expected set IS the live set
     missing_on_hub = EXPECTED_TOP_LEVELS - set(live_dirs)
     for n in sorted(extra_on_hub):
         findings.append({"severity": "info", "kind": "unexpected-top-level", "message": f"Hub has top-level '{n}' not in EXPECTED_TOP_LEVELS (this constant in hub-audit.py may need updating)"})
