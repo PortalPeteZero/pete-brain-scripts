@@ -53,7 +53,14 @@ def main():
                       " FROM tree t JOIN drive_files d ON d.drive_file_id = t.drive_file_id")
     total = q("SELECT count(*) AS n FROM drive_files")
     if counts is None or total is None:
-        print("drive-path-rebuild: a lookup ERRORED — aborting, nothing changed. Re-run.")
+        msg = "drive-path-rebuild: a lookup ERRORED — aborting, nothing changed. Re-run."
+        if as_json:   # must stay valid JSON, and must NOT read as 0 gaps — same rule as the locator
+            print(json.dumps({"gaps": 1, "gap_types": ["aborted"],
+                              "findings": [{"rule": "aborted", "subject": "drive-path-rebuild",
+                                            "detail": msg, "severity": "high"}],
+                              "info": [], "aborted": True}, indent=1))
+        else:
+            print(msg)
         sys.exit(99)
 
     reachable, drifted = counts[0]["reachable"], counts[0]["drifted"]

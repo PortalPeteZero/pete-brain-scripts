@@ -40,7 +40,8 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 # mistaken for total coverage — the report states its own boundary.
 SCOPE_NOTE = ("covers CC public-schema tables/views, the app schemas in the same database, skills, "
               "helpers, projects, storage buckets, properties (websites/apps), entities and "
-              "connectors, and NEW top-level Drive folders. NOT yet covered: CC pages, Railway crons, and the "
+              "connectors, and NEW top-level Drive folders. Properties are checked for DECLARATION COMPLETENESS only — a site never declared is NOT detected (closeout creates the declaration). "
+              "NOT yet covered: CC pages, Railway crons, and the "
               "other databases (Sygma hub / CD-Leak / Odoo)")
 
 def q(sql):
@@ -102,8 +103,20 @@ def _disk(kind):
         if kind == "skills":
             d = os.path.join(VAULT, "skills")
             return {n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n, "SKILL.md"))}
-        # helpers.name keeps the .py extension (verified: 'account_store.py'); skills.name does not.
-        return {n for n in os.listdir(VAULT) if n.endswith(".py")}
+        # helpers.name keeps the extension (verified: 'account_store.py'); skills.name does not.
+        # Walk SUB-FOLDERS and include shell scripts: a top-level .py-only scan missed
+        # account/account-log.py and apple-pass-type-id-csr-gen.sh, both genuinely unregistered.
+        # Compared on BASENAME, which is how helpers.name is stored.
+        SKIP = {"skills", ".git", "Library", "__pycache__", "node_modules", ".github"}
+        found = set()
+        for root, dirs, files in os.walk(VAULT):
+            dirs[:] = [d for d in dirs if d not in SKIP and not d.startswith(".")]
+            if root.count(os.sep) - VAULT.count(os.sep) > 1:   # one level deep is enough
+                dirs[:] = []
+            for n in files:
+                if n.endswith((".py", ".sh")):
+                    found.add(n)
+        return found
     except Exception:
         return None
 
@@ -168,6 +181,17 @@ def check_rows(gaps, dm_text):
     elif bad:
         add("connector-missing-secret", _summarise([b["name"] for b in bad]),
             f"{len(bad)} connector(s) name a secret that does not exist in public.secrets — they cannot authenticate")
+    # A connector with NO credential recorded at all passed clean before — nobody knows where its
+    # access lives. 'browser' (Playwright) genuinely needs none; anything else is a real gap.
+    NO_CREDENTIAL_OK = {"browser"}
+    blank = q("SELECT name FROM connectors WHERE coalesce(secret,'') = '' ORDER BY name")
+    if blank is None:
+        add("couldnt-check", "connectors", "blank-credential query ERRORED", "high")
+    else:
+        unexplained = sorted(b["name"] for b in blank if b["name"] not in NO_CREDENTIAL_OK)
+        if unexplained:
+            add("connector-no-credential", _summarise(unexplained),
+                f"{len(unexplained)} connector(s) record NO credential at all — nobody knows where their access lives")
 
     # --- NON-PUBLIC SCHEMAS: Pete's own app schemas live in the SAME database and were invisible.
     # auth/storage/realtime/etc are Supabase's own plumbing, not his data — excluded deliberately.
@@ -179,8 +203,11 @@ def check_rows(gaps, dm_text):
     if nps is None:
         add("couldnt-check", "non-public schemas", "schema scan ERRORED — could not check app schemas", "high")
     elif nps:
+        # Require the QUALIFIED schema.table to appear. Matching a bare word let 'payroll'
+        # (a passing mention inside the Staff row) hide all 5 payroll tables, and 'reports'
+        # hide another — 33 tables across 8 schemas were being reported as 26 across 6.
         unhomed = sorted({f"{r['schema']}.{r['name']}" for r in nps
-                          if not _homed(r["schema"], dm_text) and not _homed(r["name"], dm_text)})
+                          if f"{r['schema']}.{r['name']}".lower() not in dm_text})
         if unhomed:
             schemas = sorted({u.split(".")[0] for u in unhomed})
             add("unhomed-app-schema", _summarise(schemas),
@@ -194,7 +221,9 @@ def check_rows(gaps, dm_text):
         add("couldnt-check", "property_declarations", "property query ERRORED — could not check site/app declarations", "high")
     else:
         # wordpress/lovable-style hosting legitimately has no git repo — do not cry wolf there.
-        NO_REPO_HOSTING = {"wordpress", "lovable", "squarespace", "wix"}
+        # lovable REMOVED 18 Jul: both lovable sites (Sygma Mala, Sales-Hire) DO have repos,
+        # so exempting it blinded the check on a hosting type that always has one.
+        NO_REPO_HOSTING = {"wordpress", "squarespace", "wix"}
         no_repo = sorted(p["name"] for p in props
                          if not p["github"] and p["hosting"].lower() not in NO_REPO_HOSTING)
         no_host = sorted(p["name"] for p in props if not p["hosting"])
