@@ -7,7 +7,7 @@
 # entity: PA-Command-Centre
 # report: stdout (and the CC locator-audit surface)
 # secrets: SUPABASE_TOKEN
-# schedule: 56 8 * * *
+# schedule: 30 6 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
 """cc-locator-audit.py — the CC Locator self-maintaining drift check (Pillar B / B2).
