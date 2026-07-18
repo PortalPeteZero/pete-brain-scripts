@@ -135,10 +135,10 @@ Pete built the Sygma Hub Drive structure + sync. Audit it hasn't been undone.
 1. **`hub-content-index`** (knowledge note) -- read it. It lists the Hub top-levels (synced + live-only) and the Hub→home mappings.
 2. **The Hub Drive folder still exists at root** -- `drive-api.py drives` shows `Sygma Hub` (Drive ID `0APzpyHHfvUyIUk9PVA`).
 3. **Each mapped Hub area is reachable** in the `drive_files` index; flag any that have gone missing or stale.
-4. **Run `VAULT=/tmp/pbs python3 /tmp/pbs/hub-sync.py status`** -- every mapping should show [EXISTS] with a recent timestamp. Flag [MISSING] or stale (>30 days).
+4. **Run `VAULT=/tmp/pbs python3 /tmp/pbs/hub-audit.py --quiet`** -- drift-detection between the LIVE Sygma Hub and its structural docs (Hub `MAP.md` + the `hub-content-index` process note in `vault_notes`). Exit 0 = clean, 1 = drift found; `--json` for machine output. Flag every finding, especially `index-id-mismatch` (HIGH) and any live top-level folder missing from the map/index. *(Corrected 18 Jul 2026: this step used to call `hub-sync.py status`, a script deleted in the cutover — so the check silently failed on every run. `hub-audit.py` itself needed repairing for the flat layout at the same time.)*
 5. **Spot-check a sample** -- pick 3 mappings, list the Drive folder contents at top level, confirm reasonable overlap with the index.
 
-Fix-on-find: missing or stale mapping -- run `VAULT=/tmp/pbs python3 /tmp/pbs/hub-sync.py pull <mapping>` immediately.
+Fix-on-find: a live top-level folder missing from the docs -- add it to Hub `MAP.md` AND the `hub-content-index` process note (those two ARE what the audit compares against, so the fix is to the docs, not the Drive). Per-folder READMEs + the map are kept current nightly by the `hub-reconcile` cron (`hub-reconcile.py`) — that is the fixer; `hub-audit.py` is the verifier. Never "fix" drift by changing the live Drive to match a stale doc without Pete's say-so.
 
 ### Phase 5 -- Processes / connections / APIs
 
@@ -223,7 +223,7 @@ Concise, factual, no preamble. Numbers, paths, GIDs. The report is a working doc
 ## Pointers
 
 - Reconcile gate: `/tmp/pbs/vault-reconcile-gate.py`
-- Hub sync helper: `/tmp/pbs/hub-sync.py` + [[hub-content-index]]
+- Hub helpers: `/tmp/pbs/hub-audit.py` (verify — drift vs the docs) · `/tmp/pbs/hub-reconcile.py` (the nightly fixer cron) + [[hub-content-index]]
 - Routing rules: [[vault-routing]]
 - Connections registry: [[connections]]
 - The IP portfolio cron-vs-SKILL trap that motivated Phase 3 (see Phase 3 above).
