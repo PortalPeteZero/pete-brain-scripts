@@ -40,7 +40,7 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 # mistaken for total coverage — the report states its own boundary.
 SCOPE_NOTE = ("covers CC public-schema tables/views, the app schemas in the same database, skills, "
               "helpers, projects, storage buckets, properties (websites/apps), entities and "
-              "connectors, and NEW top-level Drive folders. Properties are checked for DECLARATION COMPLETENESS only — a site never declared is NOT detected (closeout creates the declaration). "
+              "connectors, and NEW top-level folders WITHIN THE ALREADY-INDEXED drives (a brand-new shared drive is not seen until it is indexed). Properties are checked for DECLARATION COMPLETENESS only — a site never declared is NOT detected (closeout creates the declaration). "
               "NOT yet covered: CC pages, Railway crons, and the "
               "other databases (Sygma hub / CD-Leak / Odoo)")
 
@@ -389,7 +389,9 @@ def main():
         cnt = q(f'SELECT count(*) AS n FROM public."{tn}"')
         if cnt is None:                      # errored ≠ dead: say so, never guess
             gaps.append({"rule": "couldnt-check", "subject": r["domain"], "detail": f"{ref}: row-count query ERRORED — status unknown, NOT reported clean", "severity": "high"})
-        elif not cnt or cnt[0]["n"] == 0:
+        elif not cnt:                        # readable but shapeless -> could not check, NOT empty
+            gaps.append({"rule": "couldnt-check", "subject": r["domain"], "detail": f"{ref}: row count came back unreadable — status unknown", "severity": "high"})
+        elif cnt[0]["n"] == 0:
             gaps.append({"rule": "empty-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table is EMPTY (home points at a table with no data)", "severity": "high"})
 
     # (r) ROW-GRANULAR — the everyday adds (a skill, a helper, a project, a bucket)

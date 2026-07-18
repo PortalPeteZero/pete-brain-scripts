@@ -72,12 +72,16 @@ show("DEPLOY not SUCCESS", bad_deploy, lambda r: f"{r[0]:32} {r[1]}")
 show("MISSING schedule_local (enabled cron — won't DST-self-heal)", no_local, lambda r: r)
 show("STALE last run (>2.2× interval)", stale, lambda r: f"{r[0]:32} age={r[1]}h interval={r[2]}h")
 print(f"\n   services (no schedule, correctly): {services}")
-issues = list(tz_bad) + list(orphan) + list(bad_deploy)
+# no_local and stale were MISSING from the machine output, so an automated caller saw
+# a clean result while a real problem stood (demo-analytics-digest has no local
+# schedule and will not self-correct at the clock change).
+issues = list(tz_bad) + list(orphan) + list(bad_deploy) + list(no_local) + list(stale)
 if "--json" in _sys.argv:
     _sys.stdout = _sys.__stdout__
     print(json.dumps({
         "gaps": len(issues),
-        "gap_types": ([k for k, v in (("timezone", tz_bad), ("orphan", orphan), ("deploy", bad_deploy)) if v]),
+        "gap_types": ([k for k, v in (("timezone", tz_bad), ("orphan", orphan), ("deploy", bad_deploy),
+                                      ("no-schedule-local", no_local), ("stale-run", stale)) if v]),
         "findings": [{"rule": "cron-fleet", "subject": str(i)[:80], "detail": "see cc-cron-audit output",
                       "severity": "high"} for i in issues],
         "info": [{"subject": "coverage", "detail": "registry vs Railway: timezone, orphans, deploy status"}],
