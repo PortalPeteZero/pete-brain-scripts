@@ -138,6 +138,21 @@ def check_rows(gaps, dm_text):
             if unknown:
                 add("project-unknown-owner", _summarise(unknown), f"{len(unknown)} project owner value(s) match no entity and no known routing label — those projects would be filed to the wrong drive")
 
+    # --- Drive path integrity: renaming/moving a folder silently strands every descendant's
+    # stored path (drive_files.path is denormalised and never recomputed). Delegated to
+    # drive-path-rebuild.py so there is ONE definition of the check.
+    try:
+        r = subprocess.run(["python3", os.path.join(VAULT, "drive-path-rebuild.py"), "--json"],
+                           env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True, timeout=300)
+        if r.returncode != 0:
+            add("couldnt-check", "drive-paths", f"drive-path-rebuild exited {r.returncode} — Drive path integrity NOT verified", "high")
+        else:
+            n = json.loads(r.stdout).get("gaps", 0)
+            if n:
+                add("drive-path-drift", f"{n} file path(s)", "stored Drive paths disagree with the live folder tree — a rename or move stranded them. Fix: drive-path-rebuild.py --apply", "high")
+    except Exception as e:
+        add("couldnt-check", "drive-paths", f"drive-path-rebuild did not run ({e}) — Drive path integrity NOT verified", "high")
+
     # --- storage buckets: data_map homes buckets, so a NEW bucket must be homed too
     bks = q("SELECT name FROM storage.buckets")
     if bks is None:

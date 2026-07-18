@@ -422,9 +422,9 @@ def rename_file(file_id, new_name):
         # OLD path forever, because the descendants themselves never changed so are never re-upserted.
         # Verified 18 Jul 2026: renaming SY-Portal-Development left 19 child rows on the stale path.
         print("\n  ⚠ FOLDER rename — descendants in drive_files keep the OLD path and will NOT self-heal.")
-        print("    Repair the index now (replace <OLD>/<NEW> with the full paths):")
-        print("      UPDATE drive_files SET path = '<NEW>' || substring(path from length('<OLD>') + 1)")
-        print("      WHERE path LIKE '<OLD>%';")
+        print("    Repair the index NOW:")
+        print("      VAULT=/tmp/pbs python3 /tmp/pbs/drive-path-rebuild.py --apply")
+        print("    (rebuilds every path from the parent tree; the daily cc-locator-audit also flags this)")
 
 
 def move_file(file_id, dest_folder_id):
