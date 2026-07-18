@@ -40,7 +40,7 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 # mistaken for total coverage — the report states its own boundary.
 SCOPE_NOTE = ("covers CC public-schema tables/views, the app schemas in the same database, skills, "
               "helpers, projects, storage buckets, properties (websites/apps), entities and "
-              "connectors. NOT yet covered: new Drive folders, CC pages, Railway crons, and the "
+              "connectors, and NEW top-level Drive folders. NOT yet covered: CC pages, Railway crons, and the "
               "other databases (Sygma hub / CD-Leak / Odoo)")
 
 def q(sql):
@@ -146,6 +146,17 @@ def check_rows(gaps, dm_text):
             unknown = sorted({(p.get("entity_slug") or "(none)") for p in projs} - known)
             if unknown:
                 add("project-unknown-owner", _summarise(unknown), f"{len(unknown)} project owner value(s) match no entity and no known routing label — those projects would be filed to the wrong drive")
+
+    # --- NEW DRIVE AREAS (R1): validating known homes never spots a folder nobody wrote down.
+    # drive_files.indexed_at is set when a row is FIRST seen and is not touched by later updates
+    # (verified 18 Jul), so a recent indexed_at on a TOP-LEVEL folder means a genuinely new area.
+    newdirs = q("SELECT drive, name FROM drive_files WHERE is_folder AND path NOT LIKE '%/%' "
+                "AND indexed_at > now() - interval '7 days' ORDER BY indexed_at DESC LIMIT 20")
+    if newdirs is None:
+        add("couldnt-check", "drive top-levels", "new-Drive-folder query ERRORED — could not check for new areas", "high")
+    elif newdirs:
+        add("new-drive-area", _summarise([f"{d['name']} ({d['drive']})" for d in newdirs]),
+            f"{len(newdirs)} new top-level Drive folder(s) appeared in the last 7 days — decide if each needs a home, or ignore it", "low")
 
     # --- CONNECTORS (R4): a connection whose named secret does not exist cannot authenticate.
     # "Reconcile against the registry" was circular — connectors IS a registry. The answerable
