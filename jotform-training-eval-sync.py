@@ -302,9 +302,17 @@ def rebuild_normalised():
 
 
 def rebuild_dashboard_data():
-    """Run jotform-training-eval-aggregate.py → dashboard /data/ files."""
+    """Run jotform-training-eval-aggregate.py → dashboard /data/ files.
+
+    A non-zero exit used to be swallowed here: stdout/stderr were captured, printed, and the run
+    reported SUCCESS regardless. That is how a broken aggregate could publish partial or zero-valued
+    data with nothing flagging it. The return code is now authoritative (19 Jul 2026)."""
     res = subprocess.run([sys.executable, str(SCRIPTS / "jotform-training-eval-aggregate.py")],
                          capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(
+            f"aggregate FAILED (exit {res.returncode}) — refusing to report success.\n"
+            f"stdout: {res.stdout.strip()[-1500:]}\nstderr: {res.stderr.strip()[-1500:]}")
     return res.stdout.strip(), res.stderr.strip()
 
 
@@ -347,8 +355,20 @@ def main():
                     latest_ts = ts
         except: pass
     if not latest_ts:
-        # First-time setup — shouldn't happen, but fallback to start-of-2026
-        latest_ts = "2026-01-01 00:00:00"
+        # NOT a "shouldn't happen" case — on Railway the data dir is an ephemeral temp dir
+        # (see EVAL_DATA_DIR above), so there is never a cursor and this fires EVERY run. The old
+        # silent fallback to 2026-01-01 meant the pipeline re-fetched only the current year and
+        # republished it as the whole dataset: the dashboard showed 1,891 of the form's 18,478
+        # lifetime submissions and nobody could tell, because the number looked plausible.
+        # Say so loudly instead of pretending this is a cursor. (19 Jul 2026)
+        latest_ts = os.environ.get("EVAL_BACKFILL_SINCE", "2026-01-01 00:00:00")
+        print(
+            "WARNING: no local submission cache — there is no incremental cursor for this run.\n"
+            f"         Falling back to {latest_ts}, so ONLY submissions after that date are fetched\n"
+            "         and the rebuilt dataset is NOT the full history. Set EVAL_BACKFILL_SINCE to\n"
+            "         widen the window, or give the pipeline a persistent data dir. See the CC task\n"
+            "         'Training-eval pipeline has lost all pre-2026 history'.",
+            file=sys.stderr)
     print(f"Last cached submission: {latest_ts}")
 
     new_rows = fetch_since(latest_ts)

@@ -814,6 +814,15 @@ def main():
     missing_feedback = []
     try:
         ct_cache_path = VAULT_DATA / "calendar-truth-cache.json"
+        if not ct_cache_path.exists():
+            # This guard used to fail silently: no cache meant the detector produced an empty list,
+            # which serialises as "0 events to chase" on the staff dashboard — indistinguishable from
+            # a genuinely clean week. It has read zero since 23 Jun 2026 (commit fcc84c3) because the
+            # Railway run uses an ephemeral data dir the cache was never written to. Say it out loud.
+            print(f"WARNING: MISSING-FEEDBACK DETECTOR DISABLED — no delivery source at {ct_cache_path}.\n"
+                  "         The published figure will be 0 and that 0 is MEANINGLESS, not clean.\n"
+                  "         See the CC task 'Rebuild the missing-feedback detector + course durations'.",
+                  file=sys.stderr)
         if ct_cache_path.exists():
             ct = json.loads(ct_cache_path.read_text()).get("by_trainer_date", {})
             from datetime import date as _date
@@ -969,6 +978,13 @@ def main():
     except Exception as e:
         print(f"  WARN duration: cache load failed: {e}")
         cache_entries_by_key = {}
+    if not cache_entries_by_key:
+        # Same silent-skip shape as the missing-feedback detector above: with no calendar entries
+        # every delivery falls into no_calendar_match, avg_duration_min is never injected, and the
+        # dashboard's "Typ. duration" column simply renders blank rather than erroring. (19 Jul 2026)
+        print("WARNING: DURATION COMPUTATION DISABLED — no calendar entries available.\n"
+              "         avg_duration_min will be absent everywhere and the dashboard column blank.",
+              file=sys.stderr)
 
     # Group submissions into deliveries
     deliveries_records: dict[tuple, list] = defaultdict(list)
