@@ -61,12 +61,35 @@ CONFIG_FILE = SCRIPT_DIR.parent / "odoo-api-configuration.md"
 TZ = ZoneInfo("Atlantic/Canary")
 
 
+
+
+def _secret_cfg():
+    """Odoo config from the materialised secret (the house standard: keys live in public.secrets,
+    never in a note or a markdown file). Returns None if the secret is not present, so callers keep
+    their existing fallbacks until every runtime is proven on this path (19 Jul 2026)."""
+    import json as _json, os as _os
+    p = _os.path.join(_os.environ.get("VAULT", "/tmp/pbs"),
+                      "Library", "processes", "secrets", "odoo-credentials.json")
+    try:
+        with open(p) as fh:
+            c = _json.load(fh)
+        if all(c.get(k) for k in ("url", "db", "login", "api_key")):
+            return {"url": c["url"].rstrip("/"), "db": c["db"],
+                    "login": c["login"], "api_key": c["api_key"]}
+    except Exception:
+        pass
+    return None
+
+
 def load_odoo_config() -> dict:
-    # env-first (Railway sets ODOO_*); fall back to the vault config file on the Mac.
+    # env-first (Railway sets ODOO_*), then the CC secrets vault, then the legacy config file.
     env = {"url": os.environ.get("ODOO_URL"), "db": os.environ.get("ODOO_DB"),
            "login": os.environ.get("ODOO_LOGIN"), "api_key": os.environ.get("ODOO_API_KEY")}
     if all(env.values()):
         return env
+    sec = _secret_cfg()
+    if sec:
+        return sec
     text = CONFIG_FILE.read_text()
 
     def grab(label: str) -> str | None:

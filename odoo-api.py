@@ -45,12 +45,37 @@ from pathlib import Path
 CONFIG_FILE = Path(__file__).resolve().parent.parent / "odoo-api-configuration.md"
 
 
+
+
+def _secret_cfg():
+    """Odoo config from the materialised secret (the house standard: keys live in public.secrets,
+    never in a note or a markdown file). Returns None if the secret is not present, so callers keep
+    their existing fallbacks until every runtime is proven on this path (19 Jul 2026)."""
+    import json as _json, os as _os
+    p = _os.path.join(_os.environ.get("VAULT", "/tmp/pbs"),
+                      "Library", "processes", "secrets", "odoo-credentials.json")
+    try:
+        with open(p) as fh:
+            c = _json.load(fh)
+        if all(c.get(k) for k in ("url", "db", "login", "api_key")):
+            return {"url": c["url"].rstrip("/"), "db": c["db"],
+                    "login": c["login"], "api_key": c["api_key"]}
+    except Exception:
+        pass
+    return None
+
+
 def _load_config():
-    """Config from env vars first (Railway/cloud), else the vault config markdown file (local)."""
+    """Config from env vars first (Railway/cloud), then the CC secrets vault, then the legacy
+    markdown file. The secret is the house standard; the file fallback stays until every consumer
+    is proven on the secrets path."""
     env = {"url": os.environ.get("ODOO_URL"), "db": os.environ.get("ODOO_DB"),
            "login": os.environ.get("ODOO_LOGIN"), "api_key": os.environ.get("ODOO_API_KEY")}
     if all(env.values()):
         return env
+    sec = _secret_cfg()
+    if sec:
+        return sec
     if not CONFIG_FILE.exists():
         sys.exit(f"odoo config not found: {CONFIG_FILE}")
     text = CONFIG_FILE.read_text()

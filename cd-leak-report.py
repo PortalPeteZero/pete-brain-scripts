@@ -84,6 +84,20 @@ def _odoo_cfg():
                 "db": os.environ.get("ODOO_DB", "camello-blanco-sl"),
                 "login": os.environ.get("ODOO_LOGIN", "pete.ashcroft@canary-detect.com"),
                 "key": os.environ["ODOO_API_KEY"]}
+    # House standard (19 Jul 2026): the key lives in public.secrets, materialised to
+    # {VAULT}/Library/processes/secrets/odoo-credentials.json — NOT in the knowledge note.
+    _sp = os.path.join(os.environ.get("VAULT", os.path.dirname(__file__)),
+                       "Library", "processes", "secrets", "odoo-credentials.json")
+    try:
+        with open(_sp) as _fh:
+            _c = json.load(_fh)
+        if all(_c.get(k) for k in ("url", "db", "login", "api_key")):
+            return {"url": _c["url"].rstrip("/"), "db": _c["db"],
+                    "login": _c["login"], "key": _c["api_key"]}
+    except Exception:
+        pass
+    # Legacy fallback: parse the config note. Retained only until every runtime is proven on the
+    # secrets path; the note's key is being removed, so this path will stop working by design.
     out = subprocess.run(["python3", os.path.join(os.path.dirname(__file__), "cc-sql.py"),
         "SELECT body FROM vault_notes WHERE title ILIKE '%odoo%config%' OR title ILIKE '%odoo-api%' LIMIT 1"],
         capture_output=True, text=True, env={**os.environ, "VAULT": os.path.dirname(__file__)}).stdout
