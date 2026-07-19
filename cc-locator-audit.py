@@ -299,7 +299,8 @@ def check_rows(gaps, dm_text, dm_rows):
 
     # --- PROPERTIES (websites/apps): the locator's original purpose. A declaration that cannot
     # answer "where does its code live and who serves it" is how the wrong-repo clone happened.
-    props = q("SELECT name, coalesce(f->>'github','') AS github, coalesce(f->>'hosting','') AS hosting "
+    props = q("SELECT name, coalesce(f->>'github','') AS github, coalesce(f->>'hosting','') AS hosting, "
+              "coalesce(f->>'front_door','') AS front_door "
               "FROM property_declarations WHERE lower(coalesce(f->>'status','')) NOT IN ('archived','retired','retiring')")
     if props is None:
         add("couldnt-check", "property_declarations", "property query ERRORED — could not check site/app declarations", "high")
@@ -315,6 +316,32 @@ def check_rows(gaps, dm_text, dm_rows):
             add("property-no-repo", _summarise(no_repo), f"{len(no_repo)} live propert(ies) with no repo declared — nobody can tell where the code lives")
         if no_host:
             add("property-no-hosting", _summarise(no_host), f"{len(no_host)} live propert(ies) with no hosting declared — nobody can tell who serves it")
+
+        # --- FRONT DOORS (added 19 Jul 2026). A property's front door is the read-this-first note.
+        # Two distinct failures, reported separately because the fixes are different:
+        #   no front_door recorded      -> write one / decide it does not warrant one
+        #   front_door does not resolve -> the note was renamed, moved or deleted (the LeakGuard
+        #                                  orphan: a front door nobody could walk to)
+        # front_door holds a vault_path, NOT a [[slug]] — slugs are not unique (several notes are
+        # slugged "README"), so a slug cannot address one note.
+        no_door = sorted(p["name"] for p in props if not p["front_door"])
+        doors = [p for p in props if p["front_door"]]
+        if doors:
+            want = sorted({p["front_door"] for p in doors})
+            inlist = ",".join("'" + d.replace("'", "''") + "'" for d in want)
+            found = q(f"SELECT vault_path FROM vault_notes WHERE vault_path IN ({inlist})")
+            if found is None:
+                add("couldnt-check", "front doors",
+                    "front-door resolution query ERRORED — could not verify the read-first notes", "high")
+            else:
+                have = {r["vault_path"] for r in found}
+                broken = sorted(p["name"] for p in doors if p["front_door"] not in have)
+                if broken:
+                    add("property-front-door-broken", _summarise(broken),
+                        f"{len(broken)} propert(ies) name a front door that does NOT resolve — the note was moved, renamed or deleted", "high")
+        if no_door:
+            add("property-no-front-door", _summarise(no_door),
+                f"{len(no_door)} live propert(ies) have no front door recorded — no read-this-first page, so every session starts by re-deriving what the site is", "low")
 
     # --- ENTITIES: a live company with no Drive home has nowhere to file its documents.
     ents = q("SELECT slug, coalesce(drive_home,'') AS home FROM entities WHERE lower(coalesce(status,'')) NOT IN ('archived','retired','dissolved','planned','related')")
