@@ -46,17 +46,24 @@ HUB_README_ID = "1zLZbBFBS-G-W1yxMzoBYSEbaX2WYMOVB"
 INDEX_VAULT_PATH = VAULT_ROOT / "Library" / "processes" / "hub-content-index.md"
 
 
-def read_hub_index():
+def read_hub_index(_retry=True):
     """Fetch the hub-content-index markdown from vault_notes (its home since the Business-OS
     cutover). Returns the body, or None if it could not be read — None means 'could not check',
-    never 'the index is empty'."""
+    never 'the index is empty'.
+
+    Retries ONCE after a short pause before giving up: the CC API 429-throttles under load, and a
+    single transient blip was producing a false HIGH 'index-missing' finding on a note that is
+    present and 40k+ chars long. Same pattern as cc-locator-audit.py's q(). (19 Jul 2026.)"""
     try:
         r = subprocess.run(
             ["python3", str(VAULT_ROOT / "cc-sql.py"),
              "SELECT body FROM vault_notes WHERE slug='hub-content-index' LIMIT 1"],
             env={**os.environ, "VAULT": str(VAULT_ROOT)},
             capture_output=True, text=True, timeout=60)
-        if r.returncode != 0:
+        if r.returncode != 0 or (r.stdout or "").lstrip().startswith("ERROR"):
+            if _retry:
+                time.sleep(1.5)
+                return read_hub_index(_retry=False)
             return None
         rows = json.loads(r.stdout)
         return rows[0]["body"] if rows else None
