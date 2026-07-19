@@ -36,13 +36,20 @@ import os, sys, json, subprocess, re, datetime, time
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-# What this check does NOT yet cover. Emitted as info[] so a "0 gaps" result can never be
-# mistaken for total coverage — the report states its own boundary.
+# What this check does NOT cover. Emitted as info[] so a "0 gaps" result can never be mistaken for
+# total coverage — the report states its own boundary.
+#
+# The OTHER DATABASES (Sygma platform · CD-LeakGuard · Odoo) are OUT OF SCOPE BY DECISION
+# (Pete, 19 Jul 2026), not pending. Each has its own owner and its own source of truth; this tool
+# is the Command Centre's locator, not a cross-estate crawler. Do NOT re-raise it as a gap, and do
+# NOT quietly widen the scope to include them — reopening it needs Pete saying so.
 SCOPE_NOTE = ("covers CC public-schema tables/views, the app schemas in the same database, skills, "
               "helpers, projects, storage buckets, properties (websites/apps), entities and "
               "connectors, and NEW top-level folders WITHIN THE ALREADY-INDEXED drives (a brand-new shared drive is not seen until it is indexed). Properties are checked for DECLARATION COMPLETENESS only — a site never declared is NOT detected (closeout creates the declaration). "
-              "NOT yet covered: CC pages, Railway crons, and the "
-              "other databases (Sygma hub / CD-Leak / Odoo)")
+              "NOT covered: CC pages and Railway crons (on-demand tools exist: cc-pages-reconcile.py, "
+              "cc-cron-audit.py). The other databases (Sygma platform / CD-LeakGuard / Odoo) are "
+              "OUT OF SCOPE BY DECISION (Pete, 19 Jul 2026) — each has its own owner and SSOT; "
+              "this is the CC's locator, not a cross-estate crawler. Not a gap, not pending.")
 
 def q(sql, _retry=True):
     r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
