@@ -83,8 +83,35 @@ def main():
     args = [a for a in args if a != "--no-deliver"]
 
     if not args or args == ["--changed"]:
-        targets = [n for n in all_skills()
-                   if content_sig(build_bytes(n)) != content_sig(SKILLS / f"{n}.skill")]
+        # A skill needs packaging if its archive drifted from SOURCE **or** if the archive
+        # actually DELIVERED to ~/Downloads drifted from the repo archive. Comparing source-only
+        # made a failed or skipped delivery invisible for ever: --changed reported "nothing to
+        # package" while Downloads still held a pre-change build, and Pete would install a stale
+        # skill believing it current (found by the V2.2 audit, 19 Jul 2026 — closeout.skill).
+        def _needs(n):
+            repo = SKILLS / f"{n}.skill"
+            if content_sig(build_bytes(n)) != content_sig(repo):
+                return True
+            if deliver and DOWNLOADS.exists():
+                delivered = DEST / f"{n}.skill"
+                if not delivered.exists():
+                    return True
+                try:
+                    if content_sig(delivered) != content_sig(repo):
+                        return True
+                except OSError:
+                    # cannot read the delivered copy (macOS protects ~/Downloads from some
+                    # processes) — record it and warn ONCE rather than silently reporting clean.
+                    _unreadable.append(n)
+            return False
+        _unreadable = []
+        targets = [n for n in all_skills() if _needs(n)]
+        if _unreadable:
+            print(f"⚠ package-skill: could not read {len(_unreadable)} delivered archive(s) in "
+                  f"{DEST} (permission denied) — DELIVERY freshness NOT verified for: "
+                  f"{', '.join(sorted(_unreadable))}.\n"
+                  f"  Source freshness below is still accurate. To refresh delivery, copy the "
+                  f"archives yourself:  cp {SKILLS}/<name>.skill {DEST}/", file=sys.stderr)
         mode = "changed"
     elif args == ["--all"]:
         targets = all_skills(); mode = "all"
