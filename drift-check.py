@@ -136,6 +136,26 @@ def main():
     except Exception as e:
         findings.append(("⚠", f"Connection parity: check did not run ({e})"))
 
+    # Documented-command rot — do the commands our own notes tell sessions to run still exist?
+    # A dead flag is silent (an argparse-less script swallows it and does something else), so this
+    # only ever surfaces when someone follows the doc and reports work that never happened.
+    # See doc-command-check.py; born 19 Jul 2026 from `garmin-daily-cc.py --publish-only`.
+    try:
+        dr = subprocess.run([sys.executable, os.path.join(VAULT, "doc-command-check.py"), "--json"],
+                            capture_output=True, text=True, timeout=180)
+        ddata = json.loads(dr.stdout or "{}")
+        n = ddata.get("count", 0)
+        if n:
+            sample = "; ".join(
+                f"{f['script']}{' ' + f['flag'] if f['flag'] else ''} (in {f['note'][:40]})"
+                for f in ddata.get("findings", [])[:4])
+            findings.append(("⚠", f"Documented commands: {n} broken reference(s) — a note tells sessions to "
+                                  f"run something that no longer exists. e.g. {sample}"))
+        else:
+            findings.append(("✓", f"Documented commands: all valid ({ddata.get('notes_scanned', 0)} notes scanned)"))
+    except Exception as e:
+        findings.append(("⚠", f"Documented commands: check did not run ({e})"))
+
     warns = [f for f in findings if f[0] == "⚠"]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     header = (f"DRIFT-CHECK {stamp} — {'⚠ ' + str(len(warns)) + ' need attention' if warns else '✓ all clear'}")
