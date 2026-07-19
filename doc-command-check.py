@@ -37,6 +37,9 @@ FLAG = re.compile(r"(?<![\w-])(--[a-z][a-z0-9-]+)")
 # Flags the shell/python consume, not the script.
 IGNORE_FLAGS = {"--help", "--version"}
 
+# Generic stand-ins used in worked examples ("run `x.py --flag`"), not real scripts.
+PLACEHOLDERS = {"x.py", "y.py", "foo.py", "bar.py", "script.py", "tool.py", "name.py", "thing.py"}
+
 
 def q(sql):
     r = subprocess.run([sys.executable, CC_SQL, sql], capture_output=True, text=True,
@@ -61,6 +64,8 @@ def main():
         title, body = row.get("title") or "?", row.get("body") or ""
         for m in CMD.finditer(body):
             script, tail = m.group(1), m.group(2)
+            if script.lower() in PLACEHOLDERS or "<" in script or "{" in script:
+                continue
             path = os.path.join(VAULT, script)
             if not os.path.exists(path):
                 key = (title, script, None)
