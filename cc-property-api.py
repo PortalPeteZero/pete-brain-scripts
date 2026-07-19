@@ -67,10 +67,19 @@ def jlit(obj):
 
 
 def get_card(name):
-    rows = ccq(f"SELECT name, f FROM property_declarations WHERE name = {lit(name)}")
+    """Resolve a property by its IMMUTABLE key first, then its display name, then a fuzzy match.
+
+    The key never changes (the DB enforces it), so key lookups keep working across renames --
+    which is why they are tried first. Name lookups still work for humans typing the label.
+    """
+    rows = ccq(f"SELECT name, key, f FROM property_declarations WHERE key = {lit(name)}")
     if rows:
         return rows[0]
-    rows = ccq(f"SELECT name, f FROM property_declarations WHERE name ILIKE {lit('%' + name + '%')} LIMIT 2")
+    rows = ccq(f"SELECT name, key, f FROM property_declarations WHERE name = {lit(name)}")
+    if rows:
+        return rows[0]
+    rows = ccq(f"SELECT name, key, f FROM property_declarations "
+               f"WHERE name ILIKE {lit('%' + name + '%')} OR key ILIKE {lit('%' + name + '%')} LIMIT 2")
     return rows[0] if len(rows) == 1 else (None if not rows else "AMBIGUOUS")
 
 

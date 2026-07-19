@@ -257,9 +257,12 @@ def resolve_front_door(name):
         return None
     try:
         import urllib.parse
+        # Match the display name OR the immutable key. The hook is fed whatever the feed carried,
+        # which after a rename may be either -- keying on name alone would silently drop the
+        # front-door link exactly when a property had just been renamed.
         q = urllib.parse.quote(name, safe="")
         req = urllib.request.Request(
-            url.rstrip("/") + "/rest/v1/property_declarations?select=f&name=eq." + q,
+            url.rstrip("/") + "/rest/v1/property_declarations?select=f&or=(name.eq." + q + ",key.eq." + q + ")",
             headers={"apikey": key, "Authorization": "Bearer " + key})
         with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
             rows = json.loads(r.read().decode())
@@ -281,9 +284,12 @@ def resolve_live_domain(name):
         return None
     try:
         import urllib.parse
+        # Match the display name OR the immutable key. The hook is fed whatever the feed carried,
+        # which after a rename may be either -- keying on name alone would silently drop the
+        # front-door link exactly when a property had just been renamed.
         q = urllib.parse.quote(name, safe="")
         req = urllib.request.Request(
-            url.rstrip("/") + "/rest/v1/property_declarations?select=f&name=eq." + q,
+            url.rstrip("/") + "/rest/v1/property_declarations?select=f&or=(name.eq." + q + ",key.eq." + q + ")",
             headers={"apikey": key, "Authorization": "Bearer " + key})
         with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
             rows = json.loads(r.read().decode())

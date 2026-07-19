@@ -35,12 +35,29 @@ URL = URL.rstrip("/")
 # The set of real secret NAMES from public.secrets — secrets_in() matches against THESE rather
 # than a naive word-grep (the old regex produced junk like "WHERE, table"). Fetched once.
 def _known_secret_names():
-    try:
-        req = urllib.request.Request(f"{URL}/rest/v1/secrets?select=name",
-            headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
-        return {r["name"] for r in json.load(urllib.request.urlopen(req, timeout=30))}
-    except Exception:
-        return set()
+    """The secret names every connector's `secret` field is matched against.
+
+    ⚠ This MUST NOT fail soft. It used to `return set()` on any exception, which meant a single
+    transient API blip made every script look like it referenced no secrets at all -- and because
+    the sync upserts, that would silently blank the recorded credential on ALL 40 connectors in one
+    run. A wrong "nobody knows where this connection's access lives" across the whole registry is
+    far worse than a failed run, so: retry once, then ABORT loudly. (19 Jul 2026 — found while
+    chasing a blanked odoo connector, which turned out to be a stale-code sync rather than this,
+    but the landmine was real and is now defused.)"""
+    import time as _t
+    for attempt in (1, 2):
+        try:
+            req = urllib.request.Request(f"{URL}/rest/v1/secrets?select=name",
+                headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
+            names = {r["name"] for r in json.load(urllib.request.urlopen(req, timeout=30))}
+            if names:
+                return names
+            raise RuntimeError("secrets table returned zero rows")
+        except Exception as e:
+            if attempt == 2:
+                sys.exit(f"cc-skeleton-registry-sync: ABORT — could not read public.secrets ({e}). "
+                         f"Refusing to run: it would blank the recorded credential on every connector.")
+            _t.sleep(2)
 
 SECRET_NAMES = _known_secret_names()
 

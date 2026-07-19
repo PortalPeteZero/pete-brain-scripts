@@ -71,16 +71,21 @@ def main():
 
     props = q("SELECT name, coalesce(f->>'status','') AS status, "
               "coalesce(f->>'hosting','') AS hosting, coalesce(f->>'github','') AS github, "
-              "coalesce(f->>'front_door','') AS front_door FROM property_declarations")
+              "coalesce(f->>'front_door','') AS front_door, key FROM property_declarations")
     if props is None:
         print("BLOCK  could not read property_declarations -- status UNKNOWN, not reported clean")
         sys.exit(1)
 
     live = [p for p in props if p["status"].lower() not in EXCLUDED_STATUS]
     if touched:
+        # Match on the IMMUTABLE key first, then the display name. A caller passing a renamed
+        # property's OLD name would otherwise match nothing and the gate would pass on an empty
+        # scope -- the exact false-clean this gate exists to prevent.
         want = {t.lower() for t in touched}
-        scope = [p for p in live if p["name"].lower() in want]
-        missing = sorted(want - {p["name"].lower() for p in scope})
+        scope = [p for p in live
+                 if (p.get("key") or "").lower() in want or p["name"].lower() in want]
+        matched = {(p.get("key") or "").lower() for p in scope} | {p["name"].lower() for p in scope}
+        missing = sorted(want - matched)
         if missing:
             print(f"BLOCK  --touched named {len(missing)} propert(ies) that do not exist "
                   f"or are not live: {', '.join(missing)}")

@@ -79,7 +79,7 @@ def cc_rest(method, path, body=None, prefer=None):
 
 
 def run():
-    rows = cc_rest("GET", "property_declarations?select=name,f") or []
+    rows = cc_rest("GET", "property_declarations?select=name,key,f") or []
     records, digest = [], []
     for r in rows:
         name, f = r["name"], r["f"]
@@ -93,6 +93,9 @@ def run():
         if flags:
             digest.append((name, flags))
         records.append({
+            # key: the IMMUTABLE identifier. Everything downstream joins on this, never on name --
+            # name is a display label and may change; the DB refuses to let the key change.
+            "key": r.get("key") or "",
             "name": name, "ptype": f.get("ptype"), "status_field": f.get("status"),
             "business": f.get("business") or None, "live": live, "host": live_host, "note": live_note,
             "domains": f.get("domains"), "primary_domain": (f.get("domains") or [None])[0],

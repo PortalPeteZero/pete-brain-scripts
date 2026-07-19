@@ -346,8 +346,8 @@ def check_rows(gaps, dm_text, dm_rows):
 
     # --- PROPERTIES (websites/apps): the locator's original purpose. A declaration that cannot
     # answer "where does its code live and who serves it" is how the wrong-repo clone happened.
-    props = q("SELECT name, coalesce(f->>'github','') AS github, coalesce(f->>'hosting','') AS hosting, "
-              "coalesce(f->>'front_door','') AS front_door "
+    props = q("SELECT name, coalesce(key,'') AS key, coalesce(f->>'github','') AS github, "
+              "coalesce(f->>'hosting','') AS hosting, coalesce(f->>'front_door','') AS front_door "
               "FROM property_declarations WHERE lower(coalesce(f->>'status','')) NOT IN ('archived','retired','retiring')")
     if props is None:
         add("couldnt-check", "property_declarations", "property query ERRORED — could not check site/app declarations", "high")
@@ -355,6 +355,17 @@ def check_rows(gaps, dm_text, dm_rows):
         # wordpress/lovable-style hosting legitimately has no git repo — do not cry wolf there.
         # lovable REMOVED 18 Jul: both lovable sites (Sygma Mala, Sales-Hire) DO have repos,
         # so exempting it blinded the check on a hosting type that always has one.
+        # --- KEY INTEGRITY. The key is the immutable identifier every tool, URL and front-door
+        # join uses; `name` is only a display label. The DB enforces uniqueness, autofill and
+        # immutability, but a row restored from a backup or inserted by a route that bypasses the
+        # trigger could still arrive keyless -- and a keyless property silently falls back to
+        # name-matching, which is the fragility this replaced. So verify, never assume.
+        keyless = sorted(p["name"] for p in props if not p["key"])
+        if keyless:
+            add("property-no-key", _summarise(keyless),
+                f"{len(keyless)} propert(ies) have NO immutable key — they can only be joined by "
+                f"display name, so renaming one silently orphans every reference to it", "high")
+
         NO_REPO_HOSTING = {"wordpress", "squarespace", "wix"}
         no_repo = sorted(p["name"] for p in props
                          if not p["github"] and p["hosting"].lower() not in NO_REPO_HOSTING)

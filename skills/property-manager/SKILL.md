@@ -78,7 +78,16 @@ Read the property's card in the **CC Properties module** (`/m/properties`, or qu
 - Tracking IDs (GA, GTM, Ahrefs, etc.)
 - Department
 
-If you're not sure which property Pete means, list the live cards: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name, f->'declared'->>'domain' FROM property_declarations ORDER BY name"` (or the CC Properties module). Each card carries the property's domain, stack, ids and active `project_slug` — never a local `Properties/` folder (the local tree is retired).
+> [!important] Properties are identified by their **`key`**, never by their name (19 Jul 2026)
+> Every property row carries an **immutable `key`** (e.g. `sygma-solutions-website`). The database
+> **refuses** to let a key change — autofilled on insert, unique, and blocked on update. The `name`
+> is a display label and may be changed freely.
+> **Join, address and reference properties by `key`.** It is what the property URLs, the front-door
+> join, the sign-off gate and every tool use. A rename is now safe; it used to orphan every
+> reference, which is how a front door ended up pointing at a property that no longer existed.
+> Tools accept either (key first, name as fallback), so typing the name still works for humans.
+
+If you're not sure which property Pete means, list the live cards: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT key, name, f->'declared'->>'domain' FROM property_declarations ORDER BY name"` (or the CC Properties module). Each card carries the property's domain, stack, ids and active `project_slug` — never a local `Properties/` folder (the local tree is retired).
 
 ### 0b. Read the GitHub configuration
 
@@ -118,7 +127,7 @@ This is a new property. Follow the intake workflow:
 1. **Agree the project name** -- ask Pete. This becomes `{project-name}` everywhere.
 2. **Gather what Pete knows** -- domain (or "none yet"), tech stack, GitHub repo (or "not yet"), which GitHub account, hosting, department, Supabase (or "none"), description. Don't push for fields that don't apply -- not everything has a repo or database and that's fine.
 3. **Register it in the cloud**:
-   - Create the property's **card** with the card writer — `VAULT=/tmp/pbs python3 /tmp/pbs/cc-property-api.py --create "<Name>" --entity "<Sygma|Canary Detect|Personal|One System|El Atico>" [--domain <d>] [--github <owner/repo>]` — then set whatever SEO/infra ids we have: `cc-property-api.py --set "<Name>" ahrefs=<id> surfer=<id> project_slug=<slug> gsc=<…> ga4=<…>`. (This card is the single live source the SEO skills read — see [[page-seo-workflow]].)
+   - Create the property's **card** with the card writer — `VAULT=/tmp/pbs python3 /tmp/pbs/cc-property-api.py --create "<Name>" --entity "<Sygma|Canary Detect|Personal|One System|El Atico>" [--domain <d>] [--github <owner/repo>]` — then set whatever SEO/infra ids we have: `cc-property-api.py --set "<key-or-Name>" ahrefs=<id> surfer=<id> project_slug=<slug> gsc=<…> ga4=<…>`. (This card is the single live source the SEO skills read — see [[page-seo-workflow]].)
    - Create the property's **Google Drive** folder for active project work + reference data.
    - If SEO work is starting, follow the **standard wire-up** in [[page-seo-workflow]] (card → project + `SEO` bucket → Work Log).
 4. **Map upkeep is automatic** — the cloud map (`cc_map`) regenerates on its own.
