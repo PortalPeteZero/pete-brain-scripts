@@ -31,7 +31,7 @@ CC_SQL = os.path.join(VAULT, "cc-sql.py")
 
 # `python3 /tmp/pbs/foo.py --bar --baz` (optionally VAULT=… prefixed, any dir). The trailing capture
 # stops at a backtick/newline so we only read flags belonging to THIS command.
-CMD = re.compile(r"python3\s+[\"']?(?:[\w./{}$-]*/)?([\w.-]+\.py)[\"']?([^`\n\r]*)")
+CMD = re.compile(r"python3\s+[\"']?([\w./{}$-]*/)?([\w.-]+\.py)[\"']?([^`\n\r]*)")
 FLAG = re.compile(r"(?<![\w-])(--[a-z][a-z0-9-]+)")
 
 # Flags the shell/python consume, not the script.
@@ -39,6 +39,10 @@ IGNORE_FLAGS = {"--help", "--version"}
 
 # Generic stand-ins used in worked examples ("run `x.py --flag`"), not real scripts.
 PLACEHOLDERS = {"x.py", "y.py", "foo.py", "bar.py", "script.py", "tool.py", "name.py", "thing.py"}
+
+# Opt-out marker for notes that QUOTE a command historically (post-mortems, migration write-ups)
+# rather than instruct anyone to run it. Put it anywhere in the note body.
+EXEMPT = "<!-- doc-command-check: historical -->"
 
 
 def q(sql):
@@ -58,21 +62,49 @@ def main():
     as_json = "--json" in sys.argv
     rows = q("SELECT title, body FROM vault_notes WHERE body LIKE '%python3%'")
     findings = []          # dicts: kind, note, script, flag
+    exempted = []          # notes carrying the historical opt-out marker
     seen = set()           # dedupe (note, script, flag) across repeated snippets
 
     for row in rows:
         title, body = row.get("title") or "?", row.get("body") or ""
+        # A note that RECOUNTS a command (a post-mortem quoting the job it killed) is not telling
+        # anyone to run it. Those notes opt out explicitly rather than being rewritten into a lie.
+        if EXEMPT in body:
+            exempted.append(title)
+            continue
         for m in CMD.finditer(body):
-            script, tail = m.group(1), m.group(2)
+            docdir, script, tail = (m.group(1) or ""), m.group(2), m.group(3)
             if script.lower() in PLACEHOLDERS or "<" in script or "{" in script:
                 continue
-            path = os.path.join(VAULT, script)
-            if not os.path.exists(path):
-                key = (title, script, None)
+            # Honour the sub-directory the doc actually names (helpers are mostly flat at the repo
+            # root, but some live in a package dir e.g. account/). Resolving by basename alone both
+            # hides a wrong path and invents one.
+            subdir = ""
+            if docdir:
+                tail_dir = docdir.rstrip("/").split("/")[-1]
+                # "..." is the docs' own abbreviation for the repo path, not a directory.
+                if tail_dir and tail_dir not in ("pbs", "tmp", "...", ".", "..") and not tail_dir.startswith("$"):
+                    subdir = tail_dir
+            documented = os.path.join(VAULT, subdir, script) if subdir else os.path.join(VAULT, script)
+            if not os.path.exists(documented):
+                # Same script, different place? That is a wrong-path doc, not a dead reference.
+                found_at = None
+                for root, _dirs, files in os.walk(VAULT):
+                    if "/.git" in root:
+                        continue
+                    if script in files:
+                        found_at = os.path.relpath(os.path.join(root, script), VAULT)
+                        break
+                kind = "wrong-path" if found_at else "missing-script"
+                key = (title, script, kind)
                 if key not in seen:
                     seen.add(key)
-                    findings.append({"kind": "missing-script", "note": title, "script": script, "flag": None})
-                continue
+                    findings.append({"kind": kind, "note": title, "script": script, "flag": None,
+                                     "documented": os.path.relpath(documented, VAULT), "actual": found_at})
+                if not found_at:
+                    continue
+                documented = os.path.join(VAULT, found_at)
+            path = documented
             try:
                 src = open(path, encoding="utf-8", errors="replace").read()
             except Exception:
@@ -87,14 +119,17 @@ def main():
 
     if as_json:
         print(json.dumps({"findings": findings, "count": len(findings),
-                          "notes_scanned": len(rows)}, indent=2))
+                          "notes_scanned": len(rows), "exempted": exempted}, indent=2))
     elif not findings:
-        print(f"doc-command-check: 0 findings — every documented command exists ({len(rows)} notes scanned).")
+        print(f"doc-command-check: 0 findings — every documented command exists "
+              f"({len(rows)} notes scanned, {len(exempted)} historical).")
     else:
         print(f"doc-command-check: {len(findings)} finding(s) across {len(rows)} notes scanned\n")
         for f in findings:
             if f["kind"] == "missing-script":
                 print(f"  ⚠ MISSING SCRIPT  {f['script']:32s} referenced by note: {f['note']}")
+            elif f["kind"] == "wrong-path":
+                print(f"  ⚠ WRONG PATH      {f['script']:32s} doc says {f['documented']}, actually {f['actual']} — note: {f['note']}")
             else:
                 print(f"  ⚠ DEAD FLAG       {f['script']} {f['flag']:20s} note: {f['note']}")
         print("\nFix the NOTE (the script is the source of truth), or restore the flag if the doc was right.")
