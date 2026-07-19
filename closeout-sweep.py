@@ -127,7 +127,18 @@ def run(apply_mode, since, extra_dirs):
         if len(ds) == 1:
             owned_by_dir.setdefault(ds[0], set()).add(s)
         elif len(ds) > 1:
-            ambiguous.append((s, ds))
+            # SAME REPO, TWO CHECKOUTS is not ambiguity. A second clone of the same
+            # repository (e.g. /tmp/pbs and /tmp/pbs-audit, both pete-brain-scripts) makes every
+            # SHA resolve twice, which used to blanket-suppress the ENTIRE record pass: closeout
+            # printed "REMAINING: 0" while logging nothing at all. The real risk this guard exists
+            # for is a short-SHA prefix colliding across DIFFERENT repos, so compare repo slugs,
+            # not directory paths. One distinct repo -> place it in the first checkout and carry on.
+            # (Found 19 Jul 2026 by running closeout with an audit clone on disk.)
+            slugs = {repo_slug(d) for d in ds}
+            if len(slugs) == 1:
+                owned_by_dir.setdefault(sorted(ds)[0], set()).add(s)
+            else:
+                ambiguous.append((s, ds))
     unplaced = sorted(s for s, ds in dirs_for.items() if not ds)
     if unplaced:
         report["warnings"].append(
@@ -135,8 +146,9 @@ def run(apply_mode, since, extra_dirs):
             "their repo isn't on disk here, so they can't be reconciled. Surface, don't assume logged.")
     for s, ds in ambiguous:
         report["warnings"].append(
-            f"owned SHA {s} resolves in MULTIPLE checkouts ({', '.join(os.path.basename(x) for x in ds)}) "
-            "-- a short-SHA prefix collision across repos. Surfaced, NOT auto-logged; confirm its repo.")
+            f"owned SHA {s} resolves in {len({repo_slug(x) for x in ds})} DIFFERENT repos "
+            f"({', '.join(sorted({repo_slug(x) for x in ds}))}) -- a genuine short-SHA prefix "
+            "collision. Surfaced, NOT auto-logged; confirm its repo.")
 
     for d, owned_here in sorted(owned_by_dir.items()):
         repo = repo_slug(d)
