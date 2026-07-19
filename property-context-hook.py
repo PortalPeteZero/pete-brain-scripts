@@ -242,6 +242,34 @@ def project_status_line(slug):
         return None
 
 
+def resolve_front_door(name):
+    """The property's FRONT DOOR — the read-this-first note — straight from `property_declarations`
+    at inject time. Added 19 Jul 2026: front doors lived in vault_notes while the property record
+    lived in property_declarations and nothing joined them, so the read-first document only arrived
+    if someone remembered it existed. Now it arrives unprompted, on mention.
+
+    Holds a vault_path, never a [[slug]] — slugs are not unique (several notes are slugged README).
+    Fail-open → None."""
+    if not name:
+        return None
+    url, key = _cc_creds()
+    if not (url and key):
+        return None
+    try:
+        import urllib.parse
+        q = urllib.parse.quote(name, safe="")
+        req = urllib.request.Request(
+            url.rstrip("/") + "/rest/v1/property_declarations?select=f&name=eq." + q,
+            headers={"apikey": key, "Authorization": "Bearer " + key})
+        with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
+            rows = json.loads(r.read().decode())
+        if not rows:
+            return None
+        return ((rows[0].get("f") or {}).get("front_door") or "").strip() or None
+    except Exception:
+        return None
+
+
 def resolve_live_domain(name):
     """Inject-time truth: the property's CURRENT primary domain straight from `property_declarations`,
     so a declaration edited AFTER the last nightly feed run is still reported correctly. This is the
@@ -318,6 +346,12 @@ def main():
             elif live.get("code"):
                 served = f" (served by {live['host']})" if live.get("host") else ""
                 lines.append(f"    ↳ LIVE NOW: domain {live['live'].upper()} · HTTP {live['code']}{served} — re-checked just now, overrides the sync's up/down for this domain")
+        if i == 0:
+            _fd = resolve_front_door(p.get("name"))
+            if _fd:
+                lines.append(f"    ↳ FRONT DOOR (read this FIRST, before any audit/fix/deploy): {_fd}"
+                             f" — query it with: VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "
+                             f"\"SELECT body FROM vault_notes WHERE vault_path='{_fd}'\"")
         caps = [c.upper() for c in ('ga4', 'gtm', 'gsc', 'ahrefs', 'surfer', 'supabase_ref') if p.get(c)]
         if caps:
             lines.append(f"    measurement/services wired: {', '.join(caps)}")
