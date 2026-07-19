@@ -441,7 +441,9 @@ def move_file(file_id, dest_folder_id):
     print(f"Moved: {result['name']} → {dest_folder_id}")
 
 def info(file_id):
-    fields = "id,name,mimeType,size,createdTime,modifiedTime,parents,webViewLink,owners"
+    # `trashed` added 19 Jul 2026: without it a trashed folder prints exactly like a live one, so
+    # any caller checking "does this still exist" silently reports a deleted folder as healthy.
+    fields = "id,name,mimeType,size,createdTime,modifiedTime,parents,webViewLink,owners,trashed"
     meta = api("GET", f"/files/{file_id}", {"fields": fields, "supportsAllDrives": "true"})
     for k, v in meta.items():
         print(f"  {k}: {v}")
