@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1B2340" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Canary Detect &middot; Drain Survey &middot; {{LOCATION_SHORT}}</title>
+  <!--
+    DRAIN-SURVEY TEMPLATE (service: drain-survey). Built 19 Jul 2026 from the first real drain
+    survey (cd-boyce-drain-report, 2 Jun 2026), the same way the pool-leak template was built from
+    colm-fynes-2026-06-30.
+
+    HOW TO USE
+      1. Copy this file, replace every {{PLACEHOLDER}}, drop the photos into assets/.
+      2. Publish through the NORMAL path -- a module_content row served at
+         canary-detect.com/reports/<slug> -- NOT a standalone static deploy. The original Boyce
+         report was a throwaway static deploy via its own deploy.py; that is the exception, not
+         the pattern.
+      3. Register the job in public.cd_reports with service='drain-survey'.
+      4. Do NOT ship a local assets/report.css. `publish` supplies the canonical
+         report-template/report.css automatically, which is what keeps every report on the
+         current look.
+
+    STYLE RULES (from [[cd-leak-report-engine]])
+      - Photos use .photo-strip / .ps-item / .ps-cap. Do NOT use the old .photo-grid /
+        .photo-card (240px letterbox) -- that is the RETIRED look Pete rejected 8 Jul 2026.
+        The Boyce original used photo-grid because it predates that decision.
+      - The play affordance on a video MUST be pure CSS (.video-facade + .video-play), never a
+        JS-built button: the CD website renders reports inside a Shadow DOM.
+      - Every visible string is bilingual: an EN element and an ES element, both data-lang.
+
+    SHAPE (a drain survey is NOT a leak report -- no repair stage, no proof-of-repair)
+      1 Overview -> 2 The CCTV survey -> 3 Findings -> 4 Locating from the surface
+      -> 5 Recommendation
+      Section 4 is what makes this a Canary Detect report rather than a camera hire: the sonde in
+      the camera head plus the vLoc locator turn an internal finding into a surface mark, so the
+      excavation is minimal. Keep it.
+  -->
+  <link rel="stylesheet" href="assets/report.css" />
+</head>
+<body>
+  <div class="lang-bar">
+    <button class="lang-btn active" id="btn-en" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" id="btn-es" onclick="setLang('es')">ES</button>
+  </div>
+
+  <div class="page">
+    <!-- Header -->
+    <div class="report-header">
+      <div class="report-header-left">
+        <div class="legal-entity">Camello Blanco S.L.</div>
+        <div class="registration"><strong>Empresa instaladora autorizada</strong> &mdash; N.&ordm; registro RI202600597</div>
+        <div class="contact-line">35580 Playa Blanca, Lanzarote</div>
+        <div class="contact-line">+34 911 98 57 05</div>
+      </div>
+      <div class="report-header-right">
+        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663301675316/RTJ3qT4eGCbFB3ZZ2x5PYH/horizontaldarkbg_bcaad3f0.webp" alt="Canary Detect" />
+        <div data-lang="en">
+          <div class="report-type-badge">Drain Survey</div>
+          <div class="ref">Ref: {{REF}}</div>
+          <div class="date">{{DATE_EN}}</div>
+          <div class="ref">Engineer: {{ENGINEER}}</div>
+        </div>
+        <div data-lang="es">
+          <div class="report-type-badge">Inspecci&oacute;n de Desag&uuml;es</div>
+          <div class="ref">Ref: {{REF}}</div>
+          <div class="date">{{DATE_ES}}</div>
+          <div class="ref">T&eacute;cnico: {{ENGINEER}}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="info-grid">
+      <div class="info-card">
+        <h3 data-lang="en">Client</h3>
+        <h3 data-lang="es">Cliente</h3>
+        <p class="name">{{CLIENT_NAME}}</p>
+      </div>
+      <div class="info-card">
+        <h3 data-lang="en">Location</h3>
+        <h3 data-lang="es">Ubicaci&oacute;n</h3>
+        <p>{{ADDRESS}}</p>
+        <p data-lang="en" style="color:var(--text-muted);font-size:12px;margin-top:4px;">{{SCOPE_EN}}</p>
+        <p data-lang="es" style="color:var(--text-muted);font-size:12px;margin-top:4px;">{{SCOPE_ES}}</p>
+      </div>
+    </div>
+
+    <!-- 1 Overview -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">1</div>
+        <h2 data-lang="en">Overview</h2>
+        <h2 data-lang="es">Resumen</h2>
+      </div>
+      <div class="section-body">
+        <div class="survey-opening">
+          <!--
+            Say WHY a drain survey was the right call, in the client's own terms. The recurring
+            drain-survey story: damp with no leak on the pressurised supply, symptoms that track
+            use of a bathroom/kitchen rather than running continuously. Reword per job; do not
+            claim a history that did not happen.
+          -->
+          <p data-lang="en">{{OVERVIEW_SYMPTOMS_EN}}</p>
+          <p data-lang="es">{{OVERVIEW_SYMPTOMS_ES}}</p>
+          <p data-lang="en">{{OVERVIEW_DECISION_EN}}</p>
+          <p data-lang="es">{{OVERVIEW_DECISION_ES}}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 The CCTV survey -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">2</div>
+        <h2 data-lang="en">The CCTV Drain Survey</h2>
+        <h2 data-lang="es">La Inspecci&oacute;n de Desag&uuml;es con C&aacute;mara</h2>
+      </div>
+      <div class="section-body">
+        <p data-lang="en">The survey is carried out with a flexible, waterproof inspection camera that is fed directly through the waste pipework, giving a live internal view of the condition of the pipe along its full route. For this survey the camera was introduced through {{CAMERA_ENTRY_EN}}, as shown below, and worked through the {{DRAINAGE_RUN_EN}}.</p>
+        <p data-lang="es">La inspecci&oacute;n se realiza con una c&aacute;mara de inspecci&oacute;n flexible y sumergible que se introduce directamente por la tuber&iacute;a de desag&uuml;e, ofreciendo una visi&oacute;n interna en directo del estado de la tuber&iacute;a a lo largo de todo su recorrido. En esta inspecci&oacute;n la c&aacute;mara se introdujo por {{CAMERA_ENTRY_ES}}, como se muestra a continuaci&oacute;n, y se hizo avanzar por el {{DRAINAGE_RUN_ES}}.</p>
+        <div class="photo-strip two">
+          <div class="ps-item">
+            <img src="assets/camera-entry.jpg" alt="The inspection camera entering the pipework" />
+            <div class="ps-cap" data-lang="en">The inspection camera entering the pipework through {{CAMERA_ENTRY_EN}}.</div>
+            <div class="ps-cap" data-lang="es">La c&aacute;mara de inspecci&oacute;n entrando en la tuber&iacute;a por {{CAMERA_ENTRY_ES}}.</div>
+          </div>
+          <div class="ps-item">
+            <img src="assets/survey-in-progress.jpg" alt="The survey in progress" />
+            <div class="ps-cap" data-lang="en">{{SURVEY_PHOTO_CAP_EN}}</div>
+            <div class="ps-cap" data-lang="es">{{SURVEY_PHOTO_CAP_ES}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 Findings -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">3</div>
+        <h2 data-lang="en">Findings: {{FINDINGS_HEADLINE_EN}}</h2>
+        <h2 data-lang="es">Resultados: {{FINDINGS_HEADLINE_ES}}</h2>
+      </div>
+      <div class="section-body">
+        <!--
+          State what was seen, then tie it back to the reported symptoms. A drain defect is
+          intermittent by nature (it only leaks when the drain is used) -- saying so explicitly is
+          what makes the finding land with a client who has been told repeatedly "there is no leak".
+          Findings vocabulary: break / fracture / displaced joint / collapse / root ingress /
+          scale or fat build-up / standing water indicating a fall problem.
+        -->
+        <p data-lang="en">{{FINDINGS_BODY_EN}}</p>
+        <p data-lang="es">{{FINDINGS_BODY_ES}}</p>
+        <div class="photo-strip two">
+          <div class="ps-item">
+            <img src="assets/defect-1.jpg" alt="Camera still showing the defect" />
+            <div class="ps-cap" data-lang="en">{{DEFECT_1_CAP_EN}}</div>
+            <div class="ps-cap" data-lang="es">{{DEFECT_1_CAP_ES}}</div>
+          </div>
+          <div class="ps-item">
+            <img src="assets/defect-2.jpg" alt="Camera still showing the defect" />
+            <div class="ps-cap" data-lang="en">{{DEFECT_2_CAP_EN}}</div>
+            <div class="ps-cap" data-lang="es">{{DEFECT_2_CAP_ES}}</div>
+          </div>
+        </div>
+        <!-- The survey recording. Pure-CSS play affordance -- never a JS button (Shadow DOM). -->
+        <div class="video-block">
+          <div class="video-facade" role="button" tabindex="0" onclick="playVideo(this)" data-src="assets/drain-survey-video.mp4">
+            <img src="assets/video-poster.jpg" alt="Play video: the CCTV drain survey recording" />
+            <span class="video-tag" data-lang="en">Video</span>
+            <span class="video-tag" data-lang="es">V&iacute;deo</span>
+            <span class="video-play" aria-hidden="true"></span>
+          </div>
+          <div class="plan-caption" data-lang="en">Video: the survey recording, showing {{VIDEO_SHOWS_EN}}. Tap to play.</div>
+          <div class="plan-caption" data-lang="es">V&iacute;deo: la grabaci&oacute;n de la inspecci&oacute;n, que muestra {{VIDEO_SHOWS_ES}}. Toque para reproducir.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 Locating the damage from the surface -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">4</div>
+        <h2 data-lang="en">Locating the Damage from the Surface</h2>
+        <h2 data-lang="es">Localizaci&oacute;n del Da&ntilde;o desde la Superficie</h2>
+      </div>
+      <div class="section-body">
+        <p data-lang="en">The inspection camera has a transmitter (sonde) built into the camera head, which allows the exact position of the head to be located from the surface using our vLoc locator. With the camera head positioned at the damaged section of pipe, the position was located and marked from above, as confirmed in the photograph below. This gives the precise point at which the repair needs to be made, so the excavation can be kept as small as possible.</p>
+        <p data-lang="es">La c&aacute;mara de inspecci&oacute;n lleva un transmisor (sonda) integrado en el cabezal, que permite localizar desde la superficie la posici&oacute;n exacta del cabezal mediante nuestro localizador vLoc. Con el cabezal de la c&aacute;mara situado en el tramo da&ntilde;ado de la tuber&iacute;a, se localiz&oacute; y marc&oacute; la posici&oacute;n desde arriba, como se confirma en la fotograf&iacute;a siguiente. Esto proporciona el punto preciso en el que debe realizarse la reparaci&oacute;n, de modo que la excavaci&oacute;n pueda ser lo m&aacute;s reducida posible.</p>
+        <div class="photo-strip two">
+          <div class="ps-item">
+            <img src="assets/locating.jpg" alt="Locating the damaged pipe from the surface with the vLoc" />
+            <div class="ps-cap" data-lang="en">Locating the damaged section from the surface using the sonde in the camera head and our vLoc locator.</div>
+            <div class="ps-cap" data-lang="es">Localizaci&oacute;n del tramo da&ntilde;ado desde la superficie mediante la sonda del cabezal de la c&aacute;mara y nuestro localizador vLoc.</div>
+          </div>
+          <div class="ps-item">
+            <img src="assets/marked-position.jpg" alt="The marked position of the damaged pipe" />
+            <div class="ps-cap" data-lang="en">The position marked on the surface, directly above the damage.</div>
+            <div class="ps-cap" data-lang="es">La posici&oacute;n marcada en la superficie, justo encima del da&ntilde;o.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5 Recommendation -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-num">5</div>
+        <h2 data-lang="en">Recommendation</h2>
+        <h2 data-lang="es">Recomendaci&oacute;n</h2>
+      </div>
+      <div class="section-body">
+        <!--
+          A drain survey usually ends HERE -- a recommendation, not a repair. There is no
+          proof-of-repair stage unless Canary Detect went on to do the work as a separate job.
+          Say what to excavate/replace and what the client should expect afterwards. Do not
+          promise an outcome beyond the defect found.
+        -->
+        <p data-lang="en">{{RECOMMENDATION_EN}}</p>
+        <p data-lang="es">{{RECOMMENDATION_ES}}</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="report-footer">
+      <div class="footer-left">
+        <div class="footer-legal-entity">Camello Blanco S.L.</div>
+        <div class="footer-registration"><strong>Empresa instaladora autorizada</strong> &mdash; N.&ordm; registro RI202600597</div>
+        <div class="footer-trading">Trading as Canary Detect &mdash; The Leaky Finders</div>
+      </div>
+      <div class="footer-right">
+        <div class="addr">35580 Playa Blanca, Lanzarote</div>
+        <div><a href="tel:+34911985705">+34 911 98 57 05</a></div>
+        <div><a href="mailto:info@canary-detect.com">info@canary-detect.com</a></div>
+        <div><a href="https://canary-detect.com">canary-detect.com</a></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function setLang(lang) {
+      document.body.classList.toggle('lang-es', lang === 'es');
+      document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+      document.getElementById('btn-es').classList.toggle('active', lang === 'es');
+    }
+    function playVideo(el) {
+      var v = document.createElement('video');
+      v.src = el.getAttribute('data-src');
+      v.controls = true;
+      v.autoplay = true;
+      v.setAttribute('playsinline', '');
+      v.style.width = '100%';
+      v.style.height = 'auto';
+      v.style.display = 'block';
+      el.replaceWith(v);
+    }
+  </script>
+</body>
+</html>
