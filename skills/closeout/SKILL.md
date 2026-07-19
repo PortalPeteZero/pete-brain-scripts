@@ -133,6 +133,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 | A7 | env vars a change depends on are present on the host (Vercel prod) + a runtime smoke | verify | |
 | A9 | package.json + lockfile in sync and both committed | verify | |
 | A10 | on any deployed change, Sentry still full-coverage (source maps this release, boundaries, prod DSN) | verify | |
+| A11 | **the customer's DELIVERED-WORK log is current** — every meeting attended / report published / damage reviewed has a matching `account_deliverables` row (incl. goodwill/FOC work, which is the easiest to forget and the most valuable at renewal) | verify → surface | `VAULT=/tmp/pbs python3 /tmp/pbs/account-delivery-check.py` (exit 1 = behind; lists what is unlogged). Report-only: the session decides what was actually delivered and logs it. Runs on ANY session that touched a customer/account, not just property work. Born 19 Jul 2026 — the Clancy log sat a month stale (panel reviews, site revisits, damage reports, all FOC) because nothing checked it. |
 
 ### SEO / discoverability (existing sites, not just new builds)
 | id | check | class |
