@@ -223,13 +223,60 @@ def check_rows(gaps, dm_text, dm_rows):
     # Reconciling all 175 against data_map instead would flood (most are not individually homed).
     # The correct fix needs a per-folder decision record (homed / deliberately ignored) and is a
     # declared open item — NOT half-built here. No LIMIT, so the count is honest.
-    newdirs = q("SELECT drive, name FROM drive_files WHERE is_folder AND path NOT LIKE '%/%' "
-                "AND indexed_at > now() - interval '7 days' ORDER BY indexed_at DESC")
+    #
+    # CLOSED 19 Jul 2026 — the ageing-out gap. A LEDGER (config key `locator-drive-areas`) now
+    # records every top-level folder and its decision, so nothing disappears just by getting old.
+    # Reporting still uses the 7-day window (that is the actionable "this just appeared" signal),
+    # but anything that ages out UNDECIDED is carried in the ledger and reported as ONE aggregate
+    # line — never 175 individual findings, which is the flood Pete refused.
+    # Everything present at seeding is 'pre-existing' (grandfathered, same device as the table
+    # allow-list); only folders appearing AFTER that enter as 'undecided'.
+    newdirs = q("SELECT drive, name, drive_file_id, indexed_at, "
+                "(indexed_at > now() - interval '7 days') AS is_recent "
+                "FROM drive_files WHERE is_folder AND path NOT LIKE '%/%' ORDER BY indexed_at DESC")
     if newdirs is None:
         add("couldnt-check", "drive top-levels", "new-Drive-folder query ERRORED — could not check for new areas", "high")
-    elif newdirs:
-        add("new-drive-area", _summarise([f"{d['name']} ({d['drive']})" for d in newdirs]),
-            f"{len(newdirs)} new top-level Drive folder(s) appeared in the last 7 days — decide if each needs a home, or ignore it. NOTE: this is a 7-DAY WINDOW, so an unactioned folder stops being reported after a week; it does not mean it got filed", "low")
+    else:
+        led = q("SELECT value FROM config WHERE key = 'locator-drive-areas'")
+        if led is None:
+            add("couldnt-check", "drive-area ledger", "ledger read ERRORED — could not check which areas are undecided", "high")
+        else:
+            try:
+                ledger = json.loads(led[0]["value"]) if led else {}
+            except Exception:
+                ledger = {}
+            seeding = not ledger
+            fresh, aged = [], []
+            for d in newdirs:
+                fid = d.get("drive_file_id")
+                if not fid:
+                    continue
+                rec = ledger.get(fid)
+                if rec is None:
+                    ledger[fid] = {"name": d["name"], "drive": d["drive"],
+                                   "first_seen": str(d.get("indexed_at") or "")[:19],
+                                   "status": "pre-existing" if seeding else "undecided"}
+                    rec = ledger[fid]
+                else:
+                    rec["name"], rec["drive"] = d["name"], d["drive"]
+                if rec.get("status") != "undecided":
+                    continue
+                label = f"{d['name']} ({d['drive']})"
+                # recency comes from the SAME query — never one round trip per folder (175 of them)
+                (fresh if d.get("is_recent") else aged).append(label)
+            if fresh:
+                add("new-drive-area", _summarise(fresh),
+                    f"{len(fresh)} new top-level Drive folder(s) appeared in the last 7 days — decide if each needs a home, or mark it ignored in the `locator-drive-areas` ledger", "low")
+            if aged:
+                add("drive-area-undecided", _summarise(aged),
+                    f"{len(aged)} top-level Drive folder(s) aged out of the 7-day window still UNDECIDED — they are held in the `locator-drive-areas` ledger rather than forgotten. Give each a home or mark it ignored", "low")
+            # persist the ledger (report-only tool: this is its OWN bookkeeping, not domain data)
+            try:
+                payload = json.dumps(ledger, separators=(",", ":")).replace("'", "''")
+                q("INSERT INTO config (key, value) VALUES ('locator-drive-areas', '" + payload + "') "
+                  "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+            except Exception:
+                pass
 
     # --- CONNECTORS (R4): a connection whose named secret does not exist cannot authenticate.
     # "Reconcile against the registry" was circular — connectors IS a registry. The answerable
