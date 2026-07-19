@@ -32,7 +32,7 @@ Usage:  VAULT=/tmp/pbs python3 /tmp/pbs/cc-locator-audit.py [--json]
         refused to report at all. Read the gap count from --json ("gaps" — an INT), never from $?. An abort emits valid JSON too,
         with "aborted": true and gaps=1, because being unable to check IS a gap.
 """
-import os, sys, json, subprocess, re, datetime
+import os, sys, json, subprocess, re, datetime, time
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
@@ -351,6 +351,80 @@ def check_rows(gaps, dm_text, dm_rows):
         homeless = sorted(e["slug"] for e in ents if not e["home"])
         if homeless:
             add("entity-no-home", _summarise(homeless), f"{len(homeless)} live entit(ies) with no Drive home — nowhere to file their documents")
+
+    # --- DRIVE HOMES (added 19 Jul 2026). Pete did NOT reject this check — he rejected the FIRST
+    # design, which validated Drive PATHS: "i was asking you to look at an alternative because what
+    # you proposed woud give me 100 flags a day". He was right. drive_files.path is denormalised and
+    # drifts, so a path-based check re-reports the same drift every morning, for ever.
+    #
+    # The alternative: resolve each home ONCE to its Drive folder ID, then ask Drive about the ID.
+    # IDs survive renames and moves; paths do not. Steady state is therefore silent, and a flag
+    # means the folder is genuinely gone — which is worth reporting every day until it is fixed.
+    #
+    # Scope is deliberately small: only backing_ref 'drive:' rows (4 today). 'external:' refs
+    # (github, gmail, the Sygma platform, the CD-leak Supabase) are OUT OF SCOPE by decision —
+    # a reachability probe would reintroduce exactly the noise that was refused, via flaky network.
+    dhomes = q("SELECT domain, backing_ref FROM data_map WHERE backing_ref LIKE 'drive:%'")
+    if dhomes is None:
+        add("couldnt-check", "drive homes", "drive-home query ERRORED — could not verify the Drive homes", "high")
+    else:
+        unresolved, gone = [], []
+        for r in dhomes:
+            want = (r.get("backing_ref") or "")[len("drive:"):].strip()
+            if not want:
+                continue
+            esc = want.replace("'", "''")
+            hit = q("SELECT drive_file_id, is_folder FROM drive_files "
+                    f"WHERE path = '{esc}' OR (drive || '/' || path) = '{esc}' LIMIT 1")
+            if hit is None:
+                add("couldnt-check", r["domain"], "drive-home index lookup ERRORED — status unknown", "high")
+                continue
+            if not hit:
+                # not in the index at all — either never indexed, or the path in data_map is stale
+                unresolved.append(f"{r['domain']} → {want}")
+                continue
+            fid = hit[0]["drive_file_id"]
+
+            def _ask_drive(_fid, _retry=True):
+                """Returns 'ok' | 'gone' | 'trashed' | None. None means COULD NOT CHECK.
+                A failed lookup is NOT evidence of absence — only a positive 404/not-found is.
+                Reporting 'gone' on any non-zero exit is precisely the cry-wolf bug this whole
+                check exists to avoid (caught by a decoy run, 19 Jul 2026: a transient API failure
+                reported a live Finance folder as deleted)."""
+                try:
+                    c = subprocess.run(["python3", f"{VAULT}/drive-api.py", "info", _fid],
+                                       env={**os.environ, "VAULT": VAULT},
+                                       capture_output=True, text=True, timeout=45)
+                except Exception:
+                    c = None
+                if c is not None and c.returncode == 0:
+                    o = (c.stdout or "").lower()
+                    if "trashed: true" in o:
+                        return "trashed"
+                    if " id: " in o or o.strip().startswith("id:"):
+                        return "ok"
+                blob = ((c.stdout or "") + (c.stderr or "")).lower() if c is not None else ""
+                if "404" in blob or "not found" in blob or "notfound" in blob:
+                    return "gone"          # a POSITIVE absence signal from Drive
+                if _retry:
+                    time.sleep(1.5)
+                    return _ask_drive(_fid, _retry=False)
+                return None                # could not check — never "gone"
+
+            verdict = _ask_drive(fid)
+            if verdict == "gone":
+                gone.append(f"{r['domain']} → {want}")
+            elif verdict == "trashed":
+                gone.append(f"{r['domain']} → {want} (in trash)")
+            elif verdict is None:
+                add("couldnt-check", r["domain"],
+                    "Drive lookup for this home could not complete — status UNKNOWN, not reported clean", "high")
+        if gone:
+            add("drive-home-gone", _summarise(gone),
+                f"{len(gone)} data_map Drive home(s) no longer exist in Drive — the folder was deleted or trashed", "high")
+        if unresolved:
+            add("drive-home-unindexed", _summarise(unresolved),
+                f"{len(unresolved)} data_map Drive home(s) are not in the Drive index — either never indexed, or the recorded path is stale", "medium")
 
     # --- Drive path integrity: renaming/moving a folder silently strands every descendant's
     # stored path (drive_files.path is denormalised and never recomputed). Delegated to
