@@ -47,8 +47,22 @@ def _cc():
     url = os.environ.get("CC_SUPABASE_URL")
     key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
     if not (url and key):
-        d = json.load(open(_HERE.parent / "secrets/command-centre-supabase-keys.json"))
-        url, key = d["url"], d["service_role_key"]
+        # The materialised-secrets home is {VAULT}/Library/processes/secrets — the house standard.
+        # This used to read _HERE.parent/"secrets/..." which resolves to /tmp/secrets on a normal
+        # session and does not exist, so the generator could not be run by hand at all (found
+        # 19 Jul 2026 while adding front_door to the feed). Old path kept as a last resort.
+        import pathlib
+        _v = pathlib.Path(os.environ.get("VAULT", "/tmp/pbs"))
+        for cand in (_v / "Library/processes/secrets/command-centre-supabase-keys.json",
+                     _HERE.parent / "secrets/command-centre-supabase-keys.json",
+                     pathlib.Path.home() / ".config/pete-secrets/command-centre-supabase-keys.json"):
+            if cand.exists():
+                d = json.load(open(cand))
+                url, key = d["url"], d["service_role_key"]
+                break
+        else:
+            raise SystemExit("property-state-cc: no CC credentials — set CC_SUPABASE_* or "
+                             "materialise command-centre-supabase-keys.json")
     return url.rstrip("/"), key
 
 
@@ -83,6 +97,11 @@ def run():
             "business": f.get("business") or None, "live": live, "host": live_host, "note": live_note,
             "domains": f.get("domains"), "primary_domain": (f.get("domains") or [None])[0],
             "github": f.get("github") or None, "vercel_project": f.get("vercel_project") or None,
+            # front_door: the read-this-first note for this property. Carried into the feed so the
+            # Properties page can link it -- front doors lived in vault_notes while the record lived
+            # in property_declarations and NOTHING joined them, which is how one sat orphaned.
+            # Holds a vault_path, never a [[slug]] (slugs are not unique; several notes are README).
+            "front_door": f.get("front_door") or None,
             "vercel_team": f.get("vercel_team"),
             "repo_head": gh.get("head") if gh else None, "repo_date": gh.get("date") if gh else None,
             "deployed": vc.get("deployed") if vc else None, "deploy_state": vc.get("state") if vc else None,
