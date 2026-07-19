@@ -95,6 +95,10 @@ MAP = [
     ("Saved report snapshots (reports)", "CC", "CC Supabase schema reports: reports.snapshots", "daily-briefing.py · oconnors-seo-report.py · sygma-ads-fortnightly-report.py · cc-sql", "Point-in-time report snapshots (e.g. sygma-google-daily) kept so a report can be re-read as it was on the day."),
     # --- A2: a trainers' working folder, recorded so "where do course site plans live" has an answer.
     ("Course site plans (trainers)", "Sygma", "Drive: Sygma Trainers/Plans", "Drive mount · drive_files index", "Utility record drawings and site plans for course venues (BT, Electricity North West, gas, water, sewer, Virgin, CAD packs, utility searches). A LIVE WORKING FOLDER owned by the trainers, who add to it — do not move or reorganise it."),
+    # Live-only until 19 Jul 2026: this row existed in the table but NOT here, so it survived only
+    # because the script never owned the domain. Now authored here so it is protected (the Clancy
+    # row was lost exactly this way). Content preserved verbatim + the drain-survey template added.
+    ("CD bespoke leak reports (Bespoke Leak Report \u2014 formerly Report Brain)", "Canary Detect", "CC Supabase public.cd_reports + public.cd_communities (+ report pages = modules tagged leak-report; images in public bucket leak-reports). TEMPLATES: report-template/report.css (canonical CSS, supplied by publish) + report-template/drain-survey.html (drain-survey template) in pete-brain-scripts; the pool-leak template + exemplar is the live report colm-fynes-2026-06-30, the drain-survey exemplar is boyce-drain-2026-06-02.", "cc-sql / whereis.py \u00b7 operating contract = vault_notes [[cd-leak-report-engine]] \u00b7 method wording = [[pool-leak-survey-method-phrasebank]] + [[drain-survey-method-phrasebank]] \u00b7 pages at /m/<community>-<date>", "Bespoke Leak Report engine (2-axis): CUSTOMER type = community|business|individual; SERVICE = pipework-leak|pool-leak|drain-survey. cd_communities = durable customer record (type col; table name historical); cd_reports = one row per report (service col). All three services now have a template + exemplar (drain-survey built 19 Jul 2026). Public home canary-detect.com/reports/<slug>. Distinct from the domestic Leak Report App."),
     ("Clancy damage reviews", "Sygma", "CC Supabase public.clancy_damages + public.clancy_reports + public.clancy_actions + public.clancy_training_courses + public.damage_review_rules", "cc-sql · the damage-review engine · /m/clancy-* pages", "Clancy damage findings + report content (sectioned) + the partnership action board + the rollout schedule + the wording rules the review engine lints against. RE-AUTHORED 19 Jul 2026: a hand-edit naming all five was reverted by this cron on 19 Jul 04:01 because it was never written here — every table must be named in the SCRIPT, not the table."),
     ("Finance ledger (CC)", "Cross", "CC Supabase public.finance_ledger", "cc-sql", "The CC-side finance ledger table. Entity finance homes remain the Drive folders + Odoo (see the Finance rows)."),
     ("Ads (advertising)", "Cross", "CC Supabase public.ads", "cc-sql / ads-api.py", "Advertising records (Google Ads etc.)."),
@@ -139,6 +143,7 @@ BACKING = {
     "Backlink outreach (bl)": "table:bl.refdomains",
     "Saved report snapshots (reports)": "table:reports.snapshots",
     "Course site plans (trainers)": "drive:Sygma Trainers/Plans",
+    "CD bespoke leak reports (Bespoke Leak Report \u2014 formerly Report Brain)": "table:public.cd_reports",
     "Clancy damage reviews": "table:public.clancy_damages",
     "Finance ledger (CC)": "table:public.finance_ledger",
     "Ads (advertising)": "table:public.ads",
