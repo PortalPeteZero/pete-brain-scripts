@@ -84,6 +84,16 @@ Re-read what you just recorded (a `count(*)` / `SELECT` on the rows you wrote, o
 
 ### Step 4 + 5 — Report and Your call
 
+> [!warning] Re-verify EVERY menu item at the moment you write it — never carry one forward.
+> A menu item is a live claim about the system's state right now. Anything noticed earlier in
+> the session (including in an earlier closeout run, or work you believe you did or didn't do)
+> MUST be re-checked against the live source before it goes on the menu, and dropped if it no
+> longer holds. Born 19 Jul 2026: closeout told Pete the clamp business case "still says strike
+> four times — my miss", carried over from a note made hours earlier. It had in fact been fixed
+> the previous evening at Pete's instruction. An unverified menu item wastes Pete's attention
+> and, worse, invents a fault that isn't there — the exact opposite of what this command is for.
+> The same rule kills the inverse error: never report something as done without re-reading it.
+
 Use the output shape at the bottom. One plain-English headline, a "Recorded for you" line
 (what closeout did silently), then a SINGLE numbered menu of judgement calls Pete answers
 in one reply. Distinguish **"I'll do X on your OK"** (closeout executes it) from **"you'll
