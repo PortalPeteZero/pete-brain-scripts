@@ -30,6 +30,12 @@ BASIC = ["employee_ref", "full_name", "preferred_name", "honorific", "job_title"
          "sub_business", "reports_to", "work_email", "work_mobile",
          "employment_status", "worker_type"]
 
+# Derived, not copied. The CC mirror is what the 24/7 bot reads (it cannot reach the Platform), so
+# without this it could only guess at "who are the trainers" from job titles — which silently misses
+# Gareth Phillips and Neal Sadd, both Directors who train. Holding a trainer_id is the real test.
+# (Added 20 Jul 2026.) Leavers are excluded so a departed trainer does not stay flagged.
+DERIVED = {"is_trainer": "(trainer_id IS NOT NULL AND COALESCE(employment_status,'') <> 'Left')"}
+
 def run(ref, sql):
     req = urllib.request.Request(
         f"https://api.supabase.com/v1/projects/{ref}/database/query",
@@ -49,7 +55,8 @@ def esc(v):
 def main():
     dry = "--dry-run" in sys.argv
 
-    hub = run(HUB_REF, f"SELECT {', '.join(BASIC)} FROM hub.staff_directory")
+    _sel = ", ".join(BASIC) + "".join(f", {expr} AS {col}" for col, expr in DERIVED.items())
+    hub = run(HUB_REF, f"SELECT {_sel} FROM hub.staff_directory")
     cc  = run(CC_REF, "SELECT employee_ref, full_name FROM public.staff_directory")
     hub_refs = {str(r["employee_ref"]) for r in hub}
     cc_refs  = {str(r["employee_ref"]) for r in cc}
@@ -67,9 +74,9 @@ def main():
 
     # Upsert every hub row (insert new, refresh existing) in one statement.
     rows_sql = ",\n  ".join(
-        "(" + ", ".join(esc(r.get(c)) for c in BASIC) + ", now(), now())" for r in hub)
-    cols = ", ".join(BASIC) + ", source_updated_at, synced_at"
-    updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in BASIC if c != "employee_ref")
+        "(" + ", ".join(esc(r.get(c)) for c in list(BASIC) + list(DERIVED)) + ", now(), now())" for r in hub)
+    cols = ", ".join(list(BASIC) + list(DERIVED)) + ", source_updated_at, synced_at"
+    updates = ", ".join(f"{c}=EXCLUDED.{c}" for c in list(BASIC) + list(DERIVED) if c != "employee_ref")
     run(CC_REF, f"""
 INSERT INTO public.staff_directory ({cols})
 VALUES
