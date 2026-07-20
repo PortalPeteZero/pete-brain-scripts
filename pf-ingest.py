@@ -116,7 +116,7 @@ def extract_doc(path):
 def backup_drive(path, subfolder):
     try:
         mount = subprocess.check_output("ls -d ~/Library/CloudStorage/GoogleDrive*/My\\ Drive 2>/dev/null | head -1", shell=True, text=True).strip()
-        dest = os.path.join(mount, "Passion Fit/source", subfolder)
+        dest = os.path.join(mount, "Passion Fit/Passion Fit Concepts/New Material (inbox)", subfolder)
         os.makedirs(dest, exist_ok=True)
         subprocess.run(["cp", path, dest], check=True)
         return os.path.join(subfolder, os.path.basename(path))
