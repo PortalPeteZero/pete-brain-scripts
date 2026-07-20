@@ -173,7 +173,12 @@ def regen_roster(directory_rows):
     NEVER auto-generated, so roster regen can no longer wipe the aliases.
     (Fix for the 2026-06-08 silent-wipe: the old regen emitted only the 5 sheet
     fields and clobbered the in-roster aliases, zeroing trainer attribution.)"""
-    rows = [r for r in directory_rows if (r.get("sub_business") or "").strip() == "Sygma Training"]
+    # WHO IS A TRAINER is answered by holding a trainer record, NOT by which sub-business they sit in.
+    # Filtering on sub_business == "Sygma Training" silently dropped Paul Baxter (Sygma GPR) and
+    # Steve Scales (Sygma Solutions), both of whom hold a trainer_id — so the roster carried 9 people
+    # instead of 11 and their evaluations could never resolve to a canonical name. (Fixed 20 Jul 2026.)
+    rows = [r for r in directory_rows
+            if r.get("trainer_id") and (r.get("employment_status") or "").strip() != "Left"]
     sidecar = {}
     if os.path.exists(ALIASES_YAML):
         try:
@@ -189,6 +194,10 @@ def regen_roster(directory_rows):
             "full_name": t.get("full_name", ""),
             "preferred_name": t.get("preferred_name", "") or "",
             "google_calendar_id": t.get("google_calendar_id", "") or "",
+            # The calendar address. PROVEN 20 Jul 2026: all 11 trainer diaries read successfully via
+            # work_email. Prefer this over google_calendar_id, which is blank for trainers (Kevin
+            # Morley, Steve Mellor) whose diaries read fine — a blank there means nothing.
+            "work_email": t.get("work_email", "") or "",
             "employment_status": t.get("employment_status", "") or "",
         }
         a = talias.get(canonical) or talias.get(t.get("full_name", "")) or {}
@@ -206,6 +215,46 @@ def regen_roster(directory_rows):
               "# aliases from sygma-trainer-aliases.yaml — edit THAT file (CC secrets table), not this one.\n")
     os.makedirs(os.path.dirname(ROSTER_YAML), exist_ok=True)
     text = header + yaml.safe_dump(roster, sort_keys=False, allow_unicode=True, default_flow_style=False)
+
+    # ---- SAFETY GATE (added 20 Jul 2026) -------------------------------------------------------
+    # This roster is PUBLISHED to the CC secrets store and to the Railway env var the Monday 06:34
+    # evaluation sync reads. A bad regen therefore reaches a live consumer unattended. Two rules:
+    #   1. Never silently lose a trainer. A shrink is either a real leaver (rare, and worth a human
+    #      look) or a bug in the filter/source — both cases deserve a stop, not a quiet publish.
+    #   2. Keep the previous roster, so a bad regen can be put back without re-deriving it.
+    # Override for a genuine leaver with ROSTER_ALLOW_SHRINK=1.
+    prev_names = set()
+    if os.path.exists(ROSTER_YAML):
+        try:
+            prev = yaml.safe_load(open(ROSTER_YAML).read()) or {}
+            prev_names = {t.get("canonical") for t in (prev.get("trainers") or []) if t.get("canonical")}
+            bak = ROSTER_YAML + ".prev"
+            with open(bak, "w") as f:
+                f.write(open(ROSTER_YAML).read())
+            print(f"  roster: previous copy kept at {bak}")
+        except Exception as e:
+            print(f"  WARN: could not read/snapshot previous roster ({e})")
+    new_names = {t["canonical"] for t in trainers if t.get("canonical")}
+    lost = prev_names - new_names
+    if lost and os.environ.get("ROSTER_ALLOW_SHRINK") != "1":
+        raise SystemExit(
+            f"REFUSING TO PUBLISH: the regenerated roster LOSES {len(lost)} trainer(s): "
+            f"{', '.join(sorted(lost))}.\n"
+            f"  was {len(prev_names)} -> now {len(new_names)}.\n"
+            "  If this is a genuine leaver, re-run with ROSTER_ALLOW_SHRINK=1. Otherwise the source "
+            "or the filter is wrong — do NOT publish a short roster to the live evaluation sync.")
+    if lost:
+        print(f"  roster: shrink ALLOWED by ROSTER_ALLOW_SHRINK — losing {', '.join(sorted(lost))}")
+
+    # Addresses, not just people. A head-count cannot see a trainer with no way to open their diary.
+    # The calendar address is the WORK EMAIL (proven 20 Jul: all 11 diaries read via work_email).
+    # Deliberately NOT gated on google_calendar_id — it is empty for trainers whose diaries read fine.
+    no_addr = [t["canonical"] for t in trainers if not (t.get("work_email") or "").strip()]
+    if no_addr:
+        print(f"  WARN: {len(no_addr)} trainer(s) have NO work_email, so their diary cannot be swept: "
+              f"{', '.join(sorted(no_addr))}")
+    # ---------------------------------------------------------------------------------------------
+
     with open(ROSTER_YAML, "w") as f:
         f.write(text)
     return len(trainers), text
