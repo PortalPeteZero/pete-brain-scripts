@@ -67,16 +67,88 @@ def _embed():
         pass
 
 
+# --- identity-value gate (2026-07-20) ---------------------------------------------------------
+# Why: identity/banking values (VAT, company numbers, sort codes, account numbers, IBANs, NIF/CIF)
+# are MASTERED in public.entities + public.bank_accounts (/m/entities). A note carrying its own copy
+# is a stale mirror waiting to happen — on 20 Jul 2026 a note's "TBD" VAT sat next to a DB that had
+# the value, and the note got "fixed" instead of pointed. This gate makes the wrong-place save fail
+# at the point of action: saving a note whose body contains a value the DB masters is refused with
+# the right home named. Override: `<!-- identity-values-ok -->` in the note (letterhead/copy-paste
+# layer, e.g. business-identities.md) or --allow-identity-values on the CLI.
+
+IDENTITY_OK_MARKER = "<!-- identity-values-ok -->"
+
+
+def _mastered_values():
+    """Pull the currently-mastered identity/banking values LIVE from the CC (never a hardcoded list —
+    new values are guarded automatically). Returns {value: 'where it lives'}. Fail-open on errors:
+    a broken lookup must not block ordinary note saves."""
+    vals = {}
+    try:
+        import json as _json, urllib.request as _rq
+        cki = _cki_mod()
+
+        def _get(query):
+            req = _rq.Request(f"{cki.URL}/rest/v1/{query}",
+                              headers={"apikey": cki.SR, "Authorization": f"Bearer {cki.SR}"})
+            with _rq.urlopen(req, timeout=15) as resp:
+                return _json.load(resp)
+
+        rows = _get("entities?select=slug,company_number,vat_number,registry_number")
+        for r in rows:
+            for k in ("company_number", "vat_number"):
+                if r.get(k):
+                    vals[r[k]] = f"entities.{k} ({r['slug']}) — /m/entities"
+            reg = r.get("registry_number") or ""
+            for tok in reg.replace("(", " ").replace(")", " ").split():
+                if len(tok) >= 8 and any(c.isdigit() for c in tok):
+                    vals[tok] = f"entities.registry_number ({r['slug']}) — /m/entities"
+        rows = _get("bank_accounts?select=label,sort_code,account_number,iban")
+        for r in rows:
+            for k in ("sort_code", "account_number", "iban"):
+                if r.get(k):
+                    vals[r[k]] = f"bank_accounts.{k} ({r['label']})"
+    except Exception:
+        return {}
+    return vals
+
+
+def identity_gate(path):
+    """Return a list of (value, home) hits for values the DB masters, or [] if clean/overridden."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            body = fh.read()
+    except OSError:
+        return []
+    if IDENTITY_OK_MARKER in body:
+        return []
+    return [(v, home) for v, home in _mastered_values().items() if v in body]
+
+
 def main(argv):
     do_embed = "--embed" in argv
+    allow_identity = "--allow-identity-values" in argv
     files = [a for a in argv if not a.startswith("--")]
     if not files:
-        print("usage: cc-save.py <file.md> [<file2.md> ...] [--embed]", file=sys.stderr)
+        print("usage: cc-save.py <file.md> [<file2.md> ...] [--embed] [--allow-identity-values]",
+              file=sys.stderr)
         return 2
     rc = 0
     for f in files:
         if not os.path.isfile(f):
             print(f"cc-save: not a file: {f}", file=sys.stderr); rc = 1; continue
+        if not allow_identity:
+            hits = identity_gate(f)
+            if hits:
+                print(f"cc-save REFUSED for {f}: the body carries identity/banking values that are "
+                      f"MASTERED in the CC — save the fact there and leave a pointer in the note:",
+                      file=sys.stderr)
+                for v, home in hits:
+                    print(f"  {v}  →  {home}", file=sys.stderr)
+                print(f"  (letterhead/copy-paste layer? add {IDENTITY_OK_MARKER} to the note, "
+                      f"or pass --allow-identity-values)", file=sys.stderr)
+                rc = 1
+                continue
         try:
             vp = save_file(f)
             print(f"SAVED: {vp}")
