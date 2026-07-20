@@ -6,7 +6,7 @@
 # writes: its own report line to daily_log (cron_name='cc-locator-audit') so the briefing/closeout can read it; NO domain data, ever
 # entity: PA-Command-Centre
 # report: stdout (and the CC locator-audit surface)
-# secrets: SUPABASE_TOKEN
+# secrets: SUPABASE_TOKEN, GOOGLE_SA_JSON
 # schedule: 30 6 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
@@ -157,29 +157,61 @@ def _summarise(items, n=12):
     return ", ".join(items[:n]) + (f" (+{len(items) - n} more)" if len(items) > n else "")
 
 
+_TREE_CACHE = {}
+
+def _repo_tree():
+    """The file list of the LIVE repo (GitHub main HEAD), cached per run. Returns a set of
+    repo-relative paths, or None if it could not be fetched.
+
+    Why not the local filesystem: on Railway the checkout is a BUILD SNAPSHOT, redeployed only
+    when this service's own watch paths change. A helper committed + registered yesterday is in
+    the registry but not in this container, and the 20 Jul 2026 run duly cried
+    'stale-helper-row: doc-command-check.py' about a file that was in the repo all along.
+    The registry is compared against GitHub because GitHub is where helpers actually live."""
+    if "tree" in _TREE_CACHE:
+        return _TREE_CACHE["tree"]
+    pat_rows = q("SELECT value FROM secrets WHERE name = 'github-pat'")
+    tree = None
+    if pat_rows:
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "https://api.github.com/repos/PortalPeteZero/pete-brain-scripts/git/trees/main?recursive=1",
+                headers={"Authorization": f"Bearer {pat_rows[0]['value'].strip()}",
+                         "User-Agent": "cc-locator-audit"})
+            data = json.loads(urllib.request.urlopen(req, timeout=45).read())
+            if not data.get("truncated"):
+                tree = {t["path"] for t in data.get("tree", []) if t.get("type") == "blob"}
+        except Exception as e:
+            sys.stderr.write(f"[cc-locator-audit] GitHub tree fetch failed: {e}\n")
+    _TREE_CACHE["tree"] = tree
+    return tree
+
+
 def _disk(kind):
-    """Files/dirs present in the repo. Returns None on failure — never an empty set, which
-    would read as 'nothing on disk' and wrongly flag every registry row as stale."""
-    try:
-        if kind == "skills":
-            d = os.path.join(VAULT, "skills")
-            return {n for n in os.listdir(d) if os.path.isfile(os.path.join(d, n, "SKILL.md"))}
-        # helpers.name keeps the extension (verified: 'account_store.py'); skills.name does not.
-        # Walk SUB-FOLDERS and include shell scripts: a top-level .py-only scan missed
-        # account/account-log.py and apple-pass-type-id-csr-gen.sh, both genuinely unregistered.
-        # Compared on BASENAME, which is how helpers.name is stored.
-        SKIP = {"skills", ".git", "Library", "__pycache__", "node_modules", ".github"}
-        found = set()
-        for root, dirs, files in os.walk(VAULT):
-            dirs[:] = [d for d in dirs if d not in SKIP and not d.startswith(".")]
-            if root.count(os.sep) - VAULT.count(os.sep) > 1:   # one level deep is enough
-                dirs[:] = []
-            for n in files:
-                if n.endswith((".py", ".sh")):
-                    found.add(n)
-        return found
-    except Exception:
+    """Files/dirs present in the LIVE repo (GitHub main). Returns None on failure — never an
+    empty set, which would read as 'nothing on disk' and wrongly flag every registry row as
+    stale. (Named _disk for history; since 20 Jul 2026 it reads the GitHub tree, because the
+    local checkout on Railway is a stale build snapshot — see _repo_tree.)"""
+    tree = _repo_tree()
+    if tree is None:
         return None
+    if kind == "skills":
+        return {p.split("/")[1] for p in tree
+                if p.startswith("skills/") and p.endswith("/SKILL.md") and p.count("/") == 2}
+    # helpers.name keeps the extension (verified: 'account_store.py'); skills.name does not.
+    # Include SUB-FOLDERS one level deep and shell scripts: a top-level .py-only scan missed
+    # account/account-log.py and apple-pass-type-id-csr-gen.sh, both genuinely unregistered.
+    # Compared on BASENAME, which is how helpers.name is stored.
+    SKIP = ("skills/", "Library/", ".github/")
+    found = set()
+    for p in tree:
+        if p.startswith(SKIP) or p.count("/") > 1:      # one level deep is enough
+            continue
+        n = p.rsplit("/", 1)[-1]
+        if n.endswith((".py", ".sh")):
+            found.add(n)
+    return found
 
 
 def check_rows(gaps, dm_text, dm_rows):
@@ -432,6 +464,15 @@ def check_rows(gaps, dm_text, dm_rows):
     dhomes = q("SELECT domain, backing_ref FROM data_map WHERE backing_ref LIKE 'drive:%'")
     if dhomes is None:
         add("couldnt-check", "drive homes", "drive-home query ERRORED — could not verify the Drive homes", "high")
+    elif not os.path.exists(os.path.join(VAULT, "Library", "processes", "secrets",
+                                         "google-seo-service-account.json")):
+        # 20 Jul 2026: the morning run flagged all 4 homes "deleted" because this credential was
+        # never materialised on the Railway service (GOOGLE_SA_JSON missing from its env) —
+        # drive-api.py crashed on import and the crash text was misread as a Drive 404.
+        # No credential means we CANNOT ASK Drive anything: say so, never probe.
+        add("couldnt-check", "drive homes",
+            "Google service-account key not materialised in this environment — Drive homes NOT verified "
+            "(is GOOGLE_SA_JSON set on the service? redeploy with cc-cron.py)", "high")
     else:
         unresolved, gone = [], []
         for r in dhomes:
@@ -469,7 +510,11 @@ def check_rows(gaps, dm_text, dm_rows):
                     if " id: " in o or o.strip().startswith("id:"):
                         return "ok"
                 blob = ((c.stdout or "") + (c.stderr or "")).lower() if c is not None else ""
-                if "404" in blob or "not found" in blob or "notfound" in blob:
+                # ONLY drive-api.py's own HTTP-error signature counts ("Error 404: <Google body>").
+                # A loose "not found"/"notfound" match was the 20 Jul cry-wolf: a missing key file
+                # makes the helper die with FileNotFoundError, whose name contains "notfound" —
+                # a local crash, not an answer from Drive.
+                if "error 404" in blob:
                     return "gone"          # a POSITIVE absence signal from Drive
                 if _retry:
                     time.sleep(1.5)
