@@ -32,22 +32,16 @@ from collections import Counter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from trainer_resolve import same_trainer
 # Roster (11) for surname-aware trainer disambiguation (two Andys / two Ashcrofts / two Steves).
-TRAINERS = [
-    {"name": "Pete", "email": "pete.ashcroft@sygma-solutions.com"},
-    {"name": "Andrew", "email": "andrew.foster@sygma-solutions.com"},
-    {"name": "Andy", "email": "andy.bartholomew@sygma-solutions.com"},
-    {"name": "Gareth", "email": "gareth.phillips@sygma-solutions.com"},
-    {"name": "Geoff", "email": "geoff.astley@sygma-solutions.com"},
-    {"name": "Jim", "email": "jim.ashcroft@sygma-solutions.com"},
-    # Kevin added 20 Jul 2026 — holds a trainer record on the platform + 9 bookings on the 2026
-    # master sheet, but was absent from every automated list so never appeared in the KPIs.
-    {"name": "Kevin", "email": "kevin.morley@sygma-solutions.com"},
-    {"name": "Mark", "email": "mark.pearce@sygma-solutions.com"},
-    {"name": "Neal", "email": "neal.sadd@sygma-solutions.com"},
-    {"name": "Paul", "email": "paul.baxter@sygma-solutions.com"},
-    {"name": "Steve M", "email": "steve.mellor@sygma-solutions.com"},
-    {"name": "Steve S", "email": "steve.scales@sygma-solutions.com"},
-]
+# From the Platform, not typed here (20 Jul 2026). Pete is deliberately EXCLUDED: he holds no
+# trainer record and his rare deliveries should not land in the training KPIs. He remains in the
+# weekly audit's calendar sweep, which is a different job — see training-audit.py.
+def _load_trainers():
+    import sys as _s, os as _o
+    _s.path.insert(0, _o.environ.get("VAULT", "/tmp/pbs"))
+    import sygma_trainers as _st
+    return [{"name": t["short"], "email": t["email"]} for t in _st.all_trainers()]
+
+TRAINERS = _load_trainers()
 
 # -----------------------------------------------------------------------------
 # Constants

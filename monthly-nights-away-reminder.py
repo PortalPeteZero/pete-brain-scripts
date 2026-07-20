@@ -28,6 +28,11 @@ PETE = "pete.ashcroft@sygma-solutions.com"
 LIVE = os.environ.get("NIGHTS_PREVIEW") != "1"       # live by default; NIGHTS_PREVIEW=1 → route all to Pete
 FORCE = os.environ.get("NIGHTS_FORCE") == "1"        # bypass the last-Friday guard (verification)
 
+# DELIBERATELY still a typed list (20 Jul 2026). The audit and KPI scripts now read the trainer list
+# from the Platform, but this one EMAILS TRAINERS DIRECTLY and is live by default. Applying the
+# "read the 11" rule here would silently start emailing five more people, two of them external
+# subcontractors, with nobody having decided that. Who receives this is Pete's call, not a rule's.
+# Pete confirmed 20 Jul he should NOT be on it himself.
 TRAINERS = [
     ("Andy", "andy.bartholomew@sygma-solutions.com"),
     ("Andrew", "andrew.foster@sygma-solutions.com"),

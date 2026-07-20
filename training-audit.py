@@ -86,23 +86,23 @@ SHARED_DRIVE_ID = "0APzpyHHfvUyIUk9PVA"  # Sygma Hub (was Office before 2026-04-
 # Audit-relevant trainers (everyone who delivers). Pete subscribes to all of
 # their calendars from his own account, so we authenticate as Pete and query
 # each calendar by its email-id. Marty excluded -- not a trainer.
-TRAINERS = [
-    {"name": "Pete",     "email": "pete.ashcroft@sygma-solutions.com"},
-    {"name": "Andrew",   "email": "andrew.foster@sygma-solutions.com"},
-    {"name": "Andy",     "email": "andy.bartholomew@sygma-solutions.com"},
-    {"name": "Gareth",   "email": "gareth.phillips@sygma-solutions.com"},
-    {"name": "Geoff",    "email": "geoff.astley@sygma-solutions.com"},
-    {"name": "Jim",      "email": "jim.ashcroft@sygma-solutions.com"},
-    # Kevin added 20 Jul 2026 — he holds a trainer record on the platform and has 9 bookings on the
-    # 2026 master sheet, but was missing from every automated trainer list, so his diary was never
-    # audited. The real fix is to read the list from the platform instead of typing it here.
-    {"name": "Kevin",    "email": "kevin.morley@sygma-solutions.com"},
-    {"name": "Mark",     "email": "mark.pearce@sygma-solutions.com"},
-    {"name": "Neal",     "email": "neal.sadd@sygma-solutions.com"},
-    {"name": "Paul",     "email": "paul.baxter@sygma-solutions.com"},
-    {"name": "Steve M",  "email": "steve.mellor@sygma-solutions.com"},
-    {"name": "Steve S",  "email": "steve.scales@sygma-solutions.com"},
-]
+# WHO IS A TRAINER comes from the Platform (sygma_trainers.all_trainers), not from a list typed
+# here. Every typed copy had drifted: Kevin Morley held a trainer record and 9 master-sheet bookings
+# yet appeared in none of them, so his diary was never audited. (20 Jul 2026.)
+#
+# PETE IS DELIBERATELY INCLUDED even though he holds no trainer record. He delivers very rarely
+# (Clancy, Lincoln, 2-3 Jun 2026) and those deliveries ARE on the master sheet — so sweeping his
+# diary is what stops the audit reporting them as a booking with no diary entry. Do not "tidy" him
+# out by applying the trainer rule blindly. Marty excluded — not a trainer.
+def _load_trainers():
+    import sys as _s, os as _o
+    _s.path.insert(0, _o.environ.get("VAULT", "/tmp/pbs"))
+    import sygma_trainers as _st
+    out = [{"name": t["short"], "email": t["email"]} for t in _st.all_trainers()]
+    out.append({"name": "Pete", "email": "pete.ashcroft@sygma-solutions.com"})
+    return out
+
+TRAINERS = _load_trainers()
 
 MONTHS_ORDER = [
     "January","February","March","April","May","June",
