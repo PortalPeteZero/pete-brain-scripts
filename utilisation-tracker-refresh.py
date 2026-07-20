@@ -57,14 +57,75 @@ TMP_XLSX = os.path.join(_RUN_TMP, "utilisation-report.xlsx")
 TMP_BACKUP = os.path.join(_RUN_TMP, "utilisation-report-PREV.xlsx")
 
 # Trainer roster (5 main only -- different from the audit's 11)
-TRAINERS = [
-    {"name": "Gareth", "email": "gareth.phillips@sygma-solutions.com"},
-    {"name": "Geoff",  "email": "geoff.astley@sygma-solutions.com"},
-    {"name": "Mark",   "email": "mark.pearce@sygma-solutions.com"},
-    {"name": "Andy F", "email": "andrew.foster@sygma-solutions.com"},
-    {"name": "Andy B", "email": "andy.bartholomew@sygma-solutions.com"},
-]
-TRAINER_ROW = {"Gareth": 3, "Geoff": 4, "Mark": 5, "Andy F": 6, "Andy B": 7}
+# WHO IS A CORE TRAINER is answered by the PLATFORM, not by this file (20 Jul 2026).
+# `public.trainers.employment_type = 'full_time'` IS the "5 main trainers" idea, already recorded
+# properly on the Platform — so make someone full-time or part-time there and utilisation follows,
+# with no script edit. The hand-typed list this replaces had drifted: it was missing Kevin Morley,
+# an active full-time trainer, so his diary was never swept and he appeared in no utilisation figure.
+#
+# The sheet rows and the short display names still have to be mapped here, because the live
+# spreadsheet has fixed rows (see TRAINER_ROW). If the Platform returns a full-time trainer this file
+# has no row for, that is a REAL problem - fail loudly rather than silently drop a person.
+# Keyed on EMAIL, deliberately, NOT on name. `public.trainers` and `hub.staff_directory` disagree on
+# Bartholomew's first name ("Andrew" vs "Andy"), and a name-keyed map silently drops whoever is on the
+# wrong side of that. Email is stable across the rename. (Caught by this file's own guard, 20 Jul.)
+_TRAINER_DISPLAY = {   # work email -> the short name used in the spreadsheet + chat
+    "gareth.phillips@sygma-solutions.com":  "Gareth",
+    "geoff.astley@sygma-solutions.com":     "Geoff",
+    "mark.pearce@sygma-solutions.com":      "Mark",
+    "andrew.foster@sygma-solutions.com":    "Andy F",
+    "andy.bartholomew@sygma-solutions.com": "Andy B",
+    "kevin.morley@sygma-solutions.com":     "Kevin",
+}
+
+def _load_core_trainers():
+    """Full-time trainers from the Platform. Falls back to the last-known list ONLY if the Platform
+    is unreachable, and says so loudly - a silent fallback is how the old list drifted unnoticed."""
+    FALLBACK = [{"name": "Gareth", "email": "gareth.phillips@sygma-solutions.com"},
+                {"name": "Geoff",  "email": "geoff.astley@sygma-solutions.com"},
+                {"name": "Mark",   "email": "mark.pearce@sygma-solutions.com"},
+                {"name": "Andy F", "email": "andrew.foster@sygma-solutions.com"},
+                {"name": "Andy B", "email": "andy.bartholomew@sygma-solutions.com"},
+                {"name": "Kevin",  "email": "kevin.morley@sygma-solutions.com"}]
+    try:
+        import json as _j, urllib.request as _u
+        _tok = open(f"{os.environ.get('VAULT','/tmp/pbs')}/Library/processes/secrets/supabase-token").read().strip()
+        _q = ("SELECT t.name, t.email FROM public.trainers t "
+              "WHERE t.employment_type = 'full_time' AND t.is_active AND NOT t.is_system "
+              "ORDER BY t.name")
+        _r = _u.Request("https://api.supabase.com/v1/projects/rsczwfstwkthaybxhszy/database/query",
+                        data=_j.dumps({"query": _q}).encode(), method="POST",
+                        headers={"Authorization": f"Bearer {_tok}", "Content-Type": "application/json",
+                                 "User-Agent": "Mozilla/5.0"})
+        rows = _j.loads(_u.urlopen(_r, timeout=45).read())
+        out, unknown = [], []
+        for r in rows:
+            disp = _TRAINER_DISPLAY.get((r.get("email") or "").strip().lower())
+            if not disp:
+                unknown.append(f'{r["name"]} <{r.get("email")}>'); continue
+            out.append({"name": disp, "email": r["email"]})
+        if unknown:
+            raise SystemExit(
+                "REFUSING TO RUN: the Platform lists full-time trainer(s) this script has no "
+                f"spreadsheet row for: {', '.join(unknown)}.\n"
+                "  Add their EMAIL to _TRAINER_DISPLAY and a row to TRAINER_ROW (the live sheet has spare rows 8-9 "
+                "between the trainers and the Totals row at row 10), then re-run. Do NOT let a real "
+                "trainer be dropped silently - that is the bug this change exists to fix.")
+        if not out:
+            raise ValueError("platform returned no full-time trainers")
+        return out
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"WARNING: could not read full-time trainers from the Platform ({e}). "
+              "Falling back to the last-known list - CHECK THIS, the figures may be wrong.",
+              file=sys.stderr)
+        return FALLBACK
+
+TRAINERS = _load_core_trainers()
+# Fixed rows in the live spreadsheet. Rows 8-9 are spare; Totals is row 10, so Kevin fits at 8
+# without shifting anything (verified against the live file 20 Jul 2026).
+TRAINER_ROW = {"Gareth": 3, "Geoff": 4, "Mark": 5, "Andy F": 6, "Andy B": 7, "Kevin": 8}
 
 UK_HOLIDAY_CAL = "en.uk#holiday@group.v.calendar.google.com"
 
@@ -104,6 +165,8 @@ MASTER_NAME_MAP = {
     "andy f":  "andrew.foster@sygma-solutions.com",
     "andy":    "andy.bartholomew@sygma-solutions.com",
     "andy b":  "andy.bartholomew@sygma-solutions.com",
+    "kevin":   "kevin.morley@sygma-solutions.com",
+    "kev":     "kevin.morley@sygma-solutions.com",
 }
 
 # Master uses month sheet names like "April", "May", ...
@@ -1023,7 +1086,8 @@ def post_chat_summary(refresh_results, drive_url, today, prev_metrics=None):
 
     lines = []
     lines.append(f"*Trainer utilisation refresh -- {today.isoformat()}*")
-    lines.append(f"Refreshed {months_done} months across 5 trainers (Gareth, Geoff, Mark, Andy F, Andy B).")
+    lines.append(f"Refreshed {months_done} months across {len(TRAINERS)} trainers "
+                 f"({', '.join(t['name'] for t in TRAINERS)}).")
     lines.append("")
     if cur:
         tot = cur["totals"]
@@ -1225,7 +1289,8 @@ def main():
         "===BEGIN DAILY NOTE BLOCK===",
         "## Trainer utilisation refresh (Automated)",
         "",
-        "- Refreshed 12 months across 5 trainers (Gareth, Geoff, Mark, Andy F, Andy B).",
+        f"- Refreshed 12 months across {len(TRAINERS)} trainers "
+        f"({', '.join(t['name'] for t in TRAINERS)}).",
         _fmt_line("current", cur_sheet),
         _fmt_line("next", nxt_sheet),
     ]
