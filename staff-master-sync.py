@@ -182,12 +182,27 @@ def regen_roster(directory_rows):
     # instead of 11 and their evaluations could never resolve to a canonical name. (Fixed 20 Jul 2026.)
     rows = [r for r in directory_rows
             if r.get("trainer_id") and (r.get("employment_status") or "").strip() != "Left"]
+    # The sidecar is HAND-CURATED and is the only source of alias spellings. If it is missing we must
+    # NOT carry on: a roster with no aliases publishes straight over the good copy in CC secrets AND
+    # the Railway env var the Monday evaluation sync reads, zeroing trainer attribution. That is
+    # exactly the 2026-06-08 silent wipe. The old code warned and continued; on a Railway container
+    # (where the file only exists if SECRETFILE__sygma-trainer-aliases__yaml is set) that warning
+    # would scroll past at 03:45 and the damage would be done. Verified 20 Jul 2026 by running this
+    # with the file removed: 11 trainers, 0 aliases, published. Now it refuses.
+    if not os.path.exists(ALIASES_YAML):
+        raise SystemExit(
+            f"REFUSING TO REGENERATE: the curated alias sidecar is missing ({ALIASES_YAML}).\n"
+            "  Publishing now would overwrite the live roster with one that has NO aliases and zero\n"
+            "  trainer attribution in the evaluations. On Railway this file comes from the\n"
+            "  SECRETFILE__sygma-trainer-aliases__yaml env var — set it, or run where the file exists.")
     sidecar = {}
-    if os.path.exists(ALIASES_YAML):
-        try:
-            sidecar = yaml.safe_load(open(ALIASES_YAML).read()) or {}
-        except Exception as e:
-            print(f"  WARN: could not read alias sidecar ({e}); roster will have no aliases")
+    try:
+        sidecar = yaml.safe_load(open(ALIASES_YAML).read()) or {}
+    except Exception as e:
+        raise SystemExit(f"REFUSING TO REGENERATE: alias sidecar unreadable ({e}). Same reason as above.")
+    if not (sidecar.get("trainer_aliases") or {}):
+        raise SystemExit("REFUSING TO REGENERATE: the alias sidecar has no trainer_aliases. "
+                         "An empty sidecar and a missing one do the same damage.")
     talias = sidecar.get("trainer_aliases", {}) or {}
     trainers = []
     for t in rows:

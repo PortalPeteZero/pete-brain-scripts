@@ -41,8 +41,35 @@ def _load(mod, path):
     return m
 
 
+def _supabase_token():
+    """Resolve the Supabase token the way the rest of the estate does: env var FIRST, then the
+    materialised file, then the CC secrets table.
+
+    Why the order matters: a Railway cron gets SUPABASE_TOKEN as an env var and does NOT
+    necessarily have the file — railway-bootstrap only writes files for SECRETFILE__* vars. Reading
+    the file first (or only) means the job dies on the container with FileNotFoundError while
+    working perfectly on a laptop. Caught 20 Jul 2026 before any cron ran, not after.
+    """
+    import os as _o
+    t = (_o.environ.get("SUPABASE_TOKEN") or "").strip()
+    if t:
+        return t
+    p = f"{_o.environ.get('VAULT', '/tmp/pbs')}/Library/processes/secrets/supabase-token"
+    if _o.path.exists(p):
+        return open(p).read().strip()
+    # Last resort: the CC secrets table, reachable from any container that has the CC keys.
+    import json as _j, urllib.request as _u
+    kp = f"{_o.environ.get('VAULT', '/tmp/pbs')}/Library/processes/secrets/command-centre-supabase-keys.json"
+    url = _o.environ.get("CC_SUPABASE_URL"); key = _o.environ.get("CC_SUPABASE_SERVICE_KEY")
+    if not (url and key):
+        d = _j.loads(open(kp).read()); url, key = d["url"], d["service_role_key"]
+    r = _u.Request(url.rstrip("/") + "/rest/v1/secrets?select=value&name=eq.supabase-token",
+                   headers={"apikey": key, "Authorization": "Bearer " + key})
+    return _j.loads(_u.urlopen(r, timeout=30).read())[0]["value"].strip()
+
+
 def _portal(sql):
-    tok = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
+    tok = _supabase_token()
     req = urllib.request.Request(
         f"https://api.supabase.com/v1/projects/{PORTAL_REF}/database/query",
         data=json.dumps({"query": sql}).encode(), method="POST",
