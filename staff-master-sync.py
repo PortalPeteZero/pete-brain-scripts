@@ -39,7 +39,10 @@ RETIRED here (the old sheet-to-vault direction — consumers gone with the 24 Ju
 # reads: Portal hub.staff_directory/staff_hr/staff_leave/staff_leave_entitlement/fleet; Hub Staff Master sheet (IDs + 2024/25 leave history)
 # writes: CC reports.snapshots (staff-master-cache); CC secrets (sygma-trainer-roster.yaml); Railway jotform env var; CC daily_log
 # entity: sygma
-# schedule: 30 5 * * *
+# schedule: 45 4 * * *
+# note: 04:45 deliberately. ee-public-dates (05:30) READS the roster this writes, so the generator
+#   must finish first with margin; 05:00 and 05:30 are already busy. Also clears the Monday 06:34
+#   evaluation sync, which consumes the Railway env var this publishes. Do not move it later than 05:15.
 # timezone: Europe/London
 # CRON-META-END
 """
