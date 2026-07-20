@@ -29,6 +29,11 @@ Payload shape (one enquiry):
      "body": "What we sent / what happened ...", # OPTIONAL: if omitted and thread_id is set, te-log auto-pulls
                                                  #   the latest outbound reply off the Gmail thread (--no-gmail disables)
      "outcome": "sent",                          # optional
+     "draft_text": "Hi Jane\n...",               # the reply text as DRAFTED (pre-send). REQUIRED for
+                                                 #   reply/quote kinds — it is the edit-free/edited signal
+                                                 #   ee-signoff blocks on. Lives HERE inside activity;
+                                                 #   a top-level draft_text is silently ignored (20 Jul 2026:
+                                                 #   that exact miss put a quote in sign-off BLOCK state).
      "occurred_at": "2026-06-26T09:00:00Z",      # optional; default now
      "follow_up_at": "2026-07-01"                # optional; sets the CRM follow_up ONLY. Per Pete's D2 decision
                                                  #   (2026-07-09) NO chase task is created unless the --create-chase
