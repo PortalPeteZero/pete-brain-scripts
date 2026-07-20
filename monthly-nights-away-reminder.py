@@ -33,6 +33,7 @@ TRAINERS = [
     ("Andrew", "andrew.foster@sygma-solutions.com"),
     ("Gareth", "gareth.phillips@sygma-solutions.com"),
     ("Geoff", "geoff.astley@sygma-solutions.com"),
+    ("Kevin", "kevin.morley@sygma-solutions.com"),   # added 20 Jul 2026 — real trainer, was missing
     ("Mark", "mark.pearce@sygma-solutions.com"),
     ("Neal", "neal.sadd@sygma-solutions.com"),
 ]

@@ -93,6 +93,10 @@ TRAINERS = [
     {"name": "Gareth",   "email": "gareth.phillips@sygma-solutions.com"},
     {"name": "Geoff",    "email": "geoff.astley@sygma-solutions.com"},
     {"name": "Jim",      "email": "jim.ashcroft@sygma-solutions.com"},
+    # Kevin added 20 Jul 2026 — he holds a trainer record on the platform and has 9 bookings on the
+    # 2026 master sheet, but was missing from every automated trainer list, so his diary was never
+    # audited. The real fix is to read the list from the platform instead of typing it here.
+    {"name": "Kevin",    "email": "kevin.morley@sygma-solutions.com"},
     {"name": "Mark",     "email": "mark.pearce@sygma-solutions.com"},
     {"name": "Neal",     "email": "neal.sadd@sygma-solutions.com"},
     {"name": "Paul",     "email": "paul.baxter@sygma-solutions.com"},

@@ -39,6 +39,9 @@ TRAINERS = [
     {"name": "Gareth", "email": "gareth.phillips@sygma-solutions.com"},
     {"name": "Geoff", "email": "geoff.astley@sygma-solutions.com"},
     {"name": "Jim", "email": "jim.ashcroft@sygma-solutions.com"},
+    # Kevin added 20 Jul 2026 — holds a trainer record on the platform + 9 bookings on the 2026
+    # master sheet, but was absent from every automated list so never appeared in the KPIs.
+    {"name": "Kevin", "email": "kevin.morley@sygma-solutions.com"},
     {"name": "Mark", "email": "mark.pearce@sygma-solutions.com"},
     {"name": "Neal", "email": "neal.sadd@sygma-solutions.com"},
     {"name": "Paul", "email": "paul.baxter@sygma-solutions.com"},
