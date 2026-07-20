@@ -189,9 +189,28 @@ MONTH_SHEET_NAMES = [
 # -----------------------------------------------------------------------------
 # Classification rules (Pete's rules pinned 2026-04-26)
 
+# Assisting or observing on someone ELSE's course is NOT a trained day.
+# Pete, 20 Jul 2026: "no it doesnt, they are observing and its a missed day." So it classifies as
+# admin, which means the day still counts as AVAILABLE and lands in days_lost (days_lost = available
+# - bookings), pulling utilisation down. That is the correct commercial signal: the trainer was free
+# to earn and did not.
+# This ran before only for "assisting with"; "Assist Andy B with Public Course - Peer on Peer" fell
+# through to TRAINING_KEYWORDS and scored as training, so two near-identical entries got opposite
+# answers purely on wording. Both now give the same answer.
 ADMIN_OVERRIDE = re.compile(
-    r"(\bassisting\s+with\b"
+    r"(\bassist(?:s|ed|ing)?\b"                       # assist / assists / assisted / assisting
+    r"|\bpeer\s*(?:on|to)\s*peer\b"                  # "Peer on Peer" shadowing
     r"|\bobserv(?:e|ing)\s+for\s+(?:your|my|own|an?)?\s*(?:assess?or)?\s*qual\b)",
+    re.I,
+)
+
+# Admin chatter that merely MENTIONS a course. "Please speak to Sue about Public Course" is a
+# reminder, not a delivery, but "public course" in the title made it score as a full trained day.
+ADMIN_CHATTER = re.compile(
+    r"(\b(?:please\s+)?(?:speak|talk|chat)\s+(?:to|with)\b"
+    r"|\bpop\s+(?:in|over|down)\s+to\s+see\b"
+    r"|\bring\b\s+\w+\s+\babout\b"
+    r"|\bchase\b\s+\w+\s+\babout\b)",
     re.I,
 )
 
@@ -293,8 +312,14 @@ def classify_event(ev):
     if not summary:
         return "skip"
 
-    # 2. Admin override patterns (existing)
+    # 2. Admin override patterns — assist/observe/peer-on-peer. MUST stay ahead of the
+    #    TRAINING_KEYWORDS test at step 4, or a course name in the title wins and an assist is
+    #    scored as a trained day. That ordering IS the fix.
     if ADMIN_OVERRIDE.search(summary):
+        return "admin"
+
+    # 2a. Admin chatter that merely mentions a course ("Please speak to Sue about Public Course").
+    if ADMIN_CHATTER.search(summary):
         return "admin"
 
     # 2a. Genuinely-not-training shapes (hotels, exhibitions, internal meetings).
@@ -308,11 +333,12 @@ def classify_event(ev):
     if COTRAINER.search(summary):
         return "admin"
 
-    # 2b. Bare "Public Course" with NO further detail = trainer's placeholder
-    # for an anticipated public-enrolment slot (Andy B / Andy F block out future
-    # Mon/Tue pairs). Real public-course bookings carry customer/course detail.
-    if summary.strip().lower() in ("public course", "public courses"):
-        return "admin"
+    # 2b. REMOVED 20 Jul 2026 — this classified a bare "Public Course" as admin, on the stated
+    # belief that it meant a trainer pencilling in a slot. Pete: that is wrong. A public course is an
+    # open course; it will be on the master booking sheet and usually carries several customers.
+    # The rule had also never fired: there is not one bare "Public Course" entry in two years of the
+    # five swept diaries (all 17 are written "Public Course (7 Delegates)" and already scored as
+    # training). Removed because it encoded something untrue, not because it was doing damage.
 
     # 2c. "Possible X" prefix = provisional event (e.g. "Possible WWU Event Cardiff").
     if re.match(r"^possible\b", summary, re.I):
