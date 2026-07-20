@@ -301,6 +301,43 @@ def rebuild_normalised():
     return len(records)
 
 
+
+def _hub_sql(sql):
+    """Run SQL against the Portal (Hub) DB — used only for the durable submission cursor."""
+    import urllib.request as _u
+    tok = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
+    req = _u.Request("https://api.supabase.com/v1/projects/rsczwfstwkthaybxhszy/database/query",
+                     data=json.dumps({"query": sql}).encode(), method="POST",
+                     headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json",
+                              "User-Agent": "Mozilla/5.0"})
+    return json.loads(_u.urlopen(req, timeout=60).read())
+
+
+def _cursor_from_hub():
+    """The last submission timestamp this pipeline saw, stored where it SURVIVES the working space
+    being wiped. Without this the run falls back to a hardcoded date and silently republishes a
+    part-year as the whole dataset — the defect that hid 16,000+ submissions."""
+    try:
+        r = _hub_sql("SELECT data->>'last_submission_ts' AS ts "
+                     "FROM hub.training_evaluations WHERE key='metadata'")
+        return (r[0].get("ts") if r else None) or None
+    except Exception as e:
+        print(f"  (could not read cursor from the Hub: {e})", file=sys.stderr)
+        return None
+
+
+def _cursor_to_hub(ts):
+    """Persist the cursor after a successful fetch, so the next run picks up where this one stopped."""
+    if not ts:
+        return
+    try:
+        _hub_sql("UPDATE hub.training_evaluations "
+                 f"SET data = jsonb_set(data, '{{last_submission_ts}}', '\"{ts}\"'::jsonb), "
+                 "updated_at = now() WHERE key='metadata'")
+        print(f"  cursor stored in the Hub: {ts}")
+    except Exception as e:
+        print(f"  WARN: could not store cursor in the Hub ({e}) — next run may re-fetch", file=sys.stderr)
+
 def rebuild_dashboard_data():
     """Run jotform-training-eval-aggregate.py → dashboard /data/ files.
 
@@ -355,20 +392,19 @@ def main():
                     latest_ts = ts
         except: pass
     if not latest_ts:
-        # NOT a "shouldn't happen" case — on Railway the data dir is an ephemeral temp dir
-        # (see EVAL_DATA_DIR above), so there is never a cursor and this fires EVERY run. The old
-        # silent fallback to 2026-01-01 meant the pipeline re-fetched only the current year and
-        # republished it as the whole dataset: the dashboard showed 1,891 of the form's 18,478
-        # lifetime submissions and nobody could tell, because the number looked plausible.
-        # Say so loudly instead of pretending this is a cursor. (19 Jul 2026)
-        latest_ts = os.environ.get("EVAL_BACKFILL_SINCE", "2026-01-01 00:00:00")
-        print(
-            "WARNING: no local submission cache — there is no incremental cursor for this run.\n"
-            f"         Falling back to {latest_ts}, so ONLY submissions after that date are fetched\n"
-            "         and the rebuilt dataset is NOT the full history. Set EVAL_BACKFILL_SINCE to\n"
-            "         widen the window, or give the pipeline a persistent data dir. See the CC task\n"
-            "         'Training-eval pipeline has lost all pre-2026 history'.",
-            file=sys.stderr)
+        # The working space is wiped between runs on Railway, so there is never a local cursor and
+        # this fires EVERY run. Warning about it was not enough (19 Jul) — the run still republished
+        # a part-year as though it were everything. So REMEMBER THE CURSOR SOMEWHERE THAT SURVIVES:
+        # the Hub table itself, which is the one thing that persists. (20 Jul 2026)
+        latest_ts = _cursor_from_hub()
+        if latest_ts:
+            print(f"  cursor recovered from the Hub: {latest_ts} (no local cache, as expected on Railway)")
+        else:
+            latest_ts = os.environ.get("EVAL_BACKFILL_SINCE", "2026-01-01 00:00:00")
+            print(
+                "WARNING: no local cache AND no cursor stored in the Hub — this run will fetch only\n"
+                f"         from {latest_ts}, so the rebuilt dataset is NOT the full history.\n"
+                "         Set EVAL_BACKFILL_SINCE to widen it.", file=sys.stderr)
     print(f"Last cached submission: {latest_ts}")
 
     new_rows = fetch_since(latest_ts)
@@ -379,6 +415,7 @@ def main():
         print("No changes to push.")
         return
 
+    _cursor_to_hub(max((r.get("created_at") or "") for r in new_rows) or None)
     stats = update_year_files(new_rows)
     print(f"Updated year files: {stats}")
 

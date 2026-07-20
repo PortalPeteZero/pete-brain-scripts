@@ -103,20 +103,58 @@ def build_share():
     return {"months": months} if months else None
 
 
+
+# Fraction of the previous key count below which we refuse to prune. A short run is the normal
+# failure mode here (the working space is wiped between runs), and without this guard a short run
+# would DELETE the months it failed to rebuild — permanently, because the pipeline cannot re-fetch
+# history. Deleting is owned HERE, at the loader, and nowhere else.
+PRUNE_MIN_RATIO = 0.80
+
+
+def prune_orphans(loaded_keys, token):
+    """Remove Hub keys this run did not produce — but only when the run looks complete.
+
+    Why this exists: the loader only ever upserted, so keys whose source file disappeared lived
+    forever. That is why months from 2024/2025 sat on the dashboard long after the pipeline stopped
+    producing them, and why trainer/andy-foster survived an alias change with a null count.
+
+    Why the guard exists: on a truncated run, "delete everything I did not produce" is data loss.
+    """
+    try:
+        existing = {r["key"] for r in run_sql("SELECT key FROM hub.training_evaluations", token)}
+    except Exception as e:
+        print(f"  prune skipped (could not list keys: {e})")
+        return
+    orphans = existing - set(loaded_keys)
+    if not orphans:
+        print("  prune: nothing orphaned")
+        return
+    if len(loaded_keys) < len(existing) * PRUNE_MIN_RATIO:
+        print(f"  PRUNE REFUSED: this run produced {len(loaded_keys)} keys against {len(existing)} "
+              f"already present (< {int(PRUNE_MIN_RATIO*100)}%). That looks like a SHORT RUN, not a "
+              f"cleanup. Refusing to delete {len(orphans)} key(s) — a truncated run must never take "
+              f"the dashboard's history with it. Orphans left in place: "
+              f"{', '.join(sorted(orphans)[:6])}{'...' if len(orphans) > 6 else ''}")
+        return
+    lst = ", ".join(f"'{k}'" for k in sorted(orphans))
+    run_sql(f"DELETE FROM hub.training_evaluations WHERE key IN ({lst})", token)
+    print(f"  pruned {len(orphans)} orphaned key(s): {', '.join(sorted(orphans)[:8])}"
+          f"{'...' if len(orphans) > 8 else ''}")
+
 def main():
     token = sbp_token()
-    loaded = []
+    loaded, loaded_keys = [], set()
     for key, fname in FILE_KEYS:
         f = DATA / fname
         if not f.exists():
             continue
         upsert(key, f.read_text(), token)
-        loaded.append(key)
+        loaded.append(key); loaded_keys.add(key)
 
     share = build_share()
     if share:
         upsert("share", json.dumps(share), token)
-        loaded.append("share")
+        loaded.append("share"); loaded_keys.add("share")
 
     # Per-entity drill-down detail files → keys like "trainer/gareth-phillips".
     detail_count = 0
@@ -126,9 +164,12 @@ def main():
             continue
         for f in sorted(d.glob("*.json")):
             upsert(f"{sub}/{f.stem}", f.read_text(), token)
+            loaded_keys.add(f"{sub}/{f.stem}")
             detail_count += 1
     if detail_count:
         loaded.append(f"{detail_count} detail rows")
+
+    prune_orphans(loaded_keys, token)
 
     if not loaded:
         sys.exit(f"No aggregate files found at {DATA} — run jotform-training-eval-aggregate.py first.")
