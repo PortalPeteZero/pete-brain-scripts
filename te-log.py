@@ -409,6 +409,85 @@ def crm_first(p):
             pass
     return {"family": fam, "open_deal": open_deal}
 
+# ---- terminal-outcome guard (2026-07-21, Pete) --------------------------------------------
+# ee-send gates a REPLY behind a retrieval receipt; nothing gated a terminal OUTCOME. So a contact
+# could be marked Lost/Scrub without anyone ever reading its CRM/Gmail — exactly how a BOOKED contact
+# (Lucy, 21 Jul) or one who wrote asking to book (Darren) would be silently killed. This reads the
+# contact's OWN CRM activity trail + the Gmail thread and BLOCKS a lost/scrub that contradicts the
+# evidence. Override per-problem with payload "outcome_overrides": {"<id>": "why it's right anyway"}.
+_GUARD_BOOK_RE = re.compile(
+    r"(?:has|have)\s+been\s+booked|you'?re\s+(?:all\s+)?booked|you\s+are\s+(?:all\s+)?booked"
+    r"|booking\s+(?:is\s+)?confirmed|i'?ve\s+booked\s+you|i\s+have\s+booked\s+you|got\s+you\s+booked"
+    r"|booked\s+you\s+(?:on|in|onto)|(?:all\s+)?booked\s+(?:for|on)\s+the\b", re.I)
+
+def _guard_msg_text(payload):
+    import base64
+    out = []
+    def walk(p):
+        mt = p.get("mimeType", ""); data = p.get("body", {}).get("data")
+        if mt in ("text/plain", "text/html") and data:
+            try:
+                raw = base64.urlsafe_b64decode(data).decode("utf-8", "replace")
+                if mt == "text/html":
+                    raw = re.sub(r"<[^>]+>", " ", raw)
+                out.append(raw)
+            except Exception:
+                pass
+        for sp in p.get("parts", []) or []:
+            walk(sp)
+    walk(payload)
+    return "\n".join(out)
+
+def terminal_outcome_guard(existing, email, kind, overrides):
+    """BLOCK a lost/scrub that contradicts the contact's CRM+Gmail reality. Returns the list of
+    unresolved (id, message) blockers — empty = clear. Reads CRM (fast/reliable) + Gmail (fail-soft)."""
+    if kind not in ("lost", "scrub") or not existing:
+        return []
+    cid = existing["id"]
+    problems = []
+    booked_seen = False
+    # source 1 — the CRM activity trail (fast, reliable): a booking confirmation present?
+    try:
+        for a in (portal_get("contact_activities", select="body,subject",
+                             contact_id=f"eq.{cid}", order="occurred_at.desc", limit="30") or []):
+            if _GUARD_BOOK_RE.search((a.get("body") or "") + " " + (a.get("subject") or "")):
+                booked_seen = True
+                break
+    except Exception:
+        pass
+    # source 2 — the Gmail thread (fail-soft): booking backup + who holds the ball
+    last_is_ours = None
+    if email and not NO_GMAIL:
+        try:
+            g = _gmail(); newest_ts = -1
+            for t in (g.search_threads(f"to:{email} OR from:{email}", max_results=4) or []):
+                full = g.get_thread(t["id"] if isinstance(t, dict) else t)
+                for msg in full.get("messages", []):
+                    hdrs = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                    is_ours = "@sygma-solutions.com" in hdrs.get("from", "").lower()
+                    if is_ours and _GUARD_BOOK_RE.search(_guard_msg_text(msg.get("payload", {}))):
+                        booked_seen = True
+                    ts = int(msg.get("internalDate", "0") or 0)
+                    if ts > newest_ts:
+                        newest_ts, last_is_ours = ts, is_ours
+        except Exception:
+            pass
+    if booked_seen:
+        problems.append(("booking-present",
+            "a booking confirmation exists in the CRM/Gmail — this looks BOOKED, not lost/scrub. "
+            "Reconcile to won (te-log booked) or override with a reason."))
+    if last_is_ours is False:
+        problems.append(("unanswered-inbound",
+            "the customer's message is the NEWEST on the thread — we owe them a reply. Don't lost/scrub "
+            "an unanswered inbound; reply first, or override with a reason."))
+    unresolved = []
+    for pid, msg in problems:
+        if overrides.get(pid):
+            print(f"   ◦ outcome-guard override [{pid}]: {overrides[pid]}")
+        else:
+            unresolved.append((pid, msg))
+    return unresolved
+
 # ---- the commit point ---------------------------------------------------------------------
 def log_enquiry(p, apply, manifest):
     name = p.get("full_name") or p.get("company_name") or p.get("email") or "(unknown)"
@@ -445,6 +524,14 @@ def log_enquiry(p, apply, manifest):
             f"domain already has an open deal: {od['full_name']} <{od['email']}> at stage "
             f"{stage_name(od.get('stage_id'))} — attach this touch to the deal owner "
             f"(or pass --new-deal if this genuinely is a separate deal). Nothing written.")
+    # TERMINAL-OUTCOME GUARD: never lost/scrub a contact whose CRM/Gmail says booked or unanswered.
+    blockers = terminal_outcome_guard(existing, p.get("email"), kind, p.get("outcome_overrides", {}))
+    if blockers:
+        lines = "\n".join(f"       ✗ [{pid}] {msg}" for pid, msg in blockers)
+        raise ValueError(
+            f"outcome '{kind}' BLOCKED — the contact's CRM/Gmail contradicts it:\n{lines}\n"
+            f"     Fix the outcome, or override in the payload: "
+            f"\"outcome_overrides\": {{\"{blockers[0][0]}\": \"why it's right anyway\"}}. Nothing written.")
     if existing:
         cid = existing["id"]
         print(f"   ↳ MATCH on {by}: contact {cid} ({existing.get('full_name')}) — append activity, no duplicate")
