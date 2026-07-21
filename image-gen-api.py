@@ -81,9 +81,9 @@ def gen_nano(prompt, out, model=None, edit=None, **_):
             b64 = base64.b64encode(f.read()).decode()
         mime = "image/png" if edit.lower().endswith(".png") else "image/jpeg"
         parts.append({"inline_data": {"mime_type": mime, "data": b64}})
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     body = json.dumps({"contents": [{"parts": parts}]}).encode()
-    resp = json.loads(_http(url, body, {"Content-Type": "application/json"}))
+    resp = json.loads(_http(url, body, {"Content-Type": "application/json", "X-goog-api-key": key}))
     paths = []
     for cand in resp.get("candidates", []):
         for part in cand.get("content", {}).get("parts", []):
