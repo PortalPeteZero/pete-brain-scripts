@@ -6,22 +6,24 @@ import os, re, json, subprocess, sys
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-# The canonical taxonomy (must match lib/pf/data.ts CATEGORIES in the command-centre app).
-CONCEPTS = [
-    "effective-goal-setting", "commitment-continuum", "prioritisation", "control-the-controllables",
-    "transactional-state", "direction-support-matrix", "intuition-scale-learning-behaviours",
-    "high-functioning-matrix", "the-development-paradox", "ipsative-assessment", "potential",
-    "ipsative-progression-curve-green-line", "impact-influence-control-legacy",
-    "presence", "safe-space-vs-soft-space", "listening-behaviours", "blame-and-ownership",
-    "communication-hierarchy", "the-behaviours-of-the-accomplished",
-]
+# The canonical concept set is DERIVED LIVE from the pf-framework-map taxonomy (non-influences
+# family members) — the DB-driven source the /m/pf-concepts page renders. Never hard-code it here
+# (a hard-coded 19 went blind when seven-steps-of-performance became the 20th, found 22 Jul 2026).
 
 def q(sql):
-    r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql], capture_output=True, text=True)
-    try:
-        return json.loads(r.stdout)
-    except Exception:
-        return []
+    # Retry once on transient network failure — a dropped connection must FAIL LOUD, never
+    # read as empty data (an SSL flap once made every concept look "missing", 22 Jul 2026).
+    import time
+    for attempt in (1, 2, 3):
+        r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql], capture_output=True, text=True)
+        try:
+            return json.loads(r.stdout)
+        except Exception:
+            if attempt < 3:
+                time.sleep(3 * attempt)
+                continue
+            print(f"SQL ERROR (after retry): {r.stderr.strip()[:200]}", file=sys.stderr)
+            sys.exit(2)
 
 fails = 0
 def check(name, ok, evidence=""):
@@ -37,9 +39,15 @@ row = q("SELECT count(*) total, count(*) FILTER (WHERE embedding IS NOT NULL AND
 check("every PassionFit note is embedded & current", row["total"] == row["emb"], f"{row['emb']}/{row['total']} fresh")
 
 # 2. all 19 concept notes present
+wanted = {r["slug"] for r in q(
+    "SELECT m.value AS slug FROM vault_notes v, "
+    "jsonb_array_elements(v.frontmatter->'taxonomy'->'families') fam, "
+    "jsonb_array_elements_text(fam->'members') m(value) "
+    "WHERE v.slug='pf-framework-map' AND fam->>'key' <> 'influences'")}
 have = {r["slug"] for r in q("SELECT slug FROM vault_notes WHERE type='concept' AND tags && ARRAY['befabulous-portal']")}
-missing = [c for c in CONCEPTS if c not in have]
-check("all 19 concept notes present", not missing, "missing: " + ", ".join(missing) if missing else f"{len(CONCEPTS)} concepts")
+missing, extra = sorted(wanted - have), sorted(have - wanted)
+check(f"concept pages exactly match the taxonomy ({len(wanted)})", not missing and not extra,
+      (("missing: " + ", ".join(missing) + " ") if missing else "") + (("extra: " + ", ".join(extra)) if extra else "") or f"{len(have)} concepts")
 
 # 3. portal support pieces
 need = {"glossary", "images-index", "category-core-accomplishment", "category-coachability", "category-philosophy-foundation"}
@@ -51,7 +59,10 @@ tiny = q("SELECT title FROM vault_notes WHERE tags && ARRAY['passionfit-concepts
 check("no empty / tiny notes", not tiny, f"{len(tiny)} tiny: " + ", ".join(t["title"] for t in tiny[:3]) if tiny else "0")
 
 # 5. no garbage (repeated-char) transcripts: body collapses to <1/4 its length
-garb = q("SELECT title FROM vault_notes WHERE type IN ('video-transcript','seminar') AND length(regexp_replace(body,'(.)\\1{5,}','','g')) < length(body)/4 AND length(body) > 300")
+# regex runs CLIENT-side: the PG backreference regex over transcript bodies blew the 90s
+# statement window under load (22 Jul 2026) — fetch the ~1MB and collapse-test locally.
+garb_rows = q("SELECT title, body FROM vault_notes WHERE tags && ARRAY['passionfit-concepts'] AND type IN ('video-transcript','seminar') AND length(body) > 300")
+garb = [r for r in garb_rows if len(re.sub(r'(.)\1{5,}', '', r["body"])) < len(r["body"]) / 4]
 check("no repeated-char garbage transcripts", not garb, f"{len(garb)}: " + ", ".join(t["title"] for t in garb[:3]) if garb else "clean")
 
 # 6. no duplicate titles
@@ -65,7 +76,7 @@ check("pf-concepts module registered + live", bool(mod) and mod[0].get("enabled"
 
 # 8. concept cross-link coverage (informational — concepts with 0 related)
 lonely = []
-for c in CONCEPTS:
+for c in sorted(wanted):
     n = q(f"SELECT count(*) c FROM vault_notes WHERE tags && ARRAY['{c}'] AND tags && ARRAY['passionfit-concepts'] AND slug <> '{c}'")
     if n and n[0]["c"] == 0:
         lonely.append(c)
