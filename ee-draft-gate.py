@@ -181,10 +181,13 @@ def gate(p, live=True):
             fail("stage-draft-fit", "send the course agenda WITH the qualifying questions (Pete rule, 21 Jul 2026) — link the resolved course's agenda")
         asks = {"headcount": r"how many|numbers|team size|group size",
                 "location": r"where|which site|address|location|postcode",
-                "course_type": r"certif|course|cert|route|steer"}
+                "course_type": r"certif|\bcert\b|route|steer|which course|what course"}
+        # the keyword must sit in a paragraph that actually ASKS (carries a '?') — a mention in
+        # prose (e.g. 'course agenda' in the link line) is not a question (audit fix, 21 Jul 2026)
+        ask_paras = " ".join(q for q in draft.split("\n\n") if "?" in q)
         for key, st in statuses.items():
-            if st in ("missing", "ambiguous") and not re.search(asks[key], draft, re.I):
-                fail("stage-draft-fit", f"{key} is {st} but the draft never asks about it — one clarification round must gather EVERYTHING missing")
+            if st in ("missing", "ambiguous") and not re.search(asks[key], ask_paras, re.I):
+                fail("stage-draft-fit", f"{key} is {st} but no question in the draft asks about it — one clarification round must gather EVERYTHING missing")
     if stage == "ready-to-quote":
         if not agenda_in:
             fail("stage-draft-fit", "a quote goes out with the course agenda link")
@@ -217,8 +220,8 @@ def gate(p, live=True):
         fail("retrieval", "at least 2 worked precedents must be read IN FULL before drafting — name them in retrieval_refs")
     elif live:
         for r in norm_refs:
-            if not r["takeaway"].strip():
-                fail("retrieval", f"retrieval ref {r['slug']!r} has no takeaway — one line on what it settled proves it was read")
+            if len(r["takeaway"].strip()) < 15:
+                fail("retrieval", f"retrieval ref {r['slug']!r} takeaway is empty/trivial — a real line on what it settled proves it was read")
             slug = r["slug"].replace("'", "")
             try:
                 rows = _cc("SELECT 1 FROM vault_notes WHERE slug=%s OR vault_path ILIKE %s LIMIT 1"
@@ -274,7 +277,7 @@ SELFTEST_BASE = {
                        "must_haves": {"location": {"status": "present", "evidence": "at our offices in Cornwall"},
                                       "course_type": {"status": "ambiguous", "evidence": "CAT and Genny training"},
                                       "headcount": {"status": "missing"}}},
-    "retrieval_refs": [{"slug": "a", "takeaway": "x"}, {"slug": "b", "takeaway": "y"}],
+    "retrieval_refs": [{"slug": "a", "takeaway": "validated cert-route listing shape"}, {"slug": "b", "takeaway": "open-course alternative for 1-2 people"}],
 }
 GOOD_DRAFT = ("Hi Bryony,\n\nThanks for getting in touch through our website.\n\n"
               "I've linked the [Genny and CAT course agenda](https://sygma-solutions.com/agendas/hsg47-utility-detection-and-avoidance) here.\n\n"
@@ -312,8 +315,17 @@ def selftest():
     want = (not passed) and any(f["id"] == "retrieval" for f in rep["failures"])
     print(("PASS" if want else "FAIL"), "- no precedents named must block:", [f["id"] for f in rep["failures"]])
     ok_count += want
-    print(f"{ok_count}/4 fixtures behaved")
-    return 0 if ok_count == 4 else 1
+    p = copy.deepcopy(SELFTEST_BASE)
+    p["activity"] = {"kind": "reply", "draft_text": (
+        "Hi Bryony,\n\nThanks for getting in touch.\n\n"
+        "I've linked the [Genny and CAT course agenda](https://sygma-solutions.com/agendas/hsg47-utility-detection-and-avoidance) here.\n\n"
+        "How many are in the team?\n\nSend that over and I'll come back with the full picture.\n\nMany thanks")}
+    passed, rep = gate(p, live=False)
+    want = (not passed) and any(f["id"] == "stage-draft-fit" for f in rep["failures"])
+    print(("PASS" if want else "FAIL"), "- ambiguous course_type never asked about must block:", [f["id"] for f in rep["failures"]])
+    ok_count += want
+    print(f"{ok_count}/5 fixtures behaved")
+    return 0 if ok_count == 5 else 1
 
 def main():
     if "--selftest" in sys.argv:
