@@ -105,7 +105,13 @@ def compute_watch_patterns(script):
     try:
         txt = (HERE / base).read_text(errors="ignore")
         repo_py = {p.name for p in HERE.glob("*.py")}
-        pats |= {f for f in repo_py if f in txt}      # every repo file the script names → watch it
+        # A repo file is a dependency if its FILENAME appears literally (helper run as x.py / a
+        # load_helper("x") / spec_from_file_location) OR its MODULE STEM is imported. The old rule
+        # only did the first, so a plain `import sygma_trainers` (no ".py") was invisible and the
+        # service silently ran stale when the helper changed. (Fixed 21 Jul 2026.)
+        import re as _re
+        imported = set(_re.findall(r"^\s*(?:import|from)\s+([a-zA-Z0-9_]+)", txt, _re.M))
+        pats |= {f for f in repo_py if f in txt or f[:-3] in imported}      # every repo file the script names → watch it
     except OSError:
         pass
     for b in WATCH_BUILD_INPUTS:
