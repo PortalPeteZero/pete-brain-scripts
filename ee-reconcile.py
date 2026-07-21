@@ -43,17 +43,110 @@ def working_days_ago(n):
             steps += 1
     return d
 
+# --- quoted-and-quiet context classifier (2026-07-21) -------------------------
+# Root fix: the quiet check used to read only the last-activity DATE and label every
+# hit "nobody tracking". That framing handed BOOKED customers (booking confirmed only
+# in Gmail, never logged to CRM — e.g. Lucy Whitehouse) and dropped-ball recoveries
+# (we emailed an apology + open offer — e.g. Emma Greeves) to the sweep as neglected
+# leads needing a kill/scrub decision. Now every quiet candidate is CLASSIFIED from
+# the CRM last-activity body + the Gmail thread (both directions) before it is emitted.
+_OURS_DOMAIN = "@sygma-solutions.com"
+# CONFIRMATION grammar only — perfect/passive/possessive ("has been booked", "you're booked",
+# "I've booked you"). Must NOT match OFFER grammar ("happy to get you booked", "get you locked
+# in", "to book") — an offer to book is not a booking (the Emma Greeves false-positive, 21 Jul).
+_BOOK_RE = re.compile(
+    r"(?:has|have)\s+been\s+booked"
+    r"|you'?re\s+(?:all\s+)?booked"
+    r"|you\s+are\s+(?:all\s+)?booked"
+    r"|booking\s+(?:is\s+)?confirmed"
+    r"|i'?ve\s+booked\s+you|i\s+have\s+booked\s+you|got\s+you\s+booked"
+    r"|booked\s+you\s+(?:on|in|onto)"
+    r"|(?:all\s+)?booked\s+(?:for|on)\s+the\b",
+    re.I)
+_DROP_RE = re.compile(r"\b(slipped through|(?:that is|it'?s) on us|apologi|fell through|dropped the ball)\b", re.I)
+
+def _msg_text(payload):
+    import base64, re as _re
+    out = []
+    def walk(p):
+        mt = p.get("mimeType", "")
+        data = p.get("body", {}).get("data")
+        if mt in ("text/plain", "text/html") and data:
+            try:
+                raw = base64.urlsafe_b64decode(data).decode("utf-8", "replace")
+                if mt == "text/html":          # strip tags so Gmail HTML-only bodies are still scanned
+                    raw = _re.sub(r"<[^>]+>", " ", raw)
+                out.append(raw)
+            except Exception:
+                pass
+        for sp in p.get("parts", []) or []:
+            walk(sp)
+    walk(payload)
+    return "\n".join(out)
+
+def _classify_quiet(g, tl, fam_ids, email, last_date):
+    """Classify a quiet Quoted contact from BOTH sources — the CRM activity bodies (clean
+    captured text) AND the Gmail thread (both directions; Gmail may carry HTML-only content
+    the CRM never captured, e.g. an ad-hoc booking confirmation). NEVER labels a booked or
+    handled contact 'nobody tracking'."""
+    booked = dropped = False
+    last_dir = None            # 'us' | 'them' — who sent the newest message on the thread
+    # source 1: CRM activity bodies (every CRM activity is ours-side — Engine or staff)
+    try:
+        for fid in fam_ids:
+            for a in (tl.portal_get("contact_activities", select="body,subject",
+                                    contact_id=f"eq.{fid}", order="occurred_at.desc", limit="20") or []):
+                txt = (a.get("body") or "") + " " + (a.get("subject") or "")
+                if _BOOK_RE.search(txt): booked = True
+                if _DROP_RE.search(txt): dropped = True
+    except Exception:
+        pass
+    # source 2: the Gmail thread — booking/drop backup + who holds the ball
+    if g and email:
+        try:
+            newest_ts = -1
+            for t in (g.search_threads(f"to:{email} OR from:{email}", max_results=4) or []):
+                full = g.get_thread(t["id"] if isinstance(t, dict) else t)
+                for msg in full.get("messages", []):
+                    hdrs = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                    is_ours = _OURS_DOMAIN in hdrs.get("from", "").lower()
+                    if is_ours:
+                        body = _msg_text(msg.get("payload", {}))
+                        if _BOOK_RE.search(body): booked = True
+                        if _DROP_RE.search(body): dropped = True
+                    ts = int(msg.get("internalDate", "0") or 0)
+                    if ts > newest_ts:
+                        newest_ts, last_dir = ts, ("us" if is_ours else "them")
+        except Exception:
+            if not (booked or dropped):
+                return f"quiet since {str(last_date)[:10]} — GMAIL READ FAILED, verify context by hand"
+    if booked:
+        return "BOOKED-NOT-LOGGED — Gmail shows a booking confirmation; stage still Quoted. Reconcile to won, do NOT chase/scrub"
+    if dropped:
+        return "WE-DROPPED-IT — we emailed an apology + open offer; recovery reply owed, do NOT scrub"
+    if last_dir == "them":
+        return "BALL-WITH-US — the customer's message is the newest; we owe a reply"
+    if last_dir == "us":
+        return f"ball with them — we replied last, genuinely quiet since {str(last_date)[:10]}"
+    return f"quiet since {str(last_date)[:10]} — no Gmail thread found, verify context"
+
 def main():
     dry = "--dry" in sys.argv
     drift = []
     cutoff = working_days_ago(N_DAYS).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # Gmail tray (fail-soft: Gmail down ≠ no report)
-    tray_senders = {}
+    # Gmail (fail-soft: Gmail down ≠ no report) — one client, reused by the tray + quiet-context checks
+    g = None
     try:
         gm = _load("gm", f"{VAULT}/gmail-api.py")
         g = gm.GmailAPI()
-        threads = g.search_threads("label:Projects/SY-Training-Enquiries label:Replies", max_results=50) or []
+    except Exception as e:
+        drift.append(f"(Gmail unavailable: {type(e).__name__} — tray + quiet-context checks degraded)")
+
+    # Gmail tray
+    tray_senders = {}
+    try:
+        threads = (g.search_threads("label:Projects/SY-Training-Enquiries label:Replies", max_results=50) or []) if g else []
         for t in threads:
             try:
                 full = g.get_thread(t["id"])
@@ -95,7 +188,8 @@ def main():
                 act_dates.append(str(acts[0]["occurred_at"]))
         last = max(act_dates) if act_dates else str(c.get("updated_at") or "")
         if last and last < cutoff and em not in tray_emails:
-            drift.append(f"quoted-and-quiet: {c['full_name']} <{c.get('email')}> — quoted, whole company silent since {str(last)[:10]}, nobody tracking")
+            verdict = _classify_quiet(g, tl, fam_ids, em, last)
+            drift.append(f"quoted-and-quiet → {verdict}  [{c['full_name']} <{c.get('email')}>]")
 
     # 3. stray/overdue enquiry-engine chases (D2: none should exist)
     chases = tl.cc_sql("SELECT id, name, notes FROM tasks WHERE status='todo' AND source='enquiry-engine'")
