@@ -176,6 +176,14 @@ def lint(body, payload=None):
         if "?" not in last and not re.search(r"\b(reply|confirm|send|let me know|tell me|choose|pick|book)\b", last, re.I):
             fail("no-ask-at-end", "the final paragraph must give the customer a concrete next step or question (read-back gate)")
 
+    # 7b. dates: we OFFER/arrange dates, never ASK the customer for theirs (Pete rule, 22 Jul 2026 — Wheal Jane)
+    if a.get("kind") in ("reply", "quote"):
+        if (re.search(r"(?i)\b(what|which|your preferred|any preferred)\b[^?]{0,25}\bdates?\b", text)
+                or re.search(r"(?i)\bwhen (would|works|suits?|were you|are you)\b", text)
+                or re.search(r"(?i)\bdates? (that )?(would )?suit you\b", text)
+                or re.search(r"(?i)\blet me know (some|your|the|a few) (dates|days)\b", text)):
+            fail("ask-for-dates", "we offer/arrange dates, never ask the customer for theirs — close with a booking CTA (Pete, 22 Jul 2026)")
+
     # 8. doc-driven rules (the regression list — grows with every corrected mistake)
     for r in _doc_rules():
         if r.get("always_fail") or re.search(r.get("pattern", ".^"), text, re.I):

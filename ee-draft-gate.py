@@ -76,6 +76,36 @@ def _lit(s):
 def _norm(s):
     return re.sub(r"\s+", " ", (s or "").lower()).strip()
 
+CAP_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+             8: "eight", 9: "nine", 10: "ten", 12: "twelve", 16: "sixteen"}
+
+_RULES_CACHE = None
+def _doc_rules():
+    """All kind='doc' rules WITH their enforcement columns (scenarios/applies_when/require_pattern/
+    fail_hint). Cached per process; a stubbed _RULES_CACHE makes the selftest deterministic offline."""
+    global _RULES_CACHE
+    if _RULES_CACHE is None:
+        try:
+            _RULES_CACHE = _cc("SELECT name, body, scenarios, applies_when, require_pattern, fail_hint "
+                               "FROM ee_rules WHERE kind='doc' ORDER BY name")
+        except Exception:
+            _RULES_CACHE = []
+    return _RULES_CACHE
+
+def _rules_for(scenario, stage):
+    """Doc-rules whose scenarios apply to this scenario/stage. Untagged or 'all' always apply."""
+    tags = set(t for t in (scenario, stage) if t)
+    out = []
+    for r in _doc_rules():
+        scen = r.get("scenarios") or []
+        if (not scen) or ("all" in scen) or (tags & set(scen)):
+            out.append(r)
+    return out
+
+def _headcount_n(mh):
+    m = re.search(r"\d+", ((mh.get("headcount") or {}).get("evidence") or ""))
+    return int(m.group(0)) if m else None
+
 def gate(p, live=True):
     """Returns (passed: bool, report: dict). report['failures'] = [{id, reason, detail}]."""
     a = p.get("activity", {}) or {}
@@ -123,6 +153,7 @@ def gate(p, live=True):
 
     # 2. facts-match — re-resolve the course from the customer's own words
     course_code = (cls.get("course_code") or "").strip()
+    resolved = None
     if live and course_code:
         try:
             ef = _load("ee-facts.py", "eefacts")
@@ -231,6 +262,42 @@ def gate(p, live=True):
             except Exception as e:
                 info.append(f"retrieval: existence check skipped for {r['slug']!r} ({e})")
 
+    # 8. required-rules — banked rules must be HONOURED in the draft, not merely printed (fail-closed).
+    #    Each rule carries its own require_pattern (the presence signal) + scenarios + applies_when,
+    #    so a new rule becomes enforceable by editing the DB, no code change (the CLAUDE 'change a
+    #    rule in the DB' promise, given teeth). This is the fix for the 22 Jul Wheal Jane run where
+    #    the gate printed onsite_fill_upsell as 'honoured' while enforcing nothing.
+    scenario = cls.get("scenario")
+    cap = cls.get("cap") or (resolved.get("cap") if isinstance(resolved, dict) else None) or 8
+    try:
+        cap = int(cap)
+    except (TypeError, ValueError):
+        cap = 8
+    headn = _headcount_n(mh)
+    is_quote = (stage == "ready-to-quote") or (balance == "quote-with-qualifier")
+
+    def _cond_ok(cond):
+        if not cond:
+            return True
+        if cond == "is_quote":
+            return is_quote
+        if cond == "ready_to_quote":
+            return stage == "ready-to-quote"
+        if cond == "headcount_lt_cap":
+            return bool(is_quote and cap and headn and headn < cap)
+        return True  # unknown condition — don't invent a block
+
+    for r in _rules_for(scenario, stage):
+        pat = r.get("require_pattern")
+        if not pat or not _cond_ok(r.get("applies_when")):
+            continue
+        eff = pat.replace("{cap}", str(cap)).replace("{cap_word}", CAP_WORDS.get(cap, str(cap)))
+        try:
+            if not re.search(eff, draft):
+                fail("rule:" + r["name"], r.get("fail_hint") or ("draft does not honour banked rule " + r["name"]))
+        except re.error:
+            info.append("rule:%s has an invalid require_pattern — skipped" % r["name"])
+
     return (not fails), {"failures": fails, "overridden": notes, "info": info}
 
 def banked_rules():
@@ -289,6 +356,25 @@ BAD_DRAFT = ("Hi Bryony,\n\nIt is £965 + VAT per day, up to 8 delegates.\n\n"
 
 def selftest():
     import copy
+    global _RULES_CACHE
+    # deterministic offline rule set — mirrors the live enforceable ee_rules
+    _RULES_CACHE = [
+        {"name": "onsite_fill_upsell", "body": "sub-cap on-site: invite adding more to make up the numbers",
+         "scenarios": ["private-onsite"], "applies_when": "headcount_lt_cap",
+         "require_pattern": r"(?is)(make (up )?the numbers|add (a few )?more|anybody else|fill the day)",
+         "fail_hint": "add more to make up the numbers"},
+        {"name": "onsite_cap_statement", "body": "state up-to-cap",
+         "scenarios": ["private-onsite"], "applies_when": "is_quote",
+         "require_pattern": r"(?is)up to ({cap_word}|{cap})", "fail_hint": "state up to {cap}"},
+        {"name": "cert_recommendation", "body": "recommend in-house, CITB, accredited only if client insists",
+         "scenarios": ["private-onsite", "open-course"], "applies_when": "is_quote",
+         "require_pattern": r"(?is)(?=.*in.?house)(?=.*(citb|only needed|insist|sufficient))",
+         "fail_hint": "recommend the in-house cert"},
+        {"name": "booking_cta_close", "body": "close with a booking CTA, not a date question",
+         "scenarios": ["private-onsite", "open-course", "ready-to-quote"], "applies_when": "ready_to_quote",
+         "require_pattern": r"(?is)(get (this |it )?booked|book you in|shall i (get|book)|would you like)",
+         "fail_hint": "close with a booking CTA"},
+    ]
     ok_count = 0
     p = copy.deepcopy(SELFTEST_BASE); p["activity"] = {"kind": "reply", "draft_text": GOOD_DRAFT}
     passed, rep = gate(p, live=False)
@@ -324,8 +410,26 @@ def selftest():
     want = (not passed) and any(f["id"] == "stage-draft-fit" for f in rep["failures"])
     print(("PASS" if want else "FAIL"), "- ambiguous course_type never asked about must block:", [f["id"] for f in rep["failures"]])
     ok_count += want
-    print(f"{ok_count}/5 fixtures behaved")
-    return 0 if ok_count == 5 else 1
+    # fixture 6: a sub-cap on-site QUOTE that omits the fill-the-day upsell must BLOCK (the 22 Jul fix)
+    p = copy.deepcopy(SELFTEST_BASE)
+    p["classification"]["stage"] = "ready-to-quote"
+    p["classification"]["cap"] = 8
+    p["classification"]["must_haves"]["course_type"] = {"status": "present", "evidence": "CAT and Genny training"}
+    p["classification"]["must_haves"]["headcount"] = {"status": "present", "evidence": "There are 4 in our team"}
+    p["incoming_text"] = SELFTEST_BASE["incoming_text"] + " There are 4 in our team."
+    p["activity"] = {"kind": "quote", "draft_text": (
+        "Hi Bryony,\n\nThanks for those details.\n\n"
+        "The in-house certificate is the right fit and it is CITB approved, so it is all your team will need.\n\n"
+        "We deliver at your offices. The cost is £965 plus VAT for the day, up to eight people.\n\n"
+        "You can see the [Genny and CAT course agenda](https://sygma-solutions.com/agendas/hsg47-utility-detection-and-avoidance).\n\n"
+        "Shall I get this booked in for you?\n\nMany thanks")}
+    passed, rep = gate(p, live=False)
+    ids = [f["id"] for f in rep["failures"]]
+    want = (not passed) and any(i == "rule:onsite_fill_upsell" for i in ids)
+    print(("PASS" if want else "FAIL"), "- sub-8 on-site quote missing the fill-upsell must block:", ids)
+    ok_count += want
+    print(f"{ok_count}/6 fixtures behaved")
+    return 0 if ok_count == 6 else 1
 
 def main():
     if "--selftest" in sys.argv:
@@ -356,11 +460,16 @@ def main():
     for k in ("location", "course_type", "headcount"):
         d = mh.get(k) or {}
         print("  %-12s %-9s %s" % (k, d.get("status", "?"), ('"%s"' % d.get("evidence")) if d.get("evidence") else ""))
-    rules = banked_rules()
+    rules = _rules_for(cls.get("scenario"), cls.get("stage"))
     if rules:
-        print("\nBanked rules honoured (ee_rules):")
+        print("\nRules for this scenario (%s · %s) — the draft was CHECKED against the enforced ones:"
+              % (cls.get("scenario"), cls.get("stage")))
         for r in rules:
-            print("  ·", r["name"], "—", (r["body"] or "")[:90])
+            tag = "ENFORCED" if r.get("require_pattern") else "advisory"
+            print("  · [%s] %s" % (tag, r["name"]))
+            body = (r.get("body") or "").strip()
+            if body:
+                print("      " + body.replace("\n", "\n      "))
     print("\n--- DRAFT (of record — present THIS to Pete verbatim) ---\n")
     print((p.get("activity") or {}).get("draft_text", ""))
     sys.exit(0)
