@@ -111,11 +111,20 @@ def main():
     print(f"=== ee-send · SENT · {sid} · To {sh.get('to')} · formatted={formatted} ===")
     if not formatted:
         print("  ⚠ note: ee-html didn't produce the clean-template markers — worth a glance at the render. Capture still proceeding.")
-    a["final_text"] = body; p["activity"] = a; json.dump(p, open(inpath, "w"))
+    a["final_text"] = body; p["activity"] = a
+    p["message_id"] = sid or p.get("message_id")   # stable idempotency key for te-log's dedup — re-run safe even if the Gmail auto-pull later fails
+    json.dump(p, open(inpath, "w"))
     print("  → capturing via te-log --apply …")
     r = subprocess.run(["python3", f"{VAULT}/te-log.py", "--in", inpath, "--apply", "--manifest", "/tmp/ee-live-manifest.jsonl"],
                        env={**os.environ, "VAULT": VAULT})
-    sys.exit(r.returncode)
+    if r.returncode != 0:
+        # the send is irreversible and already happened; make the half-recorded state LOUD so stdout
+        # matches the exit code (the 'SENT' line above must never be mistaken for done — 22 Jul 2026)
+        print(f"⛔ ee-send · SENT ({sid}) but CAPTURE FAILED — enquiry HALF-RECORDED (email delivered, record incomplete).")
+        print(f"   Re-run the capture (idempotent, now retry-safe): VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in {inpath} --apply")
+        sys.exit(r.returncode)
+    print(f"=== ee-send · DONE · sent + captured · {sid} ===")
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()

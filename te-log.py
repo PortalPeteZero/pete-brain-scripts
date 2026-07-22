@@ -45,7 +45,7 @@ Payload shape (one enquiry):
   "drive_url": "https://drive..."                # optional; sent collateral
 }
 """
-import os, sys, json, re, time, datetime as dt, urllib.request, urllib.parse, urllib.error, subprocess, hashlib
+import os, sys, json, re, time, datetime as dt, urllib.request, urllib.parse, urllib.error, subprocess, hashlib, ssl, socket
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SECRETS = f"{VAULT}/Library/processes/secrets"
@@ -75,6 +75,25 @@ OWNER_USER_ID = "5ef48fbc-c60a-4079-ab34-ca80da89a502"  # Pete (Portal auth.user
 def now_iso(): return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 def slugify(s): return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")[:60] or "enquiry"
 
+# ---- transient-safe HTTP (retry SSL/URL/timeout/5xx blips — a flaky CRM must not strand a send) ---
+def _http_retry(fn, tries=4, base=0.6):
+    """Run fn(); retry on transient network faults with exponential backoff. 4xx is a real error
+    (raised immediately); 5xx / SSL / URLError / timeout are transient (retried). Added 22 Jul 2026
+    after an SSL drop left a sent enquiry half-captured (0 notes, thread not filed)."""
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code < 500:
+                raise
+        except (urllib.error.URLError, ssl.SSLError, socket.timeout, ConnectionError, TimeoutError) as e:
+            last = e
+        if i < tries - 1:
+            time.sleep(base * (2 ** i))
+    raise last
+
 # ---- Portal CRM (PostgREST, service-role) -------------------------------------------------
 def _preq(method, path, body=None, prefer=None):
     url = f"{PORTAL_URL}/rest/v1/{path}"
@@ -82,9 +101,11 @@ def _preq(method, path, body=None, prefer=None):
     if prefer: h["Prefer"] = prefer
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers=h, method=method)
-    with urllib.request.urlopen(req, timeout=45) as r:
-        txt = r.read().decode()
-        return json.loads(txt) if txt.strip() else []
+    def _do():
+        with urllib.request.urlopen(req, timeout=45) as r:
+            txt = r.read().decode()
+            return json.loads(txt) if txt.strip() else []
+    return _http_retry(_do)
 
 def portal_get(table, **filt):
     qs = "&".join([f"{k}={v}" for k, v in filt.items()])
@@ -101,8 +122,10 @@ def cc_sql(sql):
         f"https://api.supabase.com/v1/projects/{CC_REF}/database/query",
         data=json.dumps({"query": sql}).encode(),
         headers={"Authorization": f"Bearer {SB_TOKEN}", "Content-Type": "application/json", "User-Agent": "curl/8.7.1"})
-    with urllib.request.urlopen(req, timeout=45) as r:
-        return json.loads(r.read().decode())
+    def _do():
+        with urllib.request.urlopen(req, timeout=45) as r:
+            return json.loads(r.read().decode())
+    return _http_retry(_do)
 def lit(s):
     if s is None: return "NULL"
     if isinstance(s, bool): return "true" if s else "false"   # bool BEFORE int (bool is a subclass of int)
