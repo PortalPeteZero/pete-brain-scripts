@@ -18,7 +18,11 @@ import json, time, base64, urllib.request, urllib.parse, urllib.error
 import tempfile, os, subprocess, sys
 from datetime import date, timedelta
 
-KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+KEY = (
+    os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
+    if os.environ.get("VAULT")                       # $VAULT-aware (bootstrap materialises the key)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+)
 IMPERSONATE = "pete.ashcroft@sygma-solutions.com"
 SCOPE = "https://www.googleapis.com/auth/business.manage"
 ACCOUNTS_BASE = "https://mybusinessaccountmanagement.googleapis.com/v1"
