@@ -99,10 +99,22 @@ def resolve_line(item_key, thread_id=None, contact_ref=None):
         keys = []
         if thread_id:   keys.append("thread_id = %s"   % _sql_str(thread_id))
         if contact_ref: keys.append("customer_ref = %s" % _sql_str(contact_ref))
+        # COMPANY-level match (added 23 Jul 2026): a customer rate can be keyed to a whole customer
+        # (e.g. Clancy £850, not one contact), so resolve the enquiring contact's company from the CRM
+        # and match any ee_customer_rates row whose `company` is a substring of it. Makes a per-customer
+        # rate cover every contact at that customer automatically — the whole point of "per customer".
+        if contact_ref:
+            try:
+                c = portal_q("SELECT company_name FROM contacts WHERE id = %s LIMIT 1" % _sql_str(contact_ref))
+                comp = ((c[0].get("company_name") if c else None) or "").strip()
+                if comp:
+                    keys.append("(company IS NOT NULL AND company <> '' AND %s ILIKE ('%%'||company||'%%'))" % _sql_str(comp))
+            except Exception:
+                pass
         if keys:
             ov = cc_q(
                 "SELECT rate FROM ee_customer_rates WHERE item_key=%s AND (%s) "
-                "ORDER BY (thread_id = %s) DESC, updated_at DESC LIMIT 1"
+                "ORDER BY (thread_id = %s) DESC, (customer_ref IS NOT NULL) DESC, updated_at DESC LIMIT 1"
                 % (_sql_str(item_key), " OR ".join(keys), _sql_str(thread_id or "")))
             if ov and ov[0].get("rate") is not None:
                 return float(ov[0]["rate"]), "customer-override"
