@@ -176,13 +176,18 @@ def lint(body, payload=None):
         if "?" not in last and not re.search(r"\b(reply|confirm|send|let me know|tell me|choose|pick|book)\b", last, re.I):
             fail("no-ask-at-end", "the final paragraph must give the customer a concrete next step or question (read-back gate)")
 
-    # 7b. dates: we OFFER/arrange dates, never ASK the customer for theirs (Pete rule, 22 Jul 2026 — Wheal Jane)
+    # 7b. dates: asking a rough window is fine IF Sygma OWNS the confirmation. Refined 22 Jul 2026 from
+    #     the 150-thread read: Pete's approved on-site replies routinely ask "when would you like to run it"
+    #     but ALWAYS pair it with "I'll confirm / sort / come back with dates". The failure is a BARE
+    #     make-the-customer-drive-it ask with no Sygma-owns-the-close commitment (superseded the too-broad
+    #     blanket never-ask lint, which would have blocked Pete's own on-site style).
     if a.get("kind") in ("reply", "quote"):
-        if (re.search(r"(?i)\b(what|which|your preferred|any preferred)\b[^?]{0,25}\bdates?\b", text)
-                or re.search(r"(?i)\bwhen (would|works|suits?|were you|are you)\b", text)
-                or re.search(r"(?i)\bdates? (that )?(would )?suit you\b", text)
-                or re.search(r"(?i)\blet me know (some|your|the|a few) (dates|days)\b", text)):
-            fail("ask-for-dates", "we offer/arrange dates, never ask the customer for theirs — close with a booking CTA (Pete, 22 Jul 2026)")
+        asks_dates = (re.search(r"(?i)\b(what|which)\b[^?]{0,20}\bdates?\b[^?]{0,20}\?", text)
+                      or re.search(r"(?i)\bdates? (that )?(would )?suit you\b", text)
+                      or re.search(r"(?i)\blet me know (some|your|the|a few) (dates|days)\b", text))
+        owns_close = re.search(r"(?i)\b(i|we)('| wi)?ll\b[^.?!]{0,15}\b(confirm|sort|come back|firm up|lock|check|get|line up|send|hold)\b[^.?!]{0,45}(date|availab|booked|seat|place)", text)
+        if asks_dates and not owns_close:
+            fail("ask-for-dates", "you ask the customer for dates without owning the close — pair it with 'I'll confirm/sort the dates' or a booking CTA (150-thread gold, 22 Jul 2026)")
 
     # 8. doc-driven rules (the regression list — grows with every corrected mistake)
     for r in _doc_rules():

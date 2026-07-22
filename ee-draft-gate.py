@@ -285,6 +285,8 @@ def gate(p, live=True):
             return stage == "ready-to-quote"
         if cond == "headcount_lt_cap":
             return bool(is_quote and cap and headn and headn < cap)
+        if cond == "headcount_gt_cap":
+            return bool(is_quote and cap and headn and headn > cap)
         return True  # unknown condition — don't invent a block
 
     for r in _rules_for(scenario, stage):
