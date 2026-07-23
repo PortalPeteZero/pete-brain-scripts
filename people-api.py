@@ -15,7 +15,11 @@ Usage:
 import json, time, base64, urllib.request, urllib.parse, urllib.error
 import tempfile, os, subprocess, sys
 
-KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+KEY = (
+    os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
+    if os.environ.get("VAULT")                       # $VAULT-aware (thin-client boot materialises the key here)
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+)
 IMPERSONATE = "pete.ashcroft@sygma-solutions.com"
 SCOPE = "https://www.googleapis.com/auth/contacts"
 BASE = "https://people.googleapis.com/v1"
