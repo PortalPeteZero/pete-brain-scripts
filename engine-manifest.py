@@ -13,13 +13,17 @@ loader has run in the current session window.
 
 --ack prints: both manifests (triage-manifest + ee-manifest, from vault_notes) and the
 usage-docstring HEAD of every engine tool on disk, then writes the marker the gate checks
-(`/tmp/.engine-contract-ack`, fresh for 6 hours). Reading the pack IS the acknowledgement.
+(`/tmp/.engine-contract-ack-<session_id>`, fresh for 6 hours, per-session). Reading the pack IS the acknowledgement.
 """
 import os, sys, time, glob
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 sys.path.insert(0, VAULT)
-MARKER = "/tmp/.engine-contract-ack"
+# 23 Jul 2026: keyed to the session, matching engine-contract-gate.py. A single global marker
+# meant a parallel session's ack unlocked the gate for a session that had read nothing. These two
+# paths MUST stay identical or the gate can never be unlocked.
+_SID = (os.environ.get("CLAUDE_CODE_SESSION_ID") or "").strip()
+MARKER = f"/tmp/.engine-contract-ack-{_SID}" if _SID else "/tmp/.engine-contract-ack"
 FRESH_SECS = 6 * 3600
 TOOL_GLOBS = ["triage-*.py", "ee-*.py", "te-log.py"]
 

@@ -18,18 +18,26 @@ Scope -- deliberately narrow:
 
 Exit contract (PreToolUse): exit 2 + stderr => BLOCK; exit 0 => allow.
 """
-import sys, json, os, re, time
+import os, sys, json, re, time
 
-MARKER = "/tmp/.engine-contract-ack"
+# 23 Jul 2026: this was a single global file, so a PARALLEL session's --ack opened the gate for a
+# session that had read nothing -- the gate reported a compliance it never checked. Keyed to the
+# session now; engine-manifest.py --ack writes the same path.
+_SID = (os.environ.get("CLAUDE_CODE_SESSION_ID") or "").strip()
+MARKER = f"/tmp/.engine-contract-ack-{_SID}" if _SID else "/tmp/.engine-contract-ack"
 FRESH_SECS = 6 * 3600
 
 # an EXECUTION of an engine tool: a python interpreter token followed (same command) by an
 # engine tool filename. head/cat/grep/ls of the file do not match (no python token).
 _ENGINE_EXEC_RE = re.compile(
     r"python3?\s+(?:[^\n;|&]*?/)?"
-    r"(triage-(?:pull|action-classify|log|lint|routing-test|sync|reconcile|selfaudit|signoff|health|learn|engine-run|validator)"
-    r"|ee-(?:facts|send|signoff|lint|reconcile|selfaudit|health|alias-test|public-dates|backfill|html|index-gen)"
+    r"(triage-(?:pull|action-classify|log|lint|routing-test|sync|reconcile|selfaudit|signoff|health|learn|engine-run|validator|ops-table)"
+    r"|ee-(?:facts|send|signoff|lint|reconcile|selfaudit|health|alias-test|public-dates|backfill|html|index-gen"
+    r"|draft-gate|learn|payload)"
     r"|te-log)\.py\b")
+# 23 Jul 2026: ee-draft-gate, ee-learn and triage-ops-table were absent from this list, so the
+# whole draft-building path -- the part built on 21 Jul after the LAST Wheal Jane failure -- ran
+# unguarded. ee-payload is added on creation rather than after it bites.
 _UNLOCK_RE = re.compile(r"engine-manifest\.py")
 
 

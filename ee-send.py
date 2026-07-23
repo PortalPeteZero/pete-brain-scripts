@@ -39,6 +39,30 @@ def main():
     cc = p.get("cc") or a.get("cc")
     thread_id = p.get("thread_id")
 
+    # --- P4 gate -1: SCHEMA + CAPTURE REHEARSAL, BEFORE THE IRREVERSIBLE SEND (23 Jul 2026) ---
+    #     The Wheal Jane break: gates -> SEND -> capture. The capture failed on a missing
+    #     `full_name`, so the customer had the email and the record was broken. The obvious fix
+    #     ("dry-run te-log first") does NOT work on its own -- te-log's contact insert sits behind
+    #     `if apply:`, so a dry run never reaches the fault and exits 0. So we validate the payload
+    #     against the SHARED schema here, before anything leaves. Same schema te-log enforces, one
+    #     declaration, no drift.
+    if "--no-schema" not in args:
+        try:
+            S = _load("ee_payload_schema", f"{VAULT}/ee_payload_schema.py")
+            ok_s, errs_s = S.validate(p)
+            if not ok_s:
+                print(f"\u26d4 ee-send REFUSING to send: payload fails the shared schema ({len(errs_s)}):")
+                for e in errs_s:
+                    print(f"   \u2717 {e}")
+                print("   NOTHING WAS SENT. Build the payload with ee-payload.py, or fix the fields named above.")
+                print("   (This check exists because on 23 Jul the email went out and the capture then failed.)")
+                sys.exit(2)
+            print("   \u25e6 schema: payload satisfies ee-draft-gate + ee-send + te-log")
+        except SystemExit:
+            raise
+        except Exception as e:
+            print(f"   \u26a0 schema check could not run ({e}) -- proceeding UNVALIDATED")
+
     # --- P3 gate 1: RETRIEVAL RECEIPT — no draft leaves without proof Step-1 retrieval happened ---
     refs = p.get("retrieval_refs") or a.get("retrieval_refs")
     if a.get("kind") in ("reply", "quote", "enquiry") and not refs:

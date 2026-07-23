@@ -778,6 +778,37 @@ def main():
     payload = json.loads(raw)
     items = payload if isinstance(payload, list) else [payload]
     print(f"=== te-log: {len(items)} enquiry touch(es) — {'APPLY (writing live)' if apply else 'DRY RUN (no writes)'} ===")
+
+    # --- SCHEMA CHECK (23 Jul 2026) -- runs on DRY RUN TOO, and that is the whole point. ------
+    # The Wheal Jane break: the payload was missing `full_name` (it said `contact_name`). The
+    # contacts insert is behind `if apply:`, so a dry run never reached the 23502 and exited 0 --
+    # ee-send therefore SENT the email and only then discovered the record could not be written.
+    # A schema check that only ran under --apply would have repeated that exactly, so this one
+    # runs unconditionally, before any consumer touches the object.
+    if "--no-schema" not in args:
+        try:
+            import importlib.util as _ilu
+            _sp = _ilu.spec_from_file_location("ee_payload_schema", os.path.join(VAULT, "ee_payload_schema.py"))
+            _S = _ilu.module_from_spec(_sp); _sp.loader.exec_module(_S)
+            _bad = 0
+            for _i, _it in enumerate(items, 1):
+                _ok, _errs = _S.validate(_it)
+                if not _ok:
+                    _bad += 1
+                    _who = (_it.get("email") or _it.get("full_name") or f"item {_i}")
+                    print(f"   \u26d4 schema: {_who} -- {len(_errs)} problem(s) BEFORE anything is written:")
+                    for _e in _errs:
+                        print(f"      \u2717 {_e}")
+            if _bad:
+                print(f"\n\u26d4 te-log REFUSING {_bad} of {len(items)} touch(es): the payload cannot satisfy its "
+                      f"consumers. Fix the payload (or build it with ee-payload.py, which cannot get these wrong).")
+                print("   Override only with a reason you can defend: --no-schema")
+                sys.exit(2)
+        except SystemExit:
+            raise
+        except Exception as _e:
+            # FAIL-OPEN on a checker bug -- a guard must never brick the engine. Say so loudly.
+            print(f"   \u26a0 schema check could not run ({_e}) -- proceeding UNVALIDATED")
     manifest = open(manpath, "a") if (apply and manpath) else None
     notes = []
     errors = 0
