@@ -113,12 +113,21 @@ def list_locations(account_id):
 
 def get_reviews(location_name):
     # location_name is like "accounts/123/locations/456"
-    resp = api("GET", f"{REVIEWS_BASE}/{location_name}/reviews",
-               params={"pageSize": 20, "orderBy": "updateTime desc"})
-    reviews = resp.get("reviews", [])
-    avg = resp.get("averageRating", "?")
-    total = resp.get("totalReviewCount", "?")
-    print(f"Reviews: {total} total, avg rating: {avg}\n")
+    # Paginate to exhaustion: the endpoint caps a page at 50 and a listing can
+    # hold hundreds, so a single call silently truncates (this was pageSize 20).
+    reviews, token, avg, total = [], None, "?", "?"
+    while True:
+        params = {"pageSize": 50, "orderBy": "updateTime desc"}
+        if token:
+            params["pageToken"] = token
+        resp = api("GET", f"{REVIEWS_BASE}/{location_name}/reviews", params=params)
+        reviews.extend(resp.get("reviews", []))
+        avg = resp.get("averageRating", avg)
+        total = resp.get("totalReviewCount", total)
+        token = resp.get("nextPageToken")
+        if not token:
+            break
+    print(f"Reviews: {total} total, {len(reviews)} fetched, avg rating: {avg}\n")
     for r in reviews:
         rating = "★" * int(r.get("starRating", {}) if isinstance(r.get("starRating"), int) else 3)
         reviewer = r.get("reviewer", {}).get("displayName", "Anonymous")
