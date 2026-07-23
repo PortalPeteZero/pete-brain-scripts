@@ -54,6 +54,65 @@ def _log_usage(endpoint, credits, http_status, caller, property_key, note):
         pass
 
 
+_STEM_RULES = (("sses", "ss"), ("ies", "y"), ("ches", "ch"), ("shes", "sh"), ("xes", "x"),
+               ("ing", ""), ("ed", ""), ("es", ""), ("s", ""))
+
+
+def _stem(w):
+    """Light suffix folding so locator~locators, centre~centres, use~used~using.
+
+    Deliberately conservative -- it exists to stop a plural costing us a whole term,
+    not to be linguistically correct. See terms_vs_content() for why it is needed.
+    """
+    for suf, rep in _STEM_RULES:
+        if suf == "s" and w.endswith("ss"):
+            continue
+        if w.endswith(suf) and len(w) - len(suf) >= 2:
+            w = w[:-len(suf)] + rep
+            break
+    if len(w) >= 3 and w.endswith("e"):
+        w = w[:-1]
+    return w
+
+
+def _tokens(s):
+    import re as _re
+    return [_stem(t) for t in _re.findall(r"[a-z0-9]+", (s or "").lower())]
+
+
+def _count_term(term_toks, text_toks, slack=4):
+    """Occurrences of a Surfer term in the text: BAG-OF-WORDS within a proximity window.
+
+    Surfer terms are NOT literal phrases -- the API hands back NLP-normalised token groups
+    ("cat genny", "genny cat", "genny training cat") with stopwords dropped and order not
+    preserved. Matching them literally is what produced the 23 Jul false reading. So a hit is
+    "all of the term's tokens appear inside a window of len(term)+slack tokens", counted
+    non-overlapping. Overlapping TERMS legitimately both score: one "cat and genny training"
+    on the page credits "cat genny", "cat genny training" AND "genny training course" -- that
+    is how Surfer scores it, and it is the right behaviour (Pete asked exactly this, 23 Jul).
+    """
+    n = len(term_toks)
+    if n == 0:
+        return 0
+    if n == 1:
+        return sum(1 for t in text_toks if t == term_toks[0])
+    need = set(term_toks)
+    win = n + slack
+    hits, i, end = 0, 0, len(text_toks)
+    while i <= end - n:
+        seg = text_toks[i:i + win]
+        if need.issubset(seg):
+            hits += 1
+            i += max(idx for idx, t in enumerate(seg) if t in need) + 1
+        else:
+            i += 1
+    return hits
+
+
+class ParseImplausible(RuntimeError):
+    """The term counts cannot be true -- refuse to let them be reported as a finding."""
+
+
 class SurferError(RuntimeError):
     def __init__(self, code, body):
         self.code = code
@@ -153,24 +212,39 @@ class SurferAPI:
         """The HTML content the editor holds (what was imported from the live URL)."""
         return self.call("GET", f"content_editors/{editor_id}/content").get("content", "")
 
+    ZERO_ALARM = 0.45   # share of terms reading zero that is impossible on a decent page
+    ALARM_SCORE = 60    # ...at or above this content score
+
     def terms_vs_content(self, editor_id):
         """The ONLY sanctioned way to answer 'which target terms is this page short on?'.
 
-        Counts each target term's real occurrences in the editor's own content and compares to
+        Counts each target term's occurrences in the editor's own content and compares to
         target_range. Returns rows: {term, used, min, max, status(under|ok|over), use_in_heading}.
         Exists because the terms endpoint carries targets only -- see editor_terms().
+
+        ⚠ TWO FAULTS THIS METHOD EXISTS TO PREVENT (both found on real Sygma data, 23 Jul 2026):
+        1. Reading the terms endpoint as if it measured usage -- it does not (see editor_terms).
+        2. Matching a term LITERALLY. Surfer terms are NLP-normalised token bags, not phrases:
+           the cat-and-genny page carries "cat and genny" 22 times, yet a literal `\\bcat genny\\b`
+           regex scored the page's PRIMARY term at 0/17 and marked 115 of 185 terms "under".
+           Matching is therefore stemmed + stopword-insensitive + order-free (see _count_term).
+
+        The count is a faithful APPROXIMATION of Surfer's own matcher, not a replica: trust the
+        direction and the big gaps, never an exact figure. To stop fault 2 recurring in any new
+        form, an implausible result (>=45% of terms at zero while the content score is >=60)
+        raises ParseImplausible rather than being returned as a finding.
         """
-        import re
         terms = self.editor_terms(editor_id)
-        text = re.sub(r"<[^>]+>", " ", self.editor_content(editor_id) or "").lower()
+        import re as _re
+        text_toks = _tokens(_re.sub(r"<[^>]+>", " ", self.editor_content(editor_id) or ""))
         out = []
         for t in terms:
             if t.get("ignored"):
                 continue
-            term = (t.get("term") or "").lower()
-            if not term:
+            term = t.get("term") or ""
+            if not term.strip():
                 continue
-            used = len(re.findall(r"\b" + re.escape(term) + r"\b", text))
+            used = _count_term(_tokens(term), text_toks)
             rng = t.get("target_range") or {}
             lo, hi = rng.get("min"), rng.get("max")
             status = "ok"
@@ -178,8 +252,16 @@ class SurferAPI:
                 status = "under"
             elif hi is not None and used > hi:
                 status = "over"
-            out.append({"term": t.get("term"), "used": used, "min": lo, "max": hi,
+            out.append({"term": term, "used": used, "min": lo, "max": hi,
                         "status": status, "use_in_heading": t.get("use_in_heading")})
+        if out:
+            zeros = sum(1 for r in out if r["used"] == 0) / len(out)
+            score = self.content_score(editor_id) or 0
+            if zeros >= self.ZERO_ALARM and score >= self.ALARM_SCORE:
+                raise ParseImplausible(
+                    f"{zeros:.0%} of {len(out)} terms read as ZERO on a page scoring {score}. "
+                    f"That cannot be true -- the matcher is wrong again, not the page. "
+                    f"Fix _count_term/_stem before reporting anything from this editor.")
         return out
 
 
@@ -197,6 +279,18 @@ def _cli():
                 print(f"  {e.get('id')}  {e.get('state'):10} {str(e.get('keywords'))[:40]} {str(e.get('inserted_at'))[:10]}")
         elif a[0] == "credits-used":
             print(f"{api._creates_this_month()} / {api.CREATE_CEILING} creates this calendar month")
+        elif a[0] == "terms":
+            eid = a[1]
+            rows = api.terms_vs_content(eid)
+            print(f"content score {api.content_score(eid)} | {len(rows)} terms | "
+                  f"under {sum(1 for r in rows if r['status']=='under')} "
+                  f"ok {sum(1 for r in rows if r['status']=='ok')} "
+                  f"over {sum(1 for r in rows if r['status']=='over')}")
+            for r in sorted(rows, key=lambda r: (r["min"] or 0) - r["used"], reverse=True):
+                if r["status"] != "under":
+                    continue
+                print(f"  {r['term'][:44]:46} used {r['used']:>3}  target {r['min']}-{r['max']}"
+                      f"{'  [heading]' if r['use_in_heading'] else ''}")
         else:
             print(f"unknown command: {a[0]}\n{__doc__}")
     except (SurferError, BudgetRefused) as e:
