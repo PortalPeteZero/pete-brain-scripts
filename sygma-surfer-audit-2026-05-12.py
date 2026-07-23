@@ -13,7 +13,8 @@ import urllib.request, urllib.error, json, time, datetime, sys, os
 import os
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
-SURFER_KEY = "vfv0b3tbStnuc_Utup9AXCsdI32sNT_8"
+# Secret is pointer-only: read from the materialised store, never hardcoded.
+SURFER_KEY = open(f"{VAULT}/Library/processes/secrets/surfer-token").read().strip()
 H = {"API-KEY": SURFER_KEY, "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
 
 PAGES = [

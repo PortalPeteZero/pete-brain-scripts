@@ -23,7 +23,10 @@ import subprocess
 import sys
 import time
 
-AHREFS_TOKEN = "lGssv7YX4gEWyDhKaBhDLcmLfs14q-yqlZTzsMQa"
+import os
+# Secret is pointer-only: read from the materialised store, never hardcoded.
+_VAULT = os.environ.get("VAULT", "/tmp/pbs")
+AHREFS_TOKEN = open(f"{_VAULT}/Library/processes/secrets/ahrefs-token").read().strip()
 PROJECT_ID = "9613452"
 COUNTRY = "gb"
 BATCH = 50
