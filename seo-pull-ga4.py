@@ -11,6 +11,17 @@ Conversions = the property's key events summed (contact events, all counted once
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/seo-pull-ga4.py [--property <key>] [--days N]
 """
+# CRON-META
+# what: Daily GA4 pull -> public.seo_ga4_daily for every in-scope property (SEO platform free layer)
+# why: Free source; per-day per-channel sessions/conversions so reports read the store, never the API
+# reads: Google Analytics 4 Data API (runReport)
+# writes: CC public.seo_ga4_daily (+ seo_api_usage at 0 cost)
+# entity: personal
+# report:
+# schedule: 40 6 * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
+# NOTE (2026-07-23): deploy-ready but NOT deployed -- awaiting Pete's go (standing rule: flag crons first).
 import os, sys, json, datetime, importlib.util, subprocess
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")

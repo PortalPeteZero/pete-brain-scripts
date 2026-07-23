@@ -12,6 +12,17 @@ Reports read seo_gsc_daily; they never call the GSC API. This turns the 7-day ke
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/seo-pull-gsc.py [--property <key>] [--days N]
 """
+# CRON-META
+# what: Daily GSC pull -> public.seo_gsc_daily for every in-scope property (SEO platform free layer)
+# why: Free source; builds real rank/traffic history so reports read the store, never a paid API
+# reads: Google Search Console (searchAnalytics/query)
+# writes: CC public.seo_gsc_daily (+ seo_api_usage at 0 cost)
+# entity: personal
+# report:
+# schedule: 30 6 * * *
+# timezone: Atlantic/Canary
+# CRON-META-END
+# NOTE (2026-07-23): deploy-ready but NOT deployed -- awaiting Pete's go (standing rule: flag crons first).
 import os, sys, json, datetime, importlib.util, subprocess
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
