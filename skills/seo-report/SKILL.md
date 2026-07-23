@@ -32,6 +32,40 @@ trigger_phrases:
 > `[[surfer-api-configuration]]`. Per-property rules: `seo_property_config` + the property's
 > `seo-targeting-principles`-style note.
 
+## RULE ZERO — fix it NOW, in the tooling, before you carry on
+
+**This skill must be better every time it runs.** The moment a run surfaces a defect or an obvious
+improvement, you FIX IT AT THAT MOMENT — before you continue the analysis and before you report to Pete.
+A retraction in chat is not a fix: the next session repeats it. Pete's standing instruction (23 Jul 2026):
+*"whenever we come across an error or something that can improve, it's fixed at the time it happens."*
+
+**What counts as a trigger** (any one of these, no judgement call needed):
+- a tool returned something you MISREAD, or that is easy to misread (wrong field, missing field, a shape
+  that invites a wrong assumption)
+- you reported something to Pete that turned out to be wrong, or you had to retract or caveat it
+- a call failed, refused, or returned an empty/ambiguous result whose CAUSE was not obvious from the output
+- you needed a fact that was not in the manual, or the manual was stale/wrong
+- you hand-rolled logic that the next session will also have to hand-roll
+- Pete corrects you on anything
+
+**What "fixed" means — all four, same session:**
+1. **Structural, not documentary.** Put it in the CODE where it can't be skipped (`ahrefs-api.py`,
+   `surfer-api.py`, `seo-report.py`) — a helper method, a guard, a loud error. Only if code truly cannot
+   carry it does it go in this SKILL.md or the tool's manual note.
+2. **Name the failure in the fix.** Docstring/comment states what was misread and what the wrong output
+   was, so the trap is visibly closed and cannot be re-entered by someone reasoning the same way.
+3. **Prove it.** Re-run the corrected path and show the real answer before reporting.
+4. **Commit + push it**, and repackage this skill if you edited it. `/tmp/pbs` is re-cloned every session:
+   an uncommitted fix is a fix that never happened.
+
+**Then tell Pete what you fixed**, in one line, alongside the finding. Never silently absorb it.
+
+> Worked example (the fault that created this rule): the Surfer terms endpoint carries TARGET ranges and
+> no usage field. A `t.get("count",0)==0` parse read every term as "missing" and reported "185 terms
+> missing" on a page scoring 72 — impossible, and fabricated. The fix was NOT "remember to check": it was
+> `terms_vs_content()` in `surfer-api.py` (counts real occurrences vs target), a docstring naming the bad
+> parse, the same warning in the Surfer manual, and this step naming the sanctioned call.
+
 ## The five principles (never break these)
 
 1. **GSC is the scoreboard, Ahrefs is the map.** Judge our own rank/traffic on GSC (Google's own data,
