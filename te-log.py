@@ -604,9 +604,34 @@ def log_enquiry(p, apply, manifest):
             arow = {"contact_id": cid, "activity_type": at, "subject": f"[{a.get('kind','note')}] {a.get('subject','')}".strip(),
                     "body": a.get("body"), "outcome": a.get("outcome"), "occurred_at": a.get("occurred_at") or now_iso(),
                     "created_by_name": ENGINE, "follow_up_at": a.get("follow_up_at"),
-                    "follow_up_done": False if a.get("follow_up_at") else None}
-            aid = portal_insert("contact_activities", {k: v for k, v in arow.items() if v is not None})[0]["id"]
-            manifest and manifest.write(json.dumps({"kind": "activity", "id": aid, "contact_id": cid}) + "\n")
+                    "follow_up_done": False if a.get("follow_up_at") else None,
+                    "message_id": msg_id}
+            # IDEMPOTENCY (23 Jul 2026): the touch-level dedupe above keys on enquiry_touches, which is written
+            # LAST — so a run that died AFTER this insert but BEFORE the ledger left no marker, and the "safe"
+            # re-run inserted a SECOND CRM activity. The activity now carries message_id (+ a partial unique
+            # index on contact_id+message_id+activity_type), so a re-run re-uses the existing row.
+            def _existing_activity():
+                if not msg_id:
+                    return None
+                try:
+                    got = portal_get("contact_activities", select="id", contact_id=f"eq.{cid}",
+                                     message_id=f"eq.{urllib.parse.quote(str(msg_id))}",
+                                     activity_type=f"eq.{urllib.parse.quote(at)}", limit="1")
+                    return got[0]["id"] if got else None
+                except Exception:
+                    return None
+            aid = _existing_activity()
+            if aid:
+                print(f"   ↳ activity already logged for message {msg_id} — reusing {aid} (no duplicate)")
+            else:
+                try:
+                    aid = portal_insert("contact_activities", {k: v for k, v in arow.items() if v is not None})[0]["id"]
+                except Exception:
+                    aid = _existing_activity()   # unique backstop fired (concurrent capture) — take the winner
+                    if not aid:
+                        raise
+                    print(f"   ↳ activity race resolved — reusing {aid} (no duplicate)")
+                manifest and manifest.write(json.dumps({"kind": "activity", "id": aid, "contact_id": cid}) + "\n")
     # knowledge note
     rel, slug = write_knowledge(p, cid, apply, aid=(None if BACKFILL else aid))
     # --- 4th write: enquiry_touches (measurement ledger) — §6.3 ---
