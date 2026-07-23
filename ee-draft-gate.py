@@ -287,7 +287,8 @@ def gate(p, live=True):
             return bool(is_quote and cap and headn and headn < cap)
         if cond == "headcount_gt_cap":
             return bool(is_quote and cap and headn and headn > cap)
-        return True  # unknown condition — don't invent a block
+        return False  # unknown / typo'd applies_when -> SKIP the rule (never enforce on an unrecognised
+                      # condition; returning True here silently enforced it unconditionally — bug fix 23 Jul 2026)
 
     for r in _rules_for(scenario, stage):
         pat = r.get("require_pattern")

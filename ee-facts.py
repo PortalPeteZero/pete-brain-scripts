@@ -107,8 +107,14 @@ def resolve_line(item_key, thread_id=None, contact_ref=None):
             try:
                 c = portal_q("SELECT company_name FROM contacts WHERE id = %s LIMIT 1" % _sql_str(contact_ref))
                 comp = ((c[0].get("company_name") if c else None) or "").strip()
-                if comp:
-                    keys.append("(company IS NOT NULL AND company <> '' AND %s ILIKE ('%%'||company||'%%'))" % _sql_str(comp))
+                # match a company-scoped rate only when its `company` is a WHOLE-WORD token (>=4 chars) of the
+                # enquiring contact's company — so a short/generic value ('co','rail','group') can't silently
+                # match many customers and leak a discounted rate (specificity fix 23 Jul 2026).
+                if comp and len(comp) >= 4:
+                    cc = _sql_str(comp)
+                    keys.append("(company IS NOT NULL AND length(company) >= 4 AND ("
+                                "%s ILIKE company OR %s ILIKE company||' %%' OR %s ILIKE '%% '||company OR %s ILIKE '%% '||company||' %%'))"
+                                % (cc, cc, cc, cc))
             except Exception:
                 pass
         if keys:

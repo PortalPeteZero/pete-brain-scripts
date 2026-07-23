@@ -52,6 +52,9 @@ def _allowed_prices():
         try: _s.loader.exec_module(_ef)
         except SystemExit: pass
         pb = _ef.price_book()  # {item_key: {amount,...}} live from CC ee_rates
+        if not pb:
+            return None  # empty price_book = the standard-rate SSOT is unreadable -> no-op the price check,
+                         # never build a truncated allow-list from only the customer specials (bug fix 23 Jul 2026)
         base = {int(round(v["amount"])) for v in pb.values() if v.get("amount") is not None}
         ov = _ef.cc_q("SELECT DISTINCT rate FROM ee_customer_rates")
         base |= {int(round(float(r["rate"]))) for r in ov}
