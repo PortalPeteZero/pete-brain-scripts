@@ -181,6 +181,26 @@ All calls use the Surfer API directly. Audits + editors via API. **Full audit si
 
 **Dual-keyword pages** -- for any page targeting a "X training" / "X course" pair (the standard Sygma course-page shape per `seo-targeting-principles` section 1d, also applies to other paired commercial intents), run **TWO audits** in Step 2a, one per phrase. Reconcile the full signal sets side-by-side -- they often disagree on word-count trim, exact-keyword distribution in H1/title, body density. Surface conflicts explicitly before proposing edits.
 
+
+> [!warning] SURFER API -- CORRECTED 23 Jul 2026. Read before running anything below.
+> Verified live against the Surfer API. The Surfer steps in this skill carry two faults:
+>
+> 1. **Every Surfer call MUST send `User-Agent: Mozilla/5.0`.** Without it Cloudflare rejects the request
+>    with `403 error code: 1010`, which reads exactly like a plan/permission refusal and is NOT Surfer.
+>    The curl examples below omit it -- add it, or they will fail. This one missing header is why Surfer
+>    was believed dead for weeks.
+> 2. **`/v1/audits` is NOT confirmed available on our plan.** Surfer's docs state API access does not
+>    automatically include the Audit tool. Confirmed working for us: **Workspaces and Content Editors**
+>    (v1 and v2). Audit is not confirmed.
+>
+> **Preferred replacement for auditing a live page** -- `POST /api/v1/content_editors` with
+> `import_content_from_url` (the live URL) + `keywords` + `location` + `device`. Costs ONE Content Editor
+> credit and returns content score, the full NLP term set (`/terms`) and SEO guidelines. **Always set
+> `location` and `device` explicitly** -- the API defaults are "United States" and "mobile".
+>
+> Canonical manual (single source of truth): **[[surfer-api-configuration]]**.
+
+
 ### Step 2a. Create Surfer Audit (Competitor Benchmark)
 
 Run a Surfer audit to get competitor content scores for this keyword:

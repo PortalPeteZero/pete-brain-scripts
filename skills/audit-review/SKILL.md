@@ -215,6 +215,26 @@ A Surfer re-audit is due when:
 
 If implementation hasn't happened yet, skip this phase entirely.
 
+
+> [!warning] SURFER API -- CORRECTED 23 Jul 2026. Read before running anything below.
+> Verified live against the Surfer API. The Surfer steps in this skill carry two faults:
+>
+> 1. **Every Surfer call MUST send `User-Agent: Mozilla/5.0`.** Without it Cloudflare rejects the request
+>    with `403 error code: 1010`, which reads exactly like a plan/permission refusal and is NOT Surfer.
+>    The curl examples below omit it -- add it, or they will fail. This one missing header is why Surfer
+>    was believed dead for weeks.
+> 2. **`/v1/audits` is NOT confirmed available on our plan.** Surfer's docs state API access does not
+>    automatically include the Audit tool. Confirmed working for us: **Workspaces and Content Editors**
+>    (v1 and v2). Audit is not confirmed.
+>
+> **Preferred replacement for auditing a live page** -- `POST /api/v1/content_editors` with
+> `import_content_from_url` (the live URL) + `keywords` + `location` + `device`. Costs ONE Content Editor
+> credit and returns content score, the full NLP term set (`/terms`) and SEO guidelines. **Always set
+> `location` and `device` explicitly** -- the API defaults are "United States" and "mobile".
+>
+> Canonical manual (single source of truth): **[[surfer-api-configuration]]**.
+
+
 ### 2b. Run Surfer Audit via API
 
 Create a new audit to get the current competitor benchmark:
