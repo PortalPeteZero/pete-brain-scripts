@@ -131,6 +131,57 @@ class SurferAPI:
                 "import_content_from_url": url, "location": location, "device": device}
         return self.call("POST", "content_editors", body=body, credit=True, note=f"audit {url}")
 
+    def content_score(self, editor_id):
+        """The editor's Content Score (0-100). Editor must be state=completed."""
+        return self.call("GET", f"content_editors/{editor_id}/content_score").get("content_score")
+
+    def editor_terms(self, editor_id):
+        """TARGET terms for the editor. Editor must be state=completed.
+
+        ⚠ READ THIS BEFORE INTERPRETING (mis-parsed 23 Jul 2026 and reported to Pete as a finding):
+        Each row is a TARGET, not a measurement. Shape:
+            {"term", "target_range": {"min", "max"}, "use_in_heading", "is_nlp", "included", "ignored"}
+        There is **NO `count` / usage / frequency field**. A naive `t.get("count", 0) == 0` therefore
+        reads EVERY term as "missing" and invents a finding (it claimed all 185 terms were absent from a
+        page scoring 72 -- impossible). To say anything about what the page actually USES you must fetch
+        the page content (`editor_content`) and count occurrences yourself, then compare to target_range.
+        Use `terms_vs_content()` for that -- do not hand-roll it.
+        """
+        return self.call("GET", f"content_editors/{editor_id}/terms").get("terms", [])
+
+    def editor_content(self, editor_id):
+        """The HTML content the editor holds (what was imported from the live URL)."""
+        return self.call("GET", f"content_editors/{editor_id}/content").get("content", "")
+
+    def terms_vs_content(self, editor_id):
+        """The ONLY sanctioned way to answer 'which target terms is this page short on?'.
+
+        Counts each target term's real occurrences in the editor's own content and compares to
+        target_range. Returns rows: {term, used, min, max, status(under|ok|over), use_in_heading}.
+        Exists because the terms endpoint carries targets only -- see editor_terms().
+        """
+        import re
+        terms = self.editor_terms(editor_id)
+        text = re.sub(r"<[^>]+>", " ", self.editor_content(editor_id) or "").lower()
+        out = []
+        for t in terms:
+            if t.get("ignored"):
+                continue
+            term = (t.get("term") or "").lower()
+            if not term:
+                continue
+            used = len(re.findall(r"\b" + re.escape(term) + r"\b", text))
+            rng = t.get("target_range") or {}
+            lo, hi = rng.get("min"), rng.get("max")
+            status = "ok"
+            if lo is not None and used < lo:
+                status = "under"
+            elif hi is not None and used > hi:
+                status = "over"
+            out.append({"term": t.get("term"), "used": used, "min": lo, "max": hi,
+                        "status": status, "use_in_heading": t.get("use_in_heading")})
+        return out
+
 
 def _cli():
     a = sys.argv[1:]
