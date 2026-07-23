@@ -51,10 +51,10 @@ Surfer's NLP recommendations often lean towards keyword stuffing -- hitting a te
 ```bash
 # Tokens live in the CC secrets table — NEVER inline them. Fetch at runtime:
 AHREFS=$(VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM secrets WHERE name='ahrefs-token'" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['value'])")
-curl -s -H "Authorization: Bearer $AHREFS" "https://api.ahrefs.com/v3/[endpoint]"
+curl -s -H "User-Agent: Mozilla/5.0" -H "Authorization: Bearer $AHREFS" "https://api.ahrefs.com/v3/[endpoint]"
 
 SURFER=$(VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM secrets WHERE name='surfer-token'" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['value'])")
-curl -s -H "API-KEY: $SURFER" "https://app.surferseo.com/api/v1/[endpoint]"
+curl -s -H "API-KEY: $SURFER" -H "User-Agent: Mozilla/5.0" "https://app.surferseo.com/api/v1/[endpoint]"
 ```
 
 **GSC API quick reference** (service account JWT -- see [[google-api-credentials]] for full setup):
@@ -206,7 +206,7 @@ All calls use the Surfer API directly. Audits + editors via API. **Full audit si
 Run a Surfer audit to get competitor content scores for this keyword:
 
 ```bash
-curl -s -X POST -H "API-KEY: [key]" -H "Content-Type: application/json" \
+curl -s -X POST -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" -H "Content-Type: application/json" \
   -d '{"keyword": "[keyword]", "url": "[page URL]", "location": "[country]"}' \
   "https://app.surferseo.com/api/v1/audits"
 ```
@@ -222,7 +222,7 @@ Poll `GET /v1/audits/{id}` until `state` is "completed". This returns:
 Create a content editor for the primary keyword:
 
 ```bash
-curl -s -X POST -H "API-KEY: [key]" -H "Content-Type: application/json" \
+curl -s -X POST -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" -H "Content-Type: application/json" \
   -d '{"keywords": ["[keyword]"], "location": "[country]", "workspace_id": [workspace_id]}' \
   "https://app.surferseo.com/api/v1/content_editors"
 ```
@@ -232,7 +232,7 @@ Poll `GET /v1/content_editors/{id}` until `state` is "active".
 Then fetch the NLP terms:
 
 ```bash
-curl -s -H "API-KEY: [key]" \
+curl -s -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" \
   "https://app.surferseo.com/api/v1/content_editors/{id}/terms"
 ```
 
@@ -243,7 +243,7 @@ This returns 200+ terms with: `term`, `included` (boolean), `is_nlp` (boolean), 
 Fetch the live page content (via WebFetch or curl), then PATCH it into the editor:
 
 ```bash
-curl -s -X PATCH -H "API-KEY: [key]" -H "Content-Type: application/json" \
+curl -s -X PATCH -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" -H "Content-Type: application/json" \
   -d '{"content": "[HTML content]"}' \
   "https://app.surferseo.com/api/v1/content_editors/{id}"
 ```
@@ -251,7 +251,7 @@ curl -s -X PATCH -H "API-KEY: [key]" -H "Content-Type: application/json" \
 Then get the baseline score:
 
 ```bash
-curl -s -H "API-KEY: [key]" \
+curl -s -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" \
   "https://app.surferseo.com/api/v1/content_editors/{id}/content_score"
 ```
 

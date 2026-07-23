@@ -42,10 +42,10 @@ Version history: [[CHANGELOG]].
 ```bash
 # Tokens live in the CC secrets table — NEVER inline them. Fetch at runtime:
 AHREFS=$(VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM secrets WHERE name='ahrefs-token'" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['value'])")
-curl -s -H "Authorization: Bearer $AHREFS" "https://api.ahrefs.com/v3/[endpoint]"
+curl -s -H "User-Agent: Mozilla/5.0" -H "Authorization: Bearer $AHREFS" "https://api.ahrefs.com/v3/[endpoint]"
 
 SURFER=$(VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT value FROM secrets WHERE name='surfer-token'" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['value'])")
-curl -s -H "API-KEY: $SURFER" "https://app.surferseo.com/api/v1/[endpoint]"
+curl -s -H "API-KEY: $SURFER" -H "User-Agent: Mozilla/5.0" "https://app.surferseo.com/api/v1/[endpoint]"
 ```
 
 **GSC API quick reference** (service account JWT -- see [[google-api-credentials]] for full setup):
@@ -240,7 +240,7 @@ If implementation hasn't happened yet, skip this phase entirely.
 Create a new audit to get the current competitor benchmark:
 
 ```bash
-curl -s -X POST -H "API-KEY: [key]" -H "Content-Type: application/json" \
+curl -s -X POST -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" -H "Content-Type: application/json" \
   -d '{"keyword": "[keyword]", "url": "[page URL]", "location": "[country]"}' \
   "https://app.surferseo.com/api/v1/audits"
 ```
@@ -259,7 +259,7 @@ If the plan file has a `surfer-editor-id` from the original gap analysis:
 2. PATCH it into the existing editor:
 
 ```bash
-curl -s -X PATCH -H "API-KEY: [key]" -H "Content-Type: application/json" \
+curl -s -X PATCH -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" -H "Content-Type: application/json" \
   -d '{"content": "[HTML content]"}' \
   "https://app.surferseo.com/api/v1/content_editors/{id}"
 ```
@@ -267,14 +267,14 @@ curl -s -X PATCH -H "API-KEY: [key]" -H "Content-Type: application/json" \
 3. Get the updated content score:
 
 ```bash
-curl -s -H "API-KEY: [key]" \
+curl -s -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" \
   "https://app.surferseo.com/api/v1/content_editors/{id}/content_score"
 ```
 
 4. Pull the NLP terms to check which gaps have closed:
 
 ```bash
-curl -s -H "API-KEY: [key]" \
+curl -s -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" \
   "https://app.surferseo.com/api/v1/content_editors/{id}/terms"
 ```
 
@@ -457,7 +457,7 @@ All calls: `curl -s -H "Authorization: Bearer [token]" "https://api.ahrefs.com/v
 
 ### Surfer
 
-All calls: `curl -s -H "API-KEY: [key]" "https://app.surferseo.com/api/v1/[endpoint]"`
+All calls: `curl -s -H "API-KEY: [key]" -H "User-Agent: Mozilla/5.0" "https://app.surferseo.com/api/v1/[endpoint]"`
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
