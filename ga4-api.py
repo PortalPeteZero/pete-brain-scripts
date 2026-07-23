@@ -48,7 +48,10 @@ KEY_PATH = (
     if os.environ.get("VAULT")                       # $VAULT-aware on Railway (bootstrap materialises the key)
     else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
 )
-SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
+SCOPE = (
+    "https://www.googleapis.com/auth/analytics.readonly "        # Data API (runReport) requires THIS one -- never drop it
+    "https://www.googleapis.com/auth/analytics.edit"             # Admin API writes (property settings: currency, timezone)
+)
 BASE = "https://analyticsdata.googleapis.com/v1beta/properties"
 
 
