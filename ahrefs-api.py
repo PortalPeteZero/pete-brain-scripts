@@ -13,7 +13,7 @@ This helper is the budget GATE. It is the only layer allowed to call the Ahrefs 
 Cost model (docs.ahrefs.com/api/docs/limits-consumption):
   units = max(50, per_row_cost x rows). management/* endpoints are free. Cached requests cost nothing.
 
-Auth:   Bearer token, secret 'ahrefs-token' (pointer-only). Plan: Standard, 400,000 units/reset.
+Auth:   Bearer token, secret 'ahrefs-token' (pointer-only). Plan: Advanced, 1,000,000 units/reset (upgraded 23 Jul 2026; read it live with `units`).
 Config: [[ahrefs-api-configuration]].  Full 105-method reference: ahrefs/ahrefs-api-skills repo.
 
 CLI:
@@ -22,7 +22,7 @@ CLI:
   VAULT=/tmp/pbs python3 /tmp/pbs/ahrefs-api.py dr <target> [date]    # domain rating
   VAULT=/tmp/pbs python3 /tmp/pbs/ahrefs-api.py get <path> k=v k=v    # raw GET, metered+logged
 """
-import os, sys, json, datetime, urllib.request, urllib.parse, subprocess
+import os, sys, json, ssl, time, datetime, urllib.request, urllib.parse, subprocess
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 BASE = "https://api.ahrefs.com/v3/"
@@ -79,21 +79,39 @@ class AhrefsAPI:
         self._remaining = None  # cached process-lifetime; refreshed lazily, decremented locally
 
     # ---- low level -------------------------------------------------------
+    NET_RETRIES = 3   # transient TLS/socket blips -- Ahrefs drops the odd connection
+
     def _raw(self, path, params):
+        """One Ahrefs request, with retries on TRANSIENT network faults only.
+
+        ⚠ A bare urlopen here used to let a one-off `SSLEOFError: UNEXPECTED_EOF_WHILE_READING`
+        escape as a 40-line traceback that looked like a broken helper (23 Jul 2026, mid-analysis
+        for Pete). It is a dropped TLS handshake, not a fault: the identical call succeeded on the
+        next attempt. Transient = URLError/SSLError/timeout -- retried with backoff, then raised as
+        a ONE-LINE AhrefsError. An HTTPError (400/401/403) is a real answer and is NEVER retried.
+        """
         url = BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}",
                                                    "User-Agent": UA, "Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                cost = r.headers.get("x-api-units-cost-total-actual")
-                body = json.loads(r.read().decode())
-                return body, (int(cost) if cost and cost.isdigit() else None), r.status
-        except urllib.error.HTTPError as e:
+        last = None
+        for attempt in range(self.NET_RETRIES):
             try:
-                reason = e.read().decode()[:250]
-            except Exception:
-                reason = ""
-            raise AhrefsError(e.code, reason)
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    cost = r.headers.get("x-api-units-cost-total-actual")
+                    body = json.loads(r.read().decode())
+                    return body, (int(cost) if cost and cost.isdigit() else None), r.status
+            except urllib.error.HTTPError as e:
+                try:
+                    reason = e.read().decode()[:250]
+                except Exception:
+                    reason = ""
+                raise AhrefsError(e.code, reason)
+            except (urllib.error.URLError, ssl.SSLError, TimeoutError, OSError) as e:
+                last = e
+                if attempt < self.NET_RETRIES - 1:
+                    time.sleep(1.5 * (attempt + 1))
+        raise AhrefsError(0, f"network fault after {self.NET_RETRIES} attempts on {path}: "
+                             f"{type(last).__name__}: {last}")
 
     def units_remaining(self, force=False):
         if self._remaining is not None and not force:
