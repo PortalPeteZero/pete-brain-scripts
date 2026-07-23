@@ -4,7 +4,15 @@ Google Analytics 4 (GA4) API helper -- single canonical path for all GA4 work.
 
 Service account: sygma-seo-reader@sygma-seo-tools.iam.gserviceaccount.com
 Auth:            Service account JWT (no DWD -- SA added as Viewer to each GA4 property)
-Scope:           https://www.googleapis.com/auth/analytics.readonly
+Scopes:          analytics.readonly (Data API / runReport -- REQUIRED, never drop it)
+                 analytics.edit     (Admin API writes: property settings, currency, timezone)
+                 Service account = no consent flow, so the requested scope is ours to set.
+                 Widened 2026-07-23; before that every Admin write returned
+                 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT.
+
+Admin API:       https://analyticsadmin.googleapis.com/v1beta (property config; accessBindings is v1alpha)
+                 Read  e.g. GET  /v1beta/properties/{id}
+                 Write e.g. PATCH /v1beta/properties/{id}?updateMask=currencyCode
 
 Known properties:
   354127076   Sygma Solutions (sygma-solutions.com)
