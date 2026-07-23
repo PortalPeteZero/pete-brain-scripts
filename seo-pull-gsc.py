@@ -67,7 +67,10 @@ def main():
     for p in props:
         key, site = p["key"], p["gsc"]
         try:
-            rows = g.query(site, ["date", "query", "page"], date_range=(start, end), limit=5000)
+            # query_all, NOT query(limit=N): a single capped request returns the top rows across
+            # the WHOLE window, starving older dates (23 Jul 2026: a 120-day pull gave May 95 rows
+            # and June 4,744). Any trend built on that compares a month against a scrap.
+            rows = g.query_all(site, ["date", "query", "page"], date_range=(start, end))
         except Exception as e:
             print(f"  {key}: GSC pull FAILED -- {str(e)[:120]}")   # loud, never silent
             continue

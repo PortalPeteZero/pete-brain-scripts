@@ -141,7 +141,7 @@ class GSCAPI:
     # --- search analytics -----------------------------------------------------
 
     def query(self, site, dimensions, date_range=28, limit=25,
-              start_date=None, end_date=None, filters=None):
+              start_date=None, end_date=None, filters=None, start_row=0):
         """
         Run a searchAnalytics query.
         date_range: int (days back) or tuple (start_str, end_str)
@@ -163,8 +163,42 @@ class GSCAPI:
         }
         if filters:
             body["dimensionFilterGroups"] = filters
+        if start_row:
+            body["startRow"] = start_row
         url = f"{BASE_WEBMASTERS}/sites/{self._encode_site(site)}/searchAnalytics/query"
         return self._call("POST", url, body=body).get("rows", [])
+
+    PAGE = 25000        # GSC's own per-request maximum
+    MAX_ROWS = 500000   # safety stop; hitting it is reported, never silent
+
+    def query_all(self, site, dimensions, date_range=28, filters=None,
+                  start_date=None, end_date=None, on_page=None):
+        """EVERY row for the window, paginated via startRow. Use this for any multi-day pull.
+
+        ⚠ WHY THIS EXISTS (found 23 Jul 2026, mid-analysis for Pete): seo-pull-gsc.py asked for
+        `limit=5000` in ONE request over a 120-day window. GSC returns the top N rows by clicks
+        ACROSS THE WHOLE WINDOW, so the cap starved the older months -- May came back with 95 rows
+        while June got 4,744. Any month-on-month comparison built on that is comparing a full month
+        against a scrap, and nothing in the output said so. A single capped request is never a
+        valid basis for a trend; paginate or don't claim a trend.
+        """
+        out, start = [], 0
+        while start < self.MAX_ROWS:
+            rows = self.query(site, dimensions, date_range=date_range, limit=self.PAGE,
+                              filters=filters, start_date=start_date, end_date=end_date,
+                              start_row=start)
+            if not rows:
+                break
+            out.extend(rows)
+            if on_page:
+                on_page(len(out))
+            if len(rows) < self.PAGE:
+                return out          # short page = genuinely exhausted
+            start += self.PAGE
+        print(f"WARNING: GSC pull hit the {self.MAX_ROWS} safety cap for {site} -- the window is "
+              f"TRUNCATED and older dates are under-sampled. Narrow the window before trending.",
+              file=sys.stderr)
+        return out
 
     def top_pages(self, site, days=28, limit=25):
         rows = self.query(site, ["page"], date_range=days, limit=limit)

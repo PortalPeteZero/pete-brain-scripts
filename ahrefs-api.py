@@ -55,6 +55,39 @@ def _log_usage(service, endpoint, units, cached, http_status, caller, property_k
         pass
 
 
+def _warn_thin(path, params, body):
+    """Shout when a response is EMPTY or SHORTER than asked for. An empty Ahrefs payload is not
+    an answer -- it is usually a malformed parameter, and it reads exactly like "no data".
+
+    Both traps below were hit on 23 Jul 2026 while analysing the cat-and-genny page:
+      * keywords-explorer/overview with NEWLINE-separated keywords returned {"keywords": []}.
+        Ahrefs wants them COMMA-separated. Silent empty list, no error.
+      * serp-overview asked for top_positions=20 and got 10 back, with nothing saying so --
+        so "we are not in the top 20" was claimed on data that only ever covered the top 10.
+    """
+    if not isinstance(body, dict):
+        return
+    for k, v in body.items():
+        if not isinstance(v, list):
+            continue
+        if not v:
+            hint = ("keywords must be COMMA-separated in one value" if "keywords" in path
+                    else "check country/date -- Ahrefs holds no SERP for low-volume terms")
+            print(f"WARNING: '{k}' came back EMPTY for {path}. This is NOT proof of no data -- "
+                  f"{hint}. Do not report an empty result as a finding.", file=sys.stderr)
+            return
+        want = params.get("top_positions") or params.get("limit")
+        try:
+            want = int(want) if want else None
+        except ValueError:
+            want = None
+        if want and len(v) < want:
+            print(f"WARNING: asked for {want} rows, Ahrefs returned {len(v)}. Your conclusion can "
+                  f"only cover the {len(v)} you actually got -- do not generalise past them.",
+                  file=sys.stderr)
+        return
+
+
 class AhrefsError(RuntimeError):
     def __init__(self, code, reason):
         self.code = code
@@ -180,7 +213,9 @@ def _cli():
             print(api.domain_rating(a[1], a[2] if len(a) > 2 else None))
         elif cmd == "get":
             params = dict(kv.split("=", 1) for kv in a[2:])
-            print(json.dumps(api.call(a[1], params), indent=1)[:4000])
+            body = api.call(a[1], params)
+            print(json.dumps(body, indent=1)[:4000])
+            _warn_thin(a[1], params, body)
         else:
             print(f"unknown command: {cmd}\n{__doc__}")
     except (AhrefsError, BudgetRefused) as e:
