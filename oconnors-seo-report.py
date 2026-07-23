@@ -47,23 +47,36 @@ TARGETS = [
     ("full english breakfast playa blanca", "Food & Drink", 30), ("guinness playa blanca", "Food & Drink", 10),
 ]
 
+# SEO platform (phase 1, O'Connors pilot): route every Ahrefs call through the canonical gated helper,
+# so it logs cost to public.seo_api_usage and refuses at quota. Keeps the {"_err":...} return contract the
+# report already renders loudly. Falls back to a direct call only if the helper can't be loaded.
+try:
+    _aspec = importlib.util.spec_from_file_location("ahrefs_api", os.path.join(os.path.dirname(os.path.abspath(__file__)), "ahrefs-api.py"))
+    _amod = importlib.util.module_from_spec(_aspec); _aspec.loader.exec_module(_amod)
+    _AHAPI = _amod.AhrefsAPI(caller="oconnors-seo-report")
+    _AH_EXC = (_amod.AhrefsError, _amod.BudgetRefused)
+except Exception:
+    _AHAPI = None; _AH_EXC = ()
+
 def ah(path, params):
-    url = "https://api.ahrefs.com/v3/" + path + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {AHREFS}", "Accept": "application/json"})
-    last = {"_err": "no response"}
-    for _ in range(3):
+    if _AHAPI is not None:
         try:
-            with urllib.request.urlopen(req, timeout=50) as r: return json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            # capture code + body so a 403 (units) is never silently rendered as a dash (phase 0b, 2026-07-23)
-            try: body = e.read().decode()[:150]
-            except Exception: body = ""
-            last = {"_err": f"HTTP {e.code}: {body}".strip(), "_code": e.code}
-            if e.code in (400, 401, 403):  # not transient -- don't retry
-                break
+            return _AHAPI.call(path, params, property_key="o-connor-s-irish-bar")
+        except _AH_EXC as e:
+            return {"_err": str(e)[:180]}
         except Exception as e:
-            last = {"_err": str(e)[:120]}
-    return last
+            return {"_err": str(e)[:180]}
+    # fallback: direct call (helper unavailable)
+    url = "https://api.ahrefs.com/v3/" + path + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {AHREFS}", "Accept": "application/json", "User-Agent": "Mozilla/5.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=50) as r: return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try: body = e.read().decode()[:150]
+        except Exception: body = ""
+        return {"_err": f"HTTP {e.code}: {body}".strip(), "_code": e.code}
+    except Exception as e:
+        return {"_err": str(e)[:120]}
 
 def da(n): return (dt.date.today() - dt.timedelta(days=n)).isoformat()
 

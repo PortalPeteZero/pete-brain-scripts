@@ -114,6 +114,9 @@ class AhrefsAPI:
         if metered:
             rem = self.units_remaining()
             if rem is not None and rem <= self.MIN_UNITS:
+                # log the refusal (0 units spent) so the ledger shows the gate firing
+                _log_usage("ahrefs", path, 0, False, None, self.caller, property_key,
+                           f"REFUSED: units exhausted ({rem} left)")
                 raise BudgetRefused(f"Ahrefs units exhausted ({rem} left); refusing metered call {path}. "
                                     f"management/* is still callable. Resets monthly.")
         try:
