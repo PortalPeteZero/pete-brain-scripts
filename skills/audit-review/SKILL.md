@@ -13,6 +13,8 @@ description: >-
   from CC "Fortnightly review" tasks (`public.tasks`). One property at a time, but can cover multiple
   pages in a single session.
 ---
+<!-- SUPERSEDED 23 Jul 2026 by the `seo-report` skill (SEO measurement platform). This skill was built on assumptions the platform disproved (Ahrefs-primary for rank, a plan-gated Surfer audit endpoint, no commercial-intent filter, no verdict provenance). Prefer `seo-report` for any per-site SEO health / positions / opportunity question. Pete removes this skill in the Claude app once seo-report is installed. Kept meanwhile for the on-demand Ahrefs/Surfer curl references it still carries. -->
+
 
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
 

@@ -22,6 +22,8 @@ trigger_phrases:
 created: 2026-05-20
 updated: 2026-07-14
 ---
+<!-- SUPERSEDED 23 Jul 2026 by the `seo-report` skill (SEO measurement platform). This skill was built on assumptions the platform disproved (Ahrefs-primary for rank, a plan-gated Surfer audit endpoint, no commercial-intent filter, no verdict provenance). Prefer `seo-report` for any per-site SEO health / positions / opportunity question. Pete removes this skill in the Claude app once seo-report is installed. Kept meanwhile for the on-demand Ahrefs/Surfer curl references it still carries. -->
+
 
 <!-- external-service-routing pre-flight: before any Ahrefs / GSC / GA4 / Google Ads operation in this skill, see [[external-service-routing]]. Helper-first. -->
 
