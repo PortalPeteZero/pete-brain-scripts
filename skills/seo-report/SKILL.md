@@ -64,7 +64,9 @@ If `prev` is empty, the store lacks history for the older window -- backfill it 
 1. **FIND** the opportunity -- commercial pages ranking 4-20 with real impressions and poor CTR (from the
    store / GSC). The config's intent rules filter the list; locked pages (`no_ranking_work`) are excluded.
 2. **DIAGNOSE** why -- `ahrefs-api.py` for `serp_overview` (who is above us + their DR/backlinks: is it
-   winnable?) and competitors; `surfer-api.py audit_page(url, keyword)` for content score + the NLP term set
+   winnable?) and competitors; `surfer-api.py audit_page(url, keyword)` then **`terms_vs_content(editor_id)`** for content score +
+   which terms are genuinely SHORT (the terms endpoint returns TARGET ranges only, with no usage field --
+   never infer 'missing' from it; that misread invented a finding on 23 Jul)
    (import_content_from_url IS the content audit; always set location + device). Both on demand, both gated.
 3. **CHOOSE THE LEVER** -- content / technical / internal links / **off-site**. If the diagnosis is "money
    pages have no links and competitors do", on-site work will not fix it -- say so. For Sygma's head terms
