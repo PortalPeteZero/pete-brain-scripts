@@ -118,7 +118,10 @@ def main():
     a = ap.parse_args()
 
     order = [choose(a.provider, a.edit)]
-    order.append("grok" if order[0] == "nano" else "nano")  # fallback
+    # Only text-to-image gets a cross-provider fallback. An --edit MUST use nano
+    # (grok can't edit); falling an edit back to grok would silently ignore the input image.
+    if not a.edit:
+        order.append("grok" if order[0] == "nano" else "nano")
     last_err = None
     for prov in order:
         try:
@@ -133,8 +136,6 @@ def main():
             return
         except Exception as e:
             last_err = e
-            if a.edit and prov == "grok":
-                break  # don't silently fall back an EDIT to a text-only generator
     print(f"ERROR: image generation failed: {last_err}", file=sys.stderr)
     sys.exit(1)
 
