@@ -147,7 +147,9 @@ def reply_to_review(review_name, reply_text):
     print(f"Reply posted to: {review_name}")
 
 def location_info(location_name):
-    read_mask = "name,title,phoneNumbers,websiteUri,storefrontAddress,regularHours,businessHours,categories,openInfo"
+    # NB: no "businessHours" — not a field on v1 Business Information; including it
+    # made every info call fail with 400 "Invalid field mask provided".
+    read_mask = "name,title,phoneNumbers,websiteUri,storefrontAddress,regularHours,categories,openInfo"
     resp = api("GET", f"{INFO_BASE}/{location_name}", params={"readMask": read_mask})
     print(f"Title: {resp.get('title', '?')}")
     print(f"Name:  {resp.get('name', '?')}")
