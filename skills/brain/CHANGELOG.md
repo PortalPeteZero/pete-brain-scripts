@@ -6,6 +6,11 @@ updated: 2026-06-30
 
 # Brain skill changelog
 
+## 2026-07-23
+- **Enquiry Engine: the DRAFT GATE is now named in this skill.** `ee-draft-gate.py` was already mandatory in [[workflow-design]] but appeared in **no skill file**, so a session that didn't read the 44KB contract end-to-end drafted straight into the chat window. That is exactly what happened on 21 Jul 2026 (the Wheal Jane freelance-draft miss the gate was built for) and again on 22 Jul 2026 — five corrections on a single reply purely because the gate was skipped. The EE section now leads with **⛔ DRAFT GATE FIRST**: never hand-draft a reply; every reply/quote goes through `ee-draft-gate.py --in <payload>` before Pete sees it, and `ee-send` refuses an unstamped or altered draft.
+- Added **⛔ Look it up before you ask Pete** — per-customer rates live in `ee_customer_rates` (**company-scoped**: Clancy £850/day resolves for every Clancy contact), standard prices in `ee_rates`, cap/cert/agenda attachments in `ee_catalogue` + `ee-facts.py`, open dates in `public.ee_public_courses`. Asking Pete for a fact the engine already holds is a failure (22 Jul: asked for Clancy's rate, which was in the partnership agreement at Clause 5.1; asked which Super User agendas exist when all three were live).
+- Added **⛔ a correction becomes a banked, ENFORCED rule in the same session** — `ee_rules` with `scenarios` + `applies_when` + `require_pattern` (a `require_pattern` = hard-enforced fail-closed by the draft gate; without one it is advisory/surfaced). **Never enable a fail-closed rule without measuring it against real approved replies first**: a new enforcement set would have blocked **22 of 25** of Pete's own approved quotes until it was measured and loosened to 3.
+
 ## 2026-06-30
 - Compress Step 7c gains a **deterministic reconcile gate**: for every repo committed this session, run `worklog.py reconcile` and log any flagged commit. Diffs git vs `work_log.source_ref` so a forgotten ship can't slip — replaces sole reliance on recall. Scope broadened to **any product repo** (a separate app like LeakGuard), not just website/CC. Added after a full day of LeakGuard deploys reached no work_log row until Pete asked. See [[work-log]].
 
