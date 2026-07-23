@@ -103,11 +103,54 @@ def report(key, days=13):
         print("  (no ads on this property)")
 
 
+def trend(key, term=None, page=None, by="month"):
+    """Month-by-month IMPRESSION-WEIGHTED position for one term (or one page). Use this instead of
+    writing ad-hoc SQL -- that is how today's wrong answers happened.
+
+    ⚠ NEVER use a plain avg(position) on seo_gsc_daily (23 Jul 2026, three wrong answers to Pete).
+    Each row is one (date, query, PAGE), so a stray page picking up 1 impression at position 88
+    counts exactly as much as the real page with 96 impressions at 16.4. On the cat-and-genny head
+    term a plain average read 22.0 for July; impression-weighted it was 16.1, and the main page on
+    its own was 15.6. The plain average also invented two "collapse" weeks that never happened.
+    Weight by impressions, always, and say which page you are quoting.
+    """
+    if not term and not page:
+        print("give --term or --page"); return
+    where = f"property_key=$x${key}$x$"
+    if term:
+        where += f" AND query=$x${term}$x$"
+    if page:
+        where += f" AND page LIKE $x$%{page}%$x$"
+    fmt = "'YYYY-MM'" if by == "month" else "'YYYY-MM-DD'"
+    grp = "date" if by == "month" else "date_trunc('week',date)"
+    rows = _sql(f"SELECT to_char({grp},{fmt}) AS p, "
+                f"round((sum(position*impressions)/NULLIF(sum(impressions),0))::numeric,1) AS wpos, "
+                f"round(avg(position)::numeric,1) AS plain, sum(impressions) AS impr, "
+                f"sum(clicks) AS clk, count(DISTINCT page) AS pages "
+                f"FROM seo_gsc_daily WHERE {where} GROUP BY 1 ORDER BY 1")
+    if not rows:
+        print(f"no stored rows for {term or page} on {key}"); return
+    print(f"{term or page} -- impression-WEIGHTED position (the plain average is shown only to "
+          f"prove why it must not be used)")
+    print(f"  {'period':10}{'WEIGHTED':>10}{'(plain)':>10}{'impr':>7}{'clicks':>8}{'pages':>7}")
+    for r in rows:
+        print(f"  {r['p']:10}{str(r['wpos']):>10}{str(r['plain']):>10}"
+              f"{r['impr']:>7}{r['clk']:>8}{r['pages']:>7}")
+    print("  pages>1 means several of our URLs shared the term that period -- quote the main page "
+          "separately with --page before drawing any conclusion.")
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] == "--list":
         for r in _sql("SELECT property_key, reporting_cadence FROM seo_property_config ORDER BY property_key"):
             print(f"  {r['property_key']:34} cadence={r['reporting_cadence']}")
+        return
+    if "--term" in a or "--page" in a:
+        trend(a[0],
+              term=a[a.index("--term") + 1] if "--term" in a else None,
+              page=a[a.index("--page") + 1] if "--page" in a else None,
+              by=("week" if "--weekly" in a else "month"))
         return
     days = int(a[a.index("--days") + 1]) if "--days" in a else 13
     report(a[0], days)
