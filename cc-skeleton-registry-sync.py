@@ -149,9 +149,34 @@ def git_last_commit(path):
         return None
 
 # 1. helpers
+def _tracked_py():
+    """Basenames of the root *.py files git actually tracks, or None if git can't tell us.
+
+    Why: this scan globs the working directory, so a scratch file a session left lying about in
+    /tmp/pbs gets registered as though it were a real helper. That is exactly how fpv2.py and
+    frank-probe.py — neither ever committed — ended up in the registry pointing at nothing
+    (found 23 Jul 2026). A helper lives in the repo; if it isn't committed, it isn't a helper.
+
+    Returns None (meaning "can't tell, register everything") whenever git is unavailable or gives
+    an implausibly small answer, so a non-git deploy keeps the old behaviour instead of silently
+    registering nothing.
+    """
+    try:
+        r = subprocess.run(["git", "-C", HERE, "ls-files", "*.py"],
+                           capture_output=True, text=True, timeout=15)
+        names = {os.path.basename(l) for l in r.stdout.splitlines() if l and "/" not in l}
+        return names if len(names) >= 50 else None
+    except Exception:
+        return None
+
+_tracked = _tracked_py()
+_skipped_untracked = []
 helpers, connectors = [], []
 for p in sorted(glob.glob(os.path.join(HERE, "*.py"))):
     name = os.path.basename(p)
+    if _tracked is not None and name not in _tracked:
+        _skipped_untracked.append(name)
+        continue
     txt = open(p, encoding="utf-8", errors="replace").read()
     what = first_doc(txt)
     sec = secrets_in(txt)
@@ -219,4 +244,50 @@ connectors += [
 nh = upsert("helpers", helpers)
 ns = upsert("skills", skills)
 nc = upsert("connectors", connectors)
+
+# Prune deleted helpers. Skills have had this since the start; helpers never did, so the registry
+# only ever grew and a deleted helper left a row pointing at nothing forever (the cc-locator-audit
+# "stale-helper-row" finding). Added 23 Jul 2026 after frank-probe.py surfaced that way.
+#
+# The skills guard (">=5 on disk") is far too weak here — there are ~250 helpers, so a partial or
+# wrong-directory scan passing that check could delete hundreds of rows. Two guards instead: a
+# healthy absolute count, AND a cap on how much of the registry one run may remove. A genuine
+# deletion is a handful of rows; anything bigger is a broken scan, and it should refuse and say so.
+PRUNE_MIN_LIVE = 50
+PRUNE_MAX_SHARE = 0.10
+
+live_helper_names = {h["name"] for h in helpers}
+if len(live_helper_names) >= PRUNE_MIN_LIVE:
+    try:
+        req = urllib.request.Request(f"{URL}/rest/v1/helpers?select=name,path",
+            headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
+        db_rows = json.load(urllib.request.urlopen(req, timeout=30))
+        # Only prune what this scan actually OWNS: root-level *.py. It globs HERE/*.py and nothing
+        # else, so two kinds of row are none of its business and must be left alone —
+        #   • a non-Python helper (apple-pass-type-id-csr-gen.sh), and
+        #   • a helper deliberately registered from a sub-folder (account/account-log.py).
+        # Both were in the registry when this prune was written, and both would have been wrongly
+        # deleted as "stale" without this filter.
+        db_names = {r["name"] for r in db_rows
+                    if r["name"].endswith(".py") and "/" not in (r.get("path") or "")}
+        stale = db_names - live_helper_names
+        if stale and len(stale) > max(1, int(len(db_names) * PRUNE_MAX_SHARE)):
+            print(f"helper-prune REFUSED: {len(stale)} of {len(db_names)} rows would go "
+                  f"(> {int(PRUNE_MAX_SHARE * 100)}%) — that reads like a bad scan, not deletions. "
+                  f"Not pruning: {sorted(stale)[:10]}")
+        elif stale:
+            q = ",".join(f'"{n}"' for n in sorted(stale))
+            del_req = urllib.request.Request(f"{URL}/rest/v1/helpers?name=in.({q})",
+                headers={"apikey": KEY, "Authorization": f"Bearer {KEY}",
+                         "Prefer": "return=minimal"}, method="DELETE")
+            urllib.request.urlopen(del_req, timeout=30)
+            print(f"helpers pruned: {sorted(stale)}")
+    except Exception as e:
+        print(f"helper-prune warning: {e}")
+else:
+    print(f"helper-prune skipped: only {len(live_helper_names)} helpers found on disk "
+          f"(need {PRUNE_MIN_LIVE}) — refusing to prune off a suspect scan")
+
+if _skipped_untracked:
+    print(f"not registered ({len(_skipped_untracked)} untracked, not in the repo): {sorted(_skipped_untracked)}")
 print(f"helpers: {nh} | skills: {ns} | connectors: {nc}")
