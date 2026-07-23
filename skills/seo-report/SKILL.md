@@ -66,6 +66,29 @@ A retraction in chat is not a fix: the next session repeats it. Pete's standing 
 > `terms_vs_content()` in `surfer-api.py` (counts real occurrences vs target), a docstring naming the bad
 > parse, the same warning in the Surfer manual, and this step naming the sanctioned call.
 
+## RULE ONE -- every number names what it is FOR
+
+**A position on its own is meaningless and Pete will not accept one.** (23 Jul 2026: *"Every time you give
+me stats and a position, I need to know for what."*) Every ranking figure carries four things:
+
+1. **The exact search term in quotes** -- `"cat and genny training"`. Not "cat and genny", not "the head
+   term", not "the page". Page-level figure? Say so and name the URL.
+2. **The measure** -- impression-WEIGHTED position, Google UK, GSC.
+3. **The window** -- real dates/months, equal lengths when comparing.
+4. **The source** -- GSC or Ahrefs, never blended.
+
+**`avg(position)` on `seo_gsc_daily` is BANNED.** Rows are (date, query, PAGE), so a stray URL with 1
+impression at position 88 outweighs nothing and distorts everything -- it read July as 22.0 when the truth
+was 16.1 and invented two collapse weeks. Never hand-roll it in SQL:
+
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/seo-report.py <property> --term 'cat and genny training' [--weekly]
+VAULT=/tmp/pbs python3 /tmp/pbs/seo-report.py <property> --page /courses/cat-and-genny-training
+```
+
+Both weight correctly and print what they measured. **Never change what you are measuring mid-conversation
+without saying so** -- term, then page, then blend reads as flip-flopping even when each number is right.
+
 ## The five principles (never break these)
 
 1. **GSC is the scoreboard, Ahrefs is the map.** Judge our own rank/traffic on GSC (Google's own data,

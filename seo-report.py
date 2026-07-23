@@ -79,7 +79,14 @@ def report(key, days=13):
     print(f"{'  clicks':22}{w1['clicks']:>10}{w2['clicks']:>10}   <- the measure")
     print(f"{'  impressions':22}{w1['impr']:>10}{w2['impr']:>10}")
     print(f"{'  terms ranking':22}{w1['terms']:>10}{w2['terms']:>10}")
-    print(f"{'  avg position':22}{w1['avg']:>10.1f}{w2['avg']:>10.1f}   (lower = better)")
+    # ⚠ NEVER print a bare position. Pete, 23 Jul 2026: "Every time you give me stats and a
+    # position, I need to know for what." A blended figure MUST say it is blended and across
+    # how many terms, or it reads as "we rank 16th" for a term nobody named.
+    print(f"{'  BLENDED position':22}{w1['avg']:>10.1f}{w2['avg']:>10.1f}   "
+          f"(lower = better)")
+    print(f"      ^ this is NOT one term -- it is the impression-weighted mean across all "
+          f"{w2['terms']} commercial terms this property ranked for.")
+    print(f"      For a REAL answer name the term: seo-report.py {key} --term '<exact search term>'")
     # movers on money terms
     movers = []
     for q, (p2, c2, i2) in w2["per"].items():
@@ -130,8 +137,11 @@ def trend(key, term=None, page=None, by="month"):
                 f"FROM seo_gsc_daily WHERE {where} GROUP BY 1 ORDER BY 1")
     if not rows:
         print(f"no stored rows for {term or page} on {key}"); return
-    print(f"{term or page} -- impression-WEIGHTED position (the plain average is shown only to "
-          f"prove why it must not be used)")
+    what = f"SEARCH TERM '{term}'" if term else f"PAGE {page} (all its search terms combined)"
+    print(f"{key} -- {what}")
+    print(f"measure: impression-WEIGHTED average position in Google (UK), from GSC. "
+          f"Lower is better. The plain average is shown alongside ONLY to prove why it must not "
+          f"be used. Never quote a position without naming the term or page it belongs to.")
     print(f"  {'period':10}{'WEIGHTED':>10}{'(plain)':>10}{'impr':>7}{'clicks':>8}{'pages':>7}")
     for r in rows:
         print(f"  {r['p']:10}{str(r['wpos']):>10}{str(r['plain']):>10}"
