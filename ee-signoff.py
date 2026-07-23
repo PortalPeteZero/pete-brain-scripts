@@ -108,12 +108,32 @@ def main():
     ar = subprocess.run(["python3", f"{VAULT}/ee-alias-test.py"], capture_output=True, text=True,
                         env={**os.environ, "VAULT": VAULT})
     alias_ok = ar.returncode == 0
-    tail = (ar.stdout or "").strip().split("\n")[-1]
-    print(f"\n[{'OK ' if alias_ok else 'BLOCK'}] (5) alias regression: {tail}   ← must be all-pass")
-    if not alias_ok:
-        for ln in (ar.stdout or "").split("\n"):
-            if ln.startswith("FAIL"):
-                print(f"        ⛔ {ln}")
+    _out = (ar.stdout or "").strip()
+    _fails = [ln for ln in _out.split("\n") if ln.startswith("FAIL")]
+    _summary = next((ln for ln in reversed(_out.split("\n")) if "alias regression:" in ln), "")
+
+    # 23 Jul 2026: this used to print the LAST LINE OF STDOUT next to [BLOCK], whatever it was.
+    # When the harness dies part-way through (it hits the DB for every probe, so a transient
+    # SSL/socket fault kills it mid-run) the last line is simply the probe that happened to run
+    # last -- routinely a PASS. So a BLOCK was reported with a PASSING probe as its stated reason,
+    # and stderr was never shown, hiding the real cause. That misdiagnosis cost a wrong "the alias
+    # index needs fixing" hand-off. Distinguish PROBES FAILED from HARNESS COULD NOT RUN, and show
+    # the actual error.
+    if alias_ok:
+        print(f"\n[OK ] (5) alias regression: {_summary or 'all probes pass'}   ← must be all-pass")
+    elif _fails:
+        print(f"\n[BLOCK] (5) alias regression: {len(_fails)} probe(s) MIS-RESOLVED   ← must be all-pass")
+        for ln in _fails:
+            print(f"        ⛔ {ln}")
+        blocking += 1
+    else:
+        _err = (ar.stderr or "").strip().split("\n")
+        _why = next((l for l in reversed(_err) if l.strip()), "no stderr captured")
+        print(f"\n[BLOCK] (5) alias regression: HARNESS DID NOT COMPLETE (exit {ar.returncode}) "
+              f"-- this is NOT a mis-resolution   ← re-run before diagnosing")
+        print(f"        ⛔ {_why[:200]}")
+        print(f"        ({len([l for l in _out.split(chr(10)) if l.startswith(('PASS','FAIL'))])} of the "
+              f"probe set ran before it died. Transient DB/SSL faults are the usual cause -- re-run it.)")
         blocking += 1
 
     # (6) session STAGE DRIFT (P4.2, blocking): a verb touch whose contact stage disagrees with the verb
