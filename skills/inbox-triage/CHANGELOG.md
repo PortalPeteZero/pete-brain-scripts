@@ -65,3 +65,6 @@ Append-only log of meaningful changes to this skill. Each entry: date + one-line
 
 ## 2026-04-24 (v1.0)
 - Initial release.
+
+## 2026-07-23
+- **Rule 17: a BULK label operation must be reversible.** Any mass label mutation outside the per-thread ops table (bulk strip / re-label / backfill) writes a per-thread JSON manifest (`thread_id`, labels removed/added, why, when) and records the count + path in the session log. Added after a 35-thread strip of junk off `Projects/SY-Training-Enquiries` on 23 Jul 2026 was correct but left no manifest, so the exact set could not be re-enumerated or reversed — only inferred.
