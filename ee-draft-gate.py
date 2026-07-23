@@ -106,6 +106,33 @@ def _headcount_n(mh):
     m = re.search(r"\d+", ((mh.get("headcount") or {}).get("evidence") or ""))
     return int(m.group(0)) if m else None
 
+_THREAD_STOP = {"regards", "kindly", "thanks", "email", "phone", "mobile", "website", "submission",
+                "confidential", "attachments", "addressee", "unauthorised", "notify", "sender",
+                "delete", "please", "sygma", "solutions", "hello", "morning", "afternoon"}
+
+def _plain_body(m):
+    """Plain-text body of one Gmail message, quoted history stripped — so a later reply quoting an
+    earlier message can't make that earlier message look 'read'."""
+    import base64
+    parts = []
+    def walk(pt):
+        mt = pt.get("mimeType", "") or ""
+        data = (pt.get("body") or {}).get("data")
+        if data and mt.startswith("text/"):
+            try:
+                txt = base64.urlsafe_b64decode(data + "===").decode("utf-8", "replace")
+                if mt == "text/html":
+                    txt = re.sub(r"<[^>]+>", " ", txt)
+                parts.append((mt, txt))
+            except Exception:
+                pass
+        for sub in (pt.get("parts") or []):
+            walk(sub)
+    walk(m.get("payload", {}) or {})
+    plain = [t for mt, t in parts if mt == "text/plain"]
+    txt = plain[0] if plain else (parts[0][1] if parts else "")
+    return re.split(r"\nOn .{0,90}wrote:|\n>{1,}\s|\n-{2,}\s*Original Message", txt)[0]
+
 def gate(p, live=True):
     """Returns (passed: bool, report: dict). report['failures'] = [{id, reason, detail}]."""
     a = p.get("activity", {}) or {}
@@ -185,6 +212,82 @@ def gate(p, live=True):
                 fail("must-haves", f"must_haves.{key} is '{st}' but carries no evidence — quote the customer's words")
             elif _norm(ev) not in _norm(incoming):
                 fail("must-haves", f"must_haves.{key} evidence {ev!r} does not appear in incoming_text — evidence must be the customer's own words")
+
+    # 3b. FULL-THREAD READ — the gate PULLS the live thread and proves EVERY inbound customer message is
+    #     represented in incoming_text. Before this, incoming_text was whatever the drafter pasted, so a
+    #     session could skim the latest message and pass clean (Pete, 23 Jul 2026). A pull failure is a loud
+    #     INFO, never a block — an API blip must not block every draft (the _allowed_prices lesson).
+    if live and p.get("thread_id"):
+        try:
+            g2 = _load("gmail-api.py", "gmapi2").GmailAPI()
+            th = g2.get_thread(p["thread_id"])
+            msgs = th.get("messages", []) if isinstance(th, dict) else (th or [])
+            inbound, total = [], len(msgs)
+            for m in msgs:
+                hdrs = {h["name"].lower(): h["value"] for h in (m.get("payload", {}) or {}).get("headers", [])}
+                frm = (hdrs.get("from") or "").lower()
+                body = _plain_body(m)
+                # a website contact-form submission arrives FROM info@sygma-solutions.com but IS the
+                # customer's own words — count it as inbound, or a first-contact enquiry escapes the check
+                is_form = "contact form submission" in (body or "").lower()
+                if ("sygma-solutions.com" in frm or "sygma.ie" in frm) and not is_form:
+                    continue
+                if is_form:
+                    # a form body is mostly field metadata (Name/Company/Phone/Enquiry Type); compare on the
+                    # customer's actual Message, else a legitimate incoming_text scores low on boilerplate
+                    body = re.split(r"(?i)\bmessage", body)[-1] or body   # form renders as "MessageHi we are…" (no trailing boundary)
+                if body and len(_norm(body)) >= 40:
+                    inbound.append((hdrs.get("from", "?"), body))
+            missing = []
+            ninc = _norm(incoming)
+            # word-overlap, not a verbatim run: an omitted message scores ~0, while a legitimately
+            # assembled incoming_text scores high even if boilerplate/metadata was trimmed.
+            for idx, (frm, body) in enumerate(inbound, 1):
+                toks = [w for w in re.findall(r"[a-z]{5,}", _norm(body)) if w not in _THREAD_STOP]
+                seen = list(dict.fromkeys(toks))[:16]
+                if len(seen) < 4:
+                    continue
+                hit = sum(1 for w in seen if w in ninc)
+                if hit / len(seen) < 0.4:
+                    missing.append(f"#{idx} from {frm[:40]} (only {hit}/{len(seen)} of its words appear)")
+            if missing:
+                fail("thread-not-read",
+                     f"incoming_text does not represent every inbound message on this thread "
+                     f"({len(inbound)} customer message(s) of {total} total) — READ THE WHOLE THREAD and include "
+                     f"each customer message, not just the latest", "; ".join(missing))
+            else:
+                info.append(f"thread-read: all {len(inbound)} inbound message(s) of {total} represented in incoming_text")
+        except Exception as e:
+            info.append(f"thread-read: could NOT verify the full thread live ({e}) — read it by hand before trusting this draft")
+
+    # 3c. CRM-FIRST — pull the contact's prior CRM activity BEFORE drafting and make the drafter account for
+    #     it. te-log reads the CRM at capture, which is after the send; this brings it forward to draft time.
+    if live and email:
+        try:
+            ef2 = _load("ee-facts.py", "eefacts2")
+            # match the exact address OR anyone at the same company domain — a customer's CRM record is
+            # often under a different mailbox than the person emailing (Bryony writes from bhalliday@,
+            # her CRM contact is consultancy@), and an exact-match-only check passes silently on zero.
+            dom = email.split("@")[-1]
+            rows = ef2.portal_q(
+                "SELECT a.subject, a.activity_type, a.occurred_at FROM contact_activities a "
+                "JOIN contacts c ON c.id = a.contact_id WHERE lower(c.email) = %s OR lower(c.email) LIKE %s "
+                "ORDER BY a.occurred_at DESC LIMIT 20" % (_lit(email), _lit("%@" + dom)))
+            n = len(rows or [])
+            declared = (cls.get("crm_reviewed") or {}).get("activity_count") if isinstance(cls.get("crm_reviewed"), dict) else cls.get("crm_reviewed")
+            for r in (rows or [])[:6]:
+                info.append(f"crm: [{r.get('activity_type')}] {str(r.get('subject'))[:60]} ({str(r.get('occurred_at'))[:10]})")
+            if n and declared is None:
+                fail("crm-not-checked",
+                     f"this contact has {n} prior CRM activity(ies) — read them and declare "
+                     f"classification.crm_reviewed = {{\"activity_count\": {n}}} before drafting")
+            elif n and isinstance(declared, int) and declared != n:
+                fail("crm-not-checked",
+                     f"classification.crm_reviewed.activity_count={declared} but the CRM holds {n} — re-read the contact's history")
+            else:
+                info.append(f"crm-first: {n} prior activity(ies) reviewed for {email}")
+        except Exception as e:
+            info.append(f"crm-first: could NOT read the CRM live ({e}) — check the contact by hand before trusting this draft")
 
     # 4. stage-logic — the balance rule, derived
     stage = cls.get("stage")
