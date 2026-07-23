@@ -57,12 +57,22 @@ def classify(dom, dr, traf, dofollow):
     return ("legit", "keep", "dofollow with genuine DR + real traffic")
 
 def refresh(target):
+    # Cost trim (phase 0d, 2026-07-23): a SINGLE limit=1000 pass returns every refdomain when the target has
+    # <1000 (Sygma 520, Lanza Lates 144, CD 57). The old code ran TWO paid passes (dr:desc + dr:asc) to page
+    # past 1000 -- ~2x the units for no gain here. traffic_domain is KEPT in the select: classify() treats
+    # traffic==0 as the PBN/disavow signal, so dropping it would mark every dofollow refdomain toxic.
+    # GUARD: if a target ever returns exactly the limit, it has >=1000 refdomains -- restore the desc/asc
+    # pair (or add offset pagination) before trusting the result.
     all_rd = {}
-    for order in ("domain_rating:desc", "domain_rating:asc"):
-        url = (f"https://api.ahrefs.com/v3/site-explorer/refdomains?target={urllib.parse.quote(target)}&mode=domain&limit=1000"
-               f"&order_by={order}&select=domain,domain_rating,dofollow_links,first_seen,traffic_domain,links_to_target")
-        for r in _get(url).get("refdomains", []):
-            all_rd.setdefault(r["domain"].lower().replace("www.", ""), r)
+    LIMIT = 1000
+    url = (f"https://api.ahrefs.com/v3/site-explorer/refdomains?target={urllib.parse.quote(target)}&mode=domain&limit={LIMIT}"
+           f"&order_by=domain_rating:desc&select=domain,domain_rating,dofollow_links,first_seen,traffic_domain,links_to_target")
+    got = _get(url).get("refdomains", [])
+    for r in got:
+        all_rd.setdefault(r["domain"].lower().replace("www.", ""), r)
+    if len(got) >= LIMIT:
+        sys.stderr.write(f"⚠️  {target}: {len(got)} refdomains hit the {LIMIT} limit -- this target has >=1000; "
+                         f"single-pass audit is INCOMPLETE. Restore the dr:desc+dr:asc pair or add offset pagination.\n")
     # which already exist (to detect NEW)
     existing = set()
     off = 0
