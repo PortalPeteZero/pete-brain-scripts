@@ -1,34 +1,27 @@
 ---
 name: seo-report
-description: |
-  The ONE property-agnostic SEO skill (SEO measurement platform, 23 Jul 2026). Answers "how is <site>
-  doing?", runs the six-step work loop (find -> diagnose -> choose lever -> do -> verify -> measure), and
-  reports from the CC STORE, never a live paid API. The commercial-intent filter is enforced in CODE, so a
-  vanity term (e.g. bare "cat and genny") can never reach a report -- the mechanical fix for the 23 Jul
-  failure. GSC is the scoreboard (source of truth for rank/traffic); Ahrefs is the map (competitors,
-  backlinks, SERP, volumes -- on demand only); Surfer is on-page content scoring while editing (on demand).
-
-  Use whenever Pete says: "how's <site> doing", "seo report", "how's the sygma/CD/oconnors site", "check
-  the positions", "has it moved", "run the seo report", "what should I work on for <site>", "why isn't
-  <page> ranking", "site health", or any per-site SEO health/opportunity question.
-
-  SUPERSEDES the three older skills -- ahrefs-audit, audit-review, sygma-health-report -- which were built
-  on assumptions this platform disproved (Ahrefs-primary for rank, a Surfer audit endpoint that is
-  plan-gated, no commercial filter, no verdict provenance). Pete removes those three in the Claude app
-  (server-side; deleting local files does not stick -- see the installed-skills-are-server-side lesson).
-
-  Read-only reporting + on-demand diagnosis. On-site fixes go through property-manager; never auto-deploy.
 version: 1.0
+description: |
+  The one property-agnostic SEO skill. Answers "how is this site doing?", runs the six-step work loop
+  (find, diagnose, choose lever, do, verify, measure) and reports from the CC store, never a live paid
+  API. The commercial-intent filter is enforced in CODE, so a vanity term (bare "cat and genny") can
+  never reach a report. GSC is the scoreboard for rank and traffic; Ahrefs is the map (competitors,
+  backlinks, SERP, volumes) on demand only; Surfer is on-page content scoring while editing.
+
+  Use whenever Pete says: "how is sygma doing", "seo report", "how is the CD site", "check the
+  positions", "has it moved", "run the seo report", "what should I work on", "why is this page not
+  ranking", "site health", or any per-site SEO health or opportunity question.
+
+  Supersedes ahrefs-audit, audit-review and sygma-health-report. Read-only reporting plus on-demand
+  diagnosis; on-site fixes go through property-manager, never auto-deploy.
 trigger_phrases:
-  - "how's sygma doing"
-  - "how's the sygma site"
-  - "how is <site> doing"
+  - "how is sygma doing"
   - "seo report"
   - "run the seo report"
   - "check the positions"
   - "has it moved"
   - "what should I work on"
-  - "why isn't this ranking"
+  - "why is this page not ranking"
   - "site health"
 ---
 
