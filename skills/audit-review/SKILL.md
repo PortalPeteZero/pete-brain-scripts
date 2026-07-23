@@ -37,6 +37,13 @@ Version history: [[CHANGELOG]].
 | CC task store | `public.tasks` via `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py` | Complete review tasks, create follow-up tasks |
 | Vault (file tools) | Read/Write/Edit | SEO Page Tracker, plan files, daily log |
 
+> [!warning] NEVER swallow an API error into a "--" or a zero (phase 0b, 2026-07-23)
+> If any Ahrefs or Surfer call returns a non-200, STOP and surface the exact status + reason; do not
+> proceed as if the data were merely absent. **403** = Ahrefs units exhausted (or Surfer plan-gated) ·
+> **401** = auth · **400 "bad date"** = you passed today (Ahrefs needs a PAST date) · a bare
+> **`error code: 1010`** HTML body = Cloudflare blocked a request with no `User-Agent`. A blank
+> position/score is a PULL FAILURE to report loudly, never a ranking/quality loss.
+
 **Auth quick reference** (full details in config files):
 
 ```bash

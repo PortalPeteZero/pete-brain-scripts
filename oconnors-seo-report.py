@@ -50,10 +50,19 @@ TARGETS = [
 def ah(path, params):
     url = "https://api.ahrefs.com/v3/" + path + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {AHREFS}", "Accept": "application/json"})
+    last = {"_err": "no response"}
     for _ in range(3):
         try:
             with urllib.request.urlopen(req, timeout=50) as r: return json.loads(r.read())
-        except Exception as e: last = {"_err": str(e)[:120]}
+        except urllib.error.HTTPError as e:
+            # capture code + body so a 403 (units) is never silently rendered as a dash (phase 0b, 2026-07-23)
+            try: body = e.read().decode()[:150]
+            except Exception: body = ""
+            last = {"_err": f"HTTP {e.code}: {body}".strip(), "_code": e.code}
+            if e.code in (400, 401, 403):  # not transient -- don't retry
+                break
+        except Exception as e:
+            last = {"_err": str(e)[:120]}
     return last
 
 def da(n): return (dt.date.today() - dt.timedelta(days=n)).isoformat()
@@ -155,12 +164,22 @@ except Exception as e:
 # ===== Ahrefs authority =====
 auth_block = ""
 try:
-    td = dt.date.today().isoformat()
-    bl = ah("site-explorer/backlinks-stats", {"target": "oconnors.bar", "mode": "subdomains", "date": td}).get("metrics", {})
-    met = ah("site-explorer/metrics", {"target": "oconnors.bar", "date": td, "volume_mode": "monthly"}).get("metrics", {})
-    dr = ah("site-explorer/domain-rating", {"target": "oconnors.bar", "date": td}).get("domain_rating", {}).get("domain_rating")
-    metrics.update(backlinks=int(bl.get("live", 0)), refdomains=int(bl.get("live_refdomains", 0)), org_keywords=int(met.get("org_keywords", 0)), dr=dr)
-    auth_block = h2("Authority &amp; index &middot; Ahrefs") + "<div>" + (
+    td = (dt.date.today() - dt.timedelta(days=1)).isoformat()  # Ahrefs needs a PAST date; today = 400 bad date (phase 0a, 2026-07-23)
+    _bl_r = ah("site-explorer/backlinks-stats", {"target": "oconnors.bar", "mode": "subdomains", "date": td})
+    _met_r = ah("site-explorer/metrics", {"target": "oconnors.bar", "date": td, "volume_mode": "monthly"})
+    _dr_r = ah("site-explorer/domain-rating", {"target": "oconnors.bar", "date": td})
+    _ah_errs = [r["_err"] for r in (_bl_r, _met_r, _dr_r) if isinstance(r, dict) and r.get("_err")]
+    if _ah_errs:
+        # LOUD: never render a silent dash when Ahrefs actually failed (phase 0b)
+        _reason = _ah_errs[0]
+        _tag = "quota (units exhausted)" if "403" in _reason else "auth" if "401" in _reason else "error"
+        auth_block = h2("Authority &middot; Ahrefs") + f'<p style="color:#c0392b;font-weight:600">⚠️ Ahrefs pull FAILED [{_tag}] — figures blank due to the pull error, not a ranking loss. {_reason[:120]}</p>'
+    else:
+      bl = _bl_r.get("metrics", {})
+      met = _met_r.get("metrics", {})
+      dr = _dr_r.get("domain_rating", {}).get("domain_rating")
+      metrics.update(backlinks=int(bl.get("live", 0)), refdomains=int(bl.get("live_refdomains", 0)), org_keywords=int(met.get("org_keywords", 0)), dr=dr)
+      auth_block = h2("Authority &amp; index &middot; Ahrefs") + "<div>" + (
         card("Domain Rating", dr if dr is not None else "&mdash;", "0-100") + card("Backlinks", f'{int(bl.get("live",0)):,}', "live")
         + card("Ref. domains", bl.get("live_refdomains", "&mdash;"), "sites linking") + card("Organic keywords", met.get("org_keywords", "&mdash;"), f'{met.get("org_keywords_1_3","0")} in top 3')) + "</div>"
 except Exception as e:

@@ -298,16 +298,27 @@ def check_seo(f):
     if f.get("ahrefs") and f.get("domains"):
         try:
             import datetime
-            today = datetime.date.today().isoformat()
+            # Ahrefs needs a PAST date; today returns 400 "bad date" (phase 0a, 2026-07-23)
+            today = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
             hdr = {"Authorization": f"Bearer {AHREFS_TOKEN}"}
-            dr = api(f"https://api.ahrefs.com/v3/site-explorer/domain-rating?target={f['domains'][0]}&date={today}", hdr)
+            # Capture the failure REASON, never a silent None -- a 403 (units) must not read as "no DR" (phase 0b).
+            def _ah(url):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=25, context=CTX) as r:
+                        return json.loads(r.read().decode()), None
+                except urllib.error.HTTPError as e:
+                    return None, f"HTTP {e.code}"
+                except Exception as e:
+                    return None, str(e)[:80]
+            dr, err = _ah(f"https://api.ahrefs.com/v3/site-explorer/domain-rating?target={f['domains'][0]}&date={today}")
             out["ahrefs_dr"] = (dr or {}).get("domain_rating", {}).get("domain_rating")
-            mk = api(f"https://api.ahrefs.com/v3/site-explorer/metrics?target={f['domains'][0]}&date={today}&volume_mode=monthly&country=es", hdr)
+            if err: out["ahrefs_error"] = err   # loud marker so downstream never mistakes a pull failure for a real zero
+            mk, _ = _ah(f"https://api.ahrefs.com/v3/site-explorer/metrics?target={f['domains'][0]}&date={today}&volume_mode=monthly&country=es")
             met = (mk or {}).get("metrics", {})
             out["ahrefs_keywords"] = met.get("org_keywords")
             out["ahrefs_traffic"] = met.get("org_traffic")
-        except Exception:
-            out["ahrefs_dr"] = "unknown"
+        except Exception as e:
+            out["ahrefs_error"] = str(e)[:80]
     if f.get("gtm") and f.get("domains"):   # §A: is the GTM container live/firing on the page?
         try:
             with urllib.request.urlopen(urllib.request.Request("https://" + f["domains"][0], headers=UA), timeout=10, context=CTX) as r:

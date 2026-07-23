@@ -103,8 +103,14 @@ def ah(path, params):
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {AHREFS_TOKEN}"})
     try:
         return json.loads(urllib.request.urlopen(req, timeout=60).read().decode())
+    except urllib.error.HTTPError as e:
+        # Capture code + body so callers can tell 403 (units) from 401 (auth) from 400 (bad date)
+        # -- never swallow into a bare "--" (phase 0b, 2026-07-23).
+        try: body = e.read().decode()[:200]
+        except Exception: body = ""
+        return {"_err": f"HTTP {e.code}: {body}".strip(), "_code": e.code}
     except Exception as e:
-        return {"_err": str(e)}
+        return {"_err": str(e), "_code": None}
 
 def slug(u):
     s = (u or "").split(SITE_DOMAIN)[-1].split("?")[0]
@@ -179,13 +185,18 @@ def pull_last_paid_click_per_url():
 
 # ----------------------------- data pulls -----------------------------------
 def pull_ahrefs():
-    dr = ah("site-explorer/domain-rating", {"target": SITE_DOMAIN, "date": date.today().isoformat()})
+    # Ahrefs snapshots are as-of a PAST date; today returns 400 "bad date" (fixed 2026-07-23, phase 0a).
+    _yday = (date.today() - timedelta(days=1)).isoformat()
+    errs = []   # collect pull failures so the report can surface them LOUDLY, never as a silent "--" (phase 0b)
+    dr = ah("site-explorer/domain-rating", {"target": SITE_DOMAIN, "date": _yday})
+    if isinstance(dr, dict) and dr.get("_err"): errs.append(f"domain-rating: {dr['_err']}")
     dr_val = dr.get("domain_rating", {}).get("domain_rating") if isinstance(dr, dict) and "domain_rating" in dr else None
-    days = [(date.today() - timedelta(days=i)).isoformat() for i in range(7)]
+    days = [(date.today() - timedelta(days=i)).isoformat() for i in range(1, 8)]  # yesterday back 7d (today has no data)
     perday = {}
     for d in days:
         r = ah("rank-tracker/overview", {"project_id": AHREFS_PROJECT, "device": "desktop", "date": d,
                                          "select": "keyword,position,url,volume", "limit": "1000"})
+        if isinstance(r, dict) and r.get("_err"): errs.append(f"rank-tracker {d}: {r['_err']}")
         ov = r.get("overviews") if isinstance(r, dict) else None
         perday[d] = {}
         for row in (ov or []):
@@ -201,7 +212,7 @@ def pull_ahrefs():
         elif pos <= 50: buckets["21-50"] += 1
         else: buckets["51+"] += 1
     return {"dr": dr_val, "days_desc": days, "days_asc": sorted(days), "perday": perday,
-            "buckets": buckets, "tracked": len(latest)}
+            "buckets": buckets, "tracked": len(latest), "errs": errs}
 
 def pull_gsc():
     out = {"page_queries": {}}
@@ -285,6 +296,13 @@ def build_md(A, G, GA, ADS):
     sm = GA.get("summary", {})
     dur = float(sm.get("averageSessionDuration", 0) or 0)
     L.append("## Site overview\n")
+    if A.get("errs"):
+        # LOUD banner in the published report: a blank Ahrefs row is a PULL FAILURE, not a ranking loss (phase 0b).
+        L.append("> [!warning] ⚠️ Ahrefs pull FAILED this run — the Ahrefs row below is blank because of a data-pull")
+        L.append("> error, **NOT** because the site lost rankings. Judge organic on GSC (unaffected). Reasons:")
+        for e in A["errs"][:4]:
+            L.append(f"> - {e[:180]}")
+        L.append("")
     L.append("| Source | Reading |")
     L.append("|---|---|")
     b = A.get("buckets", {})
@@ -478,6 +496,14 @@ def main():
 
     # headline summary to stdout
     print("\n===== HEADLINE =====")
+    _aerrs = A.get("errs") or []
+    if _aerrs:
+        # LOUD: a blank DR / 0 buckets below is caused by these failures, NOT by the site losing rankings (phase 0b).
+        print("⚠️  AHREFS PULL FAILED — the DR / bucket figures below are BLANK BECAUSE OF THIS, not because the site tanked.")
+        for e in _aerrs[:6]:
+            tag = "QUOTA (units exhausted)" if "403" in e else "AUTH" if "401" in e else "BAD DATE" if "400" in e and "date" in e.lower() else "ERROR"
+            print(f"     [{tag}] {e[:160]}")
+        print("     -> Judge organic on GSC below (unaffected). Re-run the Ahrefs half after the quota resets.")
     print(f"DR {A.get('dr')} | tracked {A.get('tracked')} kw | "
           f"top-10 {A['buckets']['1-3']+A['buckets']['4-10']}")
 
