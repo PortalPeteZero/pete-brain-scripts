@@ -12,7 +12,9 @@ description: |
   positions", "has it moved", "run the seo report", "what should I work on", "why is this page not
   ranking", "site health", or any per-site SEO health or opportunity question.
 
-  Supersedes ahrefs-audit, audit-review and sygma-health-report. Read-only reporting plus on-demand
+  Supersedes ahrefs-audit and audit-review. sygma-health-report is NOT superseded -- Pete asked on
+  24 Jul 2026 for it to keep working ('I want a fucking honest one'); it is the Sygma-specific
+  four-source snapshot and now carries its own HONESTY GATE. Read-only reporting plus on-demand
   diagnosis; on-site fixes go through property-manager, never auto-deploy.
 trigger_phrases:
   - "how is sygma doing"
