@@ -123,6 +123,33 @@ def unverified_author_commit(cmd: str):
     return None
 
 
+_QUIET_RE = re.compile(r"\bgit\b[^|;&]*\bcommit\b[^|;&]*(?:\s-q\b|\s--quiet\b|\s-[a-zA-Z]*q[a-zA-Z]*\b)")
+
+_QUIET_MSG = """BLOCKED: do not commit with -q / --quiet.
+
+A quiet commit is NOT stamped with toolUseResult.gitOperation.commit.sha, so the harness cannot
+attribute it to this session. session_attribution.py then reports "0 owned commits" and the closeout
+record gate is blind — the commit silently never reaches the Work Log.
+
+This is the exact failure the rule was written from (verified live 2026-07-04). The guard used to
+block only CHAINED commits and had no -q check at all, so the headline case walked straight through.
+
+Fix: drop the flag.
+  git commit -m "..."        ← plain, its own call
+If you genuinely need it quiet, log the commit yourself afterwards:
+  VAULT=/tmp/pbs python3 /tmp/pbs/worklog.py --source-ref "git:<owner>/<repo>@<sha>" ..."""
+
+
+def quiet_commit(cmd: str) -> bool:
+    """A `git commit -q` / `--quiet`, which silently breaks session attribution.
+
+    Added 24 Jul 2026. An audit of feedback_closeout_attribution_commit_normally found this guard
+    enforced only ONE of the rule's four clauses: chained commits. The rule's HEADLINE clause — that
+    -q is not stamped — had zero code, and a live piped test confirmed `git commit -q` was allowed.
+    """
+    return bool(_QUIET_RE.search(_mask(cmd)))
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -136,6 +163,9 @@ def main() -> int:
             or (payload.get("tool_input") or {}).get("input") or ""
         if is_chained_commit(cmd):
             sys.stderr.write(_MSG + "\n")
+            return 2
+        if quiet_commit(cmd):
+            sys.stderr.write(_QUIET_MSG + "\n")
             return 2
         why = unverified_author_commit(cmd)
         if why:
