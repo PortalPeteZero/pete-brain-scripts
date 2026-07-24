@@ -66,6 +66,30 @@ r = j("SELECT count(*) AS n FROM training_weekly_volume")
 n = r[0]['n'] if isinstance(r,list) and r else 0
 check("training_weekly_volume queryable (week x sport grid)", int(n)>0, f"{n} rows")
 
+# (h) the ingest gate is installed AND enabled on health_feedback.
+# Born 24 Jul 2026: four sessions (15/16/17/21 Jul) had Xhale feedback logged but the
+# training-stats ingest never ran, so W29 read 0 cycling sessions against a real 60 min bike.
+# The doc said the ingest was MANDATORY; nothing refused the write. Now something does.
+r = j("""SELECT count(*) AS n FROM pg_trigger
+         WHERE tgname='trg_health_feedback_requires_ingest'
+           AND tgrelid='public.health_feedback'::regclass
+           AND tgenabled <> 'D'""")
+n = r[0]['n'] if isinstance(r,list) and r else 0
+check("ingest gate trigger installed + enabled on health_feedback", int(n)==1, f"got {n}/1")
+
+# (i) parity sweep: every feedback entry carrying a garmin_activity_id has a training_session.
+# The trigger stops NEW drift; this catches rows written before it existed or via ingest_waived.
+r = j("""SELECT count(*) AS n
+         FROM health_feedback f
+         CROSS JOIN LATERAL jsonb_array_elements(f.payload->'entries') e
+         LEFT JOIN training_session t
+                ON t.garmin_activity_id = (e->>'garmin_activity_id')::bigint
+         WHERE e->>'garmin_activity_id' IS NOT NULL
+           AND t.id IS NULL""")
+n = r[0]['n'] if isinstance(r,list) and r else '?'
+check("feedback<->training_session parity (un-ingested entries)", str(n)=='0',
+      f"got {n} feedback entr{'y' if str(n)=='1' else 'ies'} with no training_session")
+
 print()
 print(f"{'='*50}\n{'ALL PASS' if fails==0 else str(fails)+' CHECK(S) FAILED'}\n{'='*50}")
 sys.exit(0 if fails==0 else 1)
