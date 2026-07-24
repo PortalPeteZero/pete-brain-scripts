@@ -130,12 +130,72 @@ _FACT_RE = re.compile(
     r"blood|glucose|metric|readings?)\b")
 
 
-def _tier1_decision(base, content):
+_ENFORCEMENT_RE = re.compile(r"^enforcement:\s*(record|gate|existing|none)\s*:\s*\S", re.M | re.I)
+_ALSO_ENFORCED_RE = re.compile(r"also enforced|already enforced|enforced in (the )?(real )?CLAUDE", re.I)
+
+
+def _new_rule_decision(base, content, path):
+    """THE BLOCKER (plan step 1): a NEW rule may not be written until it says how it is enforced.
+
+    Measured 24 Jul 2026: 9 new rules appeared in 48h from 8 different sessions, every one
+    auto-written after a correction, none prompted. At 4-5/day the whole clear-out is undone in under
+    three days. The rules themselves are not the problem — 91% are genuine standing rules. The
+    problem is that nothing ever asks whether a rule is the RIGHT answer.
+
+    So: creating a rule file that does not yet exist requires an `enforcement:` line in its
+    frontmatter, which is the three-part test made mechanical —
+        record:   a fact about ONE record  -> mark that record instead
+        gate:     a detectable action      -> build the gate instead
+        existing: already covered          -> extend that rule instead
+        none:     genuinely none of those  -> and say WHY no gate is possible
+
+    EDITS to an existing rule pass untouched: this gates creation, not maintenance.
+
+    H6 (resolved): a claim of "also enforced elsewhere" is NOT grounds to refuse. A rule whose
+    claimed enforcement turns out to be fiction is exactly the rule worth keeping — that is how
+    three Clancy rules were wrongly deleted on 23 Jul. Such a claim is surfaced for verification
+    against public.gates, never used to block.
+    """
+    if os.path.exists(path):
+        return None  # editing an existing rule — not this gate's business
+    c = content or ""
+    if _ENFORCEMENT_RE.search(c):
+        if _ALSO_ENFORCED_RE.search(c):
+            return ("remind", f"'{base}' claims it is already enforced elsewhere — VERIFY that against "
+                              "public.gates (whereis \"<gate>\") before trusting it. A gate nobody "
+                              "CALLS is not enforcement; that error caused 3 wrong deletions on 23 Jul.")
+        return ("allow", "")
+    return ("block",
+            f"NEW RULE '{base}' has no `enforcement:` line. A correction is not automatically a rule.\n"
+            "    Answer ONE of these in the frontmatter, then write it:\n"
+            "      enforcement: record: <where you marked the one record>   ← a fact about one task/supplier/secret\n"
+            "      enforcement: gate: <script or rule id>                   ← a detectable action; build the gate\n"
+            "      enforcement: existing: <rule name>                       ← already covered; extend that one\n"
+            "      enforcement: none: <why no gate is possible>             ← genuinely conduct, no action to catch\n"
+            "    Measured 24 Jul 2026: 4-5 new rules a day, 8 things in the whole system that can refuse an action.\n"
+            "    See [[plan-rules-that-stop-me]]. Pete's rule: \"Don't make a memory - FIX THE PROCESS.\"")
+
+
+def _tier1_decision(base, content, path=None):
     """Return ('block'|'remind'|'allow', reason) for a write INTO the memory dir."""
     c = content or ""
     # credential-shaped content is always knowledge/secret — never a conduct note
     if _CRED_RE.search(c) or _CRED_KV_RE.search(c):
         return ("block", "credential/secret-shaped content in the conduct-memory dir")
+    # H4 (the predicate): ANY new .md landing in the conduct store is a new rule, whatever it is
+    # called — not just `feedback_`/`user_`. An early draft keyed on those two prefixes only, and a
+    # file called anything else walked straight past the test. MEMORY.md is the index, not a rule.
+    if base != "MEMORY.md" and base.endswith(".md"):
+        # H2: a Bash-shaped write gives a path but no content. Blocking every such write would break
+        # legitimate maintenance (restores, reindexing), so it passes WITH a reminder rather than
+        # silently — the honest position, recorded rather than hidden.
+        if path and not os.path.exists(path) and content is None:
+            return ("remind", f"'{base}' looks like a NEW rule written without content the guard can read "
+                              "(a shell-shaped write). The enforcement test could not be applied — "
+                              "state its `enforcement:` line yourself, or use Write so the gate can check.")
+        verdict = _new_rule_decision(base, c, path or "")
+        if verdict:
+            return verdict
     if base == "MEMORY.md" or base.startswith("feedback_"):
         return ("allow", "")
     if base.startswith("project_") or base.startswith("reference_"):
@@ -294,7 +354,7 @@ def classify(tool_name, tool_input):
         if not path:
             continue
         if _is_memory_dir(path):
-            act, why = _tier1_decision(os.path.basename(path), content if content is not None else "")
+            act, why = _tier1_decision(os.path.basename(path), content, path)
         else:
             act, why = _tier2_decision(path)
         decisions.append((act, path, why))
