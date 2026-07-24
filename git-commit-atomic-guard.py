@@ -98,17 +98,26 @@ def unverified_author_commit(cmd: str):
     repo in the command or runs inside its checkout, and (b) sets no `user.email`/`--author`.
     """
     import re as _re
-    if not _re.search(r"\bgit\b[^|;&]*\bcommit\b", cmd):
+    masked = _mask(cmd)  # quotes + heredocs are DATA, never the repo being committed to
+    if not _GIT_COMMIT_RE.search(masked):
         return None
-    low = cmd.lower()
+    low = masked.lower()
     # already carries an explicit identity → fine
     if "user.email=" in low or "--author" in low:
         return None
-    target = low
-    try:
-        target += " " + os.getcwd().lower()
-    except Exception:
-        pass
+
+    # Judge the REPO TARGET only — the `git -C <path>` argument, else the working directory.
+    # An earlier draft searched the whole command string and fired on a legitimate script whose
+    # unrelated file path happened to contain "Command-Centre". A gate that blocks real work is
+    # worse than no gate (Pete, 22 Jul), so the match is now scoped to the actual target.
+    m = _re.search(r"-C\s+(\S+)", masked)
+    if m:
+        target = m.group(1).lower()
+    else:
+        try:
+            target = os.getcwd().lower()
+        except Exception:
+            return None
     if any(r in target for r in _AUTHOR_GATED_REPOS):
         return _AUTHOR_MSG
     return None
