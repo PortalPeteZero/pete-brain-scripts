@@ -26,7 +26,7 @@ WHAT IT ALLOWS (no false positives — this is the whole design constraint)
 EXIT CONTRACT (Claude Code PreToolUse): exit 2 + stderr ⇒ BLOCK; exit 0 ⇒ allow.
 FAIL-OPEN: any internal error ⇒ exit 0. A guard bug must never brick a session.
 """
-import sys, json, re
+import sys, json, re, os
 
 # Heredoc bodies → masked to a single space. A heredoc is stdin data, never shell structure.
 _HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*?^\s*\2\s*$", re.S | re.M)
@@ -75,6 +75,45 @@ Fix — split into separate Bash calls:
 The commit message may still contain && or a heredoc — only the SHELL chaining is blocked, not text."""
 
 
+_AUTHOR_GATED_REPOS = ("leakguard", "command-centre")
+
+_AUTHOR_MSG = (
+    "BLOCKED — this repo's Vercel project has COMMIT-AUTHOR VERIFICATION on.\n"
+    "  A push whose commit author is not a recognised GitHub user is accepted by git and then\n"
+    "  SILENTLY NEVER BUILT (readyStateReason: 'could not associate the committer with a GitHub\n"
+    "  user', seatBlock: COMMIT_AUTHOR_REQUIRED). The app just looks unchanged, so the failure is\n"
+    "  invisible until someone checks the deploy.\n"
+    "  Commit as the verified author instead:\n"
+    "    git -c user.name=PortalPeteZero -c user.email=portalpetezero@users.noreply.github.com commit …\n"
+    "  Then confirm the deploy actually reached READY before calling it shipped."
+)
+
+
+def unverified_author_commit(cmd: str):
+    """A commit into an author-verified repo without an explicit verified author identity.
+
+    Replaces the resident rule `feedback_leakguard_vercel_commit_author` (plan step 4). The harm is
+    that it fails SILENTLY: the push succeeds and the deploy never runs, so nothing surfaces the
+    mistake. Deliberately narrow — it only fires on a `git commit` that (a) names an author-gated
+    repo in the command or runs inside its checkout, and (b) sets no `user.email`/`--author`.
+    """
+    import re as _re
+    if not _re.search(r"\bgit\b[^|;&]*\bcommit\b", cmd):
+        return None
+    low = cmd.lower()
+    # already carries an explicit identity → fine
+    if "user.email=" in low or "--author" in low:
+        return None
+    target = low
+    try:
+        target += " " + os.getcwd().lower()
+    except Exception:
+        pass
+    if any(r in target for r in _AUTHOR_GATED_REPOS):
+        return _AUTHOR_MSG
+    return None
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -88,6 +127,10 @@ def main() -> int:
             or (payload.get("tool_input") or {}).get("input") or ""
         if is_chained_commit(cmd):
             sys.stderr.write(_MSG + "\n")
+            return 2
+        why = unverified_author_commit(cmd)
+        if why:
+            sys.stderr.write(why + "\n")
             return 2
     except Exception:
         return 0  # any guard bug → allow, never brick

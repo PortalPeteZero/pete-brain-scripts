@@ -442,6 +442,22 @@ class GmailAPI:
     def _raw_rfc822(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, in_reply_to=None, references=None):
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
+
+        # GATE — `html` is a BOOLEAN FLAG, not the content. Passing the markup here while the plain
+        # text sits in `body` sends the PLAIN TEXT: the string is merely truthy. That exact mistake
+        # went out to real customers twice (1 and 2 Jul 2026) — 12 of 18 LeakGuard customers got a
+        # bare "Hi," with no name, no styling and a dangling "(Spanish version below)". Refusing here
+        # rather than in a hook covers EVERY caller, including scripts and crons.
+        if isinstance(html, str):
+            raise ValueError(
+                "gmail-api: `html=` is a BOOLEAN FLAG (True force HTML / False force plain / None "
+                "auto-detect), NOT the HTML content. You passed a string, so the markup would be "
+                "discarded and the PLAIN TEXT in `body=` sent instead — the failure that reached 12 "
+                "customers on 2 Jul 2026.\n"
+                "  Correct:  send(to, subject, body=<the HTML>, html=True)\n"
+                "  You wrote: send(to, subject, body=<plain>, html=<markup>)"
+            )
+
         if html is None:
             html = self._looks_like_html(body)  # auto-detect when caller doesn't specify
         msg = MIMEText(body, "html" if html else "plain", "utf-8")
