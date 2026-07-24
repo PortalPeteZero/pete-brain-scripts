@@ -114,7 +114,13 @@ def main():
                     f"FROM entities WHERE {_tok_or('slug')} OR {_tok_or('name')} OR {_tok_or("coalesce(trading_name,'')")} "
                     f"ORDER BY sort LIMIT 6")
     SQL_BUCKETS = f"SELECT name, public FROM storage.buckets WHERE {_tok_or('name')} ORDER BY name LIMIT 6"
-    _prefetch([SQL_SKILLS, SQL_HELPERS, SQL_PROJECTS, SQL_ENTITIES, SQL_BUCKETS, SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES, SQL_STAFF])
+    # GATES — what actually REFUSES an action. `is_called` is the field that matters: a gate nobody
+    # calls is NOT enforcement (3 rules were wrongly deleted on 24 Jul 2026 for missing exactly this).
+    SQL_GATES = (f"SELECT key, kind, refuses, wired_in, coalesce(called_by,'') AS called_by, is_called, "
+                 f"coalesce(override_path,'') AS override_path, coalesce(replaces_rule,'') AS replaces_rule, status "
+                 f"FROM gates WHERE {_tok_or('key')} OR {_tok_or('refuses')} OR {_tok_or('wired_in')} "
+                 f"OR {_tok_or("coalesce(replaces_rule,'')")} ORDER BY is_called DESC, key LIMIT 8")
+    _prefetch([SQL_SKILLS, SQL_HELPERS, SQL_PROJECTS, SQL_ENTITIES, SQL_BUCKETS, SQL_GATES, SQL_PROPS, SQL_CRONS, SQL_MODS, SQL_WRITERS, SQL_READERS, SQL_DATAMAP, SQL_DRIVE, SQL_VNOTES, SQL_STAFF])
 
     # CONFIG record-resolver — "the rules" / "CLAUDE.md" / "map" → public.config with the exact edit command.
     # No 'rules' key exists; alias+normalise onto the real keys.
@@ -149,6 +155,13 @@ def main():
          lambda r: f"  • {r['name']}  → {r.get('path') or ''}\n      {(r.get('what') or '')[:150]}"),
         (SQL_HELPERS, "HELPERS / SCRIPTS  (public.helpers — run as: VAULT=/tmp/pbs python3 /tmp/pbs/<name>):",
          lambda r: f"  • {r['name']}  [{r.get('runs') or '?'}]\n      {(r.get('what') or '')[:170]}"),
+        (SQL_GATES, "GATES  (public.gates — what actually REFUSES an action. A gate nobody calls is NOT enforcement):",
+         lambda r: (f"  • {r['key']}  [{r.get('kind')}·{r.get('status')}]  "
+                    + ("✅ CALLED" if r.get('is_called') else "⛔ NO CALLER — NOT ENFORCEMENT")
+                    + f"\n      refuses: {(r.get('refuses') or '')[:130]}"
+                    + f"\n      wired in: {r.get('wired_in')}" + (f"  ← {r.get('called_by')}" if r.get('called_by') else "")
+                    + (f"\n      override: {r.get('override_path')}" if r.get('override_path') else "")
+                    + (f"\n      replaces rule: {r.get('replaces_rule')}" if r.get('replaces_rule') else ""))),
         (SQL_PROJECTS, "PROJECTS  (public.projects — slug, owning entity, and the Drive folder its documents live in):",
          lambda r: f"  • {r['slug']}  [{r.get('ent')}·{r.get('status') or ''}]  drive={r.get('drive') or '(none)'}\n      {r.get('url') or 'NO DRIVE FOLDER RECORDED'}"),
         (SQL_ENTITIES, "ENTITIES  (public.entities — the companies; slug is the key, trading name is what Pete says):",

@@ -288,7 +288,7 @@ Save everything valuable from the current session.
    ### Raw Session Summary
    [Condensed summary -- use [[wikilinks]] for every project, person, and vault note mentioned]
    ```
-3. **Update memory files (structured-home sweep)** -- Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its home in the cloud — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`) for knowledge + the `drive_files` index (`cc-sql.py`) for the entity's Drive folder — and update it with what changed + the rationale.** Knowledge / decisions / lessons → ingest a `.md` to `vault_notes`; files → the Drive folder; the session log → CC `daily_log`. The daily log is a pointer only; nothing of substance ends its life there. Operator prefs → CLAUDE.md Rules **only on an explicit Pete correction he asks to be saved**; structured rules → `vault_notes`. See the website-work lesson (in `vault_notes`).
+3. **Update memory files (structured-home sweep)** -- Route per `[[vault-routing#master-routing-matrix]]`. **For every distinct topic / entity / project / property / piece of work touched this session, find its home in the cloud — query `vault_notes` (`VAULT=/tmp/pbs python3 /tmp/pbs/cc-knowledge-api.py`) for knowledge + the `drive_files` index (`cc-sql.py`) for the entity's Drive folder — and update it with what changed + the rationale.** Knowledge / decisions / lessons → ingest a `.md` to `vault_notes`; files → the Drive folder; the session log → CC `daily_log`. The daily log is a pointer only; nothing of substance ends its life there. Operator prefs → the local conduct store, **never `CLAUDE.md`** (see the Teaching Loop test above); structured rules → `vault_notes`. See the website-work lesson (in `vault_notes`).
 4. **Follow-up tasks -- PROPOSE, never auto-create.** Surface follow-up actions from the session as a short *suggested* list in the Report step. **Create a CC task ONLY when Pete explicitly asks** ("make a task for that" / "add those"). Auto-creating follow-ups is forbidden -- they pile up as clutter (Pete, 28 Jun 2026). Marking *completed* items done (`UPDATE tasks SET status='done', completed_at=now() WHERE id=…`) when work demonstrably shipped is still fine -- it is *creating* new tasks unprompted that is banned.
 4a. **Connection check** -- if this session added, changed, expanded, rotated, or retired any external access (an API key/token, MCP connector, OAuth app, service account), run the **`connection-updater`** skill for each before closing (it stores the secret pointer-only, registers the connection, and its `connection-parity.py` gate must print `0 gaps`). The weekly `drift-check` backstop catches anything missed, but same-session is cleaner.
 5. **Check session plans** -- Look for session plan files created this session:
@@ -329,14 +329,35 @@ Save durable knowledge that persists indefinitely.
 
 ### Teaching Loop
 
-When Pete corrects you, save the correction. Don't ask. **Where you save it depends on shape:**
+When Pete corrects you, save the correction. Don't ask. **But a correction does NOT automatically become a rule** — most corrections should become something that stops the mistake instead.
 
-- **One-liner sticky rule** (no Why, no How, just a fact or preference) -> append to `CLAUDE.md` under the Rules section.
-- **Anything with structure** (rule + Why + How to apply, or a recurring pattern with reasoning) -> write as a `vault_notes` lesson (`type: lesson`, ingested via `cc-knowledge-api.py`) using the lesson template, and add a single-line pointer in CLAUDE.md (`- **Short title.** One-line summary. See [[{slug}]].`).
+#### THE TEST — a rule must pass all three, or it is not a rule
 
-**CLAUDE.md pointers are for Pete-corrections ONLY.** This is the structural rule. A lesson that emerged from your own observation (methodology, code patterns, debugging insights, audit findings, "things to remember") goes into `vault_notes` as a standalone lesson with no pointer in CLAUDE.md. Knowledge-DB search is sufficient discovery for non-correction lessons. Pete-correction lessons get the pointer because corrections are the rules that bind future behaviour; non-correction lessons are reference notes — keep CLAUDE.md a navigable index of corrections only.
+Ask these in order. The FIRST one that answers "yes" is where the correction goes; only if all three are "no" does a rule get written.
 
-Default to a `vault_notes` lesson when in doubt. Routing structured corrections inline into CLAUDE.md bloats it; lessons exist precisely to absorb them so CLAUDE.md stays a navigable index of corrections only.
+| # | Ask | If yes |
+|---|---|---|
+| 1 | Is this a fact about **one record** (one task, one supplier, one secret, one thread)? | **Mark that record.** `[no-nag]` on the task, a note on the secret, a `default_verb` on the routing row. No rule. |
+| 2 | Is there a **detectable action** a gate could refuse? | **Build the gate**, carrying the rule's exceptions. No rule. |
+| 3 | Does an **existing rule already cover it**? | **Extend that one.** Never write a second. |
+| 4 | All three genuinely no? | Write the rule — and state why no gate is possible. |
+
+**Why this exists:** 150 rules had accumulated by 24 Jul 2026 and only 8 things in the whole system could actually refuse an action. Measured: code that blocks fires ~100% of the time, a note you fetch on a trigger ~33%, a line in a resident list unreliably. Pete's own instruction: *"Don't make a memory — FIX THE PROCESS."* A rule that cannot stop you is a wish. Full reasoning + the audit trail: `[[plan-rules-that-stop-me]]`.
+
+#### Where it goes when it IS a rule
+
+- **Conduct — how Pete likes work done** (no trigger word would make you look it up) -> the local memory store (`feedback_*` + a line in `MEMORY.md`). This is the ONLY thing that belongs there.
+- **Knowledge — how a system behaves** (Odoo quirks, a platform's behaviour, a repo's build tooling) -> a `vault_notes` lesson (`type: lesson`, via `cc-knowledge-ingest.py`). It is retrievable on the subject, which is the mechanism that measurably works. **NOT the local store** — that is conduct-only.
+- **Property / customer specific** -> that property's or customer's front-door note, so it arrives when they are mentioned.
+- **Enquiry wording** -> `ee_rules` with a `require_pattern` where it can be enforced rather than merely printed.
+
+#### NEVER add anything to `CLAUDE.md`
+
+**Do not add a pointer, a rule line, or a lesson reference to `CLAUDE.md` — not even for a Pete correction.** Pete banned this on 24 May 2026 (*"will you stop bloating claude md… why the fuck does claude md need a pointer in it"*) and `CLAUDE.md` itself says *"Default to NO pointer; change it ONLY when Pete explicitly asks."*
+
+The old convention here said the opposite and produced **83 pointers in a 43.6KB document that loads in full every session** — the single biggest source of resident text in the system. `CLAUDE.md` changes ONLY when Pete explicitly asks for a `CLAUDE.md` change. If you think it genuinely needs something, ask first.
+
+Default to a `vault_notes` lesson when in doubt.
 
 **Separate track — a new/changed CONNECTION is not a lesson.** If the "correction" is actually Pete handing over external access (an API key, a connector, an OAuth login) or telling you to expand/rotate/retire one, that goes through the **`connection-updater`** skill (secret → `public.secrets`, registry row, config note, parity gate), not the lesson/CLAUDE.md track.
 
@@ -589,8 +610,8 @@ Any cron change (create / edit / pause / decommission, any runtime) is made with
 - **Sweep verb**: `sweep` is a single deliberate verb, manual trigger only. No skill should auto-offer it. Email-workflow operating manual: `[[email-workflow]]`.
 - **Email-workflow verbs**: `triage`, `sync`, `hand to`, `reply` (tray: Replies label, **no task**), `task` (CC task: no Replies label, `[no-sync-close]`), `reply + task` (the combo — a Reply with a prep task), `replies` / `my replies` (tray walker; legacy `actions`), `de-tray this`, `file`, `file all emails`, `add to calendar`. One-sentence rule: **Replies = waiting on Pete to respond by email; a task only when work is required** (decoupled 2026-06-25). See `[[email-workflow]]` -- handled by `inbox-triage` and `email-task-sync` skills.
 - **Wikilinks everywhere**: Every mention of a project, person, or knowledge note MUST be a `[[wikilink]]`.
-- **Teaching loop**: When corrected, save the correction. One-liner sticky rules -> CLAUDE.md. Structured rules (rule + Why + How) -> a `vault_notes` lesson (`type: lesson`) + one-line pointer in CLAUDE.md. Don't ask. **The pointer is for Pete-corrections only -- see the full Teaching Loop section above.**
-- **Lessons**: lessons live in `vault_notes` (`type: lesson`) — behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know — those carry NO pointer in CLAUDE.md; knowledge-DB search (`cc-knowledge-api.py`) is their discovery surface.
+- **Teaching loop**: When corrected, run the THREE-PART TEST first (mark the record / build the gate / extend an existing rule) — a correction only becomes a rule when all three fail. Conduct -> the local store; knowledge -> a `vault_notes` lesson; property or customer -> its front door. **NEVER add anything to `CLAUDE.md`.** See the full Teaching Loop section above.
+- **Lessons**: lessons live in `vault_notes` (`type: lesson`) — behavioural rules with Why/How structure. Sessions can also write a lesson when a non-correction insight emerges that future sessions should know. Knowledge-DB search (`cc-knowledge-api.py`) is their discovery surface — never a `CLAUDE.md` pointer.
 - **Outbound text drafting**: read `[[voice-principles]]` before drafting any outbound text on Pete's behalf (customer email, supplier email, internal email, blog, article, ad copy).
 - **Finance / invoicing / Soldo / Dext / Odoo / Xero / payroll / VAT**: read `[[finance-workflow]]` first.
 - **Helper scripts**: in GitHub `pete-brain-scripts`, pulled to `/tmp/pbs` by the boot kernel — run `VAULT=/tmp/pbs python3 /tmp/pbs/<tool>.py`. Don't reinvent; check the CC Helpers registry (`/m/process-library`).
