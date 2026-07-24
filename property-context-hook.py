@@ -246,7 +246,7 @@ FD_RULE_HEADINGS = ("## rules", "## standing rules", "## standing decisions",
                     "## rules (binding)", "## do not", "## workflow conventions")
 
 
-def front_door_rules(vault_path, cap=8):
+def front_door_rules(vault_path, cap=12):
     """The BINDING RULES out of a front-door note, so they can be injected rather than pointed at.
 
     Added 24 Jul 2026 (plan step 0g). The hook used to emit only the note's path plus an instruction
@@ -272,18 +272,22 @@ def front_door_rules(vault_path, cap=8):
         body = (rows[0].get("body") or "") if rows else ""
         if not body:
             return []
+        # Collect from EVERY rules-shaped heading, not just the first. A front door can carry more
+        # than one ("Standing decisions" plus a later "Standing rules" block) — stopping at the first
+        # silently dropped 15 of 19 moved rules on 24 Jul, which is exactly the kind of half-working
+        # delivery this plan exists to stop.
         out, grabbing = [], False
         for raw in body.split("\n"):
             line = raw.strip()
             if line.startswith("#"):
-                if grabbing:
-                    break  # next heading ends the section
                 grabbing = line.lower().startswith(FD_RULE_HEADINGS)
                 continue
             if grabbing and line.startswith(("- ", "* ", "1. ")):
-                out.append(re.sub(r"^([-*]|\d+\.)\s+", "", line)[:220])
-                if len(out) >= cap:
-                    break
+                out.append(re.sub(r"^([-*]|\d+\.)\s+", "", line)[:170])
+        if len(out) > cap:
+            # Truncation is stated, never silent — a hidden cap reads as "that is all of them".
+            hidden = len(out) - cap
+            out = out[:cap] + [f"[+{hidden} more rule(s) in the front door — read it before acting]"]
         return out
     except Exception:
         return []
