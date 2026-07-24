@@ -18,7 +18,9 @@ Usage:
 # writes: CC public.seo_ga4_daily (+ seo_api_usage at 0 cost)
 # entity: personal
 # report:
-# secrets: GOOGLE_SA_JSON
+# secrets: GOOGLE_SA_JSON, SUPABASE_TOKEN
+#   SUPABASE_TOKEN is needed by cc-sql.py itself (every write goes through it). Missing it
+#   produced FileNotFoundError on Library/processes/secrets/supabase-token, 24 Jul 2026.
 # note: GOOGLE_SA_JSON is REQUIRED -- it materialises google-seo-service-account.json, which the
 #   GA4 Data API helper reads. Both crons CRASHED on Railway from 23 Jul until 24 Jul because this line
 #   was missing: they ran fine locally (the file is on disk) and died in the cron with no credentials.
