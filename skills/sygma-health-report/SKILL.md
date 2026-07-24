@@ -56,6 +56,52 @@ The old vault-tree paths (`Properties/…/*.md`, `Library/decisions/…`, `Daily
 
 ---
 
+
+## ⛔ HONESTY GATE — read before you narrate a single number
+
+Pete, 24 Jul 2026: *"When I run a Sygma Health report in the future, I want a fucking honest one."*
+That followed a day in which he was given **seven different explanations** for one page's ranking,
+five of them disproved by the next tool call. Every check was sound. Narrating them as findings is
+what made the day worthless.
+
+**1. Never quote a position without naming what it is FOR.** Exact search term in quotes, the measure,
+the window, the source. `"cat and genny training"`, impression-weighted, Google UK, GSC, July. Not
+"the page is at 16".
+
+**2. `avg(position)` is BANNED.** Rows in `seo_gsc_daily` are (date, query, PAGE), so one stray URL
+with 1 impression at position 88 outweighs the real page. It read July as 22.0 when the truth was
+16.1 and invented two collapse weeks. Use the engine, never hand-rolled SQL:
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/seo-report.py sygma-solutions-website --term 'cat and genny training'
+VAULT=/tmp/pbs python3 /tmp/pbs/seo-report.py sygma-solutions-website --ctr    # artefact-stripped CTR
+```
+
+**3. Run the artefact check BEFORE reporting an alarming number, not after.** A brand search returns
+the homepage plus sitelinks across 27 pages, so GSC logs 27 impressions for one search. That alone
+made site-wide CTR look catastrophic when the homepage converts brand at 32.5%. Ask what would make
+this number wrong, and check it, before it reaches Pete.
+
+**4. Report what is RULED OUT, never what is suspected.** "It is not links, here is the evidence" is
+worth hearing. "It might be links" is not. If asked mid-investigation, say plainly that you do not
+know yet. **One answer, or none.**
+
+**5. Test against the obvious alternative first.** If a rival outranks us, READ THEIR PAGE before
+theorising about Google. `firecrawl-api.py compare <ours> <theirs>` does it in one call and works on
+sites that block curl. That single check killed two of the seven wrong answers.
+
+**6. Say what would disprove your conclusion.** No falsifier means it is a story, not a finding.
+
+**7. Check the pipe before you trust the data.** `seo-pull-gsc` and `seo-pull-ga4` sat CRASHED on
+Railway for a day while reports answered from stale rows. Confirm the crons are green:
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT key,last_status,last_run_at FROM public.crons WHERE key LIKE 'seo-pull%'"
+```
+
+**Standing eliminations for the cat-and-genny cluster — do NOT re-raise these as causes:** page
+backlinks, domain backlinks, Surfer content score, term coverage, content length, technical, the
+April redirect, duplicate pages, internal linking, the site-wide CTR artefact. All measured, all in
+[[sygma-seo-state-of-play]]. **Why the page ranks where it does is UNKNOWN. Say so.**
+
 ## Guardrails (read before running)
 
 - **Website carve-out.** This is **read-only analysis**. Do NOT make code changes, do NOT spawn agents, do NOT touch the repo. If the report surfaces a fix, surface it to Pete and let him decide — sequential main-session only.

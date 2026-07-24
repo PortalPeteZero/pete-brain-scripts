@@ -89,6 +89,28 @@ VAULT=/tmp/pbs python3 /tmp/pbs/seo-report.py <property> --page /courses/cat-and
 Both weight correctly and print what they measured. **Never change what you are measuring mid-conversation
 without saying so** -- term, then page, then blend reads as flip-flopping even when each number is right.
 
+
+## RULE TWO — report what is RULED OUT, never what is suspected
+
+Pete, 24 Jul 2026, after seven explanations for one page in a day: *"you really are fucking useless."*
+Every check was sound. Narrating each one as a finding is what made the day worthless.
+
+- **One answer, or none.** Better "I don't know, here is what it isn't" than a fifth theory. Pete
+  cannot act on a theory and does not want to referee them.
+- **Test the obvious alternative FIRST.** A rival outranks us? READ THEIR PAGE before theorising about
+  Google: `firecrawl-api.py compare <ours> <theirs>` (works on sites that block curl). That one check
+  killed two of the seven.
+- **Hunt the artefact BEFORE reporting, not after.** Inflated denominators, capped samples, unweighted
+  averages, stray URLs. Sitelinks alone made site-wide CTR look catastrophic when the homepage
+  converts brand at 32.5%. Run `seo-report.py <prop> --ctr`.
+- **Does it explain the SPECIFIC anomaly?** A cause that would apply to any page is not a diagnosis.
+- **Name what would disprove it.** No falsifier means it is a story.
+- **Check the pipe before trusting the data.** `seo-pull-gsc`/`seo-pull-ga4` sat CRASHED for a day
+  while reports answered from stale rows. `SELECT key,last_status FROM public.crons WHERE key LIKE 'seo-pull%'`.
+
+**Never promote a measurement to a diagnosis.** "A difference I measured" and "the reason we rank
+here" are different claims. Sliding between them is what read as flip-flopping all day.
+
 ## The five principles (never break these)
 
 1. **GSC is the scoreboard, Ahrefs is the map.** Judge our own rank/traffic on GSC (Google's own data,
@@ -125,6 +147,14 @@ If `prev` is empty, the store lacks history for the older window -- backfill it 
    which terms are genuinely SHORT (the terms endpoint returns TARGET ranges only, with no usage field --
    never infer 'missing' from it; that misread invented a finding on 23 Jul)
    (import_content_from_url IS the content audit; always set location + device). Both on demand, both gated.
+2b. **READ THE PAGE THAT IS BEATING US.** Not optional, and BEFORE theorising:
+   ```bash
+   VAULT=/tmp/pbs python3 /tmp/pbs/firecrawl-api.py compare <our-url> <their-url>
+   ```
+   Prints page SHAPE side by side (headings, question-headings, prices, book/date/venue counts) and
+   works on sites that block curl and WebFetch behind Cloudflare. Word count hides what matters: the
+   two cat-and-genny pages were both ~3,000 words; the difference was 15 headings vs 45 and 85
+   mentions of "book" vs 6. Skipping this check cost a full day on 24 Jul 2026.
 3. **CHOOSE THE LEVER** -- content / technical / internal links / **off-site**. If the diagnosis is "money
    pages have no links and competitors do", on-site work will not fix it -- say so. For Sygma's head terms
    that is the evidenced finding (88% of links hit the homepage), and off-site is Appear Online's remit.
