@@ -317,11 +317,31 @@ def main():
     reminds = [(p, why) for a, p, why in decisions if a == "remind"]
 
     if blocks:
+        # OVERRIDE CHANNEL (plan step 0c). A gate that cannot be legitimately bypassed will
+        # eventually block real work — this guard already fired a false positive on a relative path
+        # on 24 Jul 2026. A grant is single-gate, use-capped, expiring, and logged to
+        # public.gate_overrides so `gate_override.py review` can surface a gate that is being
+        # overridden habitually (which means the GATE is wrong, not the work).
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import gate_override
+            reason = gate_override.check("local-write-guard",
+                                         context="; ".join(p for p, _ in blocks)[:400])
+            if reason:
+                sys.stderr.write(
+                    f"[local-write-guard] OVERRIDDEN for this write — reason on record: {reason}\n")
+                return 0
+        except Exception:
+            pass  # no override channel available → the gate blocks normally (fail-open means the GATE holds)
+
         msg = ["BLOCKED by local-write-guard — nothing permanent to local disk (F1):"]
         for p, why in blocks:
             msg.append(f"  • {p}\n    ↳ {why}")
         msg.append("If this really is ephemeral, write it under /tmp. Conduct memory "
                    "(feedback_/MEMORY.md/conduct user_) is the only local knowledge allowed.")
+        msg.append("If this write IS legitimate, declare it first:\n"
+                   "  VAULT=/tmp/pbs python3 /tmp/pbs/gate_override.py grant local-write-guard "
+                   "--reason \"<why this case is fine>\"")
         sys.stderr.write("\n".join(msg) + "\n")
         return 2
 
