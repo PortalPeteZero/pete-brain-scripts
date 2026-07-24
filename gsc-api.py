@@ -188,7 +188,10 @@ class GSCAPI:
                               filters=filters, start_date=start_date, end_date=end_date,
                               start_row=start)
             if not rows:
-                break
+                # data exhausted — a NORMAL exit. `break` used to fall through to the safety-cap
+                # warning below, so an ordinary empty window screamed "TRUNCATED, under-sampled"
+                # (introduced and caught the same day, 24 Jul 2026). Return, do not break.
+                return out
             out.extend(rows)
             if on_page:
                 on_page(len(out))

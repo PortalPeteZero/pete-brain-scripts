@@ -37,12 +37,19 @@ FINAL_AFTER = 3     # a date is final once older than this many days (GSC stops 
 def _sql(q):
     r = subprocess.run(["python3", "cc-sql.py", q], cwd=VAULT, capture_output=True, text=True,
                        env={**os.environ, "VAULT": VAULT}, timeout=60)
-    if r.stderr.strip() and "ERROR" in r.stderr:
-        raise RuntimeError(r.stderr.strip()[:200])
-    try:
-        return json.loads(r.stdout) if r.stdout.strip() else []
-    except Exception:
+    # ⚠ NEVER swallow a query failure into an empty list. This used to `except Exception: return []`,
+    # so on Railway a failing cc-sql call produced "no in-scope properties with a GSC id" and the cron
+    # exited SUCCESS having done nothing (24 Jul 2026). A silent no-op reported as a clean run is the
+    # worst failure mode this platform can have: the store quietly stops filling and every report
+    # downstream keeps answering from stale data.
+    if r.returncode != 0 or (r.stderr.strip() and "ERROR" in r.stderr):
+        raise RuntimeError(f"cc-sql FAILED (rc={r.returncode}): {(r.stderr or r.stdout).strip()[:400]}")
+    if not r.stdout.strip():
         return []
+    try:
+        return json.loads(r.stdout)
+    except Exception as e:
+        raise RuntimeError(f"cc-sql returned unparseable output: {e} :: {r.stdout[:300]!r}")
 
 
 def _q(s):
@@ -62,7 +69,7 @@ def main():
                  "WHERE COALESCE(f->>'seo_scope','in') <> 'out' AND COALESCE(f->>'gsc','') <> ''"
                  + (f" AND key='{only}'" if only else ""))
     if not props:
-        print("no in-scope properties with a GSC id"); return
+        raise SystemExit("FAIL: zero in-scope properties with a GSC id. There are 8 in the CC, so this\n  means the query or the DB connection is broken -- NOT that there is nothing to pull.")
 
     today = datetime.date.today()
     start = (today - datetime.timedelta(days=days)).isoformat()
