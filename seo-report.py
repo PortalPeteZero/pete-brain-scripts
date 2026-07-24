@@ -153,6 +153,28 @@ def ctr_check(key, days=60):
               f"the cleaned one does not, it is the artefact -- do NOT report it as a finding.")
 
 
+def interventions(key):
+    """Dated interventions on this property, from the Work Log — the dates an aggregate must NOT span.
+
+    ⚠ WHY (24 Jul 2026): a menu item told Pete that "cable avoidance training" ranks via the HOMEPAGE
+    at position 42.8. It does not, and had not since 3 Jul, when a deliberate homepage de-optimise
+    moved the term onto the course page (38.9 -> 19.5). The 42.8 was an ALL-TIME aggregate that
+    blended pre-fix homepage rows with post-fix course-page rows and described a solved problem.
+    Averaging across a period that contains a deliberate change is its own artefact class. Split at
+    the intervention date, always.
+    """
+    # MUST be scoped to the property. An unscoped list pulls every property's migrations and reads as
+    # noise, which means it gets ignored -- and an ignored warning is worse than none.
+    name = _sql(f"SELECT f->>'name' AS n FROM property_declarations WHERE key=$x${key}$x$")
+    pname = (name[0].get("n") if name else None) or key.replace("-", " ")
+    return _sql(f"SELECT date, title FROM work_log WHERE date >= current_date - 180 "
+                f"AND (property_slug=$x${key}$x$ OR property_name ILIKE $x$%{pname}%$x$) "
+                f"AND (title ILIKE '%de-optimis%' OR title ILIKE '%retarget%' OR title ILIKE '%redirect%' "
+                f"OR title ILIKE '%consolidat%' OR title ILIKE '%retire%' OR title ILIKE '%cannibalis%' "
+                f"OR title ILIKE '%migrat%' OR title ILIKE '%301%') "
+                f"ORDER BY date DESC LIMIT 10")
+
+
 def trend(key, term=None, page=None, by="month"):
     """Month-by-month IMPRESSION-WEIGHTED position for one term (or one page). Use this instead of
     writing ad-hoc SQL -- that is how today's wrong answers happened.
@@ -189,6 +211,12 @@ def trend(key, term=None, page=None, by="month"):
     for r in rows:
         print(f"  {r['p']:10}{str(r['wpos']):>10}{str(r['plain']):>10}"
               f"{r['impr']:>7}{r['clk']:>8}{r['pages']:>7}")
+    iv = interventions(key)
+    if iv:
+        print("\n  ⚠ DATED INTERVENTIONS on this property — do NOT average across these dates; split at them:")
+        for r in iv[:6]:
+            print(f"     {r['date']}  {str(r['title'])[:74]}")
+        print("     (a figure spanning one of these can describe a problem that was already fixed)")
     print("  pages>1 means several of our URLs shared the term that period -- quote the main page "
           "separately with --page before drawing any conclusion.")
 
