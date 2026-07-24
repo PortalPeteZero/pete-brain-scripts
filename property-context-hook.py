@@ -242,6 +242,53 @@ def project_status_line(slug):
         return None
 
 
+FD_RULE_HEADINGS = ("## rules", "## standing rules", "## standing decisions",
+                    "## rules (binding)", "## do not", "## workflow conventions")
+
+
+def front_door_rules(vault_path, cap=8):
+    """The BINDING RULES out of a front-door note, so they can be injected rather than pointed at.
+
+    Added 24 Jul 2026 (plan step 0g). The hook used to emit only the note's path plus an instruction
+    to go and fetch it — a pointer, relying on the model choosing to follow it, which is weaker than
+    the fetch-on-trigger mechanism measured at 33%. The rules are the part that changes behaviour, so
+    they arrive inline; the rest of the note stays a pointer (it can be very long).
+
+    Reads the first heading in FD_RULE_HEADINGS and returns its bullets. Capped, and each rule is
+    truncated, so a long section cannot eat the hook's whole context budget. Fail-open → [].
+    """
+    if not vault_path:
+        return []
+    url, key = _cc_creds()
+    if not (url and key):
+        return []
+    try:
+        import urllib.parse
+        q = (f"{url}/rest/v1/vault_notes?vault_path=eq."
+             f"{urllib.parse.quote(vault_path)}&select=body&limit=1")
+        req = urllib.request.Request(q, headers={"apikey": key, "Authorization": f"Bearer {key}"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            rows = json.loads(r.read().decode())
+        body = (rows[0].get("body") or "") if rows else ""
+        if not body:
+            return []
+        out, grabbing = [], False
+        for raw in body.split("\n"):
+            line = raw.strip()
+            if line.startswith("#"):
+                if grabbing:
+                    break  # next heading ends the section
+                grabbing = line.lower().startswith(FD_RULE_HEADINGS)
+                continue
+            if grabbing and line.startswith(("- ", "* ", "1. ")):
+                out.append(re.sub(r"^([-*]|\d+\.)\s+", "", line)[:220])
+                if len(out) >= cap:
+                    break
+        return out
+    except Exception:
+        return []
+
+
 def resolve_front_door(name):
     """The property's FRONT DOOR — the read-this-first note — straight from `property_declarations`
     at inject time. Added 19 Jul 2026: front doors lived in vault_notes while the property record
@@ -352,9 +399,21 @@ def main():
             elif live.get("code"):
                 served = f" (served by {live['host']})" if live.get("host") else ""
                 lines.append(f"    ↳ LIVE NOW: domain {live['live'].upper()} · HTTP {live['code']}{served} — re-checked just now, overrides the sync's up/down for this domain")
-        if i == 0:
-            _fd = resolve_front_door(p.get("name"))
-            if _fd:
+        # FRONT DOOR — for EVERY matched property, not just the top one. The `i == 0` cap meant a
+        # prompt naming two properties got nothing for the second (found 24 Jul 2026, plan step 0g).
+        _fd = resolve_front_door(p.get("name"))
+        if _fd:
+            _rules = front_door_rules(_fd)
+            if _rules:
+                # INJECT the rules, don't point at them. A pointer relies on me choosing to fetch it,
+                # which is strictly weaker than the note-with-a-trigger measured at 33%. The rules are
+                # the part that changes behaviour, so they arrive; the rest of the note stays a pointer.
+                lines.append(f"    ↳ FRONT-DOOR RULES for {p['name']} (binding — from {_fd}):")
+                for _r in _rules:
+                    lines.append(f"        · {_r}")
+                lines.append(f"      full front door: VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "
+                             f"\"SELECT body FROM vault_notes WHERE vault_path='{_fd}'\"")
+            else:
                 lines.append(f"    ↳ FRONT DOOR (read this FIRST, before any audit/fix/deploy): {_fd}"
                              f" — query it with: VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "
                              f"\"SELECT body FROM vault_notes WHERE vault_path='{_fd}'\"")
