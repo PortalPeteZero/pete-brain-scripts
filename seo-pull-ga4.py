@@ -18,6 +18,10 @@ Usage:
 # writes: CC public.seo_ga4_daily (+ seo_api_usage at 0 cost)
 # entity: personal
 # report:
+# secrets: GOOGLE_SA_JSON
+# note: GOOGLE_SA_JSON is REQUIRED -- it materialises google-seo-service-account.json, which the
+#   GA4 Data API helper reads. Both crons CRASHED on Railway from 23 Jul until 24 Jul because this line
+#   was missing: they ran fine locally (the file is on disk) and died in the cron with no credentials.
 # schedule: 40 6 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
