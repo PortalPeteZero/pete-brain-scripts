@@ -246,7 +246,7 @@ FD_RULE_HEADINGS = ("## rules", "## standing rules", "## standing decisions",
                     "## rules (binding)", "## do not", "## workflow conventions")
 
 
-def front_door_rules(vault_path, cap=12):
+def front_door_rules(vault_path, cap=20):
     """The BINDING RULES out of a front-door note, so they can be injected rather than pointed at.
 
     Added 24 Jul 2026 (plan step 0g). The hook used to emit only the note's path plus an instruction
