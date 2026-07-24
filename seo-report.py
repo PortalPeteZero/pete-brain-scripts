@@ -110,6 +110,49 @@ def report(key, days=13):
         print("  (no ads on this property)")
 
 
+def ctr_check(key, days=60):
+    """CTR by position band WITH the three known artefacts stripped -- run this before ever telling
+    Pete a CTR figure looks wrong.
+
+    ⚠ WHY (24 Jul 2026): a raw band query showed 1.70% CTR at positions 1-3 site-wide against a
+    25-40% norm, and it was reported to Pete as "a far bigger finding than the page" BEFORE being
+    verified. It was an artefact and had to be retracted within minutes. GSC counts ONE IMPRESSION
+    PER PAGE, so a single brand search returning the homepage plus sitelinks across 27 pages logs
+    27 impressions and at most one click -- the denominator is inflated ~27x. Stripped of that,
+    the homepage converts the brand query at 32.5%, which is healthy.
+
+    The three artefacts, all stripped below:
+      1. BRAND + sitelinks  -- any query containing the brand token
+      2. VANITY terms       -- the property's own configured vanity list (users want the document,
+                               not us; `hsg47` alone was 948 impressions and 2 clicks)
+      3. CONVERSATIONAL     -- long AI-style queries that answer in the overview and never click
+    Never quote a raw CTR band as a finding. Quote this.
+    """
+    cfg = _cfg(key) or {}
+    vanity = cfg.get("vanity") or []
+    brand = (key.split("-")[0] or "").lower()
+    van_sql = " AND ".join(f"query NOT ILIKE $x$%{v}%$x$" for v in vanity) or "true"
+    base = (f"FROM seo_gsc_daily WHERE property_key=$x${key}$x$ "
+            f"AND date > (SELECT max(date)-{days} FROM seo_gsc_daily WHERE property_key=$x${key}$x$)")
+    band = ("CASE WHEN position < 3.5 THEN '1-3' WHEN position < 6.5 THEN '4-6' "
+            "WHEN position < 10.5 THEN '7-10' WHEN position < 20.5 THEN '11-20' ELSE '21+' END")
+    clean = (f"{base} AND query NOT ILIKE $x$%{brand}%$x$ AND length(query) <= 55 AND {van_sql}")
+    print(f"{key} -- CTR by position band, last {days}d. Brand+sitelink, vanity and long "
+          f"conversational queries REMOVED (all three inflate impressions without clicks).")
+    print(f"  {'band':>6}{'impr':>8}{'clicks':>8}{'CTR':>8}   typical")
+    typical = {'1-3': '25-40%', '4-6': '5-9%', '7-10': '2-4%', '11-20': '~1%', '21+': '<0.5%'}
+    for r in _sql(f"SELECT {band} AS b, sum(impressions) i, sum(clicks) c, "
+                  f"round((100.0*sum(clicks)/NULLIF(sum(impressions),0))::numeric,2) ctr {clean} "
+                  f"GROUP BY 1 ORDER BY 1"):
+        print(f"  {r['b']:>6}{r['i']:>8}{r['c']:>8}{str(r['ctr'])+'%':>8}   {typical.get(r['b'],'')}")
+    raw = _sql(f"SELECT sum(impressions) i, sum(clicks) c {base} AND position < 3.5")
+    cl = _sql(f"SELECT sum(impressions) i, sum(clicks) c {clean} AND position < 3.5")
+    if raw and cl and raw[0]["i"] and cl[0]["i"]:
+        rp = 100.0*(raw[0]["c"] or 0)/raw[0]["i"]; cp = 100.0*(cl[0]["c"] or 0)/cl[0]["i"]
+        print(f"\n  positions 1-3: RAW {rp:.2f}% vs CLEANED {cp:.2f}%. If the raw figure alarms you and "
+              f"the cleaned one does not, it is the artefact -- do NOT report it as a finding.")
+
+
 def trend(key, term=None, page=None, by="month"):
     """Month-by-month IMPRESSION-WEIGHTED position for one term (or one page). Use this instead of
     writing ad-hoc SQL -- that is how today's wrong answers happened.
@@ -156,6 +199,8 @@ def main():
         for r in _sql("SELECT property_key, reporting_cadence FROM seo_property_config ORDER BY property_key"):
             print(f"  {r['property_key']:34} cadence={r['reporting_cadence']}")
         return
+    if "--ctr" in a:
+        ctr_check(a[0], int(a[a.index("--days")+1]) if "--days" in a else 60); return
     if "--term" in a or "--page" in a:
         trend(a[0],
               term=a[a.index("--term") + 1] if "--term" in a else None,
