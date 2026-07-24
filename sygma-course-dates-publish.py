@@ -6,7 +6,7 @@
 # reads: public.ee_public_courses (CC) — the same table the Enquiry Engine quotes from
 # writes: src/data/course-dates.json in PortalPeteZero/sygma-solutions-nextjs (git push → Vercel rebuild)
 # entity: sygma
-# schedule: 30 6 * * *
+# schedule: 0 7 * * *
 """
 Push the Enquiry Engine's open course dates onto the public website.
 
@@ -53,8 +53,14 @@ def _token():
 
 
 def build():
-    rows = _sql("SELECT course_date, course_title, family, venue, cap, places_left "
-                "FROM public.ee_public_courses WHERE course_date >= current_date ORDER BY course_date")
+    rows = _sql("SELECT course_date, course_title, family, venue, cap, places_left, raw_summary "
+                "FROM public.ee_public_courses WHERE course_date >= current_date "
+                "ORDER BY course_date")
+    # Day 1 = EUSR Cat 1 (the CAT and Genny day). Day 2 = EUSR Cat 2 SAFE DIG, a DIFFERENT course
+    # run the next day (Pete, 24 Jul 2026). ee-public-dates.py now classifies them correctly at the
+    # producer, so nothing is merged or dropped here -- each family is published and each course page
+    # filters to its own. An earlier version folded Day 2 into Day 1 as a "2-day course": wrong, and
+    # it would have advertised a Safe Dig date as CAT and Genny.
     courses = [{
         "date": r["course_date"],
         "family": r["family"],

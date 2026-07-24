@@ -44,6 +44,14 @@ def _public_cap():
     except Exception:
         return 8
 CAP = _public_cap()
+DEFAULT_VENUE = "Sygma Solutions, Wigan"   # open/public courses run at the Wigan centre (Pete, 24 Jul 2026)
+
+def _is_day2(summary):
+    """A 'Day 2' public-course calendar entry is the EUSR Cat 2 Safe Dig course, not a second day of
+    Cat 1. Pete, 24 Jul 2026. Kept as a named function so the rule is greppable, not a buried regex."""
+    import re as _re
+    return bool(_re.search(r"\bday\s*2\b", summary or "", _re.I))
+
 
 def _load(name, path):
     s = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
@@ -105,8 +113,20 @@ def sweep_calendars(cal, facts):
             fam, code = family_from_text(summ + " " + desc, facts)
             rows.append({
                 "key": f"{start}|{name}",
-                "course_date": start, "trainer": name, "venue": e.get("location") or None,
-                "family": fam, "course_title": (facts.MODEL.get(code, {}).get("note") if code else None),
+                # Public/open courses run at the Sygma Wigan centre. Trainer calendar events
+                # frequently carry no location, which left every public date on the website with a
+                # blank venue (Pete, 24 Jul 2026: "The venue is Wigan"). Defaulted HERE, at the
+                # producer, because this script FULL-REFRESHES the table every run -- a venue typed
+                # straight into ee_public_courses would be wiped the next morning.
+                "course_date": start, "trainer": name, "venue": e.get("location") or DEFAULT_VENUE,
+                # ⚠ "Public Course - Day 2" is NOT day two of the Cat 1 course. It is the EUSR
+                # Cat 2 SAFE DIG course, run the day after (Pete, 24 Jul 2026). The calendar summary
+                # carries no course name, so family_from_text fell back to cat1 and the website was
+                # about to advertise a Safe Dig date as a CAT and Genny course. Classify it here, at
+                # the producer, so every consumer (website, Enquiry Engine) gets it right.
+                "family": ("cat2" if _is_day2(summ) else fam),
+                "course_title": ("EUSR Cat 2 Safe Dig" if _is_day2(summ)
+                                 else (facts.MODEL.get(code, {}).get("note") if code else None)),
                 "cap": CAP, "booked": booked,
                 "places_left": (max(0, CAP - booked) if booked is not None else None),
                 "raw_summary": summ, "source": "calendar",
