@@ -214,7 +214,16 @@ def _cli():
         elif cmd == "get":
             params = dict(kv.split("=", 1) for kv in a[2:])
             body = api.call(a[1], params)
-            print(json.dumps(body, indent=1)[:4000])
+            # ⚠ was `[:4000]` — that truncated mid-object and handed callers INVALID JSON that
+            # crashed every downstream json.load (24 Jul 2026, mid-analysis). Never truncate a
+            # payload a caller has to parse: print it whole, or summarise deliberately.
+            out = json.dumps(body, indent=1)
+            if os.environ.get("AHREFS_SUMMARY") and isinstance(body, dict):
+                for k, v in body.items():
+                    if isinstance(v, list):
+                        print(f"{k}: {len(v)} rows"); break
+            else:
+                print(out)
             _warn_thin(a[1], params, body)
         else:
             print(f"unknown command: {cmd}\n{__doc__}")
