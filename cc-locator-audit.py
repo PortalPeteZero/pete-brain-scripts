@@ -551,6 +551,32 @@ def check_rows(gaps, dm_text, dm_rows):
     except Exception as e:
         add("couldnt-check", "drive-paths", f"drive-path-rebuild did not run ({e}) — Drive path integrity NOT verified", "high")
 
+    # --- Drive index orphans: a row whose PARENT is not itself indexed and is not a drive root is
+    # hanging off nothing — the usual cause is that the file has LEFT the indexed scope while its
+    # row stayed behind, because drive-files-index.py was upsert-only and never deleted anything.
+    # Measured 25 Jul 2026: 63 such rows, 59 of them camera-roll videos whose ancestry ran up into
+    # the shared drive "Petes Photo Archive" (excluded entirely per the MAP). Cleared by hand that
+    # day and the indexer given a prune pass, so the honest baseline for this count is 0.
+    # Roots are excluded because the drive root itself is never indexed as a row, so every genuine
+    # top-level item legitimately points at an unindexed parent. The list mirrors the SHARED map in
+    # drive-files-index.py + drive-changes-watch.py, plus Pete's My Drive root.
+    DRIVE_ROOTS = ("0APzpyHHfvUyIUk9PVA", "0AAcMZiTrK0txUk9PVA", "0AC_ioGo0GJ3tUk9PVA",
+                   "0ACX0xe254y5kUk9PVA", "0AGTfg0QwTS8kUk9PVA", "0AP-TBWWevTInUk9PVA",
+                   "0ANYL9DOJQtmQUk9PVA", "0AP9_VgbvNGyEUk9PVA", "0AOTm_FPU_iRmUk9PVA",
+                   "0APjm9rgEA8PDUk9PVA", "0APHr3b2NkrNNUk9PVA", "0AI3_VD66sPWyUk9PVA",
+                   "0ALRO5BcARVjkUk9PVA")   # last = My Drive root
+    orph = q("SELECT count(*) AS n, min(d.drive) AS eg_drive, min(d.path) AS eg_path "
+             "FROM drive_files d LEFT JOIN drive_files p ON p.drive_file_id = d.parent_id "
+             "WHERE d.parent_id IS NOT NULL AND p.drive_file_id IS NULL "
+             "AND d.parent_id NOT IN ('" + "','".join(DRIVE_ROOTS) + "')")
+    if orph is None:
+        add("couldnt-check", "drive-index orphans", "orphan-row query ERRORED — Drive index integrity NOT verified", "high")
+    elif orph[0]["n"]:
+        add("drive-index-orphan", f"{orph[0]['n']} row(s)",
+            f"Drive index rows hang off a parent that is not indexed (e.g. [{orph[0]['eg_drive']}] {orph[0]['eg_path']}) "
+            "— usually a file that left the indexed scope but kept its row. Fix: drive-files-index.py "
+            "(reports), then --apply to prune", "medium")
+
     # --- storage buckets: data_map homes buckets, so a NEW bucket must be homed too
     bks = q("SELECT name FROM storage.buckets")
     if bks is None:
