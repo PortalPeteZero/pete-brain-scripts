@@ -56,6 +56,30 @@ MECHANICAL = {
     ],
 }
 
+# Talking ABOUT a rule is not breaking it. Measured 25 Jul 2026 while widening this tool: the only
+# occurrence of the banned `avg(position)` across 25 sessions was a session CONFESSING a past breach
+# ("The defect was me: I bypassed it and hand-rolled avg(position)"). Scored naively that reads as a
+# breach, so the number would be wrong in the direction that flatters nobody -- it invents failures.
+# A match is therefore ignored when the surrounding text is discussing the rule rather than applying
+# it. Judged on a context window, the same technique the Clancy wording trigger uses.
+_DISCUSSION_RE = re.compile(
+    r"never|do not|don't|banned|forbidden|instead of|rather than|the rule|breach|violat|"
+    r"hand-roll|bypass|mistake|wrong|should have|must not|stop (?:using|saying)|no longer",
+    re.I)
+_CONTEXT = 90     # chars either side — enough to catch the qualifying clause, short enough to stay local
+
+
+def _is_discussion(text, start, end):
+    """True when the match sits inside talk ABOUT the rule."""
+    return bool(_DISCUSSION_RE.search(text[max(0, start - _CONTEXT):end + _CONTEXT]))
+
+
+# CONSIDERED AND REJECTED, recorded so it is not proposed again:
+#   "CAT & Genny" (ampersand) -- appears in 3 of 25 sessions, but the Sygma front door only fixes the
+#   ORDER ("Genny and CAT" in body copy, "CAT and Genny" allowed in titles). It says nothing about an
+#   ampersand, so flagging it would be inventing a rule and then scoring Pete's own work against it.
+#   `avg(position)` -- 1 of 25, and that one is the false positive described above.
+
 
 def _sql(q):
     try:
@@ -92,6 +116,7 @@ def main():
     delivered = defaultdict(list)   # property -> [session file]
     breaches = []
     checkable = 0
+    discussed = 0
 
     for f in files:
         try:
@@ -111,8 +136,12 @@ def main():
             )
             for name, pat, human in checks:
                 checkable += 1
-                if re.search(pat, produced):
+                for m in re.finditer(pat, produced):
+                    if _is_discussion(produced, m.start(), m.end()):
+                        discussed += 1
+                        continue        # talking about the rule is not breaking it
                     breaches.append((prop, name, human, os.path.basename(f)[:8]))
+                    break
 
     if not delivered:
         print("  Rules were delivered in 0 sessions. Not measurable yet — this is NOT a pass.")
@@ -123,6 +152,8 @@ def main():
         print(f"    {prop:30} {len(ss)} session(s)")
 
     print(f"\n  MECHANICALLY CHECKED: {checkable} rule-instances")
+    if discussed:
+        print(f"  {discussed} match(es) DISCOUNTED — the rule was being discussed, not broken.")
     if breaches:
         print(f"  ⛔ BREACHES: {len(breaches)} — the rule arrived and was broken anyway")
         for prop, name, human, sid in breaches:
