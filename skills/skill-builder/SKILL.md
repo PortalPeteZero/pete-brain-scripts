@@ -129,3 +129,10 @@ What it does:
 - Skills index: `skills/README.md`
 - Install folder: `~/Downloads/cc-skills-to-install/`
 - CC Process Library: `/m/process-library?bucket=Skills`
+
+
+## Rules moved here from CLAUDE.md (24 Jul 2026)
+
+> These were loaded into EVERY session whether relevant or not. They are keyed to THIS job, so they live here — read with the rest of the instructions for it. See [[plan-claude-md-front-door]].
+
+- **After installing a skill, verify by checking the version inside the running skill** before declaring complete. Source-vs-installed gap (24 April 2026) caused repeat issues; verification is mandatory.

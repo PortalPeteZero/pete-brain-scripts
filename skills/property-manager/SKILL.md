@@ -730,3 +730,10 @@ Lessons in scope for this skill:
 - [[2026-05-29-supabase-management-api-write-access]] — when writing to a Supabase project: service_role + PostgREST, NOT the Management `/database/query` endpoint. Also: Cloudflare WAF blocks Python-urllib UA on `api.supabase.com`, set a browser UA.
 - [[2026-05-29-wp-xmlrpc-writes-yoast-meta-bypass-rest]] — when WordPress REST API rejects Yoast meta-key writes, XML-RPC `wp.editPost` writes the same meta-keys directly without the REST restriction.
 
+
+
+## Rules moved here from CLAUDE.md (24 Jul 2026)
+
+> These were loaded into EVERY session whether relevant or not. They are keyed to THIS job, so they live here — read with the rest of the instructions for it. See [[plan-claude-md-front-door]].
+
+- **Code in Claude Code.** All repo, coding, and web property work happens in Claude Code. No exceptions.

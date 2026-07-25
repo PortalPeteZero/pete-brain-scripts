@@ -119,3 +119,11 @@ When retiring a secret: snapshot **metadata only** (name, description, scope) to
 - A second secret row for a rotated key (update the same row).
 - Leaving `category`/`description`/`encoding` blank on a new secret.
 - Declaring "done" before `connection-parity.py --service <name>` prints 0.
+
+
+## Rules moved here from CLAUDE.md (24 Jul 2026)
+
+> These were loaded into EVERY session whether relevant or not. They are keyed to THIS job, so they live here — read with the rest of the instructions for it. See [[plan-claude-md-front-door]].
+
+- **Save API tokens immediately.** When Pete gives a token / key / credential, save it to BOTH memory AND vault (`Library/processes/`) in the same session. Never defer. Learned the hard way with Cloudflare 19 April 2026.
+- **Don't spray API keys across unrelated services.** Test against the named service only. See [[Library/lessons/2026-05-08-dont-spray-api-keys-across-unrelated-services]].
