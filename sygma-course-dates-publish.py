@@ -32,7 +32,7 @@ so this does not trigger a Vercel rebuild every morning for no reason.
 
   VAULT=/tmp/pbs python3 sygma-course-dates-publish.py [--dry-run]
 """
-import os, sys, json, subprocess, tempfile, shutil
+import os, sys, json, base64, subprocess, urllib.request, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 REPO = "PortalPeteZero/sygma-solutions-nextjs"
@@ -86,26 +86,40 @@ def main():
     if DRY:
         print("--dry-run: not pushing"); return 0
 
-    tmp = tempfile.mkdtemp(prefix="sygma-dates-")
+    # GitHub CONTENTS API, not `git` — the Railway cron container has no git binary (it worked
+    # locally and FileNotFoundError'd on 'git' at the 25 Jul run). One GET for the current file+sha,
+    # one PUT to update it. Same pattern cc-cron.py uses to read HEAD. No clone, no shell-out.
+    import base64
+    tok = _token()
+    api = f"https://api.github.com/repos/{REPO}/contents/{TARGET}"
+    hdr = {"Authorization": f"token {tok}", "Accept": "application/vnd.github+json",
+           "User-Agent": "sygma-course-dates-publish"}
+
+    def _gh(url, method="GET", body=None):
+        req = urllib.request.Request(url, data=json.dumps(body).encode() if body else None,
+                                     headers={**hdr, "Content-Type": "application/json"}, method=method)
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.loads(r.read().decode())
+
+    # current file: its sha (needed to update) and its content (to skip a no-op rebuild)
+    sha = None
     try:
-        url = f"https://x-access-token:{_token()}@github.com/{REPO}.git"
-        subprocess.run(["git", "clone", "--depth", "1", "-q", url, tmp], check=True, timeout=180)
-        dest = os.path.join(tmp, TARGET)
-        if os.path.exists(dest) and open(dest).read() == payload:
+        cur = _gh(api)
+        sha = cur.get("sha")
+        if base64.b64decode(cur.get("content", "")).decode() == payload:
             print("unchanged — nothing to push (no needless Vercel rebuild)"); return 0
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        open(dest, "w").write(payload)
-        subprocess.run(["git", "-C", tmp, "add", TARGET], check=True)
-        subprocess.run(["git", "-C", tmp, "-c", "user.name=PortalPeteZero",
-                        "-c", "user.email=pete.ashcroft@sygma-solutions.com",
-                        "commit", "-q", "-m",
-                        f"data: refresh open course dates ({len(doc['courses'])} dates, {doc['generated']})"],
-                       check=True)
-        subprocess.run(["git", "-C", tmp, "push", "-q", "origin", "HEAD"], check=True, timeout=180)
-        print(f"pushed {TARGET} -> {REPO} (Vercel will rebuild)")
-        return 0
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise   # 404 = file does not exist yet; any other error is real
+
+    _gh(api, method="PUT", body={
+        "message": f"data: refresh open course dates ({len(doc['courses'])} dates, {doc['generated']})",
+        "content": base64.b64encode(payload.encode()).decode(),
+        "committer": {"name": "PortalPeteZero", "email": "pete.ashcroft@sygma-solutions.com"},
+        **({"sha": sha} if sha else {}),
+    })
+    print(f"pushed {TARGET} -> {REPO} via contents API (Vercel will rebuild)")
+    return 0
 
 
 if __name__ == "__main__":
