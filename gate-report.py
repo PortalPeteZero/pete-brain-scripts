@@ -58,15 +58,29 @@ def _q(s):
     return (s or "").replace("'", "''")
 
 
+PROJECT_DIRS = [f"{HOME}/Command Centre"]   # known project roots, checked regardless of cwd
+
+
 def settings_files():
-    """Every settings source, in precedence order (later overrides earlier)."""
+    """Every settings source, in precedence order (later overrides earlier).
+
+    CWD IS NOT ENOUGH, and the failure is silent. Run from /tmp/pbs (which is where the boot kernel
+    leaves you) this found 1 file and 6 hooks; run from ~/Command Centre it found 3 files and 8,
+    including the PROJECT-level blocking PostToolUse hook. Same machine, same moment — the report
+    just quietly covered less. That is the exact H3a failure this script was written to fix, so the
+    known project roots are always checked, not only whatever directory happens to be current.
+    """
+    roots = [HOME] + PROJECT_DIRS
     cwd = os.getcwd()
-    return [p for p in [
-        f"{HOME}/.claude/settings.json",
-        f"{HOME}/.claude/settings.local.json",
-        f"{cwd}/.claude/settings.json",
-        f"{cwd}/.claude/settings.local.json",
-    ] if os.path.exists(p)]
+    if cwd not in roots:
+        roots.append(cwd)
+    out = []
+    for r in roots:
+        for f in ("settings.json", "settings.local.json"):
+            p = f"{r}/.claude/{f}"
+            if os.path.exists(p) and p not in out:
+                out.append(p)
+    return out
 
 
 def key_for(command, event):
@@ -119,12 +133,28 @@ def main():
 
     matched = sorted(set(obs) & set(registered))
     unregistered = sorted(set(obs) - set(registered))
-    missing = sorted(set(registered) - set(obs))
+
+    # SUB-GATES ARE NOT MISSING GATES. Several registry rows are a rule enforced INSIDE a wired
+    # script rather than a hook of their own -- commit-author-gate lives in git-commit-atomic-guard,
+    # new-rule-blocker in local-write-guard, property-front-door-injector in property-context-hook.
+    # Matching on hook name alone, they could never match, so the report warned about three healthy
+    # gates on EVERY run. A check that cries wolf every time is one you stop reading, which is worse
+    # than no check. If a row's `wired_in` names a script that IS wired, the gate is wired.
+    wired_scripts = {k for k in obs}
+    def _is_subgate(row):
+        w = (row.get("wired_in") or "").lower()
+        return any(s.lower().replace(".py", "") in w for s in wired_scripts if not s.startswith("inline:"))
+
+    missing, subgates = [], []
+    for k in sorted(set(registered) - set(obs)):
+        (subgates if _is_subgate(registered[k]) else missing).append(k)
 
     print(f"gate-report — {len(settings_files())} settings file(s), {len(obs)} hook(s) wired, "
           f"{len(registered)} hook-gate(s) registered")
     for k in matched:
         print(f"  ✅ {k:28} {obs[k]['event']:20} {obs[k]['source']}")
+    for k in subgates:
+        print(f"  ✅ {k:28} {'sub-gate inside ' + (registered[k].get('wired_in') or '?')}")
     for k in unregistered:
         print(f"  ⚠  UNREGISTERED: {k:20} {obs[k]['event']:20} {obs[k]['source']}")
         print(f"       → register it in public.gates (what it refuses, exceptions, override path, owner)")
