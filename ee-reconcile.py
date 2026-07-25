@@ -218,26 +218,41 @@ def main():
         if not tl.portal_get("contacts", select="id", id=f"eq.{r['contact_id']}"):
             drift.append(f"ledger-orphan: enquiry_touches rows point at deleted contact {r['contact_id']}")
 
-    # 6. double-captures
-    dbl = tl.cc_sql("SELECT message_id, count(*) n FROM enquiry_touches WHERE message_id IS NOT NULL GROUP BY message_id HAVING count(*) > 1")
+    # 6. double-captures — must group by (message_id, kind), NOT message_id alone.
+    # The uniqueness contract is ux_touches_message_kind ON (message_id, kind): one message
+    # legitimately carries an 'enquiry' arrival row (written by triage at routing) AND the EE's
+    # own 'reply'/'quote' row. Grouping on message_id alone reported every normal enquiry->reply
+    # pair as a double-capture, so this check cried wolf every morning (3 of 7 lines on
+    # 2026-07-25 were healthy enquiry+quote / enquiry+reply pairs). Only a repeat of the SAME
+    # kind is a real double-capture.
+    dbl = tl.cc_sql("SELECT message_id, kind, count(*) n FROM enquiry_touches "
+                    "WHERE message_id IS NOT NULL GROUP BY message_id, kind HAVING count(*) > 1")
     for d in dbl or []:
-        drift.append(f"double-capture: message {d['message_id']} captured {d['n']}×")
+        drift.append(f"double-capture: message {d['message_id']} captured {d['n']}× as '{d['kind']}'")
 
-    # 7. duplicate people — paginated (PostgREST caps a page at 1,000 rows)
-    counts, offset = {}, 0
+    # 7. duplicate people — paginated (PostgREST caps a page at 1,000 rows).
+    # A shared mailbox (trainwithus@, bookings@, training@) legitimately fronts several DIFFERENT
+    # named people, so a shared address is not a duplicate person. Only flag when the same email
+    # carries the same normalised NAME — that is the split-history risk this check exists for.
+    by_email, offset = {}, 0
     while True:
-        page = tl.portal_get("contacts", select="email", email="not.is.null",
+        page = tl.portal_get("contacts", select="email,full_name", email="not.is.null",
                              limit="1000", offset=str(offset)) or []
         for c in page:
             e = (c.get("email") or "").lower().strip()
             if e:
-                counts[e] = counts.get(e, 0) + 1
+                by_email.setdefault(e, []).append(" ".join((c.get("full_name") or "").lower().split()))
         if len(page) < 1000:
             break
         offset += 1000
-    for e, n in counts.items():
-        if n > 1:
-            drift.append(f"duplicate-person: {e} exists on {n} contact rows")
+    for e, names in by_email.items():
+        if len(names) < 2:
+            continue
+        for nm in set(names):
+            n = names.count(nm)
+            if n > 1:
+                who = nm or "(no name)"
+                drift.append(f"duplicate-person: {e} exists on {n} contact rows as '{who}'")
 
     # report
     today = dt.date.today().isoformat()
