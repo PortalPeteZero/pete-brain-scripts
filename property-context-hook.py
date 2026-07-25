@@ -201,6 +201,94 @@ def match_properties(feed, prompt):
     return matched
 
 
+CUST_CACHE = "/tmp/property-context-hook-customers.json"   # {"ts": epoch, "rows": [...]}
+CUST_TTL = 900          # the customer list barely changes; 15 min is plenty
+MAXC = 2                # cap injected customers — the same noise discipline as MAXP
+
+# Words that appear in a customer folder name but are far too generic to match on. Without this,
+# "public" (SY-Public) and "group" (SY-MGroup, SY-YTL-Group) would fire on ordinary sentences.
+CUST_STOP = {
+    "public", "group", "water", "global", "partnership", "community", "owners", "estates",
+    "delegates", "course", "courses", "customer", "customers", "readme", "the", "and",
+    # Added after a live false-positive sweep: "update the customer profile" fired M Group purely on
+    # the word "profile" from its note title. These are all real words in a customer name that are
+    # far more often used in an ordinary sentence than as that customer.
+    "profile", "network", "plus", "island", "roads", "trent", "severn",
+}
+
+
+def load_customers():
+    """The customer front doors — `Customers/<KEY>/README.md` in vault_notes.
+
+    Added 25 Jul 2026 (people plan step B8). B8 originally proposed a SECOND, people-specific hook.
+    Checked against the live data first: there is exactly ONE key account in the `account_*` store
+    (Clancy), its serious rules are already refused by `damage_review_wording_trg`, and only ONE
+    resident conduct rule is customer-shaped -- and that one is general, not Clancy-specific. A whole
+    new hook could not be justified by that. But there ARE 14 real customer front doors carrying
+    genuinely useful standing context (Clancy's day rate, its passcode, where its state lives), and
+    the property hook is already wired, already proven and already measured at 88%. So customers ride
+    the mechanism that works instead of getting a weaker parallel one.
+
+    Fail-open → [] on any error; a context hook must never block a prompt."""
+    try:
+        c = json.load(open(CUST_CACHE))
+        if time.time() - c.get("ts", 0) < CUST_TTL:
+            return c.get("rows", [])
+    except Exception:
+        pass
+    url, key = _cc_creds()
+    if not (url and key):
+        return []
+    try:
+        import urllib.parse
+        # PostgREST regex filter: top-level customer READMEs only, never the sub-folder ones
+        pat = urllib.parse.quote("^Customers/[^/]+/README\\.md$", safe="")
+        req = urllib.request.Request(
+            url.rstrip("/") + "/rest/v1/vault_notes?select=vault_path,title&vault_path=match." + pat,
+            headers={"apikey": key, "Authorization": "Bearer " + key})
+        with urllib.request.urlopen(req, timeout=LIVE_TIMEOUT) as r:
+            rows = json.loads(r.read().decode())
+        try:
+            json.dump({"ts": time.time(), "rows": rows}, open(CUST_CACHE, "w"))
+        except Exception:
+            pass
+        return rows
+    except Exception:
+        return []
+
+
+def match_customers(rows, prompt):
+    """Match a customer by the distinctive words in its folder key and title.
+
+    Deliberately conservative: a token must be >=4 chars, not generic, and UNIQUE across the whole
+    customer list. A false positive here injects a wall of the wrong customer's standing terms into
+    an unrelated prompt, which is worse than injecting nothing."""
+    prompt_words = set(_tok(prompt))
+    prompt_phrase = " " + " ".join(_tok(prompt)) + " "
+    cand, freq = [], {}
+    for r in rows:
+        m = re.match(r"^Customers/([^/]+)/README\.md$", r.get("vault_path", "") or "")
+        keyname = m.group(1) if m else ""
+        keyname = re.sub(r"^(SY|CD|PA)-", "", keyname)          # the entity prefix is not a name
+        toks = set(_tok(keyname)) | set(_tok(r.get("title", "")))
+        toks = {t for t in toks if len(t) >= 4 and t not in CUST_STOP}
+        cand.append((toks, keyname))
+        for t in toks:
+            freq[t] = freq.get(t, 0) + 1
+    out = []
+    for r, (toks, keyname) in zip(rows, cand):
+        keep = {t for t in toks if freq.get(t, 0) == 1}
+        # Multi-word customer names as a CONTIGUOUS phrase, same technique the property matcher uses.
+        # Without this, "Network Plus", "YTL Group" and "Severn Partnership" matched NOTHING at all --
+        # every one of their individual tokens is either generic or shared, so single-token matching
+        # could never fire for them. The phrase is collision-free, so it is safe where a token is not.
+        name_toks = _tok(keyname)
+        phrase_hit = len(name_toks) >= 2 and (" " + " ".join(name_toks) + " ") in prompt_phrase
+        if phrase_hit or (keep & prompt_words):
+            out.append(r)
+    return out[:MAXC]
+
+
 def _cc_creds():
     url = os.environ.get("CC_SUPABASE_URL")
     key = os.environ.get("CC_SUPABASE_SERVICE_KEY")
@@ -360,35 +448,44 @@ def main():
     if len(prompt) < 4:
         sys.exit(0)
     feed = load_feed()
-    if not feed:
-        sys.exit(0)
 
-    matched = match_properties(feed, prompt)
-    if not matched:
+    # Customers are matched INDEPENDENTLY of properties. Gating them behind a property match (which
+    # is what an early exit here used to do) meant a prompt naming only a customer -- "what's the
+    # Clancy day rate" -- got nothing, which is exactly the case the customer front door exists for.
+    matched = match_properties(feed, prompt) if feed else []
+    cust = match_customers(load_customers(), prompt)
+    if not matched and not cust:
         sys.exit(0)
+    if not feed:
+        feed = {"as_of": None}
 
     # F2 inject-time domain resolution for the TOP match: re-read its CURRENT domain from
     # property_declarations right now, so a declaration edited since the last nightly feed is still
     # correct. If it differs from the feed, that's the tripwire — surface it. Fail-open to the feed.
-    top = matched[0]
-    feed_domain = top.get("primary_domain")
+    # (guarded: a customer-only match has no property, so there is no top/domain/probe to do)
+    top = matched[0] if matched else None
+    feed_domain = top.get("primary_domain") if top else None
     live_domain = None
-    try:
-        live_domain = resolve_live_domain(top.get("name"))
-    except Exception:
-        live_domain = None
+    if top:
+        try:
+            live_domain = resolve_live_domain(top.get("name"))
+        except Exception:
+            live_domain = None
     top_domain = live_domain or feed_domain
     domain_moved = bool(live_domain and feed_domain and live_domain != feed_domain)
 
     # live re-check the TOP match only — one probe, 3s-capped, so the hook stays sub-second-ish
     live = None
-    try:
-        live = live_check(top_domain)
-    except Exception:
-        live = None
+    if top:
+        try:
+            live = live_check(top_domain)
+        except Exception:
+            live = None
 
-    lines = [f"[property-state hook — state as-of the last sync ({feed.get('generated','?')}); the top "
-             f"match's domain is re-resolved LIVE at this prompt. Trust this over any narrative file.]"]
+    lines = []
+    if matched:
+        lines.append(f"[property-state hook — state as-of the last sync ({feed.get('generated','?')}); the top "
+                     f"match's domain is re-resolved LIVE at this prompt. Trust this over any narrative file.]")
     for i, p in enumerate(matched[:MAXP]):
         drift = ("  ⚠ " + " · ".join(p["drift"])) if p.get("drift") else ""
         shown_domain = (top_domain if i == 0 else p.get("primary_domain")) or "no domain"
@@ -436,7 +533,27 @@ def main():
                 pl = project_status_line(proj)
                 if pl:
                     lines.append(f"    project {proj} → {pl}")
-    emit("\n".join(lines))
+
+    # CUSTOMER FRONT DOORS (people plan step B8). Same discipline as the property front doors: the
+    # binding rules are INJECTED, never pointed at, because a pointer only works if I choose to
+    # follow it (measured 33%) whereas this arrives whether I think of it or not (88%).
+    for c in cust:
+        vp = c.get("vault_path")
+        nm = (c.get("title") or "").strip() or vp
+        lines.append(f"[customer front door — {nm}]")
+        _crules = front_door_rules(vp)
+        if _crules:
+            lines.append(f"    ↳ STANDING TERMS for {nm} (binding — from {vp}):")
+            for _r in _crules:
+                lines.append(f"        · {_r}")
+        lines.append(f"    ↳ READ THIS FIRST before any work on this account: {vp}")
+        lines.append(f"      VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "
+                     f"\"SELECT body FROM vault_notes WHERE vault_path='{vp}'\"")
+        lines.append("    ↳ For CURRENT state (damages, tasks, deliverables) query the live tables, "
+                     "never the note — a front door carries standing terms, not state.")
+
+    if lines:
+        emit("\n".join(lines))
 
 if __name__ == "__main__":
     main()
