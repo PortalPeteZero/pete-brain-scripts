@@ -173,10 +173,13 @@ def main():
                 if linked:
                     continue
                 full = g.get_thread(t["id"])
-                hdrs = {h["name"].lower(): h["value"] for h in full["messages"][0]["payload"]["headers"]}
-                m = _re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", hdrs.get("from", ""))
-                if m and not _tl.portal_get("contacts", select="id", email=f"ilike.{m.group(0).lower()}"):
-                    missing.append(f"{t['id']} from {m.group(0)}")
+                # Shared with ee-reconcile via te-log: pick the CUSTOMER (skip our own relay,
+                # newest-first) and match the CRM by exact address THEN company domain. Both
+                # files previously carried their own copy that read messages[0] and matched
+                # exact-only, which false-blocked properly-intaken threads (25 Jul 2026).
+                sender = _tl.thread_correspondent(full.get("messages", []))
+                if sender and not _tl.find_contact_by_email_or_domain(sender):
+                    missing.append(f"{t['id']} from {sender}")
             except Exception:
                 pass
         print(f"\n[{'OK ' if not missing else 'BLOCK'}] (7) tray threads with no CRM contact = {len(missing)}   ← must be 0 (run intake)")

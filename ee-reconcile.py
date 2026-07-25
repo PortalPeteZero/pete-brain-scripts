@@ -130,58 +130,6 @@ def _classify_quiet(g, tl, fam_ids, email, last_date):
         return f"ball with them — we replied last, genuinely quiet since {str(last_date)[:10]}"
     return f"quiet since {str(last_date)[:10]} — no Gmail thread found, verify context"
 
-_ADDR_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
-
-
-def _correspondent(msgs):
-    """The CUSTOMER's address on a thread — NOT msgs[0]'s From.
-
-    A web-form enquiry arrives From our own relay (info@sygma-solutions.com) and a
-    procurement RFI arrives From a shared vendor box, so the first sender is routinely
-    not the person we are talking to. Reading msgs[0] made the tray check hunt for the
-    wrong human and then report a customer who IS in the CRM as missing — Bryony
-    Halliday (Wheal Jane), 25 Jul 2026, whose thread opened From info@sygma-solutions.com.
-
-    So: walk the thread NEWEST first and take the first From that is not one of ours.
-    Newest-first because a relayed thread's later messages come direct from the customer.
-    Falls back to msgs[0] only when every sender is ours (nothing better to offer).
-    """
-    if not msgs:
-        return None
-    ordered = sorted(msgs, key=lambda m: int(m.get("internalDate", "0") or 0), reverse=True)
-    for m in ordered:
-        hdrs = {h["name"].lower(): h["value"] for h in m.get("payload", {}).get("headers", [])}
-        frm = (hdrs.get("from") or "").lower()
-        if _OURS_DOMAIN in frm:
-            continue
-        hit = _ADDR_RE.search(frm)
-        if hit:
-            return hit.group(0).lower()
-    hdrs = {h["name"].lower(): h["value"] for h in msgs[0].get("payload", {}).get("headers", [])}
-    hit = _ADDR_RE.search((hdrs.get("from") or "").lower())
-    return hit.group(0).lower() if hit else None
-
-
-def _find_contact(email):
-    """Exact address, then the company DOMAIN — the same two-step the EE uses at draft time.
-
-    One person routinely writes from an address the CRM does not hold: Bryony Halliday is
-    consultancy@wheal-jane.co.uk in the CRM but emails as bhalliday@wheal-jane.co.uk. An
-    exact-only match calls that 'NO CRM contact' and invents drift against a live customer.
-    A domain hit is not proof of the same person, so it is enough to suppress a false alarm
-    but is never used to write anything.
-    """
-    if not email:
-        return []
-    hit = tl.portal_get("contacts", select="id", email=f"ilike.{email}")
-    if hit:
-        return hit
-    domain = email.split("@")[-1]
-    if not domain or _OURS_DOMAIN.lstrip("@") == domain:
-        return []
-    return tl.portal_get("contacts", select="id", email=f"ilike.*@{domain}") or []
-
-
 def main():
     dry = "--dry" in sys.argv
     drift = []
@@ -203,7 +151,7 @@ def main():
             try:
                 full = g.get_thread(t["id"])
                 msgs = full.get("messages", [])
-                sender = _correspondent(msgs)
+                sender = tl.thread_correspondent(msgs)
                 first_ms = int(msgs[0].get("internalDate", "0")) / 1000 if msgs[0].get("internalDate") else None
                 age_days = (dt.datetime.now(dt.timezone.utc).timestamp() - first_ms) / 86400 if first_ms else None
                 tray_senders[t["id"]] = (sender, age_days)
@@ -211,7 +159,7 @@ def main():
                 tray_senders[t["id"]] = (None, None)
         # 1. tray items
         for tid, (sender, age) in tray_senders.items():
-            contact = _find_contact(sender) if sender else []
+            contact = tl.find_contact_by_email_or_domain(sender) if sender else []
             if sender and not contact:
                 drift.append(f"tray-unanswered: thread {tid} from {sender} has NO CRM contact (exists only in Gmail)")
             if age and age > N_DAYS + 2:

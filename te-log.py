@@ -155,6 +155,62 @@ def _gmail():
         _GMAIL = mod.GmailAPI()
     return _GMAIL
 
+OURS_DOMAIN = "@sygma-solutions.com"
+_ADDR_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+
+
+def thread_correspondent(msgs):
+    """The CUSTOMER's address on a thread — NOT msgs[0]'s From.
+
+    A web-form enquiry arrives From our own relay (info@sygma-solutions.com) and a
+    procurement RFI arrives From a shared vendor box, so the FIRST sender is routinely
+    not the person we are talking to. Reading msgs[0] makes a caller hunt for the wrong
+    human and then report a live customer as missing.
+
+    Walk the thread NEWEST first and take the first From that is not one of ours —
+    newest-first because a relayed thread's later messages come direct from the
+    customer. Falls back to msgs[0] only when every sender is ours.
+
+    Lives HERE, not in a caller, because ee-reconcile and ee-signoff both had their own
+    copy of the broken version and had to be fixed twice (25 Jul 2026). One definition.
+    """
+    if not msgs:
+        return None
+    ordered = sorted(msgs, key=lambda m: int(m.get("internalDate", "0") or 0), reverse=True)
+    for m in ordered:
+        hdrs = {h["name"].lower(): h["value"] for h in m.get("payload", {}).get("headers", [])}
+        frm = (hdrs.get("from") or "").lower()
+        if OURS_DOMAIN in frm:
+            continue
+        hit = _ADDR_RE.search(frm)
+        if hit:
+            return hit.group(0).lower()
+    hdrs = {h["name"].lower(): h["value"] for h in msgs[0].get("payload", {}).get("headers", [])}
+    hit = _ADDR_RE.search((hdrs.get("from") or "").lower())
+    return hit.group(0).lower() if hit else None
+
+
+def find_contact_by_email_or_domain(email):
+    """Exact address, then the company DOMAIN — the two-step the EE already uses at draft time.
+
+    One person routinely writes from an address the CRM does not hold: Bryony Halliday is
+    consultancy@wheal-jane.co.uk in the CRM but emails as bhalliday@wheal-jane.co.uk. An
+    exact-only match calls that 'NO CRM contact' and invents drift against a live customer.
+
+    A domain hit is NOT proof of the same person — it is enough to suppress a false alarm
+    in a report, and must never be used to authorise a write.
+    """
+    if not email:
+        return []
+    hit = portal_get("contacts", select="id", email=f"ilike.{email}")
+    if hit:
+        return hit
+    domain = email.split("@")[-1]
+    if not domain or domain == OURS_DOMAIN.lstrip("@"):
+        return []
+    return portal_get("contacts", select="id", email=f"ilike.*@{domain}") or []
+
+
 def file_dealt_thread(thread_id):
     """Once an enquiry is dealt with (reply sent + logged), FILE its Gmail thread:
     drop the Replies/Actions tray label and archive (remove INBOX). The chase task is
