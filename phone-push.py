@@ -148,20 +148,6 @@ def main():
     print(f"  every one labelled     : {LABEL}")
     print()
 
-    # RULE 2 IS NOT YET ENFORCEABLE, so --confirm is refused rather than quietly dropping it.
-    # people-api.py's add sets names/email/phone/organization and NO contactGroup membership, so
-    # nothing this pushed would carry the label. Without the label there is no way to tell what the
-    # system added from what Pete added, and therefore no way to undo a bad push -- which is the
-    # whole reason rule 2 exists. Shipping the push with the label silently missing would be a
-    # safety property claimed in the docstring and absent in the code.
-    if confirm:
-        print("  REFUSED — the group label is NOT implemented yet.", file=sys.stderr)
-        print(f"  Rule 2 says every pushed contact carries '{LABEL}' so that what the system added", file=sys.stderr)
-        print("  stays separable from what Pete added. people-api.py's `add` writes no contactGroup", file=sys.stderr)
-        print("  membership, so these would be indistinguishable from Pete's own contacts and a bad", file=sys.stderr)
-        print("  push could not be undone. Implement contactGroups membership first.", file=sys.stderr)
-        return 2
-
     if not confirm:
         for p in todo[:15]:
             print(f"    + {p['name']}  <{p.get('email')}>  {p.get('phone') or ''}   [{p['from']}]")
@@ -173,12 +159,13 @@ def main():
 
     added, failed = 0, 0
     for p in todo:
+        # phone and org are POSITIONAL, so org cannot be passed without a phone -- send an empty
+        # placeholder rather than silently dropping the organisation.
         args = [sys.executable, os.path.join(VAULT, "people-api.py"), "add",
-                p["name"], p["email"]]
-        if p.get("phone"):
-            args.append(p["phone"])
+                p["name"], p["email"], p.get("phone") or ""]
         if p.get("org"):
             args.append(p["org"])
+        args += ["--group", LABEL]      # rule 2 — every pushed contact is labelled, no exceptions
         r = subprocess.run(args, capture_output=True, text=True, timeout=60,
                            env={**os.environ, "VAULT": VAULT})
         if r.returncode == 0:

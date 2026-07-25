@@ -115,7 +115,22 @@ def list_contacts(page_size=50):
     for p in connections:
         format_person(p)
 
-def add_contact(name, email, phone=None, org=None):
+def ensure_group(label):
+    """Find the USER contact group called `label`, creating it only if it does not exist.
+
+    Added 25 Jul 2026 for the outward push (people plan B9). Anything the system puts on Pete's
+    phone MUST carry a label, so what the system added stays separable from what he added himself
+    -- otherwise a bad bulk push cannot be undone. Find-or-create, never duplicate.
+    """
+    r = api("GET", "/contactGroups", {"pageSize": 200})
+    for g in r.get("contactGroups", []):
+        if g.get("groupType") == "USER_CONTACT_GROUP" and g.get("name") == label:
+            return g["resourceName"]
+    made = api("POST", "/contactGroups", body={"contactGroup": {"name": label}})
+    return made["resourceName"]
+
+
+def add_contact(name, email, phone=None, org=None, group=None):
     parts = name.split(" ", 1)
     given = parts[0]
     family = parts[1] if len(parts) > 1 else ""
@@ -127,6 +142,12 @@ def add_contact(name, email, phone=None, org=None):
         body["phoneNumbers"] = [{"value": phone}]
     if org:
         body["organizations"] = [{"name": org}]
+    if group:
+        # `group` is a LABEL, resolved to (or created as) a real contactGroup here. Membership is set
+        # in the same createContact call, so a contact can never land unlabelled -- a two-step
+        # "create then label" would strand contacts if the second call failed.
+        body["memberships"] = [{"contactGroupMembership":
+                                {"contactGroupResourceName": ensure_group(group)}}]
     resp = api("POST", "/people:createContact", body=body)
     print(f"Created: {resp.get('resourceName')}")
     format_person(resp)
@@ -175,8 +196,19 @@ def main():
     elif cmd == "list":
         list_contacts(int(args[1]) if len(args) > 1 else 50)
     elif cmd == "add":
-        if len(args) < 3: print("Usage: people-api.py add 'Name' email [phone] [org]"); sys.exit(1)
-        add_contact(args[1], args[2], args[3] if len(args) > 3 else None, args[4] if len(args) > 4 else None)
+        if len(args) < 3: print("Usage: people-api.py add 'Name' email [phone] [org] [--group LABEL]"); sys.exit(1)
+        grp = None
+        if "--group" in args:
+            gi = args.index("--group")
+            if gi + 1 < len(args):
+                grp = args[gi + 1]
+            args = args[:gi] + args[gi + 2:]      # keep the positional args positional
+        add_contact(args[1], args[2], args[3] if len(args) > 3 else None,
+                    args[4] if len(args) > 4 else None, group=grp)
+    elif cmd == "groups":
+        r = api("GET", "/contactGroups", {"pageSize": 200})
+        for g in r.get("contactGroups", []):
+            print(f"{g.get('groupType','?'):20} {g.get('name','')[:40]:42} {g.get('resourceName')}")
     elif cmd == "update":
         if len(args) < 4: print("Usage: people-api.py update RESOURCE_NAME field value"); sys.exit(1)
         update_contact(args[1], args[2], args[3])
