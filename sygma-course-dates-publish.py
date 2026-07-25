@@ -6,6 +6,10 @@
 # reads: public.ee_public_courses (CC) — the same table the Enquiry Engine quotes from
 # writes: src/data/course-dates.json in PortalPeteZero/sygma-solutions-nextjs (git push → Vercel rebuild)
 # entity: sygma
+# secrets: SUPABASE_TOKEN, SECRETFILE__github-pat
+#   SUPABASE_TOKEN -> cc-sql.py reads ee_public_courses. SECRETFILE__github-pat -> the push.
+#   Both were UNDECLARED, so the cron worked locally (files on disk) and FAILED on Railway at its
+#   first 06:00 run, 25 Jul 2026. Same fault as the seo-pull crons the day before.
 # schedule: 0 7 * * *
 """
 Push the Enquiry Engine's open course dates onto the public website.
