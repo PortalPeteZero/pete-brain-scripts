@@ -595,7 +595,7 @@ Manual sections (decisions, change ledger, planned restructure) are preserved ac
 
 - `[[Library/processes/google-ads-api-configuration]]` -- auth chain, dev token, helper script, GAQL cheatsheet
 - `[[reference_sygma_google_ads_mcc]]` -- MCC + advertiser IDs, 2FA pattern
-- `[[Projects/SY-Website/ads]]` -- operational ads project (campaigns, recovery plan, handover to Appear Online)
+- `[[Projects/SY-Website/ads]]` -- operational ads project (campaigns, recovery plan). Ads stay with Pete.
 - `[[Library/processes/scripts/ads-api-py|ads-api.py]]` -- the helper script driving everything here
 - `[[Library/processes/scheduled-tasks#sygma-ads-account-snapshot]]` -- the weekly sync cron
 
@@ -621,10 +621,10 @@ Append-only log of structural changes made manually (via UI or API). Run-detecte
 
 - **Maximize Conversions strategy, no Target CPA initially** (locked 2026-05-06) -- 14-day learning window before refining; target CPA goal ~£100 after data settles.
 - **Defensive posture on `sygma` brand-bidding** (locked 2026-05-18) -- own organic #1+#2 captures all branded searches; paid pickup wasted £24/mo at 0 conv. Phrase-match negative blocks all sygma+X variants.
-- **Appear Online takes over Ads from June 2026** (£300/mo). Pete owns through May. Structural restructure decisions deferred to AO unless they break something pre-handover.
+- **Google Ads is Pete's own remit — NOT handed to Appear Online.** The June-2026 handover discussed in May did NOT happen (confirmed by Pete 25 Jul 2026). Appear Online owns BACKLINKS / off-site only. The handover does not happen unless Pete explicitly says so.
 - **Account hygiene cap** (2026-05-19) -- only live campaign + 2 live ad groups remain. No restructure mess to inherit.
 
-## Planned restructure (deferred to Appear Online)
+## Planned restructure (Pete's own — the June handover to Appear Online never happened)
 
 The single live ad group `Cable Avoidance & CAT Genny Training` mixes three theme clusters (HSG47 / CAT Genny / EUSR). Tighter ad-group themes would improve QS + ad relevance. But:
 
