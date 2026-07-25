@@ -64,6 +64,17 @@ def classify():
     for label in payees:
         core = _norm(label.split("(")[0].split("—")[0])
         hit = next((p for k, p in idx.items() if core and len(k) > 4 and (core in k or k in core)), None)
+        if not hit and core:
+            # Fall back to the EMAIL DOMAIN. A trading name often shares nothing with the registered
+            # name: "Indelasa" vs "Industriales de construcción de Lanzarote, S.A." have no words in
+            # common, but the company emails from indelasa.net. Without this the payee reads as
+            # MISSING after the two were merged, and a later --create would rebuild the very
+            # duplicate the merge removed (25 Jul 2026).
+            for p in partners:
+                dom = (p.get("email") or "").split("@")[-1]
+                if dom and core in _norm(dom):
+                    hit = p
+                    break
         if not hit:
             missing.append(label)
         elif (hit.get("supplier_rank") or 0) == 0:
