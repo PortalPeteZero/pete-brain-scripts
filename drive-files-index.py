@@ -81,13 +81,32 @@ SHARED = {"Sygma Hub": "0APzpyHHfvUyIUk9PVA", "Canary Detect": "0AAcMZiTrK0txUk9
 FFIELDS = "nextPageToken,files(id,name,parents,driveId)"
 XFIELDS = "nextPageToken,files(id,name,parents,mimeType,size,modifiedTime,driveId)"
 
-def build(drive, folders, files):
+EXCL = {}   # drive_file_id -> (drive, why the scan deliberately did NOT index it) — read by the prune pass
+
+
+def build(drive, folders, files, root):
     fmap = {f["id"]: (f["name"], (f.get("parents") or [None])[0]) for f in folders}
     def path(fid):
         parts = []; cur = fid; seen = set()
         while cur in fmap and cur not in seen:
             seen.add(cur); nm, par = fmap[cur]; parts.append(nm); cur = par
         return "/".join(reversed(parts))
+    def anchored(par):
+        """Does this item's parent chain actually reach this drive's root? If not, we cannot say
+        where the item IS, so it is not part of this drive's tree and does not belong in the index.
+        (Pete's call, 25 Jul 2026.) The case that forced it: files Pete OWNS sitting inside a folder
+        someone ELSE shared with him — 4 under Jane Williams' "Meet Dave and Pete". `'me' in owners`
+        admits his files and excludes her folder, so they were indexed as bare filenames pretending
+        to be at the top of My Drive. Deleting them by hand on 25 Jul did nothing: the next full
+        index recreated them. Also catches items with no parents at all (two Word `~$` lock files,
+        which live nowhere in Drive). Transitive on purpose — a chain of Pete-owned folders under
+        her folder must ALL go, not just the top one."""
+        cur = par; seen = set()
+        while cur is not None and cur not in seen:
+            if cur == root: return True
+            if cur not in fmap: return False
+            seen.add(cur); cur = fmap[cur][1]
+        return False
     rows = []
     for f in folders:
         rows.append({"drive_file_id": f["id"], "name": f["name"], "path": path(f["id"]), "drive": drive, "entity": drive, "mime": "folder", "size": None, "modified_time": None, "is_folder": True, "parent_id": (f.get("parents") or [None])[0]})
@@ -95,14 +114,24 @@ def build(drive, folders, files):
         par = (f.get("parents") or [None])[0]
         pp = path(par)
         rows.append({"drive_file_id": f["id"], "name": f["name"], "path": (pp + "/" + f["name"]) if pp else f["name"], "drive": drive, "entity": drive, "mime": f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": False, "parent_id": par})
-    # cold-backup folders are hidden from the file index (Pete, 2026-06-26)
-    return [r for r in rows if "_backups" not in (r["path"] or "").split("/")]
+    # Two deliberate exclusions. Both record WHY into EXCL, so the prune pass can tell "the scan
+    # chose not to index this" apart from "the scan missed a live file" — the second is a bug and
+    # must never be quietly deleted.
+    keep = []
+    for r in rows:
+        if "_backups" in (r["path"] or "").split("/"):
+            EXCL[r["drive_file_id"]] = (drive, "under a _backups folder — cold backups are hidden from the index by rule")
+        elif not anchored(r["parent_id"]):
+            EXCL[r["drive_file_id"]] = (drive, f"its parent chain does not reach the {drive} root — not part of this drive's tree")
+        else:
+            keep.append(r)
+    return keep
 
 def scan_shared(name, did):
     common = {"corpora": "drive", "driveId": did, "includeItemsFromAllDrives": "true", "supportsAllDrives": "true", "pageSize": 1000}
     folders = page({**common, "q": "mimeType='application/vnd.google-apps.folder' and trashed=false", "fields": FFIELDS})
     files = page({**common, "q": "mimeType!='application/vnd.google-apps.folder' and trashed=false", "fields": XFIELDS})
-    return build(name, folders, files)
+    return build(name, folders, files, did)   # a shared drive's root id IS its driveId
 
 def scan_mydrive():
     common = {"corpora": "user", "spaces": "drive", "supportsAllDrives": "true", "pageSize": 1000}
@@ -117,7 +146,11 @@ def scan_mydrive():
     # drive-changes-watch.py: `if did is None and f.get("driveId"): continue`).
     folders = [f for f in folders if not f.get("driveId")]
     files = [f for f in files if not f.get("driveId")]
-    return build("My Drive", folders, files)
+    # Ask Drive for the My Drive root id rather than hardcoding it, so the anchoring check can
+    # never be quietly wrong for the wrong account.
+    root = json.loads(urllib.request.urlopen(urllib.request.Request(
+        BASE + "/files/root?fields=id", headers={"Authorization": f"Bearer {tok()}"}), timeout=60).read())["id"]
+    return build("My Drive", folders, files, root)
 
 def getfile(fid):
     """One files.get, for VERIFYING a prune candidate. Returns the metadata dict, the string
@@ -226,8 +259,13 @@ def classify(fid, row):
     """Is this row's file still something we index? Returns (verdict, note).
     stale-* = safe to delete · in-scope = DO NOT delete (the scan missed a live file) ·
     unknown = could not verify, leave alone."""
-    # Policy exclusion needs no API call: cold-backup folders are deliberately hidden from the
-    # index (Pete, 2026-06-26), so a row under one is stale by rule even though the file is live.
+    # The scan itself is the authority on what belongs in the index, so ask it first — no API call,
+    # and no risk of the two disagreeing. EXCL holds everything this scan SAW and deliberately did
+    # not index (a _backups descendant, or an item whose ancestry never reaches its drive root).
+    if fid in EXCL:
+        return "stale-policy", EXCL[fid][1]
+    # Fallback for a row whose file the scan never saw at all: the stored path can still show it
+    # was a cold-backup row from before that rule existed.
     if "_backups" in (row.get("path") or "").split("/"):
         return "stale-policy", "under a _backups folder — excluded from the index by rule"
     m = getfile(fid)
@@ -277,6 +315,10 @@ try:
     r = scan_mydrive(); print(f"My Drive: {len(r)} rows", flush=True); all_rows += r
 except Exception as e:
     print(f"My Drive: SCAN FAILED {e}", flush=True); failed.append("My Drive")
+if EXCL:
+    per = {}
+    for _fid, (dr, _why) in EXCL.items(): per[dr] = per.get(dr, 0) + 1
+    print("excluded by rule: " + ", ".join(f"{d} {c}" for d, c in sorted(per.items(), key=lambda x: -x[1])), flush=True)
 print(f"TOTAL {len(all_rows)} rows -> upserting to CC drive_files", flush=True)
 n = upsert(all_rows)
 print(f"DONE: upserted {n} rows", flush=True)
