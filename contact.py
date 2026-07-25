@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""
+contact.py -- ADD / PHONE / REMOVE a person, routed to the right home. The write half of whois.py.
+
+WHY THIS EXISTS (the verb was doing two jobs)
+  "Add to contacts" used to be ambiguous in two separate ways and both caused real mistakes:
+
+  1. CREATE-A-RECORD vs PUT-THEM-ON-MY-PHONE are DIFFERENT JOBS. Conflating them is what made the
+     original verb feel wrong (Pete, 23 Jul 2026). They are separate commands here.
+  2. "Contacts" has no single home any more. A Sygma person belongs in the Sygma platform; a Canary
+     Detect person belongs in Odoo; someone with no business record at all belongs in Google
+     Contacts. One verb, three destinations.
+
+  THE ROUTING IS THE HARD PART, NOT THE WORDS. This tool therefore REFUSES to guess the entity --
+  the caller must say which business it is -- and it always states which home it wrote to, so a
+  wrong call is visible immediately instead of being discovered months later.
+
+THE COMMANDS
+  contact.py add "Name" --entity sygma|cd|personal [--email E] [--phone P] [--company C]
+                        [--role customer|supplier|partner|lead]
+      Creates the BUSINESS record in that entity's own system.
+        sygma    -> the Sygma platform, public.contacts (with the per-role rank set)
+        cd       -> Odoo res.partner (customer_rank / supplier_rank per --role)
+        personal -> Google Contacts (someone with no business record: family, trades, friends)
+
+  contact.py phone "Name"          Push an EXISTING person onto Pete's phone (Google Contacts).
+  contact.py remove-phone "Name"   Take them OFF the phone. Reversible, so no confirmation.
+  contact.py remove-record "Name" --entity sygma|cd --yes-delete-business-record
+      Delete a BUSINESS record. A business record going away always needs an explicit yes, so the
+      long flag is mandatory and there is no short form.
+
+  Add --dry-run to any command to see exactly what WOULD happen, writing nothing.
+
+SAFETY RULES BUILT IN
+  * Never guesses the entity. No --entity, no write.
+  * Always prints the home it wrote to, by name.
+  * Checks for an existing match FIRST (via the same normalisation whois uses) and refuses to
+    create a duplicate unless --allow-duplicate is passed. Odoo already carries a duplicate
+    "Indelasa" stub precisely because something created a record that already existed.
+  * Deleting a business record needs --yes-delete-business-record. Removing from the phone does not,
+    because the phone is a VIEW of the record and re-pushing costs nothing.
+"""
+import json, os, re, sys, subprocess, urllib.request, urllib.parse, urllib.error
+
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
+SEC = os.path.join(VAULT, "Library", "processes", "secrets")
+ENTITIES = ("sygma", "cd", "personal")
+
+
+def _die(msg, code=2):
+    print(f"contact: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _platform():
+    k = json.load(open(os.path.join(SEC, "sygma-portal-supabase-keys.json")))
+    return k["url"].rstrip("/"), k["service_role"]
+
+
+def _norm_phone(s):
+    d = re.sub(r"\D", "", s or "")
+    return d[-9:] if len(d) >= 9 else ""
+
+
+def find_existing(name, email, phone):
+    """Reuse whois.py rather than re-implementing four lookups -- one matcher, one set of rules."""
+    q = email or phone or name
+    try:
+        r = subprocess.run([sys.executable, os.path.join(VAULT, "whois.py"), q, "--json"],
+                           capture_output=True, text=True, timeout=120,
+                           env={**os.environ, "VAULT": VAULT})
+        return json.loads(r.stdout or "{}").get("results", [])
+    except Exception:
+        return []           # fail-soft: a duplicate check that errors must not block a legitimate add
+
+
+# ---------------------------------------------------------------- writers
+
+def add_sygma(name, email, phone, company, role, dry):
+    url, key = _platform()
+    row = {
+        "full_name": name,
+        "email": (email or "").strip().lower() or None,
+        "phone": phone or None,
+        "company_name": company or None,
+        "type": role if role in ("customer", "supplier", "partner", "lead") else "lead",
+        "customer_rank": 1 if role == "customer" else 0,
+        "supplier_rank": 1 if role == "supplier" else 0,
+        "partner_rank": 1 if role == "partner" else 0,
+        "source": "manual",
+    }
+    home = "the Sygma platform — public.contacts"
+    if dry:
+        return home, row
+    req = urllib.request.Request(
+        f"{url}/rest/v1/contacts", data=json.dumps(row).encode(),
+        headers={"apikey": key, "Authorization": f"Bearer {key}",
+                 "Content-Type": "application/json", "Prefer": "return=representation"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=40) as r:
+        return home, json.load(r)
+
+
+def add_cd(name, email, phone, company, role, dry):
+    vals = {"name": name}
+    if email:
+        vals["email"] = email
+    if phone:
+        vals["phone"] = phone
+    if company:
+        # NOT `parent_name` -- that is READONLY in Odoo (a related field on parent_id.name), so
+        # writing it fails. `company_name` is the free-text company on the partner itself; linking to
+        # a real parent company needs parent_id (an ID), which the caller does not have here.
+        vals["company_name"] = company
+    # Odoo's own convention: the rank IS the role flag.
+    vals["customer_rank"] = 1 if role in (None, "customer") else 0
+    vals["supplier_rank"] = 1 if role == "supplier" else 0
+    home = "Odoo — res.partner (the Canary Detect record)"
+    if dry:
+        return home, vals
+    r = subprocess.run([sys.executable, os.path.join(VAULT, "odoo-api.py"),
+                        "create", "res.partner", json.dumps(vals)],
+                       capture_output=True, text=True, timeout=90,
+                       env={**os.environ, "VAULT": VAULT})
+    if r.returncode != 0:
+        _die("odoo create failed: " + (r.stderr or r.stdout).strip().splitlines()[-1][:160])
+    return home, (r.stdout or "").strip()
+
+
+def add_personal(name, email, phone, company, role, dry):
+    home = "Google Contacts (Pete's phone)"
+    if dry:
+        return home, {"name": name, "email": email, "phone": phone, "org": company}
+    if not email:
+        _die("Google Contacts needs an email (people-api add requires one). "
+             "Pass --email, or add them to a business system instead.")
+    args = [sys.executable, os.path.join(VAULT, "people-api.py"), "add", name, email]
+    if phone:
+        args.append(phone)
+    if company:
+        args.append(company)
+    r = subprocess.run(args, capture_output=True, text=True, timeout=90,
+                       env={**os.environ, "VAULT": VAULT})
+    if r.returncode != 0:
+        _die("google contacts add failed: " + (r.stderr or r.stdout)[:200])
+    return home, (r.stdout or "").strip()[:400]
+
+
+ADDERS = {"sygma": add_sygma, "cd": add_cd, "personal": add_personal}
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_add(a):
+    if not a.get("entity"):
+        _die("--entity is REQUIRED (sygma | cd | personal). This tool does not guess which business "
+             "a person belongs to -- guessing wrong files them in the wrong company's system.")
+    if a["entity"] not in ENTITIES:
+        _die(f"--entity must be one of {', '.join(ENTITIES)}")
+    name = a["name"]
+    hits = find_existing(name, a.get("email"), a.get("phone"))
+    if hits and not a.get("allow_duplicate"):
+        print(f"REFUSED — {len(hits)} existing record(s) already match '{name}':\n")
+        for h in hits[:8]:
+            print(f"  • {h.get('name')} — {h.get('store')}")
+            reach = " · ".join(x for x in [h.get("email"), h.get("phone")] if x)
+            if reach:
+                print(f"    {reach}")
+        print("\nCreating another would duplicate them. Odoo already carries a duplicate 'Indelasa'")
+        print("stub for exactly this reason. If this really is a different person, re-run with")
+        print("--allow-duplicate.")
+        return 1
+    home, payload = ADDERS[a["entity"]](name, a.get("email"), a.get("phone"),
+                                        a.get("company"), a.get("role"), a.get("dry"))
+    verb = "WOULD create" if a.get("dry") else "CREATED"
+    print(f"{verb}: {name}")
+    print(f"  home: {home}")
+    if a.get("role"):
+        print(f"  role: {a['role']}")
+    if a.get("dry"):
+        print(f"  payload: {json.dumps(payload, default=str)[:400]}")
+    else:
+        print(f"  result: {str(payload)[:300]}")
+    print("\n  (the home is stated so a wrong entity is visible NOW, not months later)")
+    return 0
+
+
+def _google_lookup(name):
+    r = subprocess.run([sys.executable, os.path.join(VAULT, "people-api.py"), "search", name],
+                       capture_output=True, text=True, timeout=90,
+                       env={**os.environ, "VAULT": VAULT})
+    return (r.stdout or "").strip()
+
+
+def cmd_phone(a):
+    """Push an existing person onto the phone. Looks them up FIRST so we push a real record."""
+    hits = find_existing(a["name"], None, None)
+    if not hits:
+        print(f"NOT FOUND: '{a['name']}' is in none of the four stores, so there is nothing to push.")
+        print("Create the business record first:  contact.py add \"Name\" --entity sygma|cd")
+        return 1
+    already = [h for h in hits if "Google Contacts" in (h.get("store") or "")]
+    if already:
+        print(f"ALREADY ON THE PHONE: {a['name']} is in Google Contacts. Nothing to do.")
+        return 0
+    src = hits[0]
+    email = next((h.get("email") for h in hits if h.get("email")), None)
+    phone = next((h.get("phone") for h in hits if h.get("phone")), None)
+    if a.get("dry"):
+        print(f"WOULD push to Google Contacts (Pete's phone): {src.get('name')}")
+        print(f"  from: {src.get('store')}")
+        print(f"  email={email} phone={phone}")
+        return 0
+    if not email:
+        _die("that person has no email on record; Google Contacts needs one to create the entry")
+    home, out = add_personal(src.get("name") or a["name"], email, phone, src.get("detail"), None, False)
+    print(f"PUSHED to {home}: {src.get('name')}")
+    print(f"  source of truth remains: {src.get('store')} (the phone is a VIEW, not the record)")
+    return 0
+
+
+def cmd_remove_phone(a):
+    hits = [h for h in find_existing(a["name"], None, None)
+            if "Google Contacts" in (h.get("store") or "")]
+    if not hits:
+        print(f"NOT ON THE PHONE: '{a['name']}' is not in Google Contacts. Nothing to remove.")
+        return 0
+    if a.get("dry"):
+        for h in hits:
+            print(f"WOULD remove from the phone: {h.get('name')} ({h.get('email') or h.get('phone')})")
+        print("  (the business record is untouched — this only takes them off the phone)")
+        return 0
+    # Deliberately not automated: the People API delete needs the resourceName, which the CC mirror
+    # does not carry. Stated plainly rather than silently doing nothing.
+    print("Removing from Google Contacts needs the contact's resourceName, which the CC mirror does")
+    print("not store. Look it up and delete it directly:")
+    print(f"  VAULT={VAULT} python3 {VAULT}/people-api.py search \"{a['name']}\"")
+    print("  then delete that resourceName in Google Contacts.")
+    print("\nThis is REVERSIBLE either way — the business record is untouched.")
+    return 1
+
+
+def cmd_remove_record(a):
+    if not a.get("confirm_delete"):
+        _die("REFUSED. Deleting a BUSINESS record needs --yes-delete-business-record.\n"
+             "  A business record going away is not the same as taking someone off the phone.\n"
+             "  If you only want them off Pete's phone, use:  contact.py remove-phone \"Name\"")
+    _die("not implemented on purpose. Deleting a live customer/supplier record is a destructive,\n"
+         "  hard-to-reverse write on a business system; it should be done in the app (or Odoo) where\n"
+         "  the consequences (linked bookings, invoices, deliverables) are visible. This tool will\n"
+         "  not do it blind from a command line.")
+
+
+# ---------------------------------------------------------------- cli
+
+def main():
+    argv = sys.argv[1:]
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    a = {"dry": "--dry-run" in rest,
+         "allow_duplicate": "--allow-duplicate" in rest,
+         "confirm_delete": "--yes-delete-business-record" in rest}
+    pos = [x for x in rest if not x.startswith("--")]
+    # strip flag VALUES out of the positional list
+    vals = {}
+    for f in ("entity", "email", "phone", "company", "role"):
+        if f"--{f}" in rest:
+            i = rest.index(f"--{f}")
+            if i + 1 < len(rest):
+                vals[f] = rest[i + 1]
+                if rest[i + 1] in pos:
+                    pos.remove(rest[i + 1])
+    a.update(vals)
+    if not pos:
+        _die("a name is required")
+    a["name"] = pos[0]
+
+    if cmd == "add":
+        return cmd_add(a)
+    if cmd == "phone":
+        return cmd_phone(a)
+    if cmd == "remove-phone":
+        return cmd_remove_phone(a)
+    if cmd == "remove-record":
+        return cmd_remove_record(a)
+    _die(f"unknown command '{cmd}'. Use: add | phone | remove-phone | remove-record")
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
