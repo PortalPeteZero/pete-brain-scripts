@@ -12,10 +12,8 @@ description: |
   positions", "has it moved", "run the seo report", "what should I work on", "why is this page not
   ranking", "site health", or any per-site SEO health or opportunity question.
 
-  Supersedes ahrefs-audit and audit-review. sygma-health-report is NOT superseded -- Pete asked on
-  24 Jul 2026 for it to keep working ('I want a fucking honest one'); it is the Sygma-specific
-  four-source snapshot and now carries its own HONESTY GATE. Read-only reporting plus on-demand
-  diagnosis; on-site fixes go through property-manager, never auto-deploy.
+  Supersedes ahrefs-audit and audit-review. sygma-health-report is NOT superseded. Read-only
+  reporting plus on-demand diagnosis; on-site fixes go through property-manager, never auto-deploy.
 trigger_phrases:
   - "how is sygma doing"
   - "seo report"
@@ -28,6 +26,14 @@ trigger_phrases:
 ---
 
 # seo-report -- the one property-agnostic SEO skill
+
+> **What this replaces, and what it does NOT.** It supersedes `ahrefs-audit` and `audit-review`.
+> It does **NOT** supersede `sygma-health-report`: Pete asked on 24 Jul 2026 for that one to keep
+> working (*"I want a fucking honest one"*). It is the Sygma-specific four-source snapshot (Ahrefs,
+> GSC, GA4, Google Ads) and carries its own HONESTY GATE. Both are live; use this one for any
+> property, that one for the Sygma four-source report.
+> *(Moved here from the frontmatter 25 Jul 2026 — the `description` was 1,115 chars against a
+> 1,024 limit, which is why the package would not install. Provenance belongs in the body anyway.)*
 
 > Full design, decisions and provenance: `vault_notes` **plan-seo-measurement-platform-2026-07-23**.
 > Per-tool manuals: `[[gsc-how-to-use]]`, `[[ga4-how-to-use]]`, `[[ahrefs-api-configuration]]`,

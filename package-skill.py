@@ -22,6 +22,7 @@ Skipped automatically when there is no ~/Downloads (e.g. a cloud/Railway run) �
 repo .skill is still rebuilt so source + archive never drift.
 """
 import os, sys, io, zipfile, hashlib, shutil, datetime, pathlib, re
+import yaml     # frontmatter validation — see validate()
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SKILLS = pathlib.Path(VAULT) / "skills"
@@ -43,6 +44,41 @@ def _members(folder):
             full = pathlib.Path(root) / fn
             out.append((str(full.relative_to(folder)), full))
     return sorted(out)
+
+DESC_LIMIT = 1024      # the Skills spec caps `description`; the installer rejects anything longer
+
+
+def validate(name):
+    """Refuse to package a skill the installer will reject. Returns a list of problems.
+
+    WHY THIS EXISTS: seo-report shipped TWICE with a 1,115-character description (limit 1,024) and
+    failed to install both times. Nothing checked it, so the packager cheerfully produced a broken
+    archive, the manifest listed it as current, and the failure only surfaced when Pete tried to
+    install it — by hand, twice. A packager that can emit an uninstallable package is the defect.
+    """
+    problems = []
+    md = SKILLS / name / "SKILL.md"
+    if not md.exists():
+        return [f"{name}: no SKILL.md"]
+    text = md.read_text(errors="ignore")
+    m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        return [f"{name}: SKILL.md has no YAML frontmatter block"]
+    try:
+        fm = yaml.safe_load(m.group(1)) or {}
+    except Exception as e:
+        return [f"{name}: frontmatter is not valid YAML ({type(e).__name__})"]
+    if not fm.get("name"):
+        problems.append(f"{name}: frontmatter has no `name`")
+    desc = fm.get("description") or ""
+    if not desc:
+        problems.append(f"{name}: frontmatter has no `description`")
+    elif len(desc) > DESC_LIMIT:
+        problems.append(f"{name}: description is {len(desc)} chars — the limit is {DESC_LIMIT}, "
+                        f"so the installer will REFUSE it. Move {len(desc) - DESC_LIMIT}+ chars of "
+                        f"provenance/history into the body; the description is for what it DOES.")
+    return problems
+
 
 def build_bytes(name):
     """Zip the CONTENTS of skills/<name>/ deterministically (fixed timestamp → byte-stable:
@@ -124,6 +160,16 @@ def main():
     if not targets:
         print("package-skill: nothing to package — every .skill matches its source.")
         return
+
+    # GATE: never emit a package the installer will reject. Checked BEFORE anything is written, so
+    # a bad skill cannot leave a half-updated Downloads folder behind.
+    problems = [p for n in targets for p in validate(n)]
+    if problems:
+        print("package-skill: REFUSED — these would not install:\n", file=sys.stderr)
+        for p in problems:
+            print(f"  ✗ {p}", file=sys.stderr)
+        print("\nNothing was packaged or delivered. Fix the above and re-run.", file=sys.stderr)
+        return 2
 
     built = []
     for n in targets:
