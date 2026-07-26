@@ -118,16 +118,31 @@ def main():
                     subsets.append((names[rn], names[rn2])); shared = True
         if not shared:
             needs_surname.append(names[rn])
-    gaps = len(shared_email) + len(shared_phone) + len(subsets)
+    # EXACT same display name on two records. Not covered before 26 Jul 2026, and it bit
+    # immediately: renaming a bare "Lydia" to "Lydia Dant" created a second Lydia Dant and the
+    # check reported all-clear. Renaming can CREATE this class, so it must be checked after any
+    # tidy-up, not just on import.
+    same_name = collections.defaultdict(list)
+    for r in rows:
+        n = (r.get("display_name") or "").strip().lower()
+        if n:
+            same_name[n].append(r)
+    exact = {k: v for k, v in same_name.items() if len(v) > 1}
+
+    gaps = len(shared_email) + len(shared_phone) + len(subsets) + len(exact)
 
     lines = [f"PEOPLE HYGIENE — {len(rows)} contact records checked"]
     lines.append(f"  probable duplicates: {len(shared_email)} shared email(s), "
                  f"{len(shared_phone)} shared number(s), {len(subsets)} part-name overlap(s)")
+    lines.append(f"  SAME NAME on two records: {len(exact)}")
     lines.append(f"  half-finished (no email AND no phone): {len(half)}")
     lines.append(f"  NEEDS A SURNAME (not a duplicate — only Pete knows who they are): "
                  f"{len(needs_surname)}")
     lines.append(f"  records repeating their OWN number/address (untidy, NOT a duplicate person): "
                  f"{len(self_dupes)}")
+    for k, v in list(exact.items())[:8]:
+        lines.append(f"    ⧉ {v[0].get('display_name')} x{len(v)} -> "
+                     + " | ".join((x.get("phones") or ["no phone"])[0] for x in v))
     for e, v in list(shared_email.items())[:8]:
         lines.append(f"    ✉ {e} -> " + " | ".join(names[x['resource_name']] for x in v))
     for p, v in list(shared_phone.items())[:8]:
