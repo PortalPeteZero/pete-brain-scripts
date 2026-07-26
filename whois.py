@@ -243,10 +243,38 @@ def search_phone_mirror(q, phone):
             "detail": " / ".join(v for v in [x.get("job_title"), x.get("organization")] if v),
             "email": first(x.get("emails")),
             "phone": first(x.get("phones_e164")) or first(x.get("phones")),
-            "extra": {},
+            "extra": {"resource_name": x.get("resource_name")},
         })
     return out
 
+
+
+
+def tidy_gaps(r):
+    """Pete's rule (26 Jul 2026): if we TOUCH a contact and it needs a tidy-up, we do it THEN --
+    correct a part-name to the full name, add the missing email, add the missing number. A record
+    that is read and left half-finished is how "Freya" sat as a first name with no email for months,
+    which is what let a duplicate get created on top of it.
+
+    Returns a list of (what_is_missing, the_exact_fix_command).
+    """
+    gaps = []
+    name = (r.get("name") or "").strip()
+    res = (r.get("extra") or {}).get("resource_name")
+    on_phone = "Google Contacts" in (r.get("store") or "")
+    if name and len(name.split()) < 2:
+        gaps.append(("no surname -- part name only",
+                     f'people-api.py update {res} name "FULL NAME"' if res else
+                     f'add the full name for "{name}" in its store'))
+    if not r.get("email"):
+        gaps.append(("no email",
+                     f'people-api.py update {res} email ADDRESS' if res else
+                     f'add an email for "{name}" in its store'))
+    if not r.get("phone"):
+        gaps.append(("no phone",
+                     f'people-api.py update {res} phone NUMBER' if res else
+                     f'add a phone for "{name}" in its store'))
+    return gaps if (on_phone or gaps) else []
 
 
 def partial_sweep(q, phone):
@@ -394,8 +422,18 @@ def main():
             reach = " · ".join(x for x in [r.get("email"), r.get("phone")] if x)
             if reach:
                 print(f"       {reach}")
-            if r.get("extra"):
-                print("       " + " · ".join(f"{k}: {v}" for k, v in r["extra"].items()))
+            extra = {k: v for k, v in (r.get("extra") or {}).items() if v}
+            if extra:
+                print("       " + " · ".join(f"{k}: {v}" for k, v in extra.items()))
+            # Pete's touch-it-tidy-it rule -- fix the record NOW, in this session, not "one day"
+            gaps = tidy_gaps(r)
+            if gaps:
+                print(f"       ⚠ TIDY THIS RECORD NOW ({', '.join(g[0] for g in gaps)})")
+                print("         Pete's rule: if we touch a contact and it needs tidying, we do it")
+                print("         in the SAME session. Do not read it and move on.")
+                for _, fix in gaps:
+                    print(f"           VAULT=/tmp/pbs python3 /tmp/pbs/{fix}"
+                          if fix.startswith("people-api.py") else f"           {fix}")
         if len(rows) > 15:
             print(f"     … and {len(rows) - 15} more in this store")
         print()

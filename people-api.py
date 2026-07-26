@@ -8,7 +8,8 @@ Usage:
   python3 people-api.py get RESOURCE_NAME            # get contact by resource name
   python3 people-api.py list [N]                     # list all contacts (default 50)
   python3 people-api.py add "Name" email [phone] [org]  # add new contact
-  python3 people-api.py update RESOURCE_NAME email NEW_EMAIL
+  python3 people-api.py update RESOURCE_NAME email|phone|org|name VALUE
+  python3 people-api.py delete RESOURCE_NAME
   python3 people-api.py whoami                       # show auth info
 """
 
@@ -167,12 +168,24 @@ def update_contact(resource_name, field, value):
     elif field == "org":
         body["organizations"] = [{"name": value}]
         update_mask = "organizations"
+    elif field == "name":
+        parts = value.strip().split()
+        body["names"] = [{"givenName": parts[0],
+                          "familyName": " ".join(parts[1:]) if len(parts) > 1 else ""}]
+        update_mask = "names"
     else:
-        print(f"Unknown field: {field}. Use: email, phone, org"); sys.exit(1)
+        print(f"Unknown field: {field}. Use: email, phone, org, name"); sys.exit(1)
     resp = api("PATCH", f"/{resource_name}:updateContact",
                params={"updatePersonFields": update_mask}, body=body)
     print(f"Updated {field} for {resource_name}")
     format_person(resp)
+
+def delete_contact(resource_name):
+    """Delete a contact. The CC mirror DOES carry resource_name, so this is fully automatable --
+    contact.py used to claim otherwise and dead-ended the caller (fixed 26 Jul 2026)."""
+    api("DELETE", f"/{resource_name}:deleteContact")
+    print(f"Deleted {resource_name}")
+
 
 def whoami():
     # people/me needs profile scope; use connections list to verify contacts auth
@@ -212,6 +225,9 @@ def main():
     elif cmd == "update":
         if len(args) < 4: print("Usage: people-api.py update RESOURCE_NAME field value"); sys.exit(1)
         update_contact(args[1], args[2], args[3])
+    elif cmd == "delete":
+        if len(args) < 2: print("Usage: people-api.py delete RESOURCE_NAME"); sys.exit(1)
+        delete_contact(args[1])
     elif cmd == "whoami":
         whoami()
     else:

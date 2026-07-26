@@ -245,14 +245,32 @@ def cmd_remove_phone(a):
             print(f"WOULD remove from the phone: {h.get('name')} ({h.get('email') or h.get('phone')})")
         print("  (the business record is untouched — this only takes them off the phone)")
         return 0
-    # Deliberately not automated: the People API delete needs the resourceName, which the CC mirror
-    # does not carry. Stated plainly rather than silently doing nothing.
-    print("Removing from Google Contacts needs the contact's resourceName, which the CC mirror does")
-    print("not store. Look it up and delete it directly:")
-    print(f"  VAULT={VAULT} python3 {VAULT}/people-api.py search \"{a['name']}\"")
-    print("  then delete that resourceName in Google Contacts.")
-    print("\nThis is REVERSIBLE either way — the business record is untouched.")
-    return 1
+    # This USED to dead-end, claiming the CC mirror does not carry resourceName. It does
+    # (google_contacts.resource_name), so the claim was simply wrong and it sent Pete off to do it
+    # by hand for no reason. Fixed 26 Jul 2026 -- now fully automated.
+    done = 0
+    for h in hits:
+        res = (h.get("extra") or {}).get("resource_name")
+        if not res:
+            print(f"  ⚠ no resource_name for {h.get('name')} — skipped; re-run "
+                  f"google-contacts-sync.py and try again")
+            continue
+        r = subprocess.run([sys.executable, os.path.join(VAULT, "people-api.py"), "delete", res],
+                           capture_output=True, text=True, timeout=90,
+                           env={**os.environ, "VAULT": VAULT})
+        if r.returncode != 0:
+            print(f"  ⚠ delete failed for {h.get('name')}: {(r.stderr or r.stdout)[:150]}")
+            continue
+        print(f"REMOVED FROM THE PHONE: {h.get('name')} ({res})")
+        done += 1
+    if done:
+        m = subprocess.run([sys.executable, os.path.join(VAULT, "google-contacts-sync.py")],
+                           capture_output=True, text=True, timeout=180,
+                           env={**os.environ, "VAULT": VAULT})
+        print("  mirror: refreshed" if m.returncode == 0
+              else "  ⚠ mirror refresh FAILED — run google-contacts-sync.py")
+    print("\nThe business record is untouched — this only takes them off the phone.")
+    return 0 if done else 1
 
 
 def cmd_remove_record(a):
