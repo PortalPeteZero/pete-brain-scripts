@@ -31,13 +31,24 @@ TWO CONFIG LAYERS, and both return PENDING writes before the device confirms the
   /api/devices/{n}/initial-config  -> ConfigModel      (transmissionSettings + per-port sensor setup)
 `configured` flips to False on write and back to True when the device picks the config up.
 
-⛔ deleteOldCounters IS DESTRUCTIVE AND A READ-BACK OF `false` DOES NOT MEAN IT FAILED.
-It is a ONE-SHOT ACTION FLAG, not a stored setting: setting it true DELETES the device's counter
-history at ThingsLog and the flag then clears itself, so the read-back shows false. On 26 Jul 2026
-this wiped all 3,718 stored readings for 04299212 (a live customer device) while appearing to be a
-no-op, and it was then fired twice more on that wrong conclusion. Our own `readings` table was
-untouched and remained the fuller copy (3,998 rows), which is the only reason nothing was lost.
-NEVER set this field without snapshotting BOTH sides first and treating it as a deletion.
+⛔ deleteOldCounters IS A ONE-SHOT ACTION, AND A READ-BACK OF `false` DOES NOT MEAN IT FAILED.
+In the ThingsLog UI it lives in the device SETUP wizard ("Delete old counters: NO"), where its
+intended purpose is legitimate: clearing stale readings when provisioning/re-provisioning a logger,
+including telling the device to dump readings held in its own buffer. That is a real operation you
+may genuinely want.
+
+What is NOT advertised: fired against a LIVE device it ALSO deletes that device's entire stored
+counter history at ThingsLog, immediately, before the device has called in. Verified 26 Jul 2026 on
+04299212: 3,718 stored readings went to 0 across every readings endpoint (/counters, v2/readings,
+statistics all empty; only readings/current survived). The flag then clears itself, so the read-back
+shows false and the whole thing looks like a no-op -- it was consequently fired twice more on that
+wrong conclusion. Our own `readings` table was untouched and remained the fuller copy (3,998 rows),
+which is the only reason nothing was lost.
+
+The DEVICE-side effect (does it actually clear the logger's buffer?) is UNVERIFIED -- it can only be
+observed after the device next calls in. Do not assert it either way.
+So: use it deliberately if you want it, but snapshot BOTH sides first and treat the server-side
+history as gone the moment you send it.
 
 VERIFY EVERY WRITE BY READING BACK -- but read-back proves persistence, NOT that nothing happened.
 A field that reads back unchanged may be (a) genuinely not persisted, or (b) an action flag that
