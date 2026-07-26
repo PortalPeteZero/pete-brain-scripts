@@ -361,9 +361,17 @@ def main():
         except Exception as e:                      # rule 4, applied to the tool itself
             failed.append(f"{label}: {type(e).__name__}: {str(e)[:110]}")
 
+    # A zero on the FULL string is not a negative -- sweep per token so callers (including
+    # contact.py's duplicate guard) see near matches. Without this the guard was blind to
+    # "Freya" when asked about "Freya Finch", and a duplicate was created. 26 Jul 2026.
+    near, near_failed = ([], [])
+    if not results:
+        near, near_failed = partial_sweep(q, phone)
+
     if as_json:
         print(json.dumps({"query": q, "normalised_phone": phone or None,
-                          "results": results, "stores_unreachable": failed,
+                          "results": results, "partial_matches": near,
+                          "stores_unreachable": failed + near_failed,
                           "notes": notes}, indent=2))
         return 0
 
@@ -380,7 +388,6 @@ def main():
             for f in failed:
                 print(f"    ⚠ {f}")
         else:
-            near, near_failed = partial_sweep(q, phone)
             if near:
                 print(f"  NO EXACT MATCH for '{q}' -- but {len(near)} record(s) match PART of that name.")
                 print("  DO NOT create a new record before ruling these out; that is how duplicates are made.")

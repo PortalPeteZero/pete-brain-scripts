@@ -40,6 +40,7 @@ SAFETY RULES BUILT IN
   * Deleting a business record needs --yes-delete-business-record. Removing from the phone does not,
     because the phone is a VIEW of the record and re-pushing costs nothing.
 """
+import re
 import json, os, re, sys, subprocess, urllib.request, urllib.parse, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
@@ -63,13 +64,70 @@ def _norm_phone(s):
 
 
 def find_existing(name, email, phone):
-    """Reuse whois.py rather than re-implementing four lookups -- one matcher, one set of rules."""
-    q = email or phone or name
+    """Reuse whois.py rather than re-implementing four lookups -- one matcher, one set of rules.
+
+    Checks the NAME **and** the email **and** the phone. It used to check only the first non-empty
+    one (`email or phone or name`), so passing --email meant the NAME WAS NEVER SEARCHED. That is
+    the actual root cause of the Freya Finch duplicate on 26 Jul 2026: the guard looked up the
+    address, found nothing, and waved through a name that already existed.
+    """
+    hits, seen = [], set()
+    for q in [x for x in (name, email, phone) if x]:
+        for h in _whois_json(q):
+            key = (h.get("store"), h.get("name"), h.get("email"), h.get("phone"))
+            if key not in seen:
+                seen.add(key)
+                hits.append(h)
+    return [h for h in hits if _is_real_duplicate(name, email, phone, h)]
+
+
+def _is_real_duplicate(name, email, phone, h):
+    """Which hits actually BLOCK an add.
+
+    Measured before shipping (Pete's rule: a fail-closed gate that blocks legitimate work is worse
+    than no gate -- an earlier enforcement set would have blocked 22 of 25 approved quotes). Sharing
+    a FIRST NAME is not a duplicate: 'Helen Finchcombe' vs seventeen other Helens must go through.
+    A block needs one of:
+      · the same email or phone            -- same person, definitively
+      · an exact full-name match           -- same person, near-definitively
+      · one name is a SUBSET of the other  -- 'Freya' vs 'Freya Finch', the 26 Jul 2026 case
+      · a shared SURNAME plus a shared first name
+    """
+    def toks(x):
+        return {t for t in re.split(r"[\s,.]+", (x or "").lower()) if len(t) > 1}
+    if not h.get("_partial"):
+        return True                                   # matched on the full string / email / phone
+    e = (email or "").strip().lower()
+    p = re.sub(r"\D", "", phone or "")
+    if e and e == (h.get("email") or "").strip().lower():
+        return True
+    if p and p[-9:] and p[-9:] in re.sub(r"\D", "", h.get("phone") or ""):
+        return True
+    a, b = toks(name), toks(h.get("name"))
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a <= b or b <= a:                              # "Freya" ⊂ "Freya Finch"
+        return True
+    return len(a & b) >= 2                            # first name AND surname both shared
+
+
+def _whois_json(q):
     try:
         r = subprocess.run([sys.executable, os.path.join(VAULT, "whois.py"), q, "--json"],
                            capture_output=True, text=True, timeout=120,
                            env={**os.environ, "VAULT": VAULT})
-        return json.loads(r.stdout or "{}").get("results", [])
+        d = json.loads(r.stdout or "{}")
+        # PARTIAL matches count as hits for the duplicate guard. A full-string miss is NOT proof
+        # nobody exists -- "Freya Finch" could not match a record stored as "Freya", so the guard
+        # waved through a duplicate on 26 Jul 2026. Near matches now block too (--allow-duplicate
+        # is the deliberate override).
+        out = list(d.get("results", []))
+        for pm in d.get("partial_matches", []):
+            pm = dict(pm); pm["_partial"] = True
+            out.append(pm)
+        return out
     except Exception:
         return []           # fail-soft: a duplicate check that errors must not block a legitimate add
 
@@ -177,13 +235,30 @@ def cmd_add(a):
     if hits and not a.get("allow_duplicate"):
         print(f"REFUSED — {len(hits)} existing record(s) already match '{name}':\n")
         for h in hits[:8]:
-            print(f"  • {h.get('name')} — {h.get('store')}")
+            tag = "  ~PARTIAL NAME MATCH" if h.get("_partial") else ""
+            print(f"  • {h.get('name')} — {h.get('store')}{tag}")
             reach = " · ".join(x for x in [h.get("email"), h.get("phone")] if x)
             if reach:
                 print(f"    {reach}")
+        subsets = [h for h in hits if h.get("_partial") and h.get("name")
+                   and set((h["name"] or "").lower().split()) < set(name.lower().split())]
         print("\nCreating another would duplicate them. Odoo already carries a duplicate 'Indelasa'")
-        print("stub for exactly this reason. If this really is a different person, re-run with")
-        print("--allow-duplicate.")
+        print("stub for exactly this reason.")
+        if subsets:
+            # The Freya case: a HALF-FINISHED record already there under part of the name.
+            # Pete's touch-it-tidy-it rule -- the right move is to COMPLETE it, not add a second.
+            print("\n  ⚠ One of these is a PART-NAME record. If it is the same person, TIDY IT")
+            print("    rather than creating a second (Pete's rule, 26 Jul 2026):")
+            for h in subsets[:4]:
+                res = (h.get("extra") or {}).get("resource_name")
+                if res:
+                    print(f"      VAULT={VAULT} python3 {VAULT}/people-api.py update {res} name \"{name}\"")
+                    for fld, val in (("email", a.get("email")), ("phone", a.get("phone"))):
+                        if val and not h.get(fld):
+                            print(f"      VAULT={VAULT} python3 {VAULT}/people-api.py update {res} {fld} {val}")
+                else:
+                    print(f"      • {h.get('name')} — in {h.get('store')}; complete it there")
+        print("\nIf this really IS a different person, re-run with --allow-duplicate.")
         return 1
     home, payload = ADDERS[a["entity"]](name, a.get("email"), a.get("phone"),
                                         a.get("company"), a.get("role"), a.get("dry"))
@@ -292,7 +367,16 @@ def main():
         print(__doc__)
         return 0
     cmd, rest = argv[0], argv[1:]
-    a = {"dry": "--dry-run" in rest,
+    # An unknown flag must ABORT. "--dry" was silently ignored on 26 Jul 2026 and two junk contacts
+    # were written straight into Pete's live Google Contacts by what was meant to be a dry run.
+    KNOWN = {"--dry-run", "--dry", "--allow-duplicate", "--yes-delete-business-record",
+             "--entity", "--email", "--phone", "--company", "--role"}
+    unknown = [x for x in rest if x.startswith("--") and x.split("=")[0] not in KNOWN]
+    if unknown:
+        _die("unknown flag(s): " + ", ".join(unknown) +
+             "\n  Refusing rather than ignoring them -- an ignored --dry flag WRITES FOR REAL."
+             "\n  Known flags: " + ", ".join(sorted(KNOWN)))
+    a = {"dry": ("--dry-run" in rest or "--dry" in rest),
          "allow_duplicate": "--allow-duplicate" in rest,
          "confirm_delete": "--yes-delete-business-record" in rest}
     pos = [x for x in rest if not x.startswith("--")]
