@@ -131,7 +131,7 @@ check a live fact, surface on fail · **surface** = never touch, list with a rec
 | B3 | a behavioural correction/preference belongs in AUTO-MEMORY (MEMORY.md), distinct from a vault lesson | surface | |
 | K1 | knowledge produced this session but stranded LOCALLY (scratchpad / local dir) | surface | move under `/tmp/pbs/<home>` + ingest on Pete's OK |
 | K2 | every file / data row / doc produced has a cloud home (Drive / right Supabase table / GitHub) | verify+surface | anything only-local is flagged |
-| J1 | `daily_log` session entry written by closeout (the ONE diary writer this run) | auto | |
+| J1 | `daily_log` session entry written by closeout (the ONE diary writer this run) | auto | **`cron_name` MUST be `'session'`** — brain Resume Step 2 reads `WHERE cron_name='session'`, so any other value (e.g. `'closeout'`) writes a row the next session NEVER reads. Caught 25 Jul 2026: this line named no value, closeout wrote `'closeout'`, and the whole session summary was invisible to Resume until it was re-keyed. Columns are `(date, cron_name, content)` — there is no `title`/`kind`/`log_date`. |
 | J2 | closeout record saved: attributed work + "N other sessions live; items X may be theirs" | auto | |
 
 ### Live & deploy
