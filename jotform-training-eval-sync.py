@@ -80,7 +80,12 @@ def fetch_since(since: str) -> list[dict]:
         offset = 0
         while True:
             f = urllib.parse.quote(json.dumps({"created_at:gt": since}))
-            url = f"https://api.jotform.com/form/{form_id}/submissions?apiKey={KEY}&limit=1000&offset={offset}&filter={f}"
+            # orderby is REQUIRED for offset paging to be safe: with no ordering, consecutive pages
+            # can re-deliver some submissions and skip others, so an eval silently never syncs.
+            # (Same fault measured on Postgres 26 Jul 2026: an 18,004-row paged read yielded only
+            # 10,526 unique rows. jotform-api.py already defaults to orderby; this loop did not.)
+            url = (f"https://api.jotform.com/form/{form_id}/submissions?apiKey={KEY}"
+                   f"&limit=1000&offset={offset}&orderby=created_at&filter={f}")
             with urllib.request.urlopen(url, timeout=45) as r:
                 page = json.loads(r.read())
             chunk = page.get("content", [])

@@ -74,12 +74,19 @@ def refresh(target):
         sys.stderr.write(f"⚠️  {target}: {len(got)} refdomains hit the {LIMIT} limit -- this target has >=1000; "
                          f"single-pass audit is INCOMPLETE. Restore the dr:desc+dr:asc pair or add offset pagination.\n")
     # which already exist (to detect NEW)
+    # Keyset-paged on domain, NOT limit+offset. Without ORDER BY, Postgres gives no stable order,
+    # so offset paging silently re-delivers some rows and skips others (measured 26 Jul 2026 on the
+    # CC drive_files table: 18,004 rows fetched, only 10,526 UNIQUE). A short `existing` set here
+    # means already-known refdomains get reported as NEW.
     existing = set()
-    off = 0
+    last = ""
     while True:
-        rows = json.loads(_sb("GET", "refdomains", params=f"?target=eq.{target}&select=domain&limit=1000&offset={off}"))
+        rows = json.loads(_sb("GET", "refdomains", params=(
+            f"?target=eq.{target}&select=domain&order=domain.asc&limit=1000&domain=gt.{urllib.parse.quote(last)}")))
         if not rows: break
-        existing |= {r["domain"] for r in rows}; off += 1000
+        existing |= {r["domain"] for r in rows}
+        if len(rows) < 1000: break
+        last = rows[-1]["domain"]
     payload, new = [], []
     for dom, r in all_rd.items():
         dr = r.get("domain_rating") or 0; traf = r.get("traffic_domain") or 0; dof = (r.get("dofollow_links") or 0) > 0

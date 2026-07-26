@@ -232,17 +232,23 @@ def main():
     # A shared mailbox (trainwithus@, bookings@, training@) legitimately fronts several DIFFERENT
     # named people, so a shared address is not a duplicate person. Only flag when the same email
     # carries the same normalised NAME — that is the split-history risk this check exists for.
-    by_email, offset = {}, 0
+    # Keyset-paged on id, NOT limit+offset. Postgres gives no stable order without ORDER BY, so
+    # offset paging silently re-delivers some rows and skips others: measured on the CC drive_files
+    # table 26 Jul 2026, an 18,004-row read returned all 18,004 rows but only 10,526 UNIQUE ones.
+    # Here that would mean missing a genuine duplicate person, i.e. a clean report that is wrong.
+    # contacts.id is a UUID, so the keyset sentinel must be the zero UUID — an empty string or 0
+    # is not a valid uuid and PostgREST answers 400 (verified 26 Jul 2026).
+    by_email, last = {}, "00000000-0000-0000-0000-000000000000"
     while True:
-        page = tl.portal_get("contacts", select="email,full_name", email="not.is.null",
-                             limit="1000", offset=str(offset)) or []
+        page = tl.portal_get("contacts", select="id,email,full_name", email="not.is.null",
+                             order="id.asc", limit="1000", id=f"gt.{last}") or []
         for c in page:
             e = (c.get("email") or "").lower().strip()
             if e:
                 by_email.setdefault(e, []).append(" ".join((c.get("full_name") or "").lower().split()))
         if len(page) < 1000:
             break
-        offset += 1000
+        last = page[-1]["id"]
     for e, names in by_email.items():
         if len(names) < 2:
             continue
