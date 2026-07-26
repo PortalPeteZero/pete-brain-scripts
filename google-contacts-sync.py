@@ -34,7 +34,7 @@ import os, sys, json, re, time, ssl, socket, urllib.request, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SECRETS = os.path.join(VAULT, "Library", "processes", "secrets")
-FIELDS = ("names,emailAddresses,phoneNumbers,organizations,biographies,"
+FIELDS = ("metadata,names,emailAddresses,phoneNumbers,organizations,biographies,"
           "memberships,metadata,occupations")
 
 # ---------------------------------------------------------------- phone normalisation
@@ -148,8 +148,26 @@ def arr(vals):
 def row_for(p, groups):
     names = (p.get("names") or [{}])[0]
     org = (p.get("organizations") or [{}])[0]
-    phones = [(x.get("value") or "").strip() for x in (p.get("phoneNumbers") or [])]
-    emails = [(x.get("value") or "").strip().lower() for x in (p.get("emailAddresses") or [])]
+    # A Google contact can carry the SAME value from several SOURCES at once: Pete's own entry
+    # (CONTACT) plus that person's Google Workspace directory record (DOMAIN_PROFILE / PROFILE).
+    # Flattening them made every colleague look like a duplicate of themselves, and the People API
+    # only lets you edit the CONTACT half — so the "duplicate" could never be fixed, only chased.
+    # Found 26 Jul 2026 after 40 pointless updates reported success and changed nothing.
+    # Prefer the CONTACT value; fall back to the profile when that is all there is.
+    def _by_source(items, norm):
+        best = {}
+        for x in items or []:
+            v = norm(x.get("value") or "")
+            if not v:
+                continue
+            src = ((x.get("metadata") or {}).get("source") or {}).get("type") or ""
+            key = re.sub(r"\D", "", v)[-9:] or v.lower()
+            if key not in best or (src == "CONTACT" and best[key][1] != "CONTACT"):
+                best[key] = (v, src)
+        return [v for v, _ in best.values()]
+
+    phones = _by_source(p.get("phoneNumbers"), lambda v: v.strip())
+    emails = _by_source(p.get("emailAddresses"), lambda v: v.strip().lower())
     e164s = []
     for v in phones:
         k = e164(v)
