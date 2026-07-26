@@ -31,10 +31,20 @@ TWO CONFIG LAYERS, and both return PENDING writes before the device confirms the
   /api/devices/{n}/initial-config  -> ConfigModel      (transmissionSettings + per-port sensor setup)
 `configured` flips to False on write and back to True when the device picks the config up.
 
-VERIFY EVERY WRITE BY READING BACK. ThingsLog returns HTTP 200 for a field it silently drops --
-confirmed 26 Jul 2026: deleteOldCounters=true returned 200 twice and stored false both times, while
-countsThreshold in the same request saved fine. `set-config` does the read-back for you and says
-NOT PERSISTED rather than reporting a false success.
+⛔ deleteOldCounters IS DESTRUCTIVE AND A READ-BACK OF `false` DOES NOT MEAN IT FAILED.
+It is a ONE-SHOT ACTION FLAG, not a stored setting: setting it true DELETES the device's counter
+history at ThingsLog and the flag then clears itself, so the read-back shows false. On 26 Jul 2026
+this wiped all 3,718 stored readings for 04299212 (a live customer device) while appearing to be a
+no-op, and it was then fired twice more on that wrong conclusion. Our own `readings` table was
+untouched and remained the fuller copy (3,998 rows), which is the only reason nothing was lost.
+NEVER set this field without snapshotting BOTH sides first and treating it as a deletion.
+
+VERIFY EVERY WRITE BY READING BACK -- but read-back proves persistence, NOT that nothing happened.
+A field that reads back unchanged may be (a) genuinely not persisted, or (b) an action flag that
+already executed. Distinguish them by checking the SIDE EFFECT (here: the counter history), never by
+the flag alone. `set-config` reports NOT PERSISTED for case (a) and cannot tell you about case (b),
+so it refuses deleteOldCounters outright -- use the explicit `delete-counters` verb if you truly
+mean it.
 
 set-transmission is the ONE wired write (PUT /api/devices/{n}/config): call-in hours = countsThreshold ×
 logging_min / 60, applied on the device's NEXT call-in. Provision/commands/delete are deliberately NOT wired
@@ -98,6 +108,14 @@ COMMAND_TYPES = ["RELAY_SWITCH","SINGLE_RELAY_SWITCH","RELAY_SWITCH_WITH_DELAY",
 # own config so nothing else changes, then VERIFIES by reading back -- ThingsLog returns HTTP 200
 # for a field it silently drops (confirmed 26 Jul 2026 with deleteOldCounters), so never trust the 200.
 def _set_config_field(base, tok, cid, number, field, value):
+    # GATE: deleteOldCounters is a one-shot ACTION that deletes the device's counter history at
+    # ThingsLog, and it then clears itself so the read-back looks like "it didn't save". It wiped
+    # 3,718 live readings on 26 Jul 2026 while appearing to be a no-op. Never reachable by accident.
+    if field == "deleteOldCounters":
+        print("REFUSED: deleteOldCounters DELETES the device's counter history at ThingsLog and then\n"
+              "clears itself, so a false read-back does NOT mean it failed. Snapshot both sides first,\n"
+              "then use:  thingslog-api.py delete-counters <deviceNumber> --i-mean-it")
+        return False
     before = _get(base, tok, f"/api/devices/{number}/config")
     after = json.loads(json.dumps(before)); after[field] = value
     st, _ = _put(base, tok, cid, f"/api/devices/{number}/config", after)
@@ -160,6 +178,22 @@ def main():
             print(f"id={c2.get('id')} type={c2.get('commandType')} state={c2.get('commandState')} "
                   f"created={c2.get('creationDate')} sent={c2.get('sentDate')} exec={c2.get('executionDate')}")
         if not st: print("(no commands queued)")
+        return
+    if cmd == "delete-counters":
+        # delete-counters <device> --i-mean-it : the ONLY route to deleteOldCounters. Destructive.
+        n=sys.argv[2]
+        if "--i-mean-it" not in sys.argv:
+            print(f"REFUSED. This DELETES every stored reading for {n} at ThingsLog (it wiped 3,718 on\n"
+                  f"26 Jul 2026). Snapshot first:\n"
+                  f"  thingslog-api.py get \"/device/{n}/0/counters?fromDate=2026-01-01T00:00:00&toDate=2030-01-01T00:00:00\" > snap.json\n"
+                  f"then re-run with --i-mean-it"); return
+        before=_get(base,tok,f"/device/{n}/0/counters?fromDate=2020-01-01T00:00:00&toDate=2035-01-01T00:00:00")
+        print(f"{n}: {len(before)} readings at ThingsLog before this call")
+        cfg=_get(base,tok,f"/api/devices/{n}/config"); cfg["deleteOldCounters"]=True
+        st,_=_put(base,tok,cid,f"/api/devices/{n}/config",cfg)
+        after=_get(base,tok,f"/device/{n}/0/counters?fromDate=2020-01-01T00:00:00&toDate=2035-01-01T00:00:00")
+        print(f"{n}: HTTP {st}; readings now {len(after)} (deleted {len(before)-len(after)})")
+        print("Verify our own readings table is unaffected -- it is the fuller copy.")
         return
     if cmd == "set-config":
         # set-config <device> <field> <value>  -- e.g. set-config 04299212 deleteOldCounters true
