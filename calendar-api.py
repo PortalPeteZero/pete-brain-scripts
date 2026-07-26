@@ -155,10 +155,18 @@ class CalendarAPI:
     def get_event(self, event_id, calendar_id="primary"):
         return self._call("GET", f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{event_id}")
 
-    def create_event(self, calendar_id="primary", event=None, **kwargs):
+    def create_event(self, calendar_id="primary", event=None, send_updates=None, **kwargs):
         """Pass either a complete `event` dict (Google's schema) or shorthand kwargs:
            summary, start (RFC3339 str), end, location, description, time_zone,
-           attendees (list of email strings)."""
+           attendees (list of email strings).
+
+           send_updates: "all" | "externalOnly" | "none". Google's DEFAULT IS "none", so an event
+           created with attendees notifies NOBODY unless you say so. That silence is deliberate for
+           video meetings (attach the Teams/Meet link BEFORE the invite goes out -- see
+           [[teams-api-configuration]]), but it means a guest list alone is NOT an invitation.
+           When Pete says "invite X", you must either pass send_updates="all" here or call
+           send_invites() afterwards, or he is left to press Save in Google Calendar himself.
+           (Added 2026-07-26 -- that is exactly what happened and he was right to object.)"""
         if event is None:
             event = {}
             if "summary" in kwargs: event["summary"] = kwargs["summary"]
@@ -176,14 +184,33 @@ class CalendarAPI:
         # default reminder (also 45-min popup). See [[diary-conventions]].
         if isinstance(event, dict) and "reminders" not in event:
             event["reminders"] = {"useDefault": False, "overrides": [{"method": "popup", "minutes": 45}]}
-        return self._call("POST", f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events",
+        q = f"?sendUpdates={send_updates}" if send_updates else ""
+        return self._call("POST",
+                          f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events{q}",
                           body=event)
 
-    def update_event(self, event_id, calendar_id="primary", **fields):
-        """Partial update. Passes `fields` straight to PATCH body."""
+    def update_event(self, event_id, calendar_id="primary", send_updates=None, **fields):
+        """Partial update. Passes `fields` straight to PATCH body.
+           send_updates: "all" | "externalOnly" | "none" (Google defaults to none -- see create_event)."""
+        q = f"?sendUpdates={send_updates}" if send_updates else ""
         return self._call("PATCH",
-                          f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{event_id}",
+                          f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{event_id}{q}",
                           body=fields)
+
+    def send_invites(self, event_id, calendar_id="primary", scope="all"):
+        """Email the invitation to the event's guests. Use after attaching a conference link.
+
+        Google sends NOTHING on create unless asked, so this is the step that actually invites
+        people. Re-PATCHing the existing attendee list with sendUpdates is the documented way to
+        trigger the mail without altering the event.
+
+        OUTBOUND: this puts a message in other people's inboxes as Pete. Only call it when Pete has
+        asked for the invite to go out."""
+        ev = self.get_event(event_id, calendar_id=calendar_id)
+        return self._call("PATCH",
+                          f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{event_id}"
+                          f"?sendUpdates={scope}&conferenceDataVersion=1",
+                          body={"attendees": ev.get("attendees", [])})
 
     def delete_event(self, event_id, calendar_id="primary"):
         return self._call("DELETE", f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{event_id}")
