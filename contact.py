@@ -143,7 +143,22 @@ def add_personal(name, email, phone, company, role, dry):
                        env={**os.environ, "VAULT": VAULT})
     if r.returncode != 0:
         _die("google contacts add failed: " + (r.stderr or r.stdout)[:200])
-    return home, (r.stdout or "").strip()[:400]
+    out = (r.stdout or "").strip()[:400]
+    # Google Contacts is the HOME, but whois.py reads the CC mirror `public.google_contacts`.
+    # Without this the person is invisible to the reader until the next sync, so the system
+    # contradicts itself the moment it is used (found 26 Jul 2026: contact.py created Freya Finch,
+    # whois still answered "NOT FOUND"). Write then re-sync, so read-after-write always holds.
+    try:
+        m = subprocess.run([sys.executable, os.path.join(VAULT, "google-contacts-sync.py")],
+                           capture_output=True, text=True, timeout=180,
+                           env={**os.environ, "VAULT": VAULT})
+        out += ("\n  mirror: refreshed so whois.py can see them immediately"
+                if m.returncode == 0 else
+                "\n  ⚠ mirror refresh FAILED -- whois.py will not find this person until "
+                "google-contacts-sync.py runs: " + (m.stderr or m.stdout)[:120])
+    except Exception as e:
+        out += f"\n  ⚠ mirror refresh FAILED ({type(e).__name__}) -- run google-contacts-sync.py"
+    return home, out
 
 
 ADDERS = {"sygma": add_sygma, "cd": add_cd, "personal": add_personal}

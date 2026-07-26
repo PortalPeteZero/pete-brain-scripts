@@ -43,6 +43,7 @@ USAGE
 FAIL-SOFT: a store that errors is REPORTED as unreachable, never silently skipped -- a missing
 store must not look like a missing person (rule 4 applied to the tool's own failures).
 """
+import re
 import json, os, re, sys, subprocess, urllib.request, urllib.parse, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
@@ -247,6 +248,49 @@ def search_phone_mirror(q, phone):
     return out
 
 
+
+def partial_sweep(q, phone):
+    """A multi-word name that matches nothing as a whole string may still match ON ONE TOKEN.
+
+    Every store search is a substring ILIKE on the FULL query, so "Freya Finch" cannot match a
+    record stored as just "Freya". Before 26 Jul 2026 that produced a confidently WRONG
+    "NOT FOUND ... they genuinely have no record", and a duplicate contact was created on the
+    strength of it. A partial hit is not a match, but it IS a duplicate risk, so it must be shown.
+    """
+    tokens = [t for t in re.split(r"[\s,]+", q) if len(t) > 2]
+    if len(tokens) < 2:
+        return [], []
+    near, failed = [], []
+    seen = set()
+    for tok in tokens:
+        for label, fn in STORES:
+            try:
+                for r in fn(tok, ""):
+                    key = (r.get("store"), r.get("name"), r.get("email"), r.get("phone"))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    r = dict(r); r["matched_token"] = tok
+                    near.append(r)
+            except Exception as e:
+                msg = f"{label}: {type(e).__name__}: {str(e)[:80]}"
+                if msg not in failed:
+                    failed.append(msg)
+    return near, failed
+
+
+def add_hint(q):
+    """On a TRUE negative, print the write command. whois is the read half of a pair; leaving the
+    caller at 'not found' is what made the people system get skipped (Pete, 26 Jul 2026)."""
+    return (
+        "  TO CREATE THE RECORD -- pick the entity, the tool refuses to guess:\n"
+        f"    contact.py add \"{q}\" --entity sygma    --email E --phone P   # Sygma platform, public.contacts\n"
+        f"    contact.py add \"{q}\" --entity cd       --email E --phone P   # Canary Detect, Odoo res.partner\n"
+        f"    contact.py add \"{q}\" --entity personal --email E --phone P   # no business record -> Google Contacts\n"
+        "  (run as: VAULT=/tmp/pbs python3 /tmp/pbs/contact.py ...)"
+    )
+
+
 STORES = [
     ("Sygma staff", search_staff),
     ("Sygma contacts", search_contacts),
@@ -308,8 +352,23 @@ def main():
             for f in failed:
                 print(f"    ⚠ {f}")
         else:
+            near, near_failed = partial_sweep(q, phone)
+            if near:
+                print(f"  NO EXACT MATCH for '{q}' -- but {len(near)} record(s) match PART of that name.")
+                print("  DO NOT create a new record before ruling these out; that is how duplicates are made.")
+                print()
+                for r in near[:15]:
+                    bits = [b for b in (r.get("email"), r.get("phone"), r.get("detail")) if b]
+                    print(f"    ~ {r.get('name')}  [matched on '{r.get('matched_token')}']")
+                    print(f"        {r.get('store')}" + (f" -- {' / '.join(bits)}" if bits else ""))
+                print()
+                print("  If none of these is the person, create the record:")
+                print(add_hint(q))
+                return 0
             print("  NOT FOUND in any of the four stores (staff, Sygma contacts, Odoo, the phone).")
             print("  That is a real negative: all four answered. They genuinely have no record.")
+            print()
+            print(add_hint(q))
         return 0
 
     # rule 2 -- a shared number is an ORGANISATION, never one person
