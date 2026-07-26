@@ -8,7 +8,8 @@ Usage:
   python3 people-api.py get RESOURCE_NAME            # get contact by resource name
   python3 people-api.py list [N]                     # list all contacts (default 50)
   python3 people-api.py add "Name" email [phone] [org]  # add new contact
-  python3 people-api.py update RESOURCE_NAME email|phone|org|name VALUE
+  python3 people-api.py update RESOURCE_NAME email|phone|org|name VALUE   # VALUE replaces; "a,b" sets both
+  python3 people-api.py update RESOURCE_NAME +phone VALUE                # leading + APPENDS, keeps existing
   python3 people-api.py delete RESOURCE_NAME
   python3 people-api.py whoami                       # show auth info
 """
@@ -159,11 +160,21 @@ def update_contact(resource_name, field, value):
     etag = current.get("etag", "")
     body = {"etag": etag}
     update_mask = ""
+    # A single value REPLACES the whole list — that is how an update can silently destroy the
+    # number you were not editing. Accept comma-separated values so a caller can preserve what is
+    # already there, and offer +field to APPEND. (Found 26 Jul 2026 before it cost anything.)
+    append = field.startswith("+")
+    field = field.lstrip("+")
+    vals = [v.strip() for v in str(value).split(",") if v.strip()]
     if field == "email":
-        body["emailAddresses"] = [{"value": value}]
+        existing = [e.get("value") for e in (current.get("emailAddresses") or []) if e.get("value")]
+        keep = (existing if append else []) + [v for v in vals if v not in (existing if append else [])]
+        body["emailAddresses"] = [{"value": v} for v in keep]
         update_mask = "emailAddresses"
     elif field == "phone":
-        body["phoneNumbers"] = [{"value": value}]
+        existing = [e.get("value") for e in (current.get("phoneNumbers") or []) if e.get("value")]
+        keep = (existing if append else []) + [v for v in vals if v not in (existing if append else [])]
+        body["phoneNumbers"] = [{"value": v} for v in keep]
         update_mask = "phoneNumbers"
     elif field == "org":
         body["organizations"] = [{"name": value}]
