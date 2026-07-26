@@ -214,6 +214,8 @@ def _cli() -> None:
     elif cmd == "forms":
         limit = int(args[0]) if args else 100
         offset = int(args[1]) if len(args) > 1 else 0
+        # paged-read-guard: ok — one explicit CLI page, not a completeness loop, and forms()
+        # defaults to orderby='updated_at'.
         forms = j.forms(limit=limit, offset=offset)
         print(f"# {len(forms)} forms (limit={limit}, offset={offset})")
         for f in forms:
@@ -226,6 +228,8 @@ def _cli() -> None:
         form_id = args[0]
         limit = int(args[1]) if len(args) > 1 else 100
         offset = int(args[2]) if len(args) > 2 else 0
+        # paged-read-guard: ok — one explicit CLI page, not a completeness loop, and submissions()
+        # defaults to orderby='created_at'.
         subs = j.submissions(form_id, limit=limit, offset=offset)
         print(f"# {len(subs)} submissions for form {form_id} (limit={limit}, offset={offset})")
         _print(subs)

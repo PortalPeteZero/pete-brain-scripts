@@ -551,6 +551,24 @@ def check_rows(gaps, dm_text, dm_rows):
     except Exception as e:
         add("couldnt-check", "drive-paths", f"drive-path-rebuild did not run ({e}) — Drive path integrity NOT verified", "high")
 
+    # --- Paged reads with no sort order: they silently return short, and nothing errors. Measured
+    # 26 Jul 2026 on drive_files — an 18,004-row paged read assembled only 10,526 UNIQUE rows, which
+    # had been corrupting Drive paths for weeks and was repaired by hand three times. Delegated to
+    # paged-read-guard.py so there is ONE definition of the check (same pattern as drive-path-rebuild).
+    try:
+        r = subprocess.run(["python3", os.path.join(VAULT, "paged-read-guard.py"), "--json"],
+                           env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True, timeout=120)
+        if r.returncode not in (0, 1):      # 1 = findings (its normal "not clean" exit), other = broke
+            add("couldnt-check", "paged-reads", f"paged-read-guard exited {r.returncode} — paged reads NOT verified", "high")
+        else:
+            g = json.loads(r.stdout)
+            for f in g.get("findings", []):
+                add("unordered-paged-read", f["subject"],
+                    "a paged read with no sort order — it can silently return short. "
+                    f"Fix: add an order (prefer keyset) or declare it. {f['detail'][:90]}", "high")
+    except Exception as e:
+        add("couldnt-check", "paged-reads", f"paged-read-guard did not run ({e}) — paged reads NOT verified", "high")
+
     # --- Drive index orphans: a row whose PARENT is not itself indexed and is not a drive root is
     # hanging off nothing — the usual cause is that the file has LEFT the indexed scope while its
     # row stayed behind, because drive-files-index.py was upsert-only and never deleted anything.
