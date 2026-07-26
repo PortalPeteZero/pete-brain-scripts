@@ -313,6 +313,22 @@ Bare `Label: X` is **forbidden** in proposals.
 **Task routing (which project/section):** follow the task-routing decision tree at `[[vault-routing#task-routing-decision-tree]]` — related project/bucket first, else the single `General` project, bucket/project escalation only by proposal.
 
 Label-routing logic (which X to pick once verb is chosen):
+- **CRM PRESENCE — check the system of record, not just the label.** Every thread now carries
+  **`crm_known`** from `triage-pull` (`true` = the sender's organisation IS in the Sygma platform
+  or Odoo · `false` = it is in NEITHER · `null` = the check could not run, which is NOT the same as
+  "not a customer"). When a row is being labelled **customer or supplier** and `crm_known` is
+  **false**, say so in the batch and offer to create the record:
+
+      VAULT=/tmp/pbs python3 /tmp/pbs/contact.py add "Name" --entity sygma|cd \
+          --role customer|supplier --company "Company" --email E [--phone P]
+
+  Labelling and filing a supplier while they exist nowhere in the CRM makes the inbox look tidy
+  while the system of record silently rots. **Coversure, found 26 Jul 2026: over 100 emails across
+  a year, five people, and not one record in either system.** Pete: triage *"suggests tagging a
+  supplier... what it doesnt do though is suggest checking the platform or odoo to either add or
+  update customer or supplier"*.
+  Propose, never auto-create — `contact.py` refuses to guess the entity, and so should you.
+
 - Sender domain matches a known customer/supplier/project label → propose that label
 - Sender domain matches an existing CC project (`public.projects`, active) BUT no Gmail label exists → demand-driven label rule
 - Sender domain matches a known Personal area (scouts, los-claveles, passion-fit, freemasonry, finance, family) BUT no Gmail label exists → demand-driven label rule applies same way (propose `Personal/PA-{area}` or `Personal/AT-{family-area}` Gmail label creation in same operation as filing)

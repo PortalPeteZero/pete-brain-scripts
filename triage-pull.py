@@ -27,6 +27,7 @@ on the thread. Every auto path (the offline runner, L2/L3/L4) MUST use --full.
 
 Loads the canonical gmail-api.py by path (the file is hyphenated).
 """
+import re
 import sys, os, json, datetime, importlib.util, re, base64, html as _html, uuid
 
 def _load_gmail():
@@ -177,6 +178,49 @@ def _calendar_invite(msg, g):
             when = f"{mm.group(1)}-{mm.group(2)}-{mm.group(3)} {mm.group(4)}:{mm.group(5)}"
     return {"summary": _val("SUMMARY"), "when": when, "tzid": tzid, "location": _val("LOCATION")}
 
+
+# --- CRM presence -------------------------------------------------------------------
+# Triage labels a thread as customer/supplier, files it to Drive and writes vault_notes -- but it
+# NEVER checked whether that person exists in the SYSTEM OF RECORD. So the CRM silently rots while
+# the labels look tidy. Coversure proved the cost: 100+ emails across a year, five people, and not
+# one record in the Sygma platform or Odoo (found 26 Jul 2026, Pete).
+#
+# ONE batched query per round, not a per-thread whois -- a lookup that makes triage slow is a
+# lookup that gets turned off.
+_CRM_CACHE = {}
+_VAULT = os.environ.get("VAULT", "/tmp/pbs")
+
+def _crm_known(addresses):
+    """-> {address: True/False} — is this address (or its domain) in the Sygma platform or Odoo?"""
+    todo = sorted({(a or "").strip().lower() for a in addresses if a and "@" in a})
+    todo = [a for a in todo if a not in _CRM_CACHE]
+    if todo:
+        domains = sorted({a.split("@")[1] for a in todo})
+        found = set()
+        try:
+            import subprocess as _sp
+            # one whois per DOMAIN (a handful per round), never one per address
+            for d in domains:
+                rr = _sp.run(["python3", os.path.join(_VAULT, "whois.py"), "--json", "@" + d],
+                             capture_output=True, text=True, timeout=90,
+                             env={**os.environ, "VAULT": _VAULT})
+                try:
+                    res = json.loads(rr.stdout or "{}").get("results", [])
+                except Exception:
+                    res = []
+                if any(x.get("store", "").startswith(("Sygma platform", "Odoo")) for x in res):
+                    found.add(d)
+        except Exception as e:
+            # unknown != absent. Say WHY on stderr — a silently-None check is how this shipped
+            # broken the first time (26 Jul 2026: VAULT was undefined, every answer was None).
+            print("crm-check unavailable: %s: %s" % (type(e).__name__, str(e)[:120]),
+                  file=sys.stderr)
+            return {a: None for a in addresses}
+        for a in todo:
+            _CRM_CACHE[a] = a.split("@")[1] in found
+    return {a: _CRM_CACHE.get((a or "").strip().lower()) for a in addresses}
+
+
 def _process_thread(t, g, tl, team, today):
     """Full read-in-full extraction for ONE thread: every message body PLUS any
     text/calendar (.ics) invite surfaced as a loud MEETING INVITE banner + a
@@ -223,7 +267,19 @@ def _process_thread(t, g, tl, team, today):
         "flags": sorted(thread_flags),
         "history_summarised": history_summarised,
         "messages": emsgs,
+        # crm_known: True = sender's org is in the platform/Odoo · False = NOT in either, so
+        # labelling this as a customer/supplier without adding the record just hides the gap ·
+        # None = the check could not run (NEVER read that as "not a customer").
+        "crm_known": _crm_known([_sender_addr(_hdr(last, "From"))]).get(
+            _sender_addr(_hdr(last, "From"))),
+        "sender_addr": _sender_addr(_hdr(last, "From")),
     }
+
+
+def _sender_addr(frm):
+    m = re.search(r"<([^>]+)>", frm or "")
+    a = (m.group(1) if m else (frm or "")).strip().lower()
+    return a if "@" in a else ""
 
 def _write_round(threads_list, query, exhausted):
     session_id = str(uuid.uuid4())

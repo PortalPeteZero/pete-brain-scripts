@@ -65,21 +65,33 @@ def main():
     by_email, by_phone = collections.defaultdict(list), collections.defaultdict(list)
     names = {}
     half = []
+    self_dupes = []
     for r in rows:
         nm = (r.get("display_name") or "").strip()
         names[r["resource_name"]] = nm
-        emails = [e.strip().lower() for e in (r.get("emails") or []) if e]
-        phones = [norm_phone(p) for p in (r.get("phones") or [])]
+        # DEDUPE WITHIN THE RECORD FIRST. Without this, one contact listing its own number or
+        # address twice looked like two contacts sharing it — which is how this tool reported
+        # "28 shared emails" and "24 shared numbers" on 26 Jul 2026 when the true cross-record
+        # figures were 0 and 5. A tool that over-reports is worse than no tool: Pete was about to
+        # go and merge contacts that were never duplicates.
+        emails = sorted({e.strip().lower() for e in (r.get("emails") or []) if e and e.strip()})
+        phones = sorted({norm_phone(p) for p in (r.get("phones") or []) if norm_phone(p)})
+        raw_p = [norm_phone(p) for p in (r.get("phones") or []) if norm_phone(p)]
+        raw_e = [(e or "").strip().lower() for e in (r.get("emails") or []) if e and e.strip()]
+        if len(raw_p) != len(phones) or len(raw_e) != len(emails):
+            self_dupes.append(nm or r["resource_name"])
         for e in emails:
             by_email[e].append(r)
         for p in phones:
-            if p:
-                by_phone[p].append(r)
+            by_phone[p].append(r)
         if nm and not emails and not any(phones):
             half.append(nm)
 
-    shared_email = {k: v for k, v in by_email.items() if len(v) > 1}
-    shared_phone = {k: v for k, v in by_phone.items() if len(v) > 1}
+    # count DISTINCT records, never repeated entries on one record
+    shared_email = {k: v for k, v in by_email.items()
+                    if len({x["resource_name"] for x in v}) > 1}
+    shared_phone = {k: v for k, v in by_phone.items()
+                    if len({x["resource_name"] for x in v}) > 1}
 
     # subset names: a bare "Freya" alongside "Freya Finch"
     tok = {rn: {t for t in re.split(r"[\s,.]+", n.lower()) if len(t) > 1}
@@ -96,6 +108,8 @@ def main():
     lines.append(f"  probable duplicates: {len(shared_email)} shared email(s), "
                  f"{len(shared_phone)} shared number(s), {len(subsets)} part-name overlap(s)")
     lines.append(f"  half-finished (no email AND no phone): {len(half)}")
+    lines.append(f"  records repeating their OWN number/address (untidy, NOT a duplicate person): "
+                 f"{len(self_dupes)}")
     for e, v in list(shared_email.items())[:8]:
         lines.append(f"    ✉ {e} -> " + " | ".join(names[x['resource_name']] for x in v))
     for p, v in list(shared_phone.items())[:8]:
