@@ -96,18 +96,36 @@ def main():
     # subset names: a bare "Freya" alongside "Freya Finch"
     tok = {rn: {t for t in re.split(r"[\s,.]+", n.lower()) if len(t) > 1}
            for rn, n in names.items() if n}
-    subsets = []
+    # A shared FIRST NAME is not a duplicate. Checked 26 Jul 2026: every bare-name record flagged
+    # had a DIFFERENT number from its "match" — "Adam" 07983 993656 vs "Adam Brennan"
+    # +34 629023295 are simply two Adams. Calling those duplicates nearly had Pete merging
+    # strangers. So split the two problems:
+    #   · subsets  = bare name that SHARES a contact point with a fuller record -> likely the same
+    #                person, worth looking at
+    #   · needs_surname = bare name with no shared contact point -> not a duplicate, just an
+    #                incomplete record that only Pete can complete
+    reach = {}
+    for r in rows:
+        reach[r["resource_name"]] = ({norm_phone(p) for p in (r.get("phones") or []) if norm_phone(p)}
+                                     | {(e or "").strip().lower() for e in (r.get("emails") or []) if e})
+    subsets, needs_surname = [], []
     bare = [(rn, t) for rn, t in tok.items() if len(t) == 1]
     for rn, t in bare:
+        shared = False
         for rn2, t2 in tok.items():
             if rn2 != rn and len(t2) > 1 and t < t2:
-                subsets.append((names[rn], names[rn2]))
+                if reach.get(rn, set()) & reach.get(rn2, set()):
+                    subsets.append((names[rn], names[rn2])); shared = True
+        if not shared:
+            needs_surname.append(names[rn])
     gaps = len(shared_email) + len(shared_phone) + len(subsets)
 
     lines = [f"PEOPLE HYGIENE — {len(rows)} contact records checked"]
     lines.append(f"  probable duplicates: {len(shared_email)} shared email(s), "
                  f"{len(shared_phone)} shared number(s), {len(subsets)} part-name overlap(s)")
     lines.append(f"  half-finished (no email AND no phone): {len(half)}")
+    lines.append(f"  NEEDS A SURNAME (not a duplicate — only Pete knows who they are): "
+                 f"{len(needs_surname)}")
     lines.append(f"  records repeating their OWN number/address (untidy, NOT a duplicate person): "
                  f"{len(self_dupes)}")
     for e, v in list(shared_email.items())[:8]:
@@ -115,6 +133,9 @@ def main():
     for p, v in list(shared_phone.items())[:8]:
         lines.append(f"    ☎ ...{p} -> " + " | ".join(names[x['resource_name']] for x in v)
                      + "   (a SHARED number means same ORGANISATION — never merge)")
+    if needs_surname:
+        lines.append("    first-name-only: " + ", ".join(sorted(needs_surname)[:14])
+                     + (f" … +{len(needs_surname)-14} more" if len(needs_surname) > 14 else ""))
     for a, b in subsets[:8]:
         lines.append(f"    ~ '{a}' may be the same person as '{b}' — tidy, do not duplicate")
     if gaps == 0 and not half:
