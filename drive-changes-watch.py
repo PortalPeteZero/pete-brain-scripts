@@ -66,7 +66,10 @@ def cc(method, path, body=None):
             t = r.read().decode(); return json.loads(t) if t.strip() else []
         except urllib.error.HTTPError as e:
             if e.code in (429, 500, 502, 503) and a < 4: time.sleep(2 * (a + 1)); continue
-            print("CC ERR", method, path, e.code, e.read().decode()[:200]); return []
+            # None means ERRORED. This used to return [], which every caller then read as "no rows"
+            # — one line that caused three separate silent failures (see load_folders, get_token and
+            # the write path). A genuinely empty result is still [], so the two stay distinguishable.
+            print("CC ERR", method, path, e.code, e.read().decode()[:200]); return None
         except Exception:
             if a < 4: time.sleep(2 * (a + 1)); continue
             raise
@@ -78,10 +81,17 @@ DRIVES = list(SHARED.items()) + [("My Drive", None)]
 
 def get_token(drive):
     r = cc("GET", f"drive_change_tokens?drive=eq.{urllib.parse.quote(drive)}&select=token")
+    if r is None:
+        # A FAILED read used to be indistinguishable from "no token yet", and the caller's response
+        # to "no token yet" is to RE-BASELINE — which silently throws away every change since the
+        # last good token. Raising instead means the drive is skipped and retried in 15 minutes with
+        # its token intact.
+        raise RuntimeError("could not read the change token — refusing to re-baseline off a failed read")
     return r[0]["token"] if r else None
 
 def set_token(drive, t):
-    cc("POST", "drive_change_tokens?on_conflict=drive", [{"drive": drive, "token": t, "updated_at": "now()"}])
+    if cc("POST", "drive_change_tokens?on_conflict=drive", [{"drive": drive, "token": t, "updated_at": "now()"}]) is None:
+        raise RuntimeError("could not save the change token")
 
 def start_token(did):
     p = {"supportsAllDrives": "true"}
@@ -89,19 +99,55 @@ def start_token(did):
     return gapi("/changes/startPageToken", p)["startPageToken"]
 
 def load_folders(drive):
-    out = {}; off = 0
+    """The drive's whole folder tree, paged 1000 at a time (PostgREST's cap).
+
+    THE ROOT CAUSE of the recurring path drift, found 26 Jul 2026 by measuring instead of assuming.
+    This used to page with `limit=1000&offset=N` and NO sort order. Postgres does not promise a
+    stable order without ORDER BY, so offset paging re-delivered some rows and skipped others.
+    Measured live on Sygma Hub: all 18,004 folder rows came back across 19 pages, but only 10,526
+    were UNIQUE — 7,478 folders silently missing from the map, and a different subset each run.
+    Adding the sort order returned 18,004 of 18,004.
+
+    That is why this drift class kept coming back despite two earlier fixes (403 rows, then 158 in
+    an afternoon, then 131 on 25 Jul): every previous fix treated the symptom in the path builder,
+    while the map feeding it had been short on EVERY run.
+
+    Now keyset-paged on drive_file_id (immune to rows shifting under a concurrent write, which
+    offset paging is not), with a count check so a short map can never pass silently again. A
+    failed page raises rather than reading as "end of data" — the drive is skipped and retried in
+    15 minutes with its change token intact."""
+    q = urllib.parse.quote(drive)
+    want = cc("GET", f"drive_files?drive=eq.{q}&is_folder=eq.true&select=count")
+    if want is None:
+        raise RuntimeError("folder count FAILED — cannot tell a complete map from a short one")
+    want = want[0]["count"]
+    out = {}; last = ""
     while True:
-        r = cc("GET", f"drive_files?drive=eq.{urllib.parse.quote(drive)}&is_folder=eq.true&select=drive_file_id,name,parent_id&limit=1000&offset={off}")
+        r = cc("GET", f"drive_files?drive=eq.{q}&is_folder=eq.true&select=drive_file_id,name,parent_id"
+                      f"&order=drive_file_id.asc&limit=1000&drive_file_id=gt.{urllib.parse.quote(last)}")
+        if r is None:
+            raise RuntimeError("a folder-map page FAILED — a partial map would write truncated paths")
         for x in r: out[x["drive_file_id"]] = (x["name"], x["parent_id"])
         if len(r) < 1000: break
-        off += 1000
+        last = r[-1]["drive_file_id"]
+    if len(out) < want:
+        # Usually transient (a folder deleted mid-read); self-heals next cycle. Never proceed on it.
+        raise RuntimeError(f"folder map is SHORT: {len(out)} of {want} — refusing to build paths from it")
     return out
 
-def path_of(fmap, fid):
+def path_of(fmap, fid, root):
+    """Path of `fid` relative to its drive root, or None if the chain does not REACH that root.
+
+    None is the whole point: it means WE DO NOT KNOW where this item is, so the caller must not
+    write a path. The old version walked "while cur in fmap" and returned however far it got, which
+    made a truncated path indistinguishable from a correct one. Now the root is the required anchor,
+    so an incomplete map, a missing ancestor, a cycle, or an item with no ancestry at all can only
+    ever produce None — never a plausible-looking wrong answer."""
     parts = []; cur = fid; seen = set()
-    while cur in fmap and cur not in seen:
+    while True:
+        if cur == root: return "/".join(reversed(parts))
+        if cur is None or cur in seen or cur not in fmap: return None
         seen.add(cur); nm, par = fmap[cur]; parts.append(nm); cur = par
-    return "/".join(reversed(parts))
 
 def fetch_folder(fid):
     """Resolve ONE parent folder not already known locally -- a folder created since the last full
@@ -121,8 +167,11 @@ def process_drive(drive, did):
     t = get_token(drive)
     if not t:
         set_token(drive, start_token(did)); print(f"{drive}: token initialised (baseline)", flush=True); return 0, 0
+    # The anchor every path is measured from. A shared drive's root id IS its driveId; for My Drive
+    # we ask Drive rather than hardcoding an id, so the check can never be quietly wrong.
+    root = did or gapi("/files/root", {"fields": "id"})["id"]
     fmap = load_folders(drive)
-    raw = []
+    raw = []; newtok = None
     pt = t
     while pt:
         params = {"pageToken": pt, "fields": "nextPageToken,newStartPageToken,changes(fileId,removed,file(id,name,parents,mimeType,size,modifiedTime,trashed,driveId,ownedByMe))", "pageSize": 1000, "includeRemoved": "true", "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"}
@@ -133,7 +182,10 @@ def process_drive(drive, did):
             if not fid: continue  # drive-level change, no file
             raw.append((fid, bool(chg.get("removed")), chg.get("file")))
         if r.get("newStartPageToken"):
-            set_token(drive, r["newStartPageToken"]); pt = None
+            # Held, NOT saved yet. Saving it here meant the token advanced BEFORE the upserts and
+            # deletes below were applied, so a failed write lost that window's changes permanently —
+            # the feed never re-delivers them. It is now saved only once the work has landed.
+            newtok = r["newStartPageToken"]; pt = None
         else:
             pt = r.get("nextPageToken")
     # Pass 1 -- register EVERY changed folder into the map before resolving any path. Changes arrive
@@ -156,42 +208,47 @@ def process_drive(drive, did):
         # false-deletes that includeItemsFromAllDrives=false caused.)
         if did is None and (f.get("driveId") or not f.get("ownedByMe")): continue
         par = (f.get("parents") or [None])[0]
-        cur = par; guard = 0; chain_ok = True
-        while cur and cur not in fmap and guard < 50:
+        # Walk up fetching any parent still unknown (a folder created since the last full index), so
+        # a brand-new file still gets its full path. Stop at the root — it is the anchor, not a gap.
+        cur = par; guard = 0
+        while cur and cur != root and cur not in fmap and guard < 50:
             got = fetch_folder(cur)
-            if not got:
-                # ROOT CAUSE of the recurring path drift (18 Jul 2026). This used to break and
-                # then store the HALF-BUILT path as if it were fact, so a transient parent fetch
-                # failure permanently recorded a file at the wrong location — e.g.
-                # 'Customers and Suppliers/Customers/README.md' saved as 'Customers/README.md'.
-                # It cost 403 rows once and 158 more in a single afternoon.
-                # An unresolvable chain means WE DO NOT KNOW the path — so do not write one.
-                # parent_id is still correct, so drive-path-rebuild.py reconstructs it from the
-                # tree, and the daily locator check reports it meanwhile. Never assert a guess.
-                chain_ok = False
-                break
+            if not got: break        # unresolvable; path_of() below returns None and we write nothing
             fmap[cur] = got; cur = got[1]; guard += 1
         isf = f.get("mimeType") == FOLDER
-        pp = path_of(fmap, par)
+        # ONE authority on "do we know where this is". Previously a truncated walk produced a
+        # plausible path that was then stored as fact — the recurring drift (18 Jul: 403 rows, then
+        # 158 in an afternoon; 25 Jul: 131 more). A path we cannot anchor is not written at all.
+        pp = path_of(fmap, par, root)
+        if pp is None:
+            # Not indexable: either the ancestry is genuinely outside this drive (Pete's 25 Jul rule,
+            # enforced the same way in drive-files-index.py's anchored() — e.g. his files inside a
+            # folder someone else shared with him) or we transiently could not resolve it. Either way
+            # we know nothing to write, and writing a row with no path would recreate exactly the
+            # orphan class the prune pass and the locator invariant were built to eliminate.
+            _unresolved.append(f["name"]); continue
         fp = (pp + "/" + f["name"]) if pp else f["name"]
         if "_backups" in fp.split("/"): continue   # cold-backup folders are hidden from the file index (Pete, 2026-06-26)
-        row = {"drive_file_id": fid, "name": f["name"], "path": fp, "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par}
-        if not chain_ok:
-            row.pop("path")          # leave any existing path untouched rather than overwrite it with a guess
-            _unresolved.append(f["name"])
-        upserts.append(row)
+        upserts.append({"drive_file_id": fid, "name": f["name"], "path": fp, "drive": drive, "entity": drive, "mime": "folder" if isf else f.get("mimeType"), "size": int(f["size"]) if f.get("size") else None, "modified_time": f.get("modifiedTime"), "is_folder": isf, "parent_id": par})
     # de-dup: a file both changed+removed in window -> delete wins
     delset = set(deletes)
     upserts = [u for u in upserts if u["drive_file_id"] not in delset]
+    # Writes first, token second. A failed write now raises, so the token is NOT advanced and the
+    # same window is simply re-delivered next run (every write here is idempotent).
     for i in range(0, len(upserts), 500):
-        cc("POST", "drive_files?on_conflict=drive_file_id", upserts[i:i + 500])
+        if cc("POST", "drive_files?on_conflict=drive_file_id", upserts[i:i + 500]) is None:
+            raise RuntimeError("upsert FAILED — token not advanced, so this window retries next run")
     for fid in deletes:
-        cc("DELETE", f"drive_files?drive_file_id=eq.{fid}")
+        if cc("DELETE", f"drive_files?drive_file_id=eq.{fid}") is None:
+            raise RuntimeError("delete FAILED — token not advanced, so this window retries next run")
+    if newtok:
+        set_token(drive, newtok)
     if _unresolved:
-        print(f"  !! {len(_unresolved)} file(s) had an UNRESOLVABLE parent chain — path left unwritten "
-              f"rather than guessed: {', '.join(_unresolved[:5])}"
+        print(f"  !! {len(_unresolved)} item(s) could not be anchored to the {drive} root — NOT indexed "
+              f"rather than filed at a guessed path: {', '.join(_unresolved[:5])}"
               + (f" (+{len(_unresolved)-5} more)" if len(_unresolved) > 5 else "")
-              + ". Run drive-path-rebuild.py --apply to fill them from the tree.")
+              + ". Expected for items whose ancestry sits outside this drive; if it is unexpected, "
+                "run drive-files-index.py to reconcile.")
     print(f"{drive}: {len(upserts)} upserts, {len(deletes)} deletes", flush=True)
     return len(upserts), len(deletes)
 
