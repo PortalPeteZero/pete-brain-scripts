@@ -109,6 +109,36 @@ waiting = sql("""SELECT c.full_name FROM subscriptions s JOIN properties p ON p.
 check("no paid customer waiting for a device", not waiting,
       f"{len(waiting)} waiting: {[w['full_name'] for w in waiting] or 'none'}", warn_only=True)
 
+# ── COMMISSIONING COMPLETENESS ───────────────────────────────────────────────────────────────────
+# Added 27 Jul 2026 after Pete found THREE things a "commissioned" logger was missing that nothing
+# checked: the timezone (9 devices still on the factory Europe/Sofia), pulse input 2 left enabled
+# (10 devices), and the map location (the two commissioned that day). Every one was invisible
+# because the check asked "did my writes land?" instead of "is this device fully set up?".
+print("\nCOMMISSIONING")
+noloc = sql("""SELECT d.device_number FROM devices d
+               WHERE d.property_id IS NOT NULL AND d.is_active
+                 AND d.device_number NOT LIKE 'DEMO%'
+                 AND (d.tl_latitude IS NULL OR d.tl_longitude IS NULL)""")
+check("every installed meter has a map location", not noloc,
+      f"{[d['device_number'] for d in noloc] or 'none'} without coordinates "
+      f"(MapView, the device card and the Google Maps link all read these)")
+
+badtz = sql("""SELECT device_number FROM devices
+               WHERE is_active AND tl_timezone IS DISTINCT FROM 'Atlantic/Canary'""")
+check("every logger is on Canary time", not badtz,
+      f"{[d['device_number'] for d in badtz] or 'none'} on another timezone. The alarm engine "
+      f"resolves property.timezone -> device.tl_timezone -> Atlantic/Canary, so a property with no "
+      f"timezone of its own inherits this and its overnight window is sampled hours out.")
+
+# THE SETTLED POLICY, recorded here so it stops being re-litigated. Pete, 27 Jul 2026: "the system is
+# set up at the minute that these are turned off and only internal CD people get alerts and then we
+# notify customer." So D19 is DECIDED, not open. What matters now is that it stays that way: an
+# alarm email going straight to a customer would breach it.
+oncust = sql("""SELECT device_number FROM devices
+                WHERE property_id IS NOT NULL AND is_active AND send_alarms_to_customer""")
+check("customer alarm emails stay OFF (settled policy: CD is alerted, CD notifies)", not oncust,
+      f"{[d['device_number'] for d in oncust] or 'none'} would email the customer directly")
+
 # ── THINGS THAT REACH NOBODY ─────────────────────────────────────────────────────────────────────
 print("\nUNSEEN BY ANYONE")
 iss = sql("SELECT count(*) AS n FROM issue_reports WHERE status = 'open'")[0]["n"]
