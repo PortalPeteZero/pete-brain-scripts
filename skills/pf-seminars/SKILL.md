@@ -86,6 +86,13 @@ Cut the housekeeping (dogs, microphones, tech problems). **Where a speaker hedge
 or figure: verify it, or drop the detail — never carry the hedge to the member, never invent
 certainty.** Flag anything dropped so Pete can ask.
 
+**Names (transcription traps — always normalise to these spellings, confirmed by Pete):**
+coaches are **Tom**, **Loren** (transcripts mis-render her as "Lauren", "Laura", "Laurel",
+"Lolly" — all the same person) and **Lydia** (mis-rendered "Liz", "Lids", "Lyds", "Lindsay",
+"Linds"). Never introduce "Laura", "Lauren" or "Liz" as people in a summary. Members: use first
+names where the transcript is clear; where garbled, write "one member". Verbatim transcript
+files keep whatever the transcriber produced — never edit those.
+
 ## Step 5 — Tidy Plaud itself
 If the recording was in the trash or untagged, restore it and move it into the **PF** folder so
 Plaud's library matches the archive.
