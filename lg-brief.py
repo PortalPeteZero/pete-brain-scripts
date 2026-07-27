@@ -54,6 +54,18 @@ def rule(t):
     print(f"\n{'=' * 92}\n{t}\n{'=' * 92}")
 
 
+def hazard(claim, fn):
+    """A standing trap in someone else's system. It cannot 'go false' and must never read as stale;
+    the probe exists to print CURRENT evidence so the warning is never taken on trust."""
+    try:
+        _, detail = fn()
+    except Exception as e:
+        print(f"  [hazard   ] {claim}\n              (evidence unavailable: {e})")
+        return
+    print(f"  [hazard   ] {claim}")
+    print(f"              {detail}")
+
+
 def probe(claim, fn, note=""):
     """Run a probe. Print HOLDS / NO LONGER TRUE / (no probe). Collect the failures."""
     if fn is None:
@@ -244,6 +256,50 @@ def p_commit_is_not_deploy():
                         "A COMMIT IS NOT A DEPLOY -- edge functions deploy separately."
                         if not behind else "DEPLOYED CODE IS BEHIND THE REPO: " + "; ".join(behind))
 
+def p_transmissions_tz_lies():
+    """/api/transmissions stamps a FALSE offset on a wall clock that is actually UTC.
+
+    This does not assert it, it re-proves it every run: take each device's lastTransmissionDate and
+    compare it against when OUR webhook actually received that transmission. A transmission cannot
+    arrive before it was sent, so whichever reading gives a small positive gap is the true one.
+
+    Measured 27 Jul 2026 across the whole fleet: 23 of 23 devices fit wall-clock-as-UTC to within
+    1-3 seconds. Believing the stated offset puts every transmission 1 or 3 hours BEFORE we received
+    it. The offset is also not constant -- 20 devices stamp +01:00 and 3 stamp +03:00 -- which is why
+    the plan's written-down "+01:00" had already rotted and why this is a probe.
+
+    /device/{n}/{port}/counters carries a CORRECT offset. Only this endpoint lies.
+    """
+    from datetime import datetime, timezone
+    out = sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py get '/api/transmissions?page=0&size=100' 2>/dev/null")
+    d = json.loads(out)
+    ours = {r["device_number"]: r["ours"] for r in lg(
+        """SELECT d.device_number, max(t.received_at) AS ours FROM transmission_log t
+           JOIN devices d ON d.id = t.device_id WHERE t.source = 'webhook' GROUP BY 1""")}
+    wall = off = 0
+    offsets = set()
+    for t in d.get("transmissions", []):
+        raw, dn = t.get("lastTransmissionDate"), t.get("deviceNumber")
+        if not raw or dn not in ours:
+            continue
+        dt = datetime.fromisoformat(raw)
+        if dt.utcoffset() is not None:
+            offsets.add(int(dt.utcoffset().total_seconds() // 3600))
+        o = datetime.fromisoformat(ours[dn].replace(" ", "T"))
+        if o.tzinfo is None:
+            o = o.replace(tzinfo=timezone.utc)
+        g_off = abs((o - dt.astimezone(timezone.utc)).total_seconds())
+        g_wall = abs((o - dt.replace(tzinfo=timezone.utc)).total_seconds())
+        if min(g_off, g_wall) > 86400:      # not the same event, skip
+            continue
+        wall += g_wall < g_off
+        off += g_off <= g_wall
+    seen = ", ".join(f"+{o:02d}:00" for o in sorted(offsets)) or "none"
+    return True, (f"Checked against our own webhook receipts just now: wall-clock-as-UTC fits {wall} "
+                  f"device(s), the stated offset fits {off}. Offsets currently stamped: {seen}. "
+                  f"READ THE WALL CLOCK AS UTC on this endpoint. /counters is correct; only "
+                  f"/api/transmissions lies.")
+
 def p_thingslog_agrees():
     r = subprocess.run(["python3", f"{VAULT}/lg-crosscheck.py", "--all"], capture_output=True, text=True, env=ENV)
     tail = [l.strip() for l in r.stdout.strip().split("\n") if "agree" in l]
@@ -258,6 +314,7 @@ probe("--secondary is never used as a foreground", p_secondary_token)
 probe("/api/v2/devices paginates -- page 0 is not the fleet", p_devices_paginates)
 probe("the migration ledger covers every repo file", p_ledger_complete)
 probe("a commit is not a deploy -- edge functions are current", p_commit_is_not_deploy)
+hazard("/api/transmissions stamps a FALSE offset -- read its wall clock as UTC", p_transmissions_tz_lies)
 if DEEP:
     probe("our readings agree with ThingsLog", p_thingslog_agrees)
 else:
