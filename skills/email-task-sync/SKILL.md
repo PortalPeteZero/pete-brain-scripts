@@ -177,6 +177,8 @@ Report: "N `Replies` threads have no task (expected — surfaced for awareness, 
 
 **7a — Auto-filter suggestions** (compute fresh from Gmail each run; do NOT store in state). For each label of interest: `gmail-api.py search "label:{label} newer_than:90d"` grouped by sender domain; `gmail-api.py list_filters()` for senders already covered. For each domain→label pair with count ≥ 3, no existing filter, no recorded decline (check `the `email-workflow-state` note > Declined auto-filter suggestions`): surface in Step 8 with a proposed filter (`from:*@domain OR to:*@domain → apply {label}`, apply only, never remove INBOX). y → create + set `auto_filter: true`; n → record decline. **NEVER auto-create filters.**
 
+⛔ **Create it through the gate, never by hand**: `VAULT=/tmp/pbs python3 /tmp/pbs/gmail-filter-parity.py --create --query '<query>' --label '<Label>' [--archive]`. It refuses a filter that is over-broad on Pete's own address, that would swallow an existing narrower filter on the same label, that archives a Briefings-labelled mail, or that points at a deleted label. Detail + the incident behind it: [[gmail-label-scheme#filter-safety-rules]].
+
 **7b — Strategic routing patterns**: when sync sees a routing decision repeated, after 5 confirmed-without-override occurrences propose promotion into the Master routing matrix. Pete decides.
 
 **7c — Filter broadening**: thread has the right label but the sender matches no existing filter (e.g. uncovered subdomain) → surface a broadening suggestion. Same confirm-before-create rule.

@@ -660,6 +660,21 @@ Mode? (A = label, leave in inbox / B = label + auto-archive / n = no filter)
 
 Mode B for noise; Mode A for things Pete needs to triage. **Filters are NEVER created without explicit confirmation.**
 
+> [!important] ⛔ Create every filter through the gate, never by hand
+> `VAULT=/tmp/pbs python3 /tmp/pbs/gmail-filter-parity.py --create --query '<gmail query>' --label '<Label Name>' [--archive]`
+> (`--archive` = Mode B. Omit it for Mode A.)
+>
+> It runs the four checks on the PROPOSED filter against every live filter and REFUSES rather than
+> creating: a broad match on Pete's own address with no subject narrowing (F1), a filter that would
+> silently swallow an existing narrower one on the same label (F2), a Briefings filter that archives
+> (F3 — Briefings is cron-generated email and is Mode A always), a dangling label (F4).
+>
+> **Why this is mechanical and not a reminder:** a hand-created filter on 1 Jul 2026 read
+> `from:pete.ashcroft@sygma-solutions.com → Briefings` with no subject condition and labelled 2,194
+> of Pete's own emails as briefings. A 2 Jul session fixed a *different* Briefings filter, verified
+> its own fix, and never saw the broad one. A note telling you to be careful would not have caught
+> it. The gate does. See [[gmail-label-scheme#filter-safety-rules]].
+
 ### D. Filter broadening
 
 When an email is labelled but the actual sender is a subdomain or variant the existing filter doesn't cover:
