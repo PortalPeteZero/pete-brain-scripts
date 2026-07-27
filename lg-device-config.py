@@ -29,6 +29,7 @@ BASE = "https://iot.thingslog.com:4443"
 _ctx = ssl.create_default_context()
 ENV = {**os.environ, "VAULT": os.environ.get("VAULT", "/tmp/pbs")}
 
+TZ = "Atlantic/Canary"
 STD = {"pulse_coef": "0.001", "digits": "8", "fraction": "3"}   # 1 L/pulse, fleet standard
 FACTORY = {"pulse_coef": "0.01", "digits": "7", "fraction": "2"}  # 10 L/pulse — never ship this
 
@@ -92,10 +93,44 @@ def show(tok, cid, n):
     return cfg
 
 
+def _crm_ports(n):
+    """Which meter ports this logger actually has, according to our CRM."""
+    rows = _sql(f"SELECT tl_output_index FROM devices WHERE device_number = '{n}' ORDER BY 1")
+    return sorted(int(r["tl_output_index"]) for r in rows) or [0]
+
+
 def apply_standard(tok, cid, n, initial_litres=None, hours=8, dry=False):
     cfg = _get(tok, cid, f"/api/devices/{n}/config")
     p = cfg["sensorConfigs"][0]["parameters"]
     before = {k: str(p.get(k)) for k in ("pulse_coef", "digits", "fraction", "initial_counter")}
+
+    # ── TIMEZONE ────────────────────────────────────────────────────────────────────────────────
+    # Added 27 Jul 2026, after Pete: "you didn't correct the time zone to Canary, it's still set to
+    # Sofia." He was right, and it was not one device: the whole new batch of NINE was on
+    # Europe/Sofia, ThingsLog's own home timezone and the factory default. This function set the
+    # pulse block, the record period and the call-in, called it "fleet standard", and never looked
+    # at the timezone. Two of the nine were live customers by then.
+    #
+    # It matters because the alarm engine resolves the window timezone as
+    #     property.timezone -> device.tl_timezone -> Atlantic/Canary
+    # so a property with no timezone of its own inherits the device's, and an overnight window would
+    # be sampled two hours out. It also makes every ThingsLog timestamp for that device read in a
+    # timezone nobody involved lives in.
+    tz_before = cfg.get("timeZone")
+    cfg["timeZone"] = TZ
+
+    # ── SENSOR ENABLES ──────────────────────────────────────────────────────────────────────────
+    # Same discovery, same day: TEN devices had pulse input 2 switched on with factory defaults
+    # (0.01 coef, 7 digits) while the CRM knew of a single meter. A logger polling an input with
+    # nothing on it reports zeros for ever, which is indistinguishable from the genuinely dead meter
+    # G6 exists to catch.
+    #
+    # The CRM is the authority on how many meters a logger backs -- one devices row per port. So the
+    # enables are aligned to it rather than to a flag someone remembers to pass.
+    ports = _crm_ports(n)
+    enables_before = [i for i, sc in enumerate(cfg.get("sensorConfigs", [])) if sc.get("enabled")]
+    for i, sc in enumerate(cfg.get("sensorConfigs", [])):
+        sc["enabled"] = i in ports
 
     p.update(STD)
     if initial_litres is not None:
@@ -109,15 +144,29 @@ def apply_standard(tok, cid, n, initial_litres=None, hours=8, dry=False):
     want = {**STD, "initial_counter": str(int(initial_litres)) if initial_litres is not None
             else before["initial_counter"]}
     print(f"  {n}  {before}  ->  {want}  call-in {hours}h")
+    if tz_before != TZ:
+        print(f"     timezone   {tz_before} -> {TZ}")
+    if enables_before != ports:
+        print(f"     sensors on {enables_before} -> {ports}   (from the CRM's meter rows)")
     if dry:
         print("     DRY RUN — nothing written")
         return True
 
     st, _ = _put(tok, cid, f"/api/devices/{n}/config", cfg)
-    chk = _get(tok, cid, f"/api/devices/{n}/config")["sensorConfigs"][0]["parameters"]
-    got = {k: str(chk.get(k)) for k in want}
-    ok = got == want
-    print(f"     PUT -> HTTP {st}; read-back {'VERIFIED' if ok else 'MISMATCH ' + json.dumps(got)}")
+
+    # READ BACK EVERYTHING WE WROTE, not just the part we remembered to check. The old read-back
+    # verified the four pulse parameters and printed VERIFIED while the timezone and the second
+    # sensor were both wrong -- a gate that checks the wrong fields is worse than none, because it
+    # signs off the mistake.
+    back = _get(tok, cid, f"/api/devices/{n}/config")
+    got = {k: str(back["sensorConfigs"][0]["parameters"].get(k)) for k in want}
+    tz_ok = back.get("timeZone") == TZ
+    en_ok = [i for i, sc in enumerate(back.get("sensorConfigs", [])) if sc.get("enabled")] == ports
+    ok = got == want and tz_ok and en_ok
+    detail = "VERIFIED" if ok else "MISMATCH " + json.dumps(
+        {"params": got, "timeZone": back.get("timeZone"),
+         "sensors_on": [i for i, sc in enumerate(back.get("sensorConfigs", [])) if sc.get("enabled")]})
+    print(f"     PUT -> HTTP {st}; read-back {detail}")
     return ok
 
 

@@ -256,49 +256,57 @@ def p_commit_is_not_deploy():
                         "A COMMIT IS NOT A DEPLOY -- edge functions deploy separately."
                         if not behind else "DEPLOYED CODE IS BEHIND THE REPO: " + "; ".join(behind))
 
-def p_transmissions_tz_lies():
-    """/api/transmissions stamps a FALSE offset on a wall clock that is actually UTC.
+def p_commissioning_integrity():
+    """Every logger on Atlantic/Canary, with its ThingsLog sensor enables matching our CRM.
 
-    This does not assert it, it re-proves it every run: take each device's lastTransmissionDate and
-    compare it against when OUR webhook actually received that transmission. A transmission cannot
-    arrive before it was sent, so whichever reading gives a small positive gap is the true one.
+    THIS PROBE REPLACES A MISTAKE. On 27 Jul 2026 I noticed ThingsLog stamping +03:00 on some
+    devices and +01:00 on others, decided the platform lied about its timezones, and started writing
+    that into this brief as a permanent quirk with a probe to prove it. Pete stopped me: "you didn't
+    correct the time zone to Canary, it's still set to Sofia." He was right. Europe/Sofia is
+    ThingsLog's own home timezone and the factory default, and the whole new batch of NINE devices
+    was still on it -- because lg-device-config.py --standard set the pulse block, the record period
+    and the call-in, then read back only those four fields and printed VERIFIED.
 
-    Measured 27 Jul 2026 across the whole fleet: 23 of 23 devices fit wall-clock-as-UTC to within
-    1-3 seconds. Believing the stated offset puts every transmission 1 or 3 hours BEFORE we received
-    it. The offset is also not constant -- 20 devices stamp +01:00 and 3 stamp +03:00 -- which is why
-    the plan's written-down "+01:00" had already rotted and why this is a probe.
+    Two of the nine were live customers. He also spotted, in the same breath, that pulse input 2 was
+    switched on with factory defaults on TEN devices that back a single meter -- a logger polling an
+    input with nothing on it, reporting zeros for ever, indistinguishable from the dead meter G6
+    exists to catch.
 
-    /device/{n}/{port}/counters carries a CORRECT offset. Only this endpoint lies.
+    Documenting my own misconfiguration as someone else's platform behaviour would have been worse
+    than saying nothing: every future session would have read it as fact and stopped looking. So the
+    probe checks the thing that was actually wrong.
+
+    Timezone matters because the alarm engine resolves the window as
+        property.timezone -> device.tl_timezone -> Atlantic/Canary
+    so a property with no timezone of its own inherits the device's and its overnight window is
+    sampled hours out.
     """
-    from datetime import datetime, timezone
-    out = sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py get '/api/transmissions?page=0&size=100' 2>/dev/null")
-    d = json.loads(out)
-    ours = {r["device_number"]: r["ours"] for r in lg(
-        """SELECT d.device_number, max(t.received_at) AS ours FROM transmission_log t
-           JOIN devices d ON d.id = t.device_id WHERE t.source = 'webhook' GROUP BY 1""")}
-    wall = off = 0
-    offsets = set()
-    for t in d.get("transmissions", []):
-        raw, dn = t.get("lastTransmissionDate"), t.get("deviceNumber")
-        if not raw or dn not in ours:
+    import urllib.request
+    devs, page = [], 0
+    while True:
+        d = json.loads(sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py get "
+                          f"'/api/v2/devices?page={page}&size=100' 2>/dev/null"))
+        devs += d.get("content", [])
+        if d.get("last", True) or page > 20:
+            break
+        page += 1
+    crm = {r["device_number"]: sorted(r["ports"]) for r in lg(
+        "SELECT device_number, array_agg(tl_output_index ORDER BY tl_output_index) AS ports "
+        "FROM devices GROUP BY 1")}
+    bad = []
+    for dv in devs:
+        n = dv["number"]
+        c = sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py config {n} 2>/dev/null")
+        if not c.strip().startswith("{"):
             continue
-        dt = datetime.fromisoformat(raw)
-        if dt.utcoffset() is not None:
-            offsets.add(int(dt.utcoffset().total_seconds() // 3600))
-        o = datetime.fromisoformat(ours[dn].replace(" ", "T"))
-        if o.tzinfo is None:
-            o = o.replace(tzinfo=timezone.utc)
-        g_off = abs((o - dt.astimezone(timezone.utc)).total_seconds())
-        g_wall = abs((o - dt.replace(tzinfo=timezone.utc)).total_seconds())
-        if min(g_off, g_wall) > 86400:      # not the same event, skip
-            continue
-        wall += g_wall < g_off
-        off += g_off <= g_wall
-    seen = ", ".join(f"+{o:02d}:00" for o in sorted(offsets)) or "none"
-    return True, (f"Checked against our own webhook receipts just now: wall-clock-as-UTC fits {wall} "
-                  f"device(s), the stated offset fits {off}. Offsets currently stamped: {seen}. "
-                  f"READ THE WALL CLOCK AS UTC on this endpoint. /counters is correct; only "
-                  f"/api/transmissions lies.")
+        c = json.loads(c)
+        on = [i for i, sc in enumerate(c.get("sensorConfigs", [])) if sc.get("enabled")]
+        if c.get("timeZone") != "Atlantic/Canary":
+            bad.append(f"{n} tz={c.get('timeZone')}")
+        elif on != crm.get(n, []):
+            bad.append(f"{n} sensors {on} vs CRM {crm.get(n)}")
+    return not bad, (f"{len(devs)} loggers, all Atlantic/Canary with sensor enables matching the CRM."
+                     if not bad else "MISCONFIGURED: " + "; ".join(bad))
 
 def p_thingslog_agrees():
     r = subprocess.run(["python3", f"{VAULT}/lg-crosscheck.py", "--all"], capture_output=True, text=True, env=ENV)
@@ -314,7 +322,7 @@ probe("--secondary is never used as a foreground", p_secondary_token)
 probe("/api/v2/devices paginates -- page 0 is not the fleet", p_devices_paginates)
 probe("the migration ledger covers every repo file", p_ledger_complete)
 probe("a commit is not a deploy -- edge functions are current", p_commit_is_not_deploy)
-hazard("/api/transmissions stamps a FALSE offset -- read its wall clock as UTC", p_transmissions_tz_lies)
+probe("every logger is on Atlantic/Canary with the right sensors enabled", p_commissioning_integrity)
 if DEEP:
     probe("our readings agree with ThingsLog", p_thingslog_agrees)
 else:
