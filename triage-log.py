@@ -117,6 +117,46 @@ def capture_walker(dec, apply=False, manifest=None):
     return True, lines
 
 
+def _gmail_drift(dec, fin, lines):
+    """Has the LIVE Gmail state drifted from what this decision says was applied?
+
+    Returns True (drifted -> re-execute), False (matches -> genuine no-op), or None (could not
+    check -> re-execute anyway; every verb here is idempotent, so a needless re-apply is safe
+    while a wrongly-skipped one leaves the thread stranded in the inbox reported as done).
+    """
+    if dec.get("no_gmail") or dec.get("action") == "walker":
+        return False
+    verb = (fin.get("verb") or "").lower()
+    if verb in ("skip", "-", ""):
+        return False
+    try:
+        g = tl.gmail()
+        names = {l["id"]: l["name"] for l in g.list_labels()}
+        th = g.get_thread(dec["thread_id"])
+        live = set()
+        for m in th["messages"]:
+            live.update(names.get(i, i) for i in m.get("labelIds", []))
+    except Exception as e:
+        lines.append(f"  ! could not read live Gmail state ({e})")
+        return None
+
+    label = fin.get("label")
+    archived = verb.startswith(("file", "task", "reply", "clear")) or verb == "route"
+    if archived and "INBOX" in live:
+        return True
+    if label and verb.startswith(("file", "task", "reply", "keep")) or (label and verb == "route"):
+        # the filing label must actually be on the thread (exact, or the unique suffix match
+        # triage-log itself resolves to)
+        hits = [n for n in live if n == label or n.endswith("/" + label) or label.endswith("/" + n)]
+        if not hits:
+            return True
+    if (verb.startswith("reply") or verb == "route") and "Replies" not in live:
+        return True
+    if verb.startswith("hand") and "Delegated" not in live:
+        return True
+    return False
+
+
 def capture(dec, apply=False, manifest=None):
     """Process one decision. Returns (ok, lines)."""
     lines = []
@@ -137,8 +177,22 @@ def capture(dec, apply=False, manifest=None):
                 and row.get("final_label") == fin.get("label")
                 and row.get("final_ask") == fin.get("ask"))
         if same:
-            lines.append(f"  = {mid[:24]}… unchanged re-decision — FULL NO-OP")
-            return True, lines
+            # The ledger row alone is NOT proof the mutation still stands. Gmail can be reversed
+            # outside this tool (27 Jul 2026: a whole triage round was manually reversed -- labels
+            # stripped, threads restored to the inbox -- and the ledger rows survived, so the
+            # re-run no-opped 6 of 8 threads and still printed "ALL OK"). Verify the LIVE state
+            # matches the decision before claiming it is done; if it drifted, fall through and
+            # re-execute the verb.
+            drift = _gmail_drift(dec, fin, lines)
+            if drift is False:
+                lines.append(f"  = {mid[:24]}… unchanged re-decision, Gmail verified — FULL NO-OP")
+                return True, lines
+            if drift is True:
+                lines.append(f"  ⟳ {mid[:24]}… ledger says applied but Gmail has drifted "
+                             f"(reversed outside this tool) — RE-EXECUTING")
+            else:
+                lines.append(f"  ⟳ {mid[:24]}… could not verify live Gmail state — RE-EXECUTING "
+                             f"(the verb is idempotent)")
         lines.append(f"  ↻ {mid[:24]}… re-decision ({row.get('final_verb')}→{fin.get('verb')}) — updating in place")
 
     if not apply:

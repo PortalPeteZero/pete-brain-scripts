@@ -257,12 +257,26 @@ A training enquiry — whether a **brand-new inbound** (website contact-form sub
 2. **Sender is a CRM contact** — the from-address matches a Portal CRM contact (esp. one at stage New/Quoted). Quick check via the Portal REST (`contacts?email=eq.<addr>`), or it carries the `Projects/SY-Training-Enquiries` Gmail label.
 3. **Subject/content** is clearly a reply on a course enquiry we're handling (cross-check the corpus).
 
-When matched, **don't classify it as a generic `reply`/`task`**. Triage's job for an enquiry is to **RECOGNISE, ROUTE, and CAPTURE THE ARRIVAL** — nothing more. Triage **never drafts, never replies, never moves a CRM stage** on an enquiry; the Enquiry Engine (`enquiries` sweep / `reply to enquiry in {company}`, Pete-triggered) owns ALL drafting, precedent retrieval, all further `te-log` capture, stage moves, and sending — with the reply properly threaded to the incoming email. **Triage drafting enquiry replies is a hard error (Pete, 30 Jun 2026 — orphan drafts not linked to the incoming thread, and enquiry work done in triage instead of the EE).**
+When matched, **don't classify it as a generic `reply`/`task`**. Triage's job for an enquiry is to **RECOGNISE and HAND IT TO THE ENGINE** — nothing more. Triage **never drafts, never replies, never touches the CRM** on an enquiry; the Enquiry Engine (`enquiries` sweep / `reply to enquiry in {company}`, Pete-triggered) owns ALL drafting, precedent retrieval, all further `te-log` capture, stage moves, and sending — with the reply properly threaded to the incoming email. **Triage drafting enquiry replies is a hard error (Pete, 30 Jun 2026 — orphan drafts not linked to the incoming thread, and enquiry work done in triage instead of the EE).**
 
-Routing an enquiry in triage = exactly these three side-effects, nothing more (updated 10 Jul 2026 to the shipped EE-P4.3 intake + Pete's D2 decision):
+Routing an enquiry in triage = exactly these TWO side-effects, nothing more (Pete, 28 Jul 2026 — supersedes the 10 Jul "EE-P4.3 intake in the routing action" rule):
 - **Apply the `Projects/SY-Training-Enquiries` filing label AND the `Replies` label** (both). The TE label is the Engine's home; the `Replies` label is Pete's at-a-glance "this enquiry is in-flight / needs handling" view. The Replies tray + the `/m/enquiry-engine` board ARE the enquiry worklist (D2, 2026-07-09): **NO per-enquiry chase task is created** — a `public.tasks` entry only when Pete explicitly asks. The `Replies` label is stripped later by the EE when the reply is actually sent.
-- **Run the EE intake capture (shipped P4.3) in the same routing action** so the enquiry exists in all three EE systems from minute one: `VAULT=/tmp/pbs python3 /tmp/pbs/te-log.py --in <payload.json> --apply --no-file --no-gmail` with `kind='enquiry'`, the `thread_id` in the payload for linkage, **the inbound message's Gmail `message_id` in the payload — MANDATORY, it is the idempotency key** (te-log's dedupe fires only when a message_id is present; a NULL-message_id intake DUPLICATES on re-run), and the customer's inbound ask passed explicitly as the body. `--no-file` is load-bearing (bare `--apply` would auto-file the thread and de-tray the enquiry the same action just trayed); `--no-gmail` is defensive belt-and-braces. Capture the ask **in the customer's own words** — never assert a course/term mapping you haven't verified (see [[2026-06-30-dont-assert-mappings-from-filename-matches]]).
-- In the ops table mark `Ask = reply`, Action **"Route → Enquiry Engine"**, note both labels + the intake capture. **No draft. No send. No task.** (A booking forward — "Sent to Sue" — moves the contact to **Customer/won** in the EE, not here.)
+- In the ops table mark `Ask = reply`, Action **"Route → Enquiry Engine"**. **No draft. No send. No task. No CRM.** (A booking forward — "Sent to Sue" — moves the contact to **Customer/won** in the EE, not here.)
+
+> [!warning] ⛔ Triage does NOT run `te-log`. It does not touch the CRM at all.
+> **Pete, 28 Jul 2026: *"at this stage we are simply sending it to the ee, not running the ee — it shouldn't even touch the crm at this stage."***
+>
+> The old rule told triage to run an EE intake capture (`te-log --apply --no-file --no-gmail`,
+> `kind='enquiry'`) during routing. That was wrong twice over. It made triage do the Engine's job,
+> and it ran head-first into te-log's own schema, which requires `retrieval_refs` (>=2 precedents
+> actually read, with takeaways) for `kind='enquiry'` — a **drafting** requirement being demanded of
+> an **arrival**, so every route either blocked or got waved through with `--no-schema`.
+>
+> The label + the tray ARE the hand-off. The contact, the activity, the knowledge note and the stage
+> are all created by the Engine when Pete runs `enquiries` / `reply to enquiry in {company}`.
+> **Never reach for `--no-schema` to force an intake through** — if you are in triage, there is no
+> intake to force. The te-log schema stays fail-closed exactly as it is; it guards sends, and the
+> Engine is the only thing that should ever meet it.
 
 This is the cross-skill hook the cockpit relies on: triage recognises + routes; the **separately-run** Engine owns the lifecycle, drafting, learning, and properly-threaded sending. There is NO cron — the EE is Pete-triggered.
 
