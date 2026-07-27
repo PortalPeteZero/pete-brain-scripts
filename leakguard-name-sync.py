@@ -73,7 +73,11 @@ def main():
         ORDER BY d.device_number""")
 
     m, c, base, tok, cid = _tl()
-    tl_devs = {d["number"]: d.get("name") for d in m._get(base, tok, "/api/v2/devices").get("content", [])}
+    # EVERY page. /api/v2/devices defaults to size=20 against 30 devices, so reading page 0 left 10
+    # devices invisible: they fell to the "?" default below and were reported as needing a rename
+    # when their ThingsLog names were already correct. Verified 27 Jul 2026 (totalElements 30,
+    # totalPages 2).
+    tl_devs = {d["number"]: d.get("name") for d in m._all_devices(base, tok)}
 
     print(f"{'DEVICE':10} {'THINGSLOG NOW':38} {'-> PROPOSED':38} CHANGED")
     print("-" * 100)
@@ -81,7 +85,12 @@ def main():
     for r in rows:
         num = r["device_number"]; now = tl_devs.get(num, "?"); target_name = format_name(r)
         changed = _clean(now) != _clean(target_name)
-        flag = "CHANGE" if changed else "ok"
+        # An unassigned spare has no property, so format_name() returns "". Those rows are already
+        # excluded from `changes` below (`and target_name`), but the table printed "CHANGE" against
+        # them, which reads as "this tool is about to blank nine device names". Say what it will
+        # actually do.
+        flag = ("skip (no property)" if changed and not target_name
+                else "CHANGE" if changed else "ok")
         print(f"{num:10} {str(now)[:38]:38} {target_name[:38]:38} {flag}")
         if changed and target_name:
             changes.append((num, now, target_name))

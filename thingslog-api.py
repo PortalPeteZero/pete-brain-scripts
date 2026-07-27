@@ -122,6 +122,27 @@ def _get(base, tok, path):
     with urllib.request.urlopen(req, context=_ctx, timeout=40) as r:
         return json.loads(r.read())
 
+def _all_devices(base, tok):
+    """EVERY device, following the pages.
+
+    /api/v2/devices is a Spring page and defaults to size=20. There are 30 devices. Three callers
+    read `.get("content", [])` off page 0 and treated it as the fleet, which meant:
+      * `set-transmission all` reconfigured 20 loggers, said nothing about the other 10, and
+        reported success -- a silent partial write across the fleet;
+      * the `devices` listing showed 20 of 30;
+      * leakguard-name-sync could not see 10 devices, so it reported their names as unknown and
+        flagged them for a rename they did not need.
+    Found 27 Jul 2026 while checking why an assigned logger appeared unnamed. It was not unnamed;
+    it was on page 2.
+    """
+    out, page = [], 0
+    while True:
+        d = _get(base, tok, f"/api/v2/devices?page={page}&size=100")
+        out.extend(d.get("content", []))
+        if d.get("last", True) or page >= 50:
+            return out
+        page += 1
+
 def _put(base, tok, cid, path, body):
     path = _path(path)
     req = urllib.request.Request(base+path, data=json.dumps(body).encode(), method="PUT",
@@ -192,7 +213,7 @@ def main():
     if cmd == "set-transmission":
         # set-transmission <deviceNumber|all> <hours> [logging_minutes]
         target=sys.argv[2]; hours=float(sys.argv[3]); lmin=int(sys.argv[4]) if len(sys.argv)>4 else 15
-        nums=[d["number"] for d in _get(base,tok,"/api/v2/devices").get("content",[])] if target=="all" else [target]
+        nums=[d["number"] for d in _all_devices(base,tok)] if target=="all" else [target]
         print(f"Setting {len(nums)} device(s) to {hours}h call-in + {lmin}-min logging (applies on next call-in):")
         _set_transmission(base,tok,cid,nums,hours,lmin); return
     if cmd == "initial-config":
@@ -261,7 +282,7 @@ def main():
         for k,v in sorted(d.get("properties",{}).items()):
             print(f"  {k:32} {v.get('type','?'):10} {'enum='+str(v['enum']) if v.get('enum') else ''}")
         return
-    devs = _get(base,tok,"/api/v2/devices").get("content",[])
+    devs = _all_devices(base,tok)
     if cmd == "devices":
         for d in devs: print(d.get("number"), "|", d.get("name"), "|", d.get("model"), "| active:", d.get("active"))
         return
