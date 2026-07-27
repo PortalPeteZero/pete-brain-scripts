@@ -1,6 +1,6 @@
 ---
 name: pf-seminars
-version: 1.0.0
+version: 1.1.0
 description: >
   Add a Passion Fit seminar to the archive, end to end, from nothing but a link or a
   "here's Monday's seminar". Pulls the verbatim transcript out of Plaud or Google
@@ -95,10 +95,25 @@ does nothing. Real mouse-wheel scroll events work, ~13 rows per call. Get the ro
 API first (`is_trash=1&is_desc=true`), then scroll to it. **The first click on a row only reveals
 its checkbox; a second click ticks it.**
 
-## Step 6 — Update the records
-- `SEMINAR-MANIFEST.md` in the export folder — add the row, bump the counts.
-- The corpus note — bump the counts, and add anything newly learned about this data.
-- Ingest via `cc-knowledge-ingest.py`.
+## Step 6 — Bank it (one command, do not hand-roll this)
+```
+VAULT=/tmp/pbs python3 /tmp/pbs/pf-seminar-ingest.py <summary.md> \
+    --date YYYY-MM-DD --duration "1h 29m" --transcript-chars N [--source-url ...] [--date-unconfirmed]
+VAULT=/tmp/pbs python3 /tmp/pbs/pf-seminar-ingest.py --index
+```
+That single call does all of it: mints the record as `type: seminar-summary`, tags it into the
+PassionFit corpus, **auto-detects the concepts and injects `[[slug|Display]]` links on first
+mention** so the summary joins the concept graph, sets `audience: shared` so `pf-portal-sync.py`
+carries it to Frank, and writes the concepts into frontmatter so the by-concept index works.
+`--index` then regenerates [[pf-seminar-index]] from the live records — by date and by concept.
+
+**Do NOT ingest a summary by hand with `cc-knowledge-ingest.py`.** You will get an untagged,
+unlinked note that no search and no concept page can find.
+
+Then run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-embedder.py` so semantic search picks it up
+immediately rather than waiting for the hourly run.
+
+Also update `SEMINAR-MANIFEST.md` in the export folder and the corpus note counts.
 
 ## The gate — done means all of these
 Do not report finished until every line is true:
@@ -109,6 +124,8 @@ Do not report finished until every line is true:
 5. Plaud tidy: restored if binned, tagged PF.
 6. Manifest and corpus note updated and re-ingested.
 7. Counts reconciled: seminars, recordings, hours.
+8. `pf-seminar-ingest.py` run (NOT a hand ingest), index regenerated, embedder run — verify with
+   `SELECT slug,(embedding IS NOT NULL) FROM vault_notes WHERE type='seminar-summary'`.
 
 ## Never do these
 - Never use `pf-ingest.py plaud` — it is wired for the Plaud **Summary** export, the exact
