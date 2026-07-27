@@ -123,6 +123,31 @@ check("every installed meter has a map location", not noloc,
       f"{[d['device_number'] for d in noloc] or 'none'} without coordinates "
       f"(MapView, the device card and the Google Maps link all read these)")
 
+# BOTH ENDS. ThingsLog owns the location (PUT /api/devices/{n}/location) and our devices.tl_latitude
+# mirrors it -- the tl_ prefix means exactly what it says. Note the device DTO also carries
+# latitude/longitude fields: they are vestigial, always null, and a PUT to them returns 200 and
+# silently drops the value. Proven 27 Jul 2026 by writing one and reading it back.
+tlloc = subprocess.run(["python3", "/tmp/pbs/thingslog-api.py", "get", "/api/devices/locations"],
+                       capture_output=True, text=True, env=ENV).stdout
+try:
+    tlloc = json.loads(tlloc)
+except Exception:
+    tlloc = {}
+installed = sql("""SELECT device_number, tl_latitude::float AS lat, tl_longitude::float AS lon
+                   FROM devices WHERE property_id IS NOT NULL AND is_active
+                     AND tl_output_index = 0 AND device_number NOT LIKE 'DEMO%'""")
+notl = [d["device_number"] for d in installed
+        if not (tlloc.get(d["device_number"], {}) or {}).get("latitude")]
+check("every installed meter has a location AT THINGSLOG too", not notl and bool(tlloc),
+      f"{notl or 'none'} unset at ThingsLog" if tlloc else "could not read /api/devices/locations",
+      warn_only=not tlloc)
+
+drift = [d["device_number"] for d in installed
+         if d["lat"] and (tlloc.get(d["device_number"], {}) or {}).get("latitude")
+         and abs(d["lat"] - tlloc[d["device_number"]]["latitude"]) > 1e-5]
+check("ThingsLog and our CRM agree on where each meter is", not drift,
+      f"{drift or 'none'} differ between the two systems")
+
 badtz = sql("""SELECT device_number FROM devices
                WHERE is_active AND tl_timezone IS DISTINCT FROM 'Atlantic/Canary'""")
 check("every logger is on Canary time", not badtz,
