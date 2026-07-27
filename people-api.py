@@ -193,7 +193,7 @@ def update_contact(resource_name, field, value):
 
 def delete_contact(resource_name):
     """Delete a contact. The CC mirror DOES carry resource_name, so this is fully automatable --
-    contact.py used to claim otherwise and dead-ended the caller (fixed 26 Jul 2026)."""
+    the old write tool used to claim otherwise and dead-ended the caller (fixed 26 Jul 2026)."""
     api("DELETE", f"/{resource_name}:deleteContact")
     print(f"Deleted {resource_name}")
 

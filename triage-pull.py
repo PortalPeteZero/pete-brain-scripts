@@ -199,9 +199,10 @@ def _crm_known(addresses):
         found = set()
         try:
             import subprocess as _sp
-            # one whois per DOMAIN (a handful per round), never one per address
+            # one lookup per DOMAIN (a handful per round), never one per address
             for d in domains:
-                rr = _sp.run(["python3", os.path.join(_VAULT, "whois.py"), "--json", "@" + d],
+                rr = _sp.run(["python3", os.path.join(_VAULT, "people.py"), "find",
+                              "--json", "@" + d],
                              capture_output=True, text=True, timeout=90,
                              env={**os.environ, "VAULT": _VAULT})
                 try:

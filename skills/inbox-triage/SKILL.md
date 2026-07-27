@@ -319,7 +319,7 @@ Label-routing logic (which X to pick once verb is chosen):
   "not a customer"). When a row is being labelled **customer or supplier** and `crm_known` is
   **false**, say so in the batch and offer to create the record:
 
-      VAULT=/tmp/pbs python3 /tmp/pbs/contact.py add "Name" --entity sygma|cd \
+      VAULT=/tmp/pbs python3 /tmp/pbs/people.py add "Name" --entity sygma|cd \
           --role customer|supplier --company "Company" --email E [--phone P]
 
   Labelling and filing a supplier while they exist nowhere in the CRM makes the inbox look tidy
@@ -327,7 +327,7 @@ Label-routing logic (which X to pick once verb is chosen):
   a year, five people, and not one record in either system.** Pete: triage *"suggests tagging a
   supplier... what it doesnt do though is suggest checking the platform or odoo to either add or
   update customer or supplier"*.
-  Propose, never auto-create — `contact.py` refuses to guess the entity, and so should you.
+  Propose, never auto-create — `people add` refuses to guess the entity, and so should you.
 
 - Sender domain matches a known customer/supplier/project label → propose that label
 - Sender domain matches an existing CC project (`public.projects`, active) BUT no Gmail label exists → demand-driven label rule
