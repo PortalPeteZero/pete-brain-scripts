@@ -106,6 +106,19 @@ print("""
   or the live database THIS SESSION. Not from a plan, not from an audit, not from what you did an
   hour ago. Every "there are only N" said on this project has been wrong.
 
+  THE FLOW IS THE RECORD. THE CRM DIARY IS NOT USED.
+  Pete, 28 Jul 2026: "we dont use the diary system in the crm so stop looking for survey dates and
+  install dates, we just use the flow". The `appointments` table is dead. An absent appointment
+  proves NOTHING and a present one proves nothing either. Where a job has got to is:
+
+      new_enquiry -> survey_booked -> install_quoted -> install_paid -> install_booked -> leakguarded
+
+  read from properties.status, with its history in service_history (service_type='status_change').
+
+  THERE IS ONE PAYMENT, NOT TWO. The survey and the install are not billed separately. There is no
+  survey fee, no survey invoice, no separate Stripe charge. Acceptance and payment are the same act
+  (since Jul 2026, by Stripe). Do not go looking for a second one.
+
   TOOL FORMS -- the wrong one fails in ways that look like an outage, not a typo:
     thingslog-api.py get /api/v2/devices/<number>   <- get takes a PATH (a bare number is accepted)
     thingslog-api.py config <number>                <- config takes a NUMBER
@@ -308,6 +321,24 @@ def p_commissioning_integrity():
     return not bad, (f"{len(devs)} loggers, all Atlantic/Canary with sensor enables matching the CRM."
                      if not bad else "MISCONFIGURED: " + "; ".join(bad))
 
+def p_diary_unused():
+    """The CRM diary is not used, so nothing may be concluded from it.
+
+    Recorded as a probe rather than a sentence because I reasoned from it twice. Building an
+    explanation on "there is no installation appointment, therefore the booking dialog never touched
+    this property" is worthless when nobody books anything in the diary -- and it sent me hunting for
+    a separate survey payment that does not exist.
+
+    If the appointments table ever starts being maintained, this says so and the rule changes.
+    """
+    rows = lg("""SELECT count(*) AS n, max(created_at)::date AS last_created,
+                        count(*) FILTER (WHERE appointment_type = 'installation') AS installs
+                 FROM appointments""")[0]
+    return True, (f"{rows['n']} appointment rows, {rows['installs']} of them installations, newest "
+                  f"created {rows['last_created']}. The diary is NOT maintained -- read "
+                  f"properties.status and service_history instead. And there is ONE payment, not a "
+                  f"separate survey fee.")
+
 def p_thingslog_agrees():
     r = subprocess.run(["python3", f"{VAULT}/lg-crosscheck.py", "--all"], capture_output=True, text=True, env=ENV)
     tail = [l.strip() for l in r.stdout.strip().split("\n") if "agree" in l]
@@ -323,6 +354,7 @@ probe("/api/v2/devices paginates -- page 0 is not the fleet", p_devices_paginate
 probe("the migration ledger covers every repo file", p_ledger_complete)
 probe("a commit is not a deploy -- edge functions are current", p_commit_is_not_deploy)
 probe("every logger is on Atlantic/Canary with the right sensors enabled", p_commissioning_integrity)
+hazard("the CRM diary is NOT the record -- the status flow is", p_diary_unused)
 if DEEP:
     probe("our readings agree with ThingsLog", p_thingslog_agrees)
 else:
