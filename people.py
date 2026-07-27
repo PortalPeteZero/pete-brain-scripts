@@ -86,7 +86,7 @@ KNOWN_FLAGS = {
     "--dry-run", "--dry", "--allow-duplicate", "--yes-delete-business-record",
     "--entity", "--email", "--phone", "--company", "--role",
     "--refresh", "--json", "--scope", "--limit", "--confirm", "--remove",
-    "--name", "--confirm-replace", "--self-test", "-h", "--help",
+    "--name", "--confirm-replace", "--self-test", "--no-record", "-h", "--help",
 }
 VALUE_FLAGS = ("entity", "email", "phone", "company", "role", "scope", "limit", "name")
 
@@ -165,9 +165,11 @@ def search_staff(q, phone):
                  if phone in (norm_phone(r.get("work_mobile")), norm_phone(r.get("work_phone")))]
     out = []
     for r in rows:
-        if r.get("employee_ref") in seen:
+        # a blank ref must not collapse every ref-less row into one person
+        ref = r.get("employee_ref") or f"_norefs{id(r)}"
+        if ref in seen:
             continue
-        seen.add(r.get("employee_ref"))
+        seen.add(ref)
         out.append({
             "store": "Sygma platform - hub.staff_directory",
             "owner": "the Sygma platform (staff are managed in the app)",
@@ -312,15 +314,15 @@ def tidy_gaps(r):
     on_phone = "Google Contacts" in (r.get("store") or "")
     if name and len(name.split()) < 2:
         gaps.append(("no surname -- part name only",
-                     f'people tidy "{name}" --name "FULL NAME" --confirm-replace' if res else
+                     f'people tidy {res} --name "FULL NAME" --confirm-replace --dry-run' if res else
                      f'add the full name for "{name}" in its store'))
     if not r.get("email"):
         gaps.append(("no email",
-                     f'people tidy "{name}" --email ADDRESS' if res else
+                     f'people tidy {res} --email ADDRESS --dry-run' if res else
                      f'add an email for "{name}" in its store'))
     if not r.get("phone"):
         gaps.append(("no phone",
-                     f'people tidy "{name}" --phone NUMBER' if res else
+                     f'people tidy {res} --phone NUMBER --dry-run' if res else
                      f'add a phone for "{name}" in its store'))
     return gaps if (on_phone or gaps) else []
 
@@ -498,9 +500,12 @@ def find_existing(name, email, phone):
     on 26 Jul 2026: the guard looked up the address, found nothing, and waved through a name that
     already existed.
     """
-    hits, seen = [], set()
+    hits, seen, unreachable = [], set(), []
     for q in [x for x in (name, email, phone) if x]:
-        results, near, _, _ = lookup(q)
+        results, near, failed, _ = lookup(q)
+        for f in failed:                    # rule 4 applies to the WRITE paths too
+            if f not in unreachable:
+                unreachable.append(f)
         combined = list(results)
         for pm in near:
             pm = dict(pm)
@@ -511,7 +516,29 @@ def find_existing(name, email, phone):
             if key not in seen:
                 seen.add(key)
                 hits.append(h)
-    return [h for h in hits if _is_real_duplicate(name, email, phone, h)]
+    return [h for h in hits if _is_real_duplicate(name, email, phone, h)], unreachable
+
+
+def _guard_stores_answered(unreachable, allow):
+    """A duplicate check is only a negative if every store ANSWERED.
+
+    `find` has always said so (rule 4), but the WRITE paths threw the failure list away, so a
+    store outage produced a confident "no existing record" and the add went through -- which is
+    precisely how the Freya Finch duplicate was created on 26 Jul 2026, from a false negative.
+    """
+    if not unreachable:
+        return
+    print("REFUSED — this is NOT a reliable 'nobody like that exists': "
+          f"{len(unreachable)} store(s) did not answer.\n")
+    for f in unreachable:
+        print(f"  ⚠ {f}")
+    if allow:
+        print("\n  --allow-duplicate given, so proceeding anyway.")
+        return
+    print("\nA duplicate check that could not read every store is a FALSE NEGATIVE, and creating")
+    print("on the strength of one is how the 26 Jul 2026 duplicate was made. Retry when the")
+    print("store is back, or pass --allow-duplicate if you are certain.")
+    sys.exit(1)
 
 
 def _is_real_duplicate(name, email, phone, h):
@@ -648,7 +675,8 @@ def cmd_add(a):
     if a["entity"] not in ENTITIES:
         _die(f"--entity must be one of {', '.join(ENTITIES)}")
     name = a["name"]
-    hits = find_existing(name, a.get("email"), a.get("phone"))
+    hits, unreachable = find_existing(name, a.get("email"), a.get("phone"))
+    _guard_stores_answered(unreachable, a.get("allow_duplicate"))
     if hits and not a.get("allow_duplicate"):
         print(f"REFUSED — {len(hits)} existing record(s) already match '{name}':\n")
         for h in hits[:8]:
@@ -669,7 +697,7 @@ def cmd_add(a):
             for h in subsets[:4]:
                 res = (h.get("extra") or {}).get("resource_name")
                 if res:
-                    bits = f'      people tidy "{h.get("name")}" --name "{name}" --confirm-replace'
+                    bits = f'      people tidy {res} --name "{name}" --confirm-replace'
                     for fld, val in (("email", a.get("email")), ("phone", a.get("phone"))):
                         if val and not h.get(fld):
                             bits += f" --{fld} {val}"
@@ -772,7 +800,7 @@ def cmd_tidy(a):
     print(f"  currently: email={rec.get('email') or '—'}  phone={rec.get('phone') or '—'}")
 
     # appends first -- a mid-way failure then leaves the record strictly improved
-    landed, missed = [], []
+    landed, missed, skipped = [], [], []
     for field in ("email", "phone"):
         val = a.get(field)
         if not val:
@@ -792,6 +820,7 @@ def cmd_tidy(a):
         elif not a.get("confirm_replace"):
             print("    SKIPPED — the name REPLACES rather than appends, so it needs")
             print("    --confirm-replace. Any --email/--phone above have still been applied.")
+            skipped.append("name")
         else:
             rc, out = _people_api_update(res, "name", a["name"])
             (landed if rc == 0 else missed).append(f'name="{a["name"]}"')
@@ -809,6 +838,9 @@ def cmd_tidy(a):
         print("  ⚠ did NOT land: " + ", ".join(missed))
         print("    There is no undo for a name replace -- check the record before retrying.")
         return 1
+    if skipped:
+        # a refusal that exits 0 reads as success to anything scripting this
+        return 1
     return 0
 
 
@@ -816,7 +848,8 @@ def cmd_tidy(a):
 
 def cmd_phone_one(a):
     """Push an existing person onto the phone. Looks them up FIRST so we push a real record."""
-    hits = find_existing(a["name"], None, None)
+    hits, unreachable = find_existing(a["name"], None, None)
+    _guard_stores_answered(unreachable, a.get("allow_duplicate"))
     if not hits:
         print(f"NOT FOUND: '{a['name']}' is in none of the four stores, so there is nothing to push.")
         print('Create the business record first:  people add "Name" --entity sygma|cd')
@@ -846,8 +879,9 @@ def cmd_phone_one(a):
 
 
 def cmd_phone_remove(a):
-    hits = [h for h in find_existing(a["name"], None, None)
-            if "Google Contacts" in (h.get("store") or "")]
+    _hits, unreachable = find_existing(a["name"], None, None)
+    _guard_stores_answered(unreachable, a.get("allow_duplicate"))
+    hits = [h for h in _hits if "Google Contacts" in (h.get("store") or "")]
     if not hits:
         print(f"NOT ON THE PHONE: '{a['name']}' is not in Google Contacts. Nothing to remove.")
         return 0
@@ -906,11 +940,18 @@ def gather(scope):
 
 
 def already_on_phone():
-    """The CC mirror of the phone. Read-only -- one way out, never read back."""
-    _, txt = _cc_sql("SELECT display_name, emails, phones_e164, phones FROM google_contacts",
-                     timeout=60)
-    if not txt.startswith("["):
-        return set(), set()
+    """The CC mirror of the phone. Read-only -- one way out, never read back.
+
+    RAISES on failure; it must never return empty sets. This is the de-duplication input for a
+    BULK write to Pete's personal phone: if the mirror cannot be read, everyone looks absent and
+    the push re-adds people who are already there. The original returned `set(), set()` here and
+    printed nothing, so a CC blip turned a 0-row push into a 14-row one silently.
+    """
+    rc, txt = _cc_sql("SELECT display_name, emails, phones_e164, phones FROM google_contacts",
+                      timeout=60)
+    if rc != 0 or not txt.startswith("["):
+        raise RuntimeError("could not read the phone mirror, so what is ALREADY on the phone is "
+                           "unknown -- refusing rather than pushing duplicates: " + txt[:200])
     emails, phones = set(), set()
     for x in json.loads(txt):
         for e in (x.get("emails") or []):
@@ -946,8 +987,22 @@ def cmd_phone_scope(a):
     if scope not in SCOPES:
         print(f"--scope must be one of: {', '.join(SCOPES)}", file=sys.stderr)
         return 2
-    confirm = a.get("confirm")
-    limit = int(a["limit"]) if a.get("limit") else None
+    # --dry-run WINS over --confirm, and is honoured here at all. It was accepted and silently
+    # ignored on this path, so `phone --scope staff --confirm --dry-run` bulk-wrote to Pete's live
+    # contacts -- an accepted-but-ignored dry flag is the exact 26 Jul failure, rebuilt.
+    confirm = a.get("confirm") and not a.get("dry")
+    if a.get("confirm") and a.get("dry"):
+        print("  --dry-run overrides --confirm: nothing will be written.")
+    limit = None
+    if a.get("limit") is not None:
+        try:
+            limit = int(a["limit"])
+        except ValueError:
+            _die(f"--limit must be a whole number (got '{a['limit']}')")
+        if limit < 1:
+            # `if limit:` treated 0 as "no limit" and pushed the WHOLE roster; a negative sliced
+            # from the end, dropping people rather than capping them.
+            _die(f"--limit must be 1 or more (got {limit})")
 
     people = gather(scope)
     emails, phones = already_on_phone()
@@ -964,7 +1019,7 @@ def cmd_phone_scope(a):
             skipped += 1          # Google Contacts needs an email to create the entry
             continue
         todo.append(p)
-    if limit:
+    if limit is not None:
         todo = todo[:limit]
 
     print(f"people phone — scope '{scope}'")
@@ -1026,7 +1081,10 @@ def hygiene():
     """Compute the hygiene picture. Returns (counters, report_lines)."""
     rc, txt = _cc_sql("SELECT resource_name, display_name, emails, phones FROM google_contacts",
                       timeout=120)
-    if not txt.startswith("["):
+    # rc MUST be checked. A non-zero exit that still printed a JSON array (e.g. "[]") produced
+    # "0 contact records checked ... clean — no duplicates", exit 0, and wrote that false all-clear
+    # into daily_log. An empty answer is not a clean answer.
+    if rc != 0 or not txt.startswith("["):
         raise RuntimeError(txt[:200] or "the CC database did not answer")
     rows = json.loads(txt)
 
@@ -1120,8 +1178,9 @@ def hygiene():
         lines.append(f"    ~ '{x}' may be the same person as '{y}' — tidy, do not duplicate")
     if gaps == 0 and not half:
         lines.append("  clean — no duplicates and nothing half-finished.")
-    lines.append('  Fix with: people tidy "<name>" --name "FULL NAME" --confirm-replace '
+    lines.append("  Fix with: people tidy <people/c...> --name \"FULL NAME\" --confirm-replace "
                  "| --email E | --phone P   (touch it, tidy it — Pete's rule)")
+    lines.append("  (address the RECORD, not the name: a bare first name matches several)")
     counters["gaps"] = gaps
     return counters, lines
 
@@ -1129,14 +1188,23 @@ def hygiene():
 def cmd_check(a):
     if a.get("self_test"):
         return self_test()
-    counters, lines = hygiene()
+    try:
+        counters, lines = hygiene()
+    except Exception as e:
+        # exit 99 = it could NOT check, which is itself a gap and must not read as "clean".
+        # A generic exit 1 loses that contract, which the report-only house pattern relies on.
+        print(f"PEOPLE HYGIENE — ABORTED, could not read the phone mirror: {str(e)[:200]}")
+        if a.get("json"):
+            print(json.dumps({"aborted": True, "gaps": 1, "error": str(e)[:200]}))
+        return 99
     report = "\n".join(lines)
     print(report)
-    try:
-        _cc_sql("INSERT INTO daily_log (date, cron_name, content) VALUES "
-                "(current_date, 'people-hygiene', $r$" + report + "$r$)")
-    except Exception as e:
-        print(f"  ⚠ could not record to daily_log: {str(e)[:120]}")
+    if not a.get("no_record"):
+        rc, out = _cc_sql("INSERT INTO daily_log (date, cron_name, content) VALUES "
+                          "(current_date, 'people-hygiene', $r$" + report + "$r$)")
+        # the SQL helper returns a code, it does not raise -- so a try/except here would be dead
+        if rc != 0:
+            print(f"  ⚠ could not record to daily_log: {out[:120]}")
     if a.get("json"):
         print(json.dumps({"records": counters["contacts"], "gaps": counters["gaps"],
                           "half_finished": counters["half_finished"]}))
@@ -1209,9 +1277,14 @@ def self_test():
 
     # -- 2. the safeguard that actually failed on 26 Jul: partial matching ----
     rc, out = _run_self(["find", "Arabella Hartley", "--json"])
-    d = json.loads(out) if out.strip().startswith("{") else {}
+    # a crashed subprocess gives {} -> results==0, which would PASS the next assertion having
+    # verified nothing. Parseability is asserted first, so empty output fails loudly.
+    parsed = out.strip().startswith("{")
+    check("find --json returns parseable JSON", parsed and rc == 0, f"rc={rc}")
+    d = json.loads(out) if parsed else {}
     nres, npart = len(d.get("results", [])), len(d.get("partial_matches", []))
-    check("find 'Arabella Hartley' returns ZERO full-string results", nres == 0, f"results={nres}")
+    check("find 'Arabella Hartley' returns ZERO full-string results", parsed and nres == 0,
+          f"results={nres}")
     check("...and sweeps PARTIAL matches (the only shape that reaches partial_sweep)",
           npart > 0, f"partial_matches={npart} (population, printed not asserted)")
 
@@ -1266,7 +1339,8 @@ def self_test():
         check("push_argv() carries the label", False, f"{type(e).__name__}: {e}")
 
     rc, out = _run_self(["check", "--self-test", "--confirm"])
-    check("--confirm is REFUSED inside --self-test", rc != 0, f"rc={rc}")
+    check("--confirm is REFUSED inside --self-test", rc != 0 and "--confirm is refused" in out,
+          f"rc={rc}")
 
     # -- 6. remove refuses in both branches ----------------------------------
     rc, out = _run_self(["remove", "Zebedee Quixotl", "--entity", "sygma"])
@@ -1290,14 +1364,17 @@ def self_test():
         'find "Arabella Hartley"': _run_self(["find", "Arabella Hartley"])[1],
         'add "Arabella Hartley" --dry-run': _run_self(
             ["add", "Arabella Hartley", "--entity", "personal", "--dry-run"])[1],
-        "check": _run_self(["check"])[1],
+        "check": _run_self(["check", "--no-record"])[1],
         'phone "<nobody>"': _run_self(["phone", "Zebedee Quixotl"])[1],
         'remove "X" --entity sygma': _run_self(["remove", "Zebedee Quixotl", "--entity", "sygma"])[1],
     }
     for label, text in outputs.items():
         hit = [nm for nm in OLD_NAMES if nm in text]
-        check(f"output of `{label}` names no renamed/internal tool", not hit,
-              f"found: {', '.join(hit)}" if hit else "")
+        # non-empty is asserted too: a crashed command produces no output and would otherwise
+        # "pass" this check by saying nothing at all
+        check(f"output of `{label}` names no renamed/internal tool",
+              bool(text.strip()) and not hit,
+              f"found: {', '.join(hit)}" if hit else ("EMPTY OUTPUT" if not text.strip() else ""))
     # the RUNNABLE form, not the bare verb: `find` renders the tidy prompt as a full command line
     # (VAULT=... python3 .../people.py tidy ...) because a bare "people tidy" is not executable.
     # Asserting the runnable form proves the prompt can be pasted, not merely that the verb appears.
@@ -1356,11 +1433,12 @@ def main():
     # because of what it looks like.
     a = {"dry": False, "allow_duplicate": False, "confirm_delete": False, "json": False,
          "refresh": False, "confirm": False, "remove": False, "confirm_replace": False,
-         "self_test": False}
+         "self_test": False, "no_record": False}
     BOOLS = {"--dry-run": "dry", "--dry": "dry", "--allow-duplicate": "allow_duplicate",
              "--yes-delete-business-record": "confirm_delete", "--json": "json",
              "--refresh": "refresh", "--confirm": "confirm", "--remove": "remove",
-             "--confirm-replace": "confirm_replace", "--self-test": "self_test"}
+             "--confirm-replace": "confirm_replace", "--self-test": "self_test",
+             "--no-record": "no_record"}
     pos = []
     i = 0
     while i < len(rest):
