@@ -42,6 +42,50 @@ def main():
     threads = {t["id"]: t for t in rnd["threads"]}
     by_tid = {j["thread_id"]: j for j in judg}
 
+    # GATE 0: every round-file thread must have been READ IN FULL, proven by triage-read.py's
+    # receipt. Added 27 Jul 2026.
+    #
+    # Every gate below this one checks the OUTPUT (is there a judgment, does ask match verb, does
+    # the label resolve). None of them could see the INPUT. On 27 Jul a 70-thread round was judged
+    # off a hand-rolled `print(body[:600])`: Gareth Phillips' bookings audit is 8,485 chars carrying
+    # six decisions and 700 were read; an explicit ask in a backlink email was missed entirely.
+    # SKILL.md has said "read the full body" since 15 Jul and could not refuse a slice.
+    #
+    # The receipt is written BY triage-read.py from what it actually emitted, and holds a sha256 of
+    # the complete thread text. A self-certified "yes I read it" flag would be worth nothing here,
+    # because the judge and the judged are the same model.
+    receipt_path = f"/tmp/triage-read-{rnd.get('session_id','unknown')}.json"
+    try:
+        receipt = json.load(open(receipt_path))["threads"]
+    except Exception:
+        print(f"BLOCKED: no read receipt at {receipt_path}.")
+        print("  Judging a round without reading it in full is the failure this gate exists for.")
+        print(f"  Run: VAULT={VAULT} python3 {VAULT}/triage-read.py {round_file}")
+        return 2
+
+    unread, stale = [], []
+    for t in rnd["threads"]:
+        got = receipt.get(t["id"])
+        if not got:
+            unread.append(t)
+            continue
+        parts = []
+        for m in t.get("messages", []):
+            parts.append(f"--- FROM {m.get('from','?')} | TO {m.get('to','?')} | {m.get('date','?')}\n")
+            parts.append((m.get("body") or "") + "\n")
+            for a in (m.get("attachments") or []):
+                parts.append(f"[attachment: {a.get('filename')} {a.get('size')} bytes]\n")
+        import hashlib
+        if hashlib.sha256("".join(parts).encode("utf-8")).hexdigest() != got.get("sha256"):
+            stale.append(t)
+    if unread or stale:
+        print(f"BLOCKED: {len(unread)} thread(s) never read in full"
+              + (f", {len(stale)} read before the thread changed" if stale else "") + ".")
+        for t in (unread + stale)[:25]:
+            print(f"  · {t.get('subject','')[:66]}  ({t['id']})")
+        print(f"  Run: VAULT={VAULT} python3 {VAULT}/triage-read.py {round_file}")
+        return 2
+
     # GATE 1: every round-file thread must carry a judgment (no silent drops)
     missing = [t["id"] for t in rnd["threads"] if t["id"] not in by_tid]
     if missing:
