@@ -124,6 +124,19 @@ dead = sql("""SELECT d.device_number, d.tl_output_index FROM devices d
 check("no meter that has never registered a litre", not dead,
       f"{[(d['device_number'], d['tl_output_index']) for d in dead] or 'none'}")
 
+# ── DAILY AUDIT (D6) ─────────────────────────────────────────────────────────────────────────────
+print("\nDAILY AUDIT")
+af = sql("""SELECT check_id, count(*) AS n FROM audit_findings
+            WHERE NOT acknowledged GROUP BY check_id ORDER BY check_id""")
+if not af:
+    check("audit findings outstanding", True, "none")
+else:
+    for a in af:
+        # G1/G3 are the historical corruption still awaiting correction (Workstream B), not new faults.
+        check(f"audit {a['check_id']}", False, f"{a['n']} unacknowledged", warn_only=True)
+last = sql("SELECT max(run_at)::text AS t FROM audit_findings")[0]["t"]
+check("audit has run", last is not None, f"most recent finding recorded {last}", warn_only=True)
+
 # ── ALARM COVER ──────────────────────────────────────────────────────────────────────────────────
 print("\nALARM COVER")
 nocover = sql("""SELECT d.device_number FROM devices d
