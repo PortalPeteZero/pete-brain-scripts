@@ -129,12 +129,13 @@ def eligible_records():
         "AND body NOT LIKE '%" + BANNER + "%' "
         "AND body NOT LIKE '%" + STAMP + "%' "
         "AND type <> 'concept-diagram' AND slug <> 'pf-framework-map' "
-        # seminar-summary is corpus-registered + shared, but it reaches frank_knowledge ONLY at
-        # phase 6 — in the SAME change that retires the 96 legacy transcript fragments (Pete,
-        # 27 Jul 2026: replaced, not supplemented). Until then the summaries mirror to the
-        # portal's `seminars` table via --seminars below, never to Frank. Remove this exclusion
-        # in the phase-6 change and nowhere else.
-        "AND type <> 'seminar-summary' "
+        # PHASE 6 (27 Jul 2026): the legacy seminar-evening fragments (type='seminar') are
+        # RETIRED from Frank — replaced, not supplemented, by the fresh seminar-summary records
+        # (Pete's decision). Excluding them here makes the full-mirror diff delete them
+        # portal-side. The two mis-typed non-fragments (podcast Ep.21 capture, the matrix
+        # summary PDF) were re-typed source-doc in the CC first, so they survive on merit.
+        # The CC notes themselves stay — they are source material, just not Frank grounding.
+        "AND type <> 'seminar' "
         "ORDER BY slug")
 
 
@@ -402,6 +403,11 @@ def main():
     want = {f["cc_id"]: f["mirrored_hash"] for f in forms}
     stale = sum(1 for r in prow if want.get(r["cc_id"]) != r["mirrored_hash"])
     gate("0 stale mirrored_hash", stale == 0, str(stale))
+    # phase-6 retirement invariants: no legacy fragments, summaries present (Pete, 27 Jul 2026)
+    legacy = sum(1 for r in prow if r["type"] == "seminar")
+    gate("0 legacy type='seminar' fragments", legacy == 0, str(legacy))
+    summaries = sum(1 for r in prow if r["type"] == "seminar-summary")
+    gate("seminar summaries mirrored (>0)", summaries > 0, str(summaries))
     print(("GATE: ALL PASS" if not fails else f"GATE: {fails} FAILURE(S)") +
           (" (dry-run)" if not APPLY else ""))
     sys.exit(1 if (fails and APPLY) else 0)
