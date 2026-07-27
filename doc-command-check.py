@@ -44,6 +44,16 @@ PLACEHOLDERS = {"x.py", "y.py", "foo.py", "bar.py", "script.py", "tool.py", "nam
 # rather than instruct anyone to run it. Put it anywhere in the note body.
 EXEMPT = "<!-- doc-command-check: historical -->"
 
+# Some notes are historical BY TYPE and always will be, so requiring a hand-added marker on each one
+# just means the same false positive returns every time a plan is executed. A snapshot exists to
+# record what things looked like before a change; a completed or scrapped plan is intent that has
+# already happened or been abandoned. The brain skill's own plan-lifecycle rule says a finished plan
+# must never be read as live state -- so a dead command inside one is the record working, not rot.
+# (Added 27 Jul 2026: all 8 findings at the time were the retired people tools quoted inside exactly
+# these two kinds of note -- a pre-consolidation snapshot and the EXECUTED consolidation plan.)
+HISTORICAL_TYPES = {"snapshot"}
+HISTORICAL_PLAN_STATUSES = {"completed", "executed", "scrapped", "done", "superseded"}
+
 
 def q(sql):
     r = subprocess.run([sys.executable, CC_SQL, sql], capture_output=True, text=True,
@@ -60,17 +70,24 @@ def q(sql):
 
 def main():
     as_json = "--json" in sys.argv
-    rows = q("SELECT title, body FROM vault_notes WHERE body LIKE '%python3%'")
+    rows = q("SELECT title, body, type, frontmatter->>'status' AS status "
+             "FROM vault_notes WHERE body LIKE '%python3%'")
     findings = []          # dicts: kind, note, script, flag
     exempted = []          # notes carrying the historical opt-out marker
     seen = set()           # dedupe (note, script, flag) across repeated snippets
 
     for row in rows:
         title, body = row.get("title") or "?", row.get("body") or ""
+        ntype = (row.get("type") or "").lower()
+        nstatus = (row.get("status") or "").lower()
         # A note that RECOUNTS a command (a post-mortem quoting the job it killed) is not telling
         # anyone to run it. Those notes opt out explicitly rather than being rewritten into a lie.
         if EXEMPT in body:
             exempted.append(title)
+            continue
+        # ...and some are historical by their own type/status, with no marker needed.
+        if ntype in HISTORICAL_TYPES or ("plan" in ntype and nstatus in HISTORICAL_PLAN_STATUSES):
+            exempted.append(f"{title} [{ntype}{'/' + nstatus if nstatus else ''}]")
             continue
         for m in CMD.finditer(body):
             docdir, script, tail = (m.group(1) or ""), m.group(2), m.group(3)
