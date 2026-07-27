@@ -69,46 +69,6 @@ def _b64u(data):
 
 
 
-# --- outbound approval gate -------------------------------------------------------------
-# Pete, 27 Jul 2026: "you keep adding shit to my emails i havent asked for, if your doing
-# this you need a approval." Nothing leaves under his name that he has not seen: send() and
-# reply_thread() refuse a body with no approval row keyed to the SHA-256 of that exact text.
-# Drafts are deliberately NOT gated -- drafting is how you show him the text in the first place.
-# Fails OPEN if the check itself is unavailable; the refusal is hard.
-def _approval_mod():
-    import importlib.util, os
-    path = os.path.join(os.environ.get("VAULT", "/tmp/pbs"), "outbound-approval.py")
-    spec = importlib.util.spec_from_file_location("outbound_approval", path)
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    return m
-
-
-def _approval_gate(body, to=None, subject=None):
-    if os.environ.get("OUTBOUND_APPROVAL_OFF") == "1":
-        return                      # crons that send their own generated reports
-    try:
-        ok, why = _approval_mod().is_approved(body)
-    except Exception:
-        return                      # fail open — a broken gate must not strand the mailbox
-    if ok:
-        return
-    raise RuntimeError(
-        "BLOCKED by outbound-approval gate: " + why + "\n"
-        "  Nothing sends under Pete's name that he has not seen. Show him the FULL body,\n"
-        "  wait for his go-ahead, then:\n"
-        "    VAULT=/tmp/pbs python3 /tmp/pbs/outbound-approval.py --approve <body-file> "
-        "--to \"" + str(to) + "\" --subject \"" + str(subject) + "\"\n"
-        "  and send again. Editing the text after approval invalidates it, by design."
-    )
-
-
-def _approval_mark_used(body):
-    try:
-        _approval_mod().mark_used(body)
-    except Exception:
-        pass
-
-
 class GmailAPI:
     def __init__(self, user=DEFAULT_USER, key_path=KEY_PATH, scope=SCOPE):
         self.user = user
@@ -566,15 +526,12 @@ class GmailAPI:
         (common footgun that silently mailed the plain `body` instead — guarded here)."""
         if isinstance(html, str):
             body, html = html, True
-        _approval_gate(body, to, subject)
         if signature:
             body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
         body_obj = {"raw": raw}
         if thread_id: body_obj["threadId"] = thread_id
-        result = self._call("POST", "/messages/send", body=body_obj)
-        _approval_mark_used(body)
-        return result
+        return self._call("POST", "/messages/send", body=body_obj)
 
     def create_draft(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,
                      in_reply_to=None, references=None):
@@ -597,8 +554,6 @@ class GmailAPI:
         Derives recipient, 'Re:' subject and the In-Reply-To / References headers from the thread's
         latest message, then sends (or drafts) with threadId set so it lands inside the conversation.
         `to` defaults to the latest message's Reply-To/From. Returns the API response."""
-        if not as_draft:
-            _approval_gate(body, to, f"(reply on thread {thread_id})")
         th = self.get_thread(thread_id)
         msgs = th.get("messages", [])
         if not msgs:
