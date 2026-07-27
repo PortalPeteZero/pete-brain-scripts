@@ -129,6 +129,12 @@ def eligible_records():
         "AND body NOT LIKE '%" + BANNER + "%' "
         "AND body NOT LIKE '%" + STAMP + "%' "
         "AND type <> 'concept-diagram' AND slug <> 'pf-framework-map' "
+        # seminar-summary is corpus-registered + shared, but it reaches frank_knowledge ONLY at
+        # phase 6 — in the SAME change that retires the 96 legacy transcript fragments (Pete,
+        # 27 Jul 2026: replaced, not supplemented). Until then the summaries mirror to the
+        # portal's `seminars` table via --seminars below, never to Frank. Remove this exclusion
+        # in the phase-6 change and nowhere else.
+        "AND type <> 'seminar-summary' "
         "ORDER BY slug")
 
 
@@ -157,6 +163,170 @@ def mirror_form(rec, concept_slugs, aliases, names, mirror_slugs):
                                ensure_ascii=False).encode()).hexdigest()
     return {"cc_id": rec["id"], "slug": rec["slug"], "title": rec["title"], "body": body,
             "type": rec["type"], "concepts": concepts, "links": links, "mirrored_hash": h}
+
+
+# ---------- seminars mirror (--seminars) ----------
+# Mirrors CC seminar-summary records into the portal `seminars` table (phases 2-3 of the
+# seminars plan). The summary IS the member-facing product; transcripts are never mirrored.
+# Conflict contract (Pete, 27 Jul 2026 — "CC authors, portal can edit"):
+#   cc_summary_hash = md5 of summary_md AS THE SYNC WROTE IT. A portal-side edit makes the row's
+#   current md5 differ. CC changed + portal edited → CONFLICT: row skipped, reported, gate fails
+#   (resolve by reconciling, then --force-cc to overwrite). Portal edited + CC unchanged → the
+#   edit stands (reported, gate passes). Never silently overwritten.
+FORCE_CC = "--force-cc" in sys.argv
+
+META_RE = re.compile(r"^\*\*(?P<meta>[^*]+)\*\*\s*$", re.M)
+
+def seminar_records():
+    return cc_q(
+        "SELECT id, slug, title, body, frontmatter FROM vault_notes "
+        "WHERE type='seminar-summary' AND frontmatter->>'audience'='shared' ORDER BY slug")
+
+
+def seminar_form(rec, concept_slugs, aliases, names):
+    fm = rec["frontmatter"] or {}
+    body = (rec["body"] or "").replace("\r\n", "\n")
+
+    # 1. strip the CC nav quote-block (leading '> ' lines) — CC-only chrome
+    lines = body.split("\n")
+    i = 0
+    while i < len(lines) and (lines[i].startswith(">") or lines[i].strip() == ""):
+        # keep a non-nav quote (e.g. the undated recovered-recording note) — nav block only
+        if lines[i].startswith(">") and "[[pf-seminar-index" not in lines[i] \
+           and "**Seminar**" not in lines[i] and not lines[i].startswith("> Concepts:") \
+           and "Index:" not in lines[i]:
+            break
+        i += 1
+    body = "\n".join(lines[i:]).lstrip("\n")
+
+    # 2. led_by from the first bold meta line, then strip it + the Concepts line + first divider
+    led_by = None
+    m = META_RE.search(body)
+    if m and ("·" in m.group("meta")):
+        segs = [s.strip() for s in m.group("meta").split("·")]
+        led = [s for s in segs if s.lower().startswith("led by")]
+        led_by = led[0][7:].strip() if led else (segs[-1] if len(segs) >= 3 else None)
+        body = body.replace(m.group(0) + "\n", "", 1)
+    body = re.sub(r"^\*\*Concepts:\*\*[^\n]*\n", "", body, count=1, flags=re.M)
+    body = re.sub(r"^\s*---\s*\n", "", body, count=1)
+
+    # 3. flatten wikilinks (concept links become chips from the concepts column, not inline)
+    def repl(mm):
+        target, alias = mm.group(1).strip(), mm.group(2)
+        if alias:
+            return alias.strip()
+        t = normalise_tag(target.split("/")[-1].strip(), aliases)
+        if t in names:
+            return names[t][0]
+        return t.replace("-", " ") if "-" in t and " " not in t else t
+    body = WIKI.sub(repl, body).strip() + "\n"
+
+    # 4. standfirst = the "In one paragraph" section, single line
+    sf = None
+    sm = re.search(r"## In one paragraph\s*\n+(.+?)(?:\n---|\n## )", body, re.S)
+    if sm:
+        sf = re.sub(r"\s+", " ", sm.group(1)).strip()[:900]
+
+    title = re.sub(r"^Seminar\s+(\([^)]*\)|[0-9-]{8,10})\s+—\s+", "", rec["title"]).strip()
+    date = fm.get("date") or None
+    if date in ("null", "None", ""):  # the undated charter session stores a literal placeholder
+        date = None
+    concepts = sorted({normalise_tag(c, aliases) for c in (fm.get("concepts") or [])} & set(concept_slugs))
+    sort_order = int(date.replace("-", "")) if date else 0
+    row = {
+        "cc_slug": rec["slug"], "slug": rec["slug"], "title": title,
+        "seminar_date": date,
+        # frontmatter booleans can arrive as strings — "false" must not read truthy
+        "date_confirmed": str(fm.get("date_confirmed", True)).lower() != "false",
+        "duration": fm.get("duration"), "led_by": led_by, "standfirst": sf,
+        "summary_md": body, "concepts": concepts,
+        "transcript_chars": fm.get("transcript_chars"), "sort_order": sort_order,
+        "is_published": True,
+    }
+    row["cc_summary_hash"] = hashlib.md5(body.encode()).hexdigest()
+    row["synced_hash"] = hashlib.md5(json.dumps(
+        [row[k] for k in ("title", "seminar_date", "date_confirmed", "duration", "led_by",
+                          "standfirst", "summary_md", "concepts", "sort_order")],
+        ensure_ascii=False).encode()).hexdigest()
+    return row
+
+
+def seminars_main():
+    concept_slugs, members, aliases = load_taxonomy()
+    names = display_names(members)
+    forms = [seminar_form(r, concept_slugs, aliases, names) for r in seminar_records()]
+    print(f"seminars eligible: {len(forms)}")
+
+    existing = {r["cc_slug"]: r for r in portal(
+        "GET", "seminars?select=cc_slug,synced_hash,cc_summary_hash,summary_md")}
+    to_write, conflicts, portal_edited_kept, unchanged = [], [], [], 0
+    for f in forms:
+        ex = existing.get(f["cc_slug"])
+        if not ex:
+            to_write.append(f); continue
+        cur_hash = hashlib.md5((ex["summary_md"] or "").encode()).hexdigest()
+        edited = bool(ex.get("cc_summary_hash")) and cur_hash != ex["cc_summary_hash"]
+        cc_changed = f["synced_hash"] != ex.get("synced_hash")
+        if cc_changed and edited and not FORCE_CC:
+            conflicts.append(f["cc_slug"])
+        elif cc_changed:
+            to_write.append(f)
+        elif edited:
+            portal_edited_kept.append(f["cc_slug"])
+        else:
+            unchanged += 1
+    stale = [s for s in existing if s not in {f["cc_slug"] for f in forms}]
+    print(f"diff: {len(to_write)} to upsert · {len(stale)} to delete · {unchanged} unchanged"
+          f" · {len(portal_edited_kept)} portal-edited (kept) · {len(conflicts)} CONFLICT")
+    for s in conflicts:
+        print(f"  CONFLICT {s} — CC changed AND portal edited; resolve, then --force-cc")
+    for s in portal_edited_kept:
+        print(f"  note: {s} edited portal-side; CC unchanged, edit stands")
+
+    if not APPLY:
+        print("(dry-run — pass --apply to write; gate below reflects CURRENT portal state)")
+    else:
+        if to_write:
+            vecs = embed([f"{f['title']}\n\n{f['summary_md']}" for f in to_write])
+            rows = [{**f, "embedding": "[" + ",".join(f"{x:.7f}" for x in v) + "]"}
+                    for f, v in zip(to_write, vecs)]
+            for i in range(0, len(rows), 10):
+                portal("POST", "seminars?on_conflict=cc_slug", rows[i:i + 10],
+                       prefer="resolution=merge-duplicates")
+            print(f"upserted {len(rows)}")
+        for s in stale:
+            portal("DELETE", f"seminars?cc_slug=eq.{s}")
+        if stale:
+            print(f"deleted {len(stale)}")
+
+    # gate
+    fails = 0
+    def gate(name, ok, evidence):
+        nonlocal fails
+        print(f"  GATE [{'PASS' if ok else 'FAIL'}] {name} — {evidence}")
+        if not ok:
+            fails += 1
+    prow = portal("GET", "seminars?select=cc_slug,slug,title,seminar_date,sort_order,summary_md,"
+                         "standfirst,led_by,synced_hash,cc_summary_hash&limit=1000")
+    gate("portal count == eligible count", len(prow) == len(forms), f"{len(prow)} vs {len(forms)}")
+    nulls = portal("GET", "seminars?select=cc_slug&embedding=is.null")
+    gate("0 NULL embeddings", len(nulls) == 0, str(len(nulls)))
+    gate("0 unresolved conflicts", len(conflicts) == 0, str(len(conflicts)))
+    wiki_left = sum(1 for r in prow if "[[" in (r["summary_md"] or ""))
+    gate("0 '[[' in summary_md", wiki_left == 0, str(wiki_left))
+    want = {f["cc_slug"]: f["synced_hash"] for f in forms}
+    kept = set(portal_edited_kept) | set(conflicts)
+    stale_h = sum(1 for r in prow if r["cc_slug"] not in kept
+                  and want.get(r["cc_slug"]) != r["synced_hash"])
+    gate("0 stale synced_hash (excluding kept portal edits)", stale_h == 0, str(stale_h))
+    bad_sort = sum(1 for r in prow if r["seminar_date"]
+                   and r["sort_order"] != int(r["seminar_date"].replace("-", "")))
+    gate("sort_order matches date", bad_sort == 0, str(bad_sort))
+    no_sf = sum(1 for r in prow if not r["standfirst"])
+    gate("standfirst present on every row", no_sf == 0, str(no_sf))
+    print(("GATE: ALL PASS" if not fails else f"GATE: {fails} FAILURE(S)") +
+          (" (dry-run)" if not APPLY else ""))
+    sys.exit(1 if (fails and APPLY) else 0)
 
 
 # ---------- main ----------
@@ -238,4 +408,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    seminars_main() if "--seminars" in sys.argv else main()
