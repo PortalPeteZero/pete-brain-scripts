@@ -1344,35 +1344,56 @@ def main():
         print(__doc__)
         return 0
 
-    # An unknown flag must ABORT. "--dry" was silently ignored on 26 Jul 2026 and two junk contacts
-    # were written straight into Pete's live Google Contacts by what was meant to be a dry run.
-    unknown = [x for x in rest if x.startswith("-") and x.split("=")[0] not in KNOWN_FLAGS]
-    if unknown:
-        _die("unknown flag(s): " + ", ".join(unknown) +
-             "\n  Refusing rather than ignoring them -- an ignored --dry flag WRITES FOR REAL."
-             "\n  Known flags: " + ", ".join(sorted(KNOWN_FLAGS)))
-
-    a = {"dry": ("--dry-run" in rest or "--dry" in rest),
-         "allow_duplicate": "--allow-duplicate" in rest,
-         "confirm_delete": "--yes-delete-business-record" in rest,
-         "json": "--json" in rest,
-         "refresh": "--refresh" in rest,
-         "confirm": "--confirm" in rest,
-         "remove": "--remove" in rest,
-         "confirm_replace": "--confirm-replace" in rest,
-         "self_test": "--self-test" in rest}
+    # Parse by POSITION, consuming each flag's value as we go.
+    #
+    # The original scanned for flags by value -- `rest.index("--entity")` then `pos.remove(value)`
+    # -- which broke two ways, both inherited here until 27 Jul 2026 and both found by testing:
+    #   · `--entity=sygma` passed the unknown-flag check (it splits on "=") but the value was never
+    #     read, so the tool ACCEPTED the flag and then said the flag was missing.
+    #   · removing a value from the positional list BY VALUE removes the first equal string, which
+    #     may be part of the name rather than the flag's own value.
+    # Walking the list once removes both classes: a value is consumed because of WHERE it is, not
+    # because of what it looks like.
+    a = {"dry": False, "allow_duplicate": False, "confirm_delete": False, "json": False,
+         "refresh": False, "confirm": False, "remove": False, "confirm_replace": False,
+         "self_test": False}
+    BOOLS = {"--dry-run": "dry", "--dry": "dry", "--allow-duplicate": "allow_duplicate",
+             "--yes-delete-business-record": "confirm_delete", "--json": "json",
+             "--refresh": "refresh", "--confirm": "confirm", "--remove": "remove",
+             "--confirm-replace": "confirm_replace", "--self-test": "self_test"}
+    pos = []
+    i = 0
+    while i < len(rest):
+        tok = rest[i]
+        if not tok.startswith("-"):
+            pos.append(tok)
+            i += 1
+            continue
+        head, _, inline = tok.partition("=")
+        if head not in KNOWN_FLAGS:
+            # An unknown flag must ABORT. "--dry" was silently ignored on 26 Jul 2026 and two junk
+            # contacts were written straight into Pete's live Google Contacts by a "dry" run.
+            _die(f"unknown flag(s): {tok}"
+                 "\n  Refusing rather than ignoring them -- an ignored --dry flag WRITES FOR REAL."
+                 "\n  Known flags: " + ", ".join(sorted(KNOWN_FLAGS)))
+        if head in BOOLS:
+            if inline:
+                _die(f"{head} takes no value (got '{tok}')")
+            a[BOOLS[head]] = True
+            i += 1
+            continue
+        field = head.lstrip("-")
+        if inline:                                  # --entity=sygma
+            a[field] = inline
+            i += 1
+        elif i + 1 < len(rest) and not rest[i + 1].startswith("--"):
+            a[field] = rest[i + 1]                  # --entity sygma
+            i += 2
+        else:
+            _die(f"{head} needs a value")           # a trailing flag must not be silently dropped
 
     if a["self_test"] and a["confirm"]:
         _die("--confirm is refused inside --self-test: the gate never writes people data.")
-
-    pos = [x for x in rest if not x.startswith("-")]
-    for f in VALUE_FLAGS:
-        if f"--{f}" in rest:
-            i = rest.index(f"--{f}")
-            if i + 1 < len(rest):
-                a[f] = rest[i + 1]
-                if rest[i + 1] in pos:
-                    pos.remove(rest[i + 1])
 
     # `tidy --name` is the NEW value, not the record being tidied -- keep them apart
     a["name_arg"] = " ".join(pos).strip() or None
