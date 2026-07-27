@@ -18,11 +18,17 @@ count into the digest — still REPORT-ONLY: parity FIXES (which need repo write
 escalated to a session, never performed here. connection-parity is dual-runtime safe (DB legs run
 in the container; its P5 repo-leg self-skips when the container has no .git and says so in the
 digest). Deeper repo-grep checks beyond parity remain out of scope — this is the always-on DB watch.
+
+It also runs `gmail-filter-parity.py --json` (added 27 Jul 2026) and folds its gap count in, on the
+same report-only contract. That gate exists because a filter reading `from:<Pete's own address> →
+Briefings` with no subject condition mislabelled 2,194 messages over four weeks and survived a
+session that was actively investigating a different Briefings filter. A check that only runs when
+someone thinks to run it would have missed it exactly as the humans did.
 """
 # CRON-META
 # what: weekly self-check of the Command Centre's own health (drift-check)
 # why: surface migration/health regressions (drive mislabels, failed/overdue crons, stalled drives, un-embedded notes) automatically instead of by accident
-# reads: drive_files, crons, drive_change_tokens, vault_notes, secrets, helpers (via connection-parity.py)
+# reads: drive_files, crons, drive_change_tokens, vault_notes, secrets, helpers (via connection-parity.py), Gmail filter settings (via gmail-filter-parity.py)
 # writes: daily_log (drift-check summary) + refreshes crons.expected_interval_hours
 # entity: cc
 # report: automations-log
@@ -135,6 +141,31 @@ def main():
             findings.append(("ℹ", f"Connection parity {inf['subject']}: {inf['detail']}"))
     except Exception as e:
         findings.append(("⚠", f"Connection parity: check did not run ({e})"))
+
+    # Gmail-filter parity — REPORT-ONLY, same contract as connection-parity above. Added 27 Jul 2026
+    # after a filter created 1 Jul (`from:<Pete's own address>` → Briefings, no subject condition)
+    # mislabelled 2,194 messages and survived a 2 Jul session that was investigating a DIFFERENT
+    # Briefings filter. Three careful sessions could not see it; a weekly machine check can.
+    # A failure to RUN is reported as a failure, never folded into the clean line.
+    try:
+        gr = subprocess.run([sys.executable, os.path.join(VAULT, "gmail-filter-parity.py"), "--json"],
+                            capture_output=True, text=True, timeout=120,
+                            env={**os.environ, "VAULT": VAULT})
+        gdata = json.loads(gr.stdout or "{}")
+        ggaps = gdata.get("gaps", [])
+        nchecked = gdata.get("filters_checked", 0)
+        if not gr.stdout.strip():
+            findings.append(("⚠", f"Gmail-filter parity: check produced no output — treat as NOT RUN ({(gr.stderr or '')[:160]})"))
+        elif ggaps:
+            codes = ", ".join(sorted({g["code"] for g in ggaps}))
+            sample = "; ".join(f"{g['code']} {g['detail'][:90]}" for g in ggaps[:3])
+            findings.append(("⚠", f"Gmail-filter parity: {len(ggaps)} gap(s) [{codes}] across {nchecked} filter(s) — "
+                                  f"run `gmail-filter-parity.py` in a session to fix. e.g. {sample}"))
+        else:
+            findings.append(("✓", f"Gmail-filter parity: 0 gaps ({nchecked} filters — no over-broad self match, "
+                                  f"no overlap, Briefings still Mode A)"))
+    except Exception as e:
+        findings.append(("⚠", f"Gmail-filter parity: check did not run ({e}) — this is NOT a pass"))
 
     # Documented-command rot — do the commands our own notes tell sessions to run still exist?
     # A dead flag is silent (an argparse-less script swallows it and does something else), so this
