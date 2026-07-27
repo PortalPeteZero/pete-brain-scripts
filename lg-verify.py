@@ -99,9 +99,13 @@ mismatch = [t for t in tier if t["device_tier"] != t["paid_tier"]
 check("everyone gets the tier they pay for", not mismatch,
       f"{len(tier)} checked, {len(mismatch)} mismatched" + (f" -> {[m['full_name'] for m in mismatch]}" if mismatch else ""))
 
+# Jane Williams is Pete's own staff on Pete's own card - a test account, not a customer waiting for
+# an install and not a refund question. Settled 27 Jul 2026: "It's my card, all right? Just stop.
+# Take it off the nag list." Excluded permanently.
 waiting = sql("""SELECT c.full_name FROM subscriptions s JOIN properties p ON p.id = s.property_id
                  JOIN customers c ON c.id = p.customer_id
-                 WHERE s.status = 'active' AND p.device_id IS NULL""")
+                 WHERE s.status = 'active' AND p.device_id IS NULL
+                   AND c.full_name <> 'Jane Williams'""")
 check("no paid customer waiting for a device", not waiting,
       f"{len(waiting)} waiting: {[w['full_name'] for w in waiting] or 'none'}", warn_only=True)
 
