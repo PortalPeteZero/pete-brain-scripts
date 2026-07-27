@@ -1,173 +1,65 @@
 #!/usr/bin/env python3
-# CRON-META
-# what: Report-only people-store hygiene check — probable duplicates (shared phone/email, or a bare first name that is a subset of a fuller record) and half-finished records (no email AND no phone)
-# why: cc-locator-audit reconciles THINGS against data_map; it cannot see a PROCESS that was skipped. Skipping the people system leaves no unhomed object — but it does leave a trace in the data: duplicates and half-finished records. This is that trace, measured.
-# reads: public.google_contacts (the CC mirror of Google Contacts)
-# writes: its own report line to daily_log (cron_name='people-hygiene'); NO domain data, ever
-# entity: PA-Command-Centre
-# report: stdout
-# secrets: none beyond the CC keys
-# schedule: MANUAL — not deployed. Pete decides whether this earns a cron.
-# timezone: Atlantic/Canary
-# CRON-META-END
-"""people-hygiene.py — is the people system actually being followed?
+"""people-hygiene.py -- DEPRECATED forwarder. The real tool is `people.py`.
 
-Built 26 Jul 2026 after Pete asked "i thought we built cc locator to stop you ignoring [systems]".
-It doesn't, and can't: the locator reconciles things against `data_map`, so a skipped PROCESS is
-invisible to it — nothing goes unhomed when a tool simply isn't used.
+Six tools did one job, which is why the people system kept getting skipped (Pete, 26 Jul 2026).
+They are now ONE command. This file stays only so anything still calling the old name keeps
+working, and it is deleted once nothing has fired it for a full working session.
 
-The evidence of a skipped people process is in the DATA, and that is what this measures:
+  people-hygiene.py <args>     ->  people check <args>
+  people-hygiene.py            ->  people check (runs the report, exit 0 -- unchanged)
+  people-hygiene.py -h|--help  ->  people check usage, exit 0
 
-  (a) SHARED CONTACT POINT — two records carrying the same email or the same phone. Either a
-      duplicate, or (per the whois rule) an organisation number that must never be merged.
-  (b) SUBSET NAME — a bare "Freya" sitting alongside "Freya Finch". This is the exact 26 Jul 2026
-      failure: the part-name record was invisible to an exact-name search, so a second record got
-      created on top of it.
-  (c) HALF-FINISHED — a record with neither an email nor a phone, so it cannot actually be used.
-      Pete's touch-it-tidy-it rule exists to burn these down as they are encountered.
+Run the real thing:  VAULT=/tmp/pbs python3 /tmp/pbs/people.py check
 
-REPORT-ONLY, the house pattern (like connection-parity.py / cc-locator-audit.py): prints, records
-to daily_log, mutates nothing, and exits 0 whenever it RAN. Finding drift is this tool working.
+The check is unchanged: report-only, records its own line to daily_log, mutates no domain data,
+and exits 0 whenever it RAN. Finding drift is the tool working. `people check --self-test` is the
+runnable gate that proves the whole command still behaves.
 
-Usage:  VAULT=/tmp/pbs python3 /tmp/pbs/people-hygiene.py [--json]
-        exit 0 = it ran (whatever it found).  exit 99 = it could NOT check, which is itself a gap.
+THREE THINGS THIS FILE MUST GET RIGHT, each already paid for:
+  1. The deprecation line goes to STDERR, never stdout -- the --json form is machine-read.
+  2. The VERB is translated (this tool had none) and everything else forwarded unchanged.
+  3. The child's exit code is passed through.
 """
-import os, sys, json, re, subprocess, collections
+import os
+import subprocess
+import sys
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
-AS_JSON = "--json" in sys.argv
+PEOPLE = os.path.join(VAULT, "people.py")
+OLD = "people-hygiene.py"
 
 
-def sql(q):
-    r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", q], capture_output=True, text=True,
-                       env={**os.environ, "VAULT": VAULT}, timeout=120)
-    if r.returncode != 0:
-        raise RuntimeError((r.stdout + r.stderr)[:300])
-    out = r.stdout.strip()
-    return json.loads(out) if out.startswith("[") else []
+def log_firing(argv):
+    """Record that a deprecated name was used, so retiring these is a measurable decision rather
+    than a feeling. The deprecation line goes to stderr precisely so nothing captures it -- this
+    is the record that makes the retirement gate observable.
 
+    Note this shim therefore writes TWO daily_log rows per firing: this one, plus the check's own
+    report line. That is expected.
 
-def norm_phone(p):
-    d = re.sub(r"\D", "", p or "")
-    return d[-9:] if len(d) >= 9 else ""
+    $r$ dollar-quoting, not '...': a single-quoted literal turns any apostrophe into a syntax
+    error. capture_output because the SQL helper prints its errors to STDOUT, and a stray line
+    there would be read as data by anything parsing the --json output. Every failure is swallowed
+    -- a slow or broken log line must never block or abort the forward.
+    """
+    try:
+        sql = ("INSERT INTO daily_log (date, cron_name, content) VALUES "
+               "(current_date, 'people-shim', $r$" + OLD + " " + " ".join(argv) + "$r$);")
+        subprocess.run([sys.executable, os.path.join(VAULT, "cc-sql.py")], input=sql,
+                       capture_output=True, text=True, timeout=30,
+                       env={**os.environ, "VAULT": VAULT})
+    except Exception:
+        pass
 
 
 def main():
-    try:
-        rows = sql("SELECT resource_name, display_name, emails, phones FROM google_contacts")
-    except Exception as e:
-        msg = f"PEOPLE HYGIENE — ABORTED, could not read google_contacts: {e}"
-        print(msg)
-        if AS_JSON:
-            print(json.dumps({"aborted": True, "gaps": 1, "error": str(e)[:200]}))
-        return 99
-
-    by_email, by_phone = collections.defaultdict(list), collections.defaultdict(list)
-    names = {}
-    half = []
-    self_dupes = []
-    for r in rows:
-        nm = (r.get("display_name") or "").strip()
-        names[r["resource_name"]] = nm
-        # DEDUPE WITHIN THE RECORD FIRST. Without this, one contact listing its own number or
-        # address twice looked like two contacts sharing it — which is how this tool reported
-        # "28 shared emails" and "24 shared numbers" on 26 Jul 2026 when the true cross-record
-        # figures were 0 and 5. A tool that over-reports is worse than no tool: Pete was about to
-        # go and merge contacts that were never duplicates.
-        emails = sorted({e.strip().lower() for e in (r.get("emails") or []) if e and e.strip()})
-        phones = sorted({norm_phone(p) for p in (r.get("phones") or []) if norm_phone(p)})
-        raw_p = [norm_phone(p) for p in (r.get("phones") or []) if norm_phone(p)]
-        raw_e = [(e or "").strip().lower() for e in (r.get("emails") or []) if e and e.strip()]
-        if len(raw_p) != len(phones) or len(raw_e) != len(emails):
-            self_dupes.append(nm or r["resource_name"])
-        for e in emails:
-            by_email[e].append(r)
-        for p in phones:
-            by_phone[p].append(r)
-        if nm and not emails and not any(phones):
-            half.append(nm)
-
-    # count DISTINCT records, never repeated entries on one record
-    shared_email = {k: v for k, v in by_email.items()
-                    if len({x["resource_name"] for x in v}) > 1}
-    shared_phone = {k: v for k, v in by_phone.items()
-                    if len({x["resource_name"] for x in v}) > 1}
-
-    # subset names: a bare "Freya" alongside "Freya Finch"
-    tok = {rn: {t for t in re.split(r"[\s,.]+", n.lower()) if len(t) > 1}
-           for rn, n in names.items() if n}
-    # A shared FIRST NAME is not a duplicate. Checked 26 Jul 2026: every bare-name record flagged
-    # had a DIFFERENT number from its "match" — "Adam" 07983 993656 vs "Adam Brennan"
-    # +34 629023295 are simply two Adams. Calling those duplicates nearly had Pete merging
-    # strangers. So split the two problems:
-    #   · subsets  = bare name that SHARES a contact point with a fuller record -> likely the same
-    #                person, worth looking at
-    #   · needs_surname = bare name with no shared contact point -> not a duplicate, just an
-    #                incomplete record that only Pete can complete
-    reach = {}
-    for r in rows:
-        reach[r["resource_name"]] = ({norm_phone(p) for p in (r.get("phones") or []) if norm_phone(p)}
-                                     | {(e or "").strip().lower() for e in (r.get("emails") or []) if e})
-    subsets, needs_surname = [], []
-    bare = [(rn, t) for rn, t in tok.items() if len(t) == 1]
-    for rn, t in bare:
-        shared = False
-        for rn2, t2 in tok.items():
-            if rn2 != rn and len(t2) > 1 and t < t2:
-                if reach.get(rn, set()) & reach.get(rn2, set()):
-                    subsets.append((names[rn], names[rn2])); shared = True
-        if not shared:
-            needs_surname.append(names[rn])
-    # EXACT same display name on two records. Not covered before 26 Jul 2026, and it bit
-    # immediately: renaming a bare "Lydia" to "Lydia Dant" created a second Lydia Dant and the
-    # check reported all-clear. Renaming can CREATE this class, so it must be checked after any
-    # tidy-up, not just on import.
-    same_name = collections.defaultdict(list)
-    for r in rows:
-        n = (r.get("display_name") or "").strip().lower()
-        if n:
-            same_name[n].append(r)
-    exact = {k: v for k, v in same_name.items() if len(v) > 1}
-
-    gaps = len(shared_email) + len(shared_phone) + len(subsets) + len(exact)
-
-    lines = [f"PEOPLE HYGIENE — {len(rows)} contact records checked"]
-    lines.append(f"  probable duplicates: {len(shared_email)} shared email(s), "
-                 f"{len(shared_phone)} shared number(s), {len(subsets)} part-name overlap(s)")
-    lines.append(f"  SAME NAME on two records: {len(exact)}")
-    lines.append(f"  half-finished (no email AND no phone): {len(half)}")
-    lines.append(f"  NEEDS A SURNAME (not a duplicate — only Pete knows who they are): "
-                 f"{len(needs_surname)}")
-    lines.append(f"  records repeating their OWN number/address (untidy, NOT a duplicate person): "
-                 f"{len(self_dupes)}")
-    for k, v in list(exact.items())[:8]:
-        lines.append(f"    ⧉ {v[0].get('display_name')} x{len(v)} -> "
-                     + " | ".join((x.get("phones") or ["no phone"])[0] for x in v))
-    for e, v in list(shared_email.items())[:8]:
-        lines.append(f"    ✉ {e} -> " + " | ".join(names[x['resource_name']] for x in v))
-    for p, v in list(shared_phone.items())[:8]:
-        lines.append(f"    ☎ ...{p} -> " + " | ".join(names[x['resource_name']] for x in v)
-                     + "   (a SHARED number means same ORGANISATION — never merge)")
-    if needs_surname:
-        lines.append("    first-name-only: " + ", ".join(sorted(needs_surname)[:14])
-                     + (f" … +{len(needs_surname)-14} more" if len(needs_surname) > 14 else ""))
-    for a, b in subsets[:8]:
-        lines.append(f"    ~ '{a}' may be the same person as '{b}' — tidy, do not duplicate")
-    if gaps == 0 and not half:
-        lines.append("  clean — no duplicates and nothing half-finished.")
-    lines.append("  Fix with: people-api.py update <resource> name|email|phone VALUE   "
-                 "(touch it, tidy it — Pete's rule)")
-
-    report = "\n".join(lines)
-    print(report)
-    try:
-        sql("INSERT INTO daily_log (date, cron_name, content) VALUES "
-            "(current_date, 'people-hygiene', $r$" + report + "$r$)")
-    except Exception as e:
-        print(f"  ⚠ could not record to daily_log: {str(e)[:120]}")
-    if AS_JSON:
-        print(json.dumps({"records": len(rows), "gaps": gaps, "half_finished": len(half)}))
-    return 0
+    argv = sys.argv[1:]
+    print(f"{OLD} is DEPRECATED -- use: people.py check", file=sys.stderr)
+    log_firing(argv)
+    # every form maps the same way: no args -> the report; -h -> `check -h` (usage, exit 0)
+    r = subprocess.run([sys.executable, PEOPLE, "check"] + argv,
+                       env={**os.environ, "VAULT": VAULT})
+    return r.returncode
 
 
 if __name__ == "__main__":
