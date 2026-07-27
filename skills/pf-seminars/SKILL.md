@@ -120,6 +120,17 @@ unlinked note that no search and no concept page can find.
 Then run `VAULT=/tmp/pbs python3 /tmp/pbs/cc-embedder.py` so semantic search picks it up
 immediately rather than waiting for the hourly run.
 
+## Step 7 — Push it to the portal (both mirrors, both gates)
+The portal is live (phases 2–6 shipped 27 Jul 2026). A banked summary reaches members and Frank
+ONLY via the sync — nothing on the portal side is hand-authored:
+```
+VAULT=/tmp/pbs python3 /tmp/pbs/pf-portal-sync.py --seminars --apply   # the /seminars library
+VAULT=/tmp/pbs python3 /tmp/pbs/pf-portal-sync.py --apply              # Frank's grounding mirror
+```
+Both end in a mandatory gate — every line must PASS. If the seminars gate reports a CONFLICT, a
+summary was edited portal-side: reconcile with Pete before touching it (`--force-cc` overwrites;
+never use it silently).
+
 Also update `SEMINAR-MANIFEST.md` in the export folder and the corpus note counts.
 
 ## The gate — done means all of these
@@ -133,6 +144,8 @@ Do not report finished until every line is true:
 7. Counts reconciled: seminars, recordings, hours.
 8. `pf-seminar-ingest.py` run (NOT a hand ingest), index regenerated, embedder run — verify with
    `SELECT slug,(embedding IS NOT NULL) FROM vault_notes WHERE type='seminar-summary'`.
+9. Both portal syncs run (`--seminars --apply` and `--apply`), both gates ALL PASS — the new
+   seminar is in the /seminars library AND in Frank's mirror.
 
 ## Never do these
 - Never use `pf-ingest.py plaud` — it is wired for the Plaud **Summary** export, the exact
