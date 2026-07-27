@@ -30,7 +30,7 @@ Usage:
 """
 
 import json, time, base64, urllib.request, urllib.parse, urllib.error
-import tempfile, os, subprocess, sys
+import tempfile, os, subprocess, sys, importlib.util
 
 KEY = (
     os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
@@ -191,10 +191,43 @@ def get_file(file_id, local_path):
         out.write(r.read())
     print(f"Saved to: {local_path}")
 
+def _pay_data_gate(name, folder_id):
+    """Refuse employee pay data landing in a staff-shared drive (hub-pay-data-guard).
+
+    Pete, 27 Jul 2026: everything except wages/money goes to the Hub. The rule already
+    existed and still lost -- a contract of employment stating GBP 40,000 sat in
+    Sygma Hub/HR/Staff/Active where every Hub user could read it. So it is a gate now.
+    Fails OPEN if the guard or the folder lookup is unavailable: a Drive upload must not
+    break because the check could not run, but a refusal is hard.
+    """
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "hub_pay_data_guard",
+            os.path.join(os.environ.get("VAULT", "/tmp/pbs"), "hub-pay-data-guard.py"))
+        guard = importlib.util.module_from_spec(spec); spec.loader.exec_module(guard)
+        meta = api("GET", f"/files/{folder_id}",
+                   {"fields": "name,driveId", "supportsAllDrives": "true"})
+        drive_name = ""
+        if meta.get("driveId"):
+            drive_name = api("GET", f"/drives/{meta['driveId']}", {"fields": "name"}).get("name", "")
+        ok, why = guard.check(name, meta.get("name", ""), drive_name)
+    except Exception:
+        return  # fail open — never block a Drive write because the guard itself broke
+    if not ok:
+        print(f"BLOCKED by hub-pay-data-guard: '{name}' into {drive_name}\n"
+              f"  → {why}\n"
+              f"  Pay-bearing staff documents belong in Sygma Private / Personnel / Staff / "
+              f"<status> / <Name> /, never a drive shared with staff.\n"
+              f"  If this is a blank template or example, say so in the filename.",
+              file=sys.stderr)
+        sys.exit(2)
+
+
 def upload_file(local_path, folder_id, name=None):
     if not os.path.exists(local_path):
         print(f"File not found: {local_path}", file=sys.stderr); sys.exit(1)
     name = name or os.path.basename(local_path)
+    _pay_data_gate(name, folder_id)
     meta = {"name": name, "parents": [folder_id]}
     # Multipart upload
     boundary = "----DriveAPIBoundary"
@@ -430,6 +463,7 @@ def rename_file(file_id, new_name):
 def move_file(file_id, dest_folder_id):
     # Get current parents (supportsAllDrives required for shared-drive files).
     meta = api("GET", f"/files/{file_id}", {"fields": "parents,name", "supportsAllDrives": "true"})
+    _pay_data_gate(meta.get("name", ""), dest_folder_id)
     old_parents = ",".join(meta.get("parents", []))
     params = {
         "addParents": dest_folder_id,
