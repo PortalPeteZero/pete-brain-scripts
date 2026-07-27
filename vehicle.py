@@ -162,8 +162,12 @@ def gaps():
         ("MOT or tax due within 60 days",
          "SELECT vehicle_reg FROM hub.fleet WHERE mot_due BETWEEN CURRENT_DATE AND CURRENT_DATE+60 "
          "OR tax_due BETWEEN CURRENT_DATE AND CURRENT_DATE+60"),
-        ("assigned driver but no P11D benefit declared",
+        # Pool vehicles carry no benefit in kind, so their absence from the P11D is correct,
+        # not a gap. Pete classified four that way on 27 Jul 2026; the note on the vehicle is
+        # what marks them, so this check reads the record rather than a hard-coded list.
+        ("assigned driver, no P11D declared and not marked pool",
          "SELECT f.vehicle_reg FROM hub.fleet f WHERE f.current_driver_ref IS NOT NULL "
+         "AND coalesce(f.notes,'') NOT ILIKE '%POOL vehicle%' "
          "AND NOT EXISTS (SELECT 1 FROM hub.vehicle_bik b WHERE b.vehicle_reg=f.vehicle_reg)"),
         ("no documents filed",
          "SELECT f.vehicle_reg FROM hub.fleet f WHERE NOT EXISTS "
