@@ -1,6 +1,6 @@
 ---
 name: pf-seminars
-version: 1.1.0
+version: 1.2.0
 description: >
   Add a Passion Fit seminar to the archive, end to end, from nothing but a link or a
   "here's Monday's seminar". Pulls the verbatim transcript out of Plaud or Google
@@ -133,6 +133,21 @@ never use it silently).
 
 Also update `SEMINAR-MANIFEST.md` in the export folder and the corpus note counts.
 
+## Step 8 — Concept figures (if a diagram was taught on screen)
+The summaries carry the concept-gallery diagrams inline, anchored to the section where each model
+was taught (`seminar_images` on the portal DB, shipped 28 Jul 2026). For the NEW seminar, decide
+from the transcript: was a concept diagram actually shown/taught on screen? Most discussion
+evenings teach none — **no placement is the correct default; never decorate.** If one was:
+insert a row per figure with the service key:
+```
+POST {project_url}/rest/v1/seminar_images?on_conflict=seminar_id,image_id
+  {seminar_id, image_id (from cms_concept_images by title), anchor, display_order}
+```
+`anchor` = the slugified h2 id (lowercase, strip non-alphanumerics, spaces→dashes, 80 cap — the
+renderer's exact rule). **Validate the anchor exists in the stored `summary_md` before inserting**;
+a wrong anchor silently drops the figure to the header strip. Photos, screenshares of posts, and
+member slides are NOT concept figures — only the gallery diagrams qualify.
+
 ## The gate — done means all of these
 Do not report finished until every line is true:
 1. Verbatim transcript on Drive, character count stated.
@@ -146,6 +161,10 @@ Do not report finished until every line is true:
    `SELECT slug,(embedding IS NOT NULL) FROM vault_notes WHERE type='seminar-summary'`.
 9. Both portal syncs run (`--seminars --apply` and `--apply`), both gates ALL PASS — the new
    seminar is in the /seminars library AND in Frank's mirror.
+10. Concept-figures decision made from the transcript (Step 8) — placed with a validated anchor,
+    or explicitly none.
+11. The property records moved: a story line in `Properties/Passion Fit/README.md` is NOT needed
+    per seminar, but [[passion-fit-state-of-play]] library counts and the manifest must match.
 
 ## Never do these
 - Never use `pf-ingest.py plaud` — it is wired for the Plaud **Summary** export, the exact
