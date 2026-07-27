@@ -71,6 +71,37 @@ import json, sys, subprocess, urllib.request, urllib.error, ssl
 BASE_DEFAULT = "https://iot.thingslog.com:4443"
 _ctx = ssl.create_default_context()
 
+# Guard added 27 Jul 2026 after a real hour was lost to it.
+#
+# `get` takes a PATH. Called with a bare device number -- `thingslog-api.py get 04327212`, which is
+# exactly what every other tool in this vault takes -- the old code did base + "04327212" and asked
+# the resolver for the host "iot.thingslog.com:444304327212". That surfaces as
+#     socket.gaierror: nodename nor servname provided, or not known
+# buried under thirty lines of urllib traceback, which reads like the network being down or
+# ThingsLog being unreachable. It is neither. The conclusion drawn at the time was "this script
+# cannot resolve its host while the others can", and that was reported to Pete as a live fault.
+#
+# So: a path that does not start with "/" is refused by name, and a bare device number is accepted
+# and turned into the endpoint the caller obviously meant.
+_DEVICE_NUMBER = __import__("re").compile(r"^\d{6,12}$")
+
+def _path(p):
+    """Normalise a caller-supplied path. Never let a bad one become part of the HOSTNAME."""
+    if not isinstance(p, str) or not p:
+        raise SystemExit("thingslog-api: empty path")
+    if _DEVICE_NUMBER.match(p):
+        return f"/api/v2/devices/{p}"
+    if not p.startswith("/"):
+        raise SystemExit(
+            f"thingslog-api: '{p}' is not a path and is not a device number.\n"
+            f"  A path must start with '/' -- otherwise it is concatenated onto the base URL and\n"
+            f"  becomes part of the hostname, which fails as a DNS error and looks like an outage.\n"
+            f"  Try:  thingslog-api.py get /api/v2/devices/<number>\n"
+            f"        thingslog-api.py get '/api/transmissions?page=0&size=100'\n"
+            f"        thingslog-api.py config <number>      # takes a NUMBER, not a path"
+        )
+    return p
+
 def _creds():
     raw = subprocess.run(["python3","/tmp/pbs/cc-sql.py",
         "SELECT value FROM secrets WHERE name='thingslog-login.json'"],
@@ -86,11 +117,13 @@ def _login(c):
         return r.headers.get("Authorization").replace("Bearer ","")
 
 def _get(base, tok, path):
+    path = _path(path)
     req = urllib.request.Request(base+path, headers={"Authorization":"Bearer "+tok,"Accept":"application/json","User-Agent":"curl/8"})
     with urllib.request.urlopen(req, context=_ctx, timeout=40) as r:
         return json.loads(r.read())
 
 def _put(base, tok, cid, path, body):
+    path = _path(path)
     req = urllib.request.Request(base+path, data=json.dumps(body).encode(), method="PUT",
         headers={"Authorization":"Bearer "+tok,"Accept":"application/json","Content-Type":"application/json","X-Company-Id":str(cid),"User-Agent":"curl/8"})
     with urllib.request.urlopen(req, context=_ctx, timeout=40) as r:
