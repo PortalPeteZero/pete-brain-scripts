@@ -46,11 +46,16 @@ _LG_EXEC_RE = re.compile(
 )
 
 # A WRITE into the LeakGuard repo working copy. Reading it is fine.
+# NARROW ON PURPOSE. The first cut matched `/tmp/lg-hub[^\n]*?(?:>|>>)`, so a plain
+# `cd /tmp/lg-hub 2>/dev/null && git rev-parse` was read as a write and blocked — a pure read,
+# refused. Caught within a minute of the gate going live, on the very command written to inspect the
+# repo. A guard that blocks reading teaches people to work around it, which is worse than no guard,
+# so this now names the write verbs rather than guessing from punctuation.
 _LG_REPO_WRITE_RE = re.compile(
-    r"(?:>|>>|\btee\b|\bcp\b|\bmv\b|\brm\b|git\s+(?:commit|push|add|checkout|reset|merge|rebase))"
-    r"[^\n]*?/tmp/lg-hub"
-    r"|/tmp/lg-hub[^\n]*?(?:>|>>)"
-    r"|cd\s+/tmp/lg-hub[^\n]*?&&[^\n]*?git\s+(?:commit|push|add|reset|checkout)"
+    r"git\s+(?:commit|push|add|checkout|reset|merge|rebase)\b[^\n]*?/tmp/lg-hub"
+    r"|cd\s+/tmp/lg-hub[^\n]*?git\s+(?:commit|push|add|checkout|reset|merge|rebase)\b"
+    r"|(?:\btee\b|\bcp\b|\bmv\b|\brm\b)[^\n]*?/tmp/lg-hub"
+    r"|(?:^|[;&|]\s*)[^\n]*?>{1,2}\s*/tmp/lg-hub"
     r"|bunx\s+supabase\s+functions\s+deploy"
 )
 
