@@ -153,6 +153,31 @@ failopen = sql("""SELECT count(*) AS n FROM device_alarm_config
                   WHERE high_use_alarm_enabled AND coalesce(high_use_threshold, 0) = 0""")[0]["n"]
 check("no alarm switched on with no threshold", int(failopen) == 0, f"{failopen} would never fire")
 
+# THIS CHECK EXISTS BECAUSE THE ONE ABOVE PASSED WHILE THE FLEET HAD NO COVER (27 Jul 2026).
+# "Switched on with no threshold" is the exotic failure. The ordinary one is the alarm being OFF,
+# and on that date 24 of the 25 config rows were off with a zero threshold - the only enabled row in
+# the whole system was the demo property. The gate reported OK. It was asking whether the alarm was
+# broken, never whether it was there. Cost: 40,439 L over three days on 04290813 with nobody told.
+nocover = sql("""SELECT d.device_number, d.tl_output_index AS port
+                 FROM devices d
+                 LEFT JOIN device_alarm_config c ON c.device_id = d.id
+                 WHERE d.property_id IS NOT NULL AND d.is_active
+                   AND d.device_number NOT LIKE 'DEMO%'
+                   AND (c.device_id IS NULL
+                        OR NOT c.high_use_alarm_enabled
+                        OR coalesce(c.high_use_threshold, 0) = 0)""")
+check("every live meter has a working high-use alarm", not nocover,
+      f"{[(d['device_number'], d['port']) for d in nocover] or 'none'} without one")
+
+# The window must cover the whole day. end_hour 23 reads as "all day" but the engine's test is
+# half-open (hour < endHour), so a burst between 11pm and midnight was never counted.
+halfday = sql("""SELECT count(*) AS n FROM device_alarm_config
+                 WHERE high_use_alarm_enabled
+                   AND coalesce(high_use_start_hour, 0) = 0
+                   AND coalesce(high_use_end_hour, 24) < 24""")[0]["n"]
+check("no high-use window that silently drops the last hour", int(halfday) == 0,
+      f"{halfday} rows end before midnight")
+
 print()
 if FAILURES:
     print(f"FAILED ({len(FAILURES)}):")
