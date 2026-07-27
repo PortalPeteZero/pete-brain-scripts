@@ -1298,8 +1298,11 @@ def self_test():
         hit = [nm for nm in OLD_NAMES if nm in text]
         check(f"output of `{label}` names no renamed/internal tool", not hit,
               f"found: {', '.join(hit)}" if hit else "")
-    check("find 'Arabella' prints a `people tidy` command for the phone record",
-          "people tidy" in outputs['find "Arabella"'])
+    # the RUNNABLE form, not the bare verb: `find` renders the tidy prompt as a full command line
+    # (VAULT=... python3 .../people.py tidy ...) because a bare "people tidy" is not executable.
+    # Asserting the runnable form proves the prompt can be pasted, not merely that the verb appears.
+    check("find 'Arabella' prints a runnable `tidy` command for the phone record",
+          "people.py tidy" in outputs['find "Arabella"'])
     check("find 'Arabella' keeps 'in its store' wording for the non-Google row",
           "in its store" in outputs['find "Arabella"'])
     check("find on a true negative prints `people add`",
