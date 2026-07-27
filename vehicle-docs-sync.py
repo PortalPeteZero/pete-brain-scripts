@@ -57,6 +57,12 @@ RULES = [
     ("hire purchase", "agreement", True),
     ("finance", "agreement", True),
     ("lease", "agreement", True),
+    # Novuna and Latitude call the contract a "schedule", which carries the rentals and term,
+    # so it is an agreement in every sense that matters (added 27 Jul 2026 -- without this the
+    # five signed lease schedules filed as "other" and non-sensitive).
+    ("schedule", "agreement", True),
+    ("order form", "agreement", True),
+    ("customer order", "agreement", True),
     ("invoice", "invoice", True),
     ("quotation", "quote", True),
     ("quote", "quote", True),

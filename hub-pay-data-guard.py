@@ -46,6 +46,8 @@ PAY_PATTERNS = [
     (r"\bnominas?\b",                         "a nomina is a Spanish payslip"),
     (r"tax\s*code",                           "a tax code is pay data"),
     (r"pension\s*(election|opt|enrol)",       "pension elections are pay-linked"),
+    (r"company\s*accounts",                   "company accounts show profit"),
+    (r"profit\s*(and|&)\s*loss",              "a P&L shows profit"),
 ]
 
 # Bank details are only pay data when they belong to a PERSON. The company's own bank details,
