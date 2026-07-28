@@ -88,7 +88,7 @@ def main():
     as_json = "--json" in sys.argv
     hits = []
     for p in sorted(ROOT.rglob("*.py")):
-        if any(part in (".git", "__pycache__", "node_modules") for part in p.parts):
+        if any(part in (".git", "__pycache__", "node_modules", ".venv", "venv", "site-packages") for part in p.parts):
             continue
         hits += scan(p)
 

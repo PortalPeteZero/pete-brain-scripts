@@ -63,7 +63,10 @@ FIELDS = {
     "activity":         ("judged", "*",                "all three", "carries kind + draft_text"),
     "classification":   ("judged", ("reply", "quote"), "ee-draft-gate",
                          "course_code, scenario, stage, and each must-have with the customer's words"),
-    "retrieval_refs":   ("judged", ("reply", "quote", "enquiry"), "ee-send/ee-draft-gate",
+    # "enquiry" (the P4.3 arrival intake) is deliberately EXEMPT: an arrival capture has no
+    # precedents to cite -- requiring refs here blocked the light intake the contract mandates
+    # (te-log --apply --no-file --no-gmail at triage time; found 28 Jul 2026).
+    "retrieval_refs":   ("judged", ("reply", "quote"), "ee-send/ee-draft-gate",
                          ">=2 precedents actually read, each with a takeaway"),
     "tags":             ("judged", None,               "te-log", "course cluster"),
     "knowledge":        ("judged", None,               "te-log", "the distilled lesson"),

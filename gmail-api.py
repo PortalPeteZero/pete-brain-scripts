@@ -19,7 +19,7 @@ Usage (CLI):
   python3 gmail-api.py create-label "{Category}/{prefix}-{slug}"
   python3 gmail-api.py delete-label LABEL_ID
   python3 gmail-api.py search "<query>" [limit]   # e.g. search "from:clancy newer_than:30d" 20
-  python3 gmail-api.py get-thread THREAD_ID
+  python3 gmail-api.py get-thread THREAD_ID [full|metadata]   # default full (message bodies included)
   python3 gmail-api.py download-attachment MSG_ID ATT_ID /path/to/save.pdf
   python3 gmail-api.py modify-thread THREAD_ID --add LABEL_ID --remove INBOX
   python3 gmail-api.py send to@example.com "Subject" "Body" [THREAD_ID]
@@ -696,7 +696,7 @@ def _cli():
         limit = int(args[1]) if len(args) > 1 else 20
         print(json.dumps(g.search_threads(q, max_results=limit), indent=2))
     elif cmd == "get-thread":
-        fmt = args[1] if len(args) > 1 else "metadata"
+        fmt = args[1] if len(args) > 1 else "full"
         print(json.dumps(g.get_thread(args[0], fmt=fmt), indent=2))
     elif cmd == "modify-thread":
         thread_id = args[0]
