@@ -527,25 +527,44 @@ rule("5 · READ IN FULL BEFORE WRITING CODE")
 # one and it appears here on its own. Move one and nothing breaks. Pete, 28 Jul 2026: "you need to
 # ensure any future work I do with LeakGuard knows exactly where these are."
 SOP_DIR = "Businesses/canary-detect/sops/"
-sops = cc(f"""SELECT vault_path, title, word_count, updated_at::date AS d
+
+# PRINTED IN FULL, not listed.
+#
+# Pete, 28 Jul 2026: "can we gate it so future you must read all". Listing them was still a pointer,
+# and a pointer is what has failed on this project every single time — the SOPs existed, were good,
+# and went unread while the same ground was rediscovered halfway through the session.
+#
+# So the text itself goes on screen every run. There is nothing to go and open, nothing to remember
+# to open, and no version of "briefed" that does not include having the procedures in front of you.
+# The unlock depends on it: SOPS_READ below is what the marker records and the gate requires.
+sops = cc(f"""SELECT vault_path, title, word_count, updated_at::date AS d, body
               FROM vault_notes
               WHERE type = 'sop' AND vault_path LIKE '{SOP_DIR}%'
               ORDER BY vault_path""")
-print(f"  THE SOPs — all of them live in {SOP_DIR}")
-if not sops:
-    print("  ⛔ NO SOPs FOUND AT THAT PATH. Something has been moved. Do not proceed on memory.")
-for s_ in sops:
-    print(f"     {s_['vault_path'].rsplit('/', 1)[-1]:<42} {s_['word_count']:>5} words   {s_['d']}")
-    print(f"       {s_['title']}")
 
-print("\n  THE FRONT DOOR — repos, deploys, the data model, state of play")
+SOPS_READ = [s_["vault_path"] for s_ in sops]
+
+if not sops:
+    print("  ⛔ NO SOPs FOUND AT THAT PATH. Something has been moved or deleted.")
+    print("     Do NOT proceed on memory — find them before you touch anything:")
+    print("     cc-sql.py \"SELECT vault_path FROM vault_notes WHERE type=\'sop\'\"")
+else:
+    total = sum(int(s_["word_count"] or 0) for s_ in sops)
+    print(f"  {len(sops)} SOP(s), {total} words, printed in full below. All of them live in {SOP_DIR}")
+    print("  They are here rather than linked because linking to them has never once worked.\n")
+    for s_ in sops:
+        print("\n" + "-" * 92)
+        print(f"  {s_['vault_path']}   ({s_['word_count']} words, updated {s_['d']})")
+        print("-" * 92)
+        for line in (s_["body"] or "").splitlines():
+            print("  " + line)
+
+print("\n" + "=" * 92)
+print("  THE FRONT DOOR — repos, deploys, the data model, state of play")
 fd = "Projects/CD-LeakGuard/leakguard-crm-front-door.md"
 r = cc(f"SELECT length(body) AS n, updated_at::date AS d FROM vault_notes WHERE vault_path='{fd}'")
 print(f"     {'✓' if r else '✗ NOT FOUND'} {fd}" + (f"  ({r[0]['n']} chars, {r[0]['d']})" if r else ""))
-
-print(f"""
-  Read one:   cc-sql.py "SELECT body FROM vault_notes WHERE vault_path='{SOP_DIR}<name>.md'"
-  Read all:   cc-sql.py "SELECT vault_path, body FROM vault_notes WHERE type='sop' AND vault_path LIKE '{SOP_DIR}%'"
+print(f"""     cc-sql.py "SELECT body FROM vault_notes WHERE vault_path='{fd}'"
 """)
 
 rule("VERDICT")
@@ -571,9 +590,17 @@ if "--ack" in sys.argv:
         print("   Retry when it answers:  VAULT=/tmp/pbs python3 /tmp/pbs/lg-brief.py --ack")
         print("   If it is genuinely down, say so to Pete and do not act on the CRM alone.")
         sys.exit(1)
+    # The unlock now also asserts the SOPs were PRINTED, not merely named. Pete, 28 Jul 2026:
+    # "can we gate it so future you must read all". If none were found, that is a broken system, not
+    # a briefed session — refuse rather than unlock into a project with no procedures.
+    if not SOPS_READ:
+        print("\n⛔ ACK REFUSED — no SOPs were found, so none could be put in front of you.")
+        print("   The tools stay locked. Find where they went before touching anything.")
+        sys.exit(1)
     with open(MARKER, "w") as fh:
         json.dump({"at": time.time(), "thingslog_reached": True,
+                   "sops_read": SOPS_READ,
                    "disagreements": TL_DISAGREE}, fh)
-    print("\nACK recorded — ThingsLog read and reconciled. LeakGuard tools unlocked for this session.")
+    print(f"\nACK recorded — ThingsLog reconciled, {len(SOPS_READ)} SOP(s) read in full. Tools unlocked.")
     if TL_DISAGREE:
         print(f"Carry this with you: {len(TL_DISAGREE)} field(s) where our CRM and ThingsLog disagree.")

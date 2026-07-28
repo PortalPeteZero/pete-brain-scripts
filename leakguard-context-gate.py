@@ -113,7 +113,12 @@ def fresh():
         if (time.time() - os.path.getmtime(MARKER)) >= FRESH_SECS:
             return False
         with open(MARKER) as fh:
-            return json.load(fh).get("thingslog_reached") is True
+            mk = json.load(fh)
+        # Two independent claims, both required. ThingsLog was actually read (not just our copy),
+        # and the SOPs were PRINTED IN FULL into the session rather than pointed at. Pete, 28 Jul
+        # 2026: "can we gate it so future you must read all" — a list of filenames is a pointer, and
+        # pointers are what has failed here every time.
+        return mk.get("thingslog_reached") is True and bool(mk.get("sops_read"))
     except (OSError, ValueError):
         return False
 
