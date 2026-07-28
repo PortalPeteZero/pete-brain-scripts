@@ -61,8 +61,14 @@ def main():
         print("cc-pages-reconcile: CC query failed — status UNKNOWN, not reported clean", file=sys.stderr)
         sys.exit(2)
 
-    dirs = {d for d in os.listdir(mdir)
-            if os.path.isdir(os.path.join(mdir, d)) and not d.startswith("[")}
+    # every static page route, INCLUDING sub-pages (app/m/a/b/page.tsx -> "a/b").
+    # Dynamic segments ([slug], [date]) excluded. Sub-page awareness added 28 Jul 2026
+    # after /m/health/events-entered was live with no registry row (the La Tinosa miss).
+    dirs = set()
+    for root, dnames, fnames in os.walk(mdir):
+        dnames[:] = [d for d in dnames if not d.startswith("[")]
+        if "page.tsx" in fnames and root != mdir:
+            dirs.add(os.path.relpath(root, mdir))
     # module_content also stores asset sub-paths (slug/assets/x.css) — keep only whole keys
     served = {c["module_key"] for c in content if "/" not in c["module_key"]}
 
@@ -72,6 +78,7 @@ def main():
     if os.path.isfile(route):
         redirected = set(re.findall(r'mod\.slug\s*===\s*"([^"]+)"\s*\)\s*redirect', open(route).read()))
 
+    subpages = sorted(d for d in dirs if "/" in d)
     native = sorted(m["slug"] for m in mods if m["slug"] in dirs)
     embedded = sorted(m["slug"] for m in mods if m["slug"] not in dirs and m["module_key"] in served)
     redirects = sorted(m["slug"] for m in mods if m["slug"] not in dirs
@@ -81,7 +88,7 @@ def main():
     # a page directory with no menu row: genuinely unreachable from the menu
     unlisted = sorted(dirs - {m["slug"] for m in mods})
 
-    out = {"modules": len(mods), "page_dirs": len(dirs),
+    out = {"modules": len(mods), "page_dirs": len(dirs), "subpages": subpages,
            "native": native, "embedded": embedded, "redirects": redirects,
            "placeholder": placeholder, "unlisted_dirs": unlisted}
     if as_json:

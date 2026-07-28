@@ -188,6 +188,29 @@ def _repo_tree():
     return tree
 
 
+def _cc_repo_tree():
+    """File list of the LIVE command-centre repo (GitHub main), cached per run. Same rationale
+    and mechanics as _repo_tree — GitHub is the truth, the Railway checkout is a snapshot."""
+    if "cc_tree" in _TREE_CACHE:
+        return _TREE_CACHE["cc_tree"]
+    pat_rows = q("SELECT value FROM secrets WHERE name = 'github-pat'")
+    tree = None
+    if pat_rows:
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                "https://api.github.com/repos/PortalPeteZero/command-centre/git/trees/main?recursive=1",
+                headers={"Authorization": f"Bearer {pat_rows[0]['value'].strip()}",
+                         "User-Agent": "cc-locator-audit"})
+            data = json.loads(urllib.request.urlopen(req, timeout=45).read())
+            if not data.get("truncated"):
+                tree = {t["path"] for t in data.get("tree", []) if t.get("type") == "blob"}
+        except Exception as e:
+            sys.stderr.write(f"[cc-locator-audit] command-centre tree fetch failed: {e}\n")
+    _TREE_CACHE["cc_tree"] = tree
+    return tree
+
+
 def _disk(kind):
     """Files/dirs present in the LIVE repo (GitHub main). Returns None on failure — never an
     empty set, which would read as 'nothing on disk' and wrongly flag every registry row as
@@ -235,6 +258,33 @@ def check_rows(gaps, dm_text, dm_rows):
             add(f"unregistered-{label}", _summarise(missing), f"{len(missing)} {label}(s) exist on disk with NO {table} row — invisible to the map and to whereis")
         if stale:
             add(f"stale-{label}-row", _summarise(stale), f"{len(stale)} {table} row(s) with no file on disk — the registry points at something gone", "low")
+
+    # --- CC PAGES incl. SUB-PAGES (added 28 Jul 2026 — the La Tinosa miss): a page route with
+    # no modules row is invisible to whereis, /m/map and this audit. app/m/a/b/page.tsx maps to
+    # slug "a/b"; dynamic segments ([slug], [date]) are excluded. Eight live health sub-pages
+    # incl. events-entered had no rows, so a session asserted the section didn't exist while
+    # Pete was looking at it. One-way by design: pages-without-rows only. Rows-without-pages
+    # remain cc-pages-reconcile.py's on-demand business (settled 19 Jul: placeholder modules
+    # are a deliberate state, not drift).
+    cc_tree = _cc_repo_tree()
+    mods = q("SELECT slug FROM modules")
+    if mods is None:
+        add("couldnt-check", "modules", "modules query ERRORED — pages not reconciled", "high")
+    elif cc_tree is None:
+        add("couldnt-check", "cc-pages", "could not fetch the command-centre repo tree — pages not reconciled", "high")
+    else:
+        pages = set()
+        for pth in cc_tree:
+            if pth.startswith("app/m/") and pth.endswith("/page.tsx") and "[" not in pth:
+                slug = pth[len("app/m/"):-len("/page.tsx")]
+                if slug:
+                    pages.add(slug)
+        unreg = sorted(pages - {m["slug"] for m in mods})
+        if unreg:
+            add("unregistered-page", _summarise(unreg),
+                f"{len(unreg)} page route(s) live in the command-centre app with NO modules row — "
+                "invisible to whereis and /m/map. Register each (sub-pages: slug 'parent/child', "
+                "status hidden, enabled false, inherit the parent's tier/passcode).", "high")
 
     # --- projects: an active project with no Drive folder has nowhere to file its documents
     projs = q("SELECT slug, entity_slug, drive_folder_id FROM projects WHERE coalesce(status,'') <> 'archived'")
