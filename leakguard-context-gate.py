@@ -30,7 +30,9 @@ Scope -- deliberately narrow:
 
 Exit contract (PreToolUse): exit 2 + stderr => BLOCK; exit 0 => allow.
 """
-import json, os, re, sys, time
+import json, os, re, subprocess, sys, time
+
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 _SID = (os.environ.get("CLAUDE_CODE_SESSION_ID") or "").strip()
 MARKER = f"/tmp/.leakguard-brief-ack-{_SID}" if _SID else "/tmp/.leakguard-brief-ack"
@@ -116,6 +118,118 @@ def fresh():
         return False
 
 
+# ── THE LIVE-CUSTOMER WRITE GUARD ────────────────────────────────────────────────────────────────
+# Pete, 28 Jul 2026: "you changed michelle johns without my go ahead and now you have fucked up her
+# call ins which she relies on."
+#
+# He was right. Michelle had called in six times a day for eleven days because she had asked for it.
+# I swept her onto the fleet standard alongside two genuine diagnostics, without asking, and she lost
+# exactly the three call-ins she needed. Recording a reason on her interval fixed HER. This fixes the
+# class: no write reaches a device that belongs to a paying customer unless the command says why.
+#
+# It is not a permission system — there is nobody to ask at 2am. It is a forcing function: you cannot
+# make the change without writing down who asked for it, and the reason is kept, so the next session
+# finds a decision instead of an anomaly to tidy away.
+
+_DEVICE_WRITE_RE = re.compile(
+    r"lg-device-config\.py\b(?![^\n;|&]*--show)"          # writes config unless it is --show
+    r"|thingslog-api\.py\s+set-transmission\b"
+    r"|thingslog-api\.py\s+set-config\b"
+    r"|leakguard-name-sync\.py\b[^\n;|&]*--apply"
+    r"|lg-commission\.py\b(?![^\n;|&]*--check)"           # the commissioning WRITE path
+)
+# A ThingsLog logger number: eight digits, standing on its own.
+_DEVNUM_RE = re.compile(r"(?<!\d)(\d{8})(?!\d)")
+_REASON_RE = re.compile(r"--reason[=\s]+(\"[^\"]+\"|'[^']+'|\S+)")
+# Tables where a row IS a customer's monitoring setup.
+_CUSTOMER_TABLE_RE = re.compile(
+    r"\b(devices|alarm_no_use_windows|device_alarm_config|alarm_contacts)\b", re.I)
+
+
+def _lg(query):
+    """Query the LeakGuard DB. Raises on any failure — the caller must NOT swallow it."""
+    out = subprocess.run(["python3", f"{VAULT}/lg-sql.py", query],
+                         capture_output=True, text=True, timeout=60,
+                         env={**os.environ, "VAULT": VAULT}).stdout
+    i = out.find("[")
+    if i < 0:
+        raise RuntimeError(f"lg-sql returned no result: {out[:200]}")
+    return json.loads(out[i:])
+
+
+def live_customer_write(cmd):
+    """(blocked_message, None) if this must be refused, else (None, [rows]) for the devices touched.
+
+    FAILS CLOSED, unlike the rest of this gate. The general rule here is that a guard bug must never
+    brick a session, so everything else returns 0 on error. This one is the exception on purpose: if
+    we cannot find out whether a device belongs to a customer, we must not write to it. Guessing in
+    our own favour is exactly how Michelle's setting got changed.
+    """
+    if not (_DEVICE_WRITE_RE.search(cmd) or
+            (_LG_SQL_RE.search(cmd) and _MUTATING_SQL_RE.search(cmd)
+             and _CUSTOMER_TABLE_RE.search(cmd))):
+        return None, None
+
+    reason = _REASON_RE.search(cmd)
+    targets_all = re.search(r"set-transmission\s+all\b", cmd) is not None
+    nums = sorted(set(_DEVNUM_RE.findall(cmd)))
+
+    try:
+        if targets_all or not nums:
+            rows = _lg("""SELECT d.device_number AS num, c.full_name AS who
+                          FROM devices d JOIN properties p ON p.id = d.property_id
+                          JOIN customers c ON c.id = p.customer_id
+                          WHERE d.tl_output_index = 0""")
+            scope = "EVERY installed device" if targets_all else "one or more customer devices"
+        else:
+            inlist = ",".join(f"'{n}'" for n in nums)
+            rows = _lg(f"""SELECT d.device_number AS num, c.full_name AS who
+                           FROM devices d JOIN properties p ON p.id = d.property_id
+                           JOIN customers c ON c.id = p.customer_id
+                           WHERE d.device_number IN ({inlist})""")
+            scope = ", ".join(f"{r['num']} ({r['who']})" for r in rows)
+    except Exception as e:
+        return (f"⛔ LEAKGUARD WRITE GUARD — cannot verify who this device belongs to.\n\n"
+                f"The lookup failed: {e}\n\n"
+                f"This guard fails CLOSED. A write to a device that might be a live customer's is "
+                f"refused when we cannot check, because guessing in our own favour is precisely how "
+                f"Michelle Johnson lost her call-ins on 27 Jul 2026."), None
+
+    if not rows:            # spare stock on the shelf — nobody is relying on it
+        return None, []
+    if reason:
+        return None, rows
+
+    return (f"⛔ LEAKGUARD WRITE GUARD — this changes a LIVE customer's logger.\n\n"
+            f"Affected: {scope}\n\n"
+            f"Somebody is relying on this device's settings, and you have not said who asked for "
+            f"the change or why. Michelle Johnson had asked for six call-ins a day; they were "
+            f"'standardised' away on 27 Jul 2026 without a word written down, and she lost the "
+            f"three she needed.\n\n"
+            f"Add a reason and the change goes through and is recorded:\n\n"
+            f"    <your command> --reason \"Jane relayed Michelle's request for 6am/2pm/10pm\"\n\n"
+            f"If nobody has asked for it, do not make it. A device that merely looks non-standard "
+            f"is not a fault — check WHY it is set that way first (devices.callin_interval_reason, "
+            f"device_change_log)."), None
+
+
+def record_change(cmd, rows, session_id):
+    """Best-effort audit row. Never blocks the change it is describing."""
+    try:
+        reason = _REASON_RE.search(cmd)
+        reason = reason.group(1).strip("\"'") if reason else ""
+        for r in (rows or [{"num": None, "who": None}]):
+            _lg("INSERT INTO device_change_log (device_number, customer_name, command, reason, "
+                "session_id, tool) VALUES (" +
+                (f"'{r['num']}'" if r.get("num") else "NULL") + "," +
+                (f"'{(r.get('who') or '').replace(chr(39), chr(39) * 2)}'" if r.get("who") else "NULL") +
+                f",'{cmd[:900].replace(chr(39), chr(39) * 2)}'"
+                f",'{reason[:500].replace(chr(39), chr(39) * 2)}'"
+                f",'{session_id[:80]}','leakguard-context-gate')")
+    except Exception:
+        pass
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -141,6 +255,20 @@ def main():
 
         if _UNLOCK_RE.search(cmd):
             return 0
+
+        # The write guard runs whether or not the brief has been read. Being briefed says you know
+        # how the system works; it does not say anybody asked for this change.
+        try:
+            refusal, rows = live_customer_write(cmd)
+        except Exception as e:
+            sys.stderr.write(f"⛔ LEAKGUARD WRITE GUARD errored and refuses to guess: {e}\n")
+            return 2
+        if refusal:
+            sys.stderr.write(refusal + "\n")
+            return 2
+        if rows:
+            record_change(cmd, rows, _SID)
+
         if fresh():
             return 0
 
