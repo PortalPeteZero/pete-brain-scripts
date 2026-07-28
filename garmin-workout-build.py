@@ -158,12 +158,17 @@ class GarminWorkoutBuilder:
                 for child in item["steps"]:
                     order += 1
                     children.append(self._simple(child, order))
+                # NO skipLastRestStep key — EVER. Garmin Connect's own builder only
+                # writes it when the "skip last rest" box is ticked; Edge units on
+                # firmware that lacks the feature reject the whole workout at sync
+                # ("not compatible" — Pete's Edge 1050, diagnosed 28 Jul 2026).
+                # Prefer flat steps over repeat groups anyway (see garmin-workout-push).
                 steps.append({
                     "type": "RepeatGroupDTO", "stepId": grp_order, "stepOrder": grp_order,
                     "stepType": STEP_TYPES["repeat"], "childStepId": 1,
                     "numberOfIterations": int(item["repeat"]), "smartRepeat": False,
                     "endCondition": END_ITER, "endConditionValue": float(item["repeat"]),
-                    "workoutSteps": children, "skipLastRestStep": False,
+                    "workoutSteps": children,
                 })
             else:
                 order += 1
