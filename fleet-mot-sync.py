@@ -7,7 +7,7 @@
 # entity: sygma
 # schedule: 15 6 1 * *
 # timezone: Atlantic/Canary
-# secrets: dvsa-mot-history-api.json, sygma-portal-supabase-keys.json
+# secrets: SECRETFILE__dvsa-mot-history-api.json, SECRETFILE__sygma-portal-supabase-keys.json
 # CRON-META-END
 """
 Sygma fleet <- DVSA MOT sync: pull every fleet vehicle's MOT record and write it into the platform.
