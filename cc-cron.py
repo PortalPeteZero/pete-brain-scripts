@@ -276,7 +276,23 @@ def cmd_deploy(a):
     var_upsert(sid, "CC_SUPABASE_URL", CC["url"]); var_upsert(sid, "CC_SUPABASE_SERVICE_KEY", CC["service_role_key"])
     var_upsert(sid, "TZ", tz); var_upsert(sid, "CRON_SCRIPT", os.path.basename(script))
     for s in secrets:
-        var_upsert(sid, s, resolve_secret_env(s)); print(f"  secret {s} set")
+        # Env-var names cannot carry dots: a token like SECRETFILE__foo.json resolves to the right
+        # file but poisons EVERY build ("secret ... not found") until hand-deleted (28 Jul 2026,
+        # fleet-mot-sync — three failed deploys). Sanitise the NAME; the value resolution is unchanged.
+        env_name = s.replace(".", "__")
+        if env_name != s:
+            print(f"  note: CRON-META token '{s}' carries a dot — set as {env_name}; fix the header")
+        var_upsert(sid, env_name, resolve_secret_env(s)); print(f"  secret {env_name} set")
+    # A dotted variable from an earlier bad deploy breaks all future builds — sweep any stragglers.
+    try:
+        existing = rw('query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s) }',
+                      {"p": PROJECT, "e": ENVN, "s": sid})["variables"]
+        for bad in [k for k in existing if "." in k]:
+            rw('mutation($i:VariableDeleteInput!){ variableDelete(input:$i) }',
+               {"i": {"projectId": PROJECT, "environmentId": ENVN, "serviceId": sid, "name": bad}})
+            print(f"  swept dotted variable: {bad}")
+    except Exception as e:
+        print(f"  (dotted-variable sweep skipped: {e})")
     if not is_service:
         set_instance(sid, {"restartPolicyType": "NEVER"})
     print("  env set: CC url/key, TZ, CRON_SCRIPT" + ("" if is_service else ", restartPolicy=NEVER"))
