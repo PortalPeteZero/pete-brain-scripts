@@ -42,9 +42,10 @@ Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-log.py --in decisions.json --apply
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-log.py --demo                         # P2 gate
 """
-import os, sys, json, datetime as dt
+import os, sys, json, re, subprocess, datetime as dt
 
-sys.path.insert(0, os.environ.get("VAULT", "/tmp/pbs"))
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
+sys.path.insert(0, VAULT)
 import importlib
 tl = importlib.import_module("triage_lib")
 
@@ -115,6 +116,85 @@ def capture_walker(dec, apply=False, manifest=None):
             return False, lines
     lines.append("  ✓ walker row appended")
     return True, lines
+
+
+# Labels that carry no entity home -- operational trays, noise buckets, Pete's own briefings.
+# Enrichment is skipped for these by design (the skill's documented skip rules).
+_NO_ENRICH_PREFIX = ("Briefings", "Newsletters", "Receipts", "Shipping", "Alerts", "Travel",
+                     "Replies", "Delegated", "Invoices", "Voice-Mail", "CloudTalk", "Xero-Forwarded",
+                     "General/PA-General", "Pete Learning")
+
+
+def _drive_home(label):
+    """Resolve a Gmail filing label to the ABSOLUTE Drive folder that is its canonical home.
+
+    LOOKED UP, NEVER DERIVED. The mapping lives in `public.gmail_label_homes`, one hand-written row
+    per label. A label with no row returns None and the caller REFUSES to enrich, loudly.
+
+    Why it is a registry and not a match: the first cut of this resolved 'the shortest folder whose
+    path ends in the label's leaf'. It sent `Customers/CD-LeakGuard` to `Canary Detect/Pictures/
+    Leakguard` (an asset dump) and `Businesses/SY-Vehicles` to `Canary Detect/Vehicles` (the wrong
+    entity entirely -- three drives have a Vehicles folder). Pete, 28 Jul 2026: "this also needs
+    fixing". A folder-name match is a guess wearing a lookup's clothes, and a wrong home is worse
+    than no home -- it files a customer's documents into someone else's account in silence.
+    """
+    rows = tl.cc_sql("SELECT drive, path FROM gmail_label_homes WHERE label='%s'" % tl.esc(label))
+    if not rows:
+        return None
+    root = os.path.expanduser(
+        "~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/Shared drives")
+    return os.path.join(root, rows[0]["drive"], rows[0]["path"])
+
+
+def _enrich(dec, fin, lines, manifest):
+    """Run vault-enricher on the thread, into the filing label's canonical Drive home.
+
+    Returns True (enriched), None (deliberately skipped) or False (should have enriched, could not).
+    A `skipped:true` from the enricher is a FAILURE to surface, not a success -- that is how the
+    'ran it, logged nothing' silence happened before.
+    """
+    label = fin.get("label") or ""
+    if label.startswith(_NO_ENRICH_PREFIX) or label in ("General", "CD-Info"):
+        return None
+    if not label.startswith(("Customers/", "Suppliers/", "Projects/", "Accreditations/",
+                             "Businesses/", "Personal/", "General/", "Working-Groups/")):
+        return None
+    home = _drive_home(label)
+    if not home:
+        lines.append(f"  ! enrich: '{label}' has no row in gmail_label_homes -- REFUSING to guess a "
+                     f"folder. Thread is filed and labelled; its attachments are NOT pulled. Add the "
+                     f"row, then re-run this decision:")
+        lines.append(f"      INSERT INTO gmail_label_homes (label, drive, path, confirmed_by) "
+                     f"VALUES ('{label}', '<drive>', '<path>', '<who>');")
+        return False
+    if not os.path.isdir(home):
+        lines.append(f"  ! enrich: home for '{label}' is registered but not on disk ({home}) -- "
+                     f"content NOT pulled (Drive not synced, or the folder moved)")
+        return False
+    try:
+        r = subprocess.run([sys.executable, os.path.join(VAULT, "vault-enricher.py"),
+                            dec["thread_id"], home],
+                           capture_output=True, text=True, timeout=180,
+                           env={**os.environ, "VAULT": VAULT})
+        out = r.stdout or ""
+        js = out[out.find("{"):out.rfind("}") + 1] if "{" in out else "{}"
+        res = json.loads(js) if js.strip() else {}
+    except Exception as e:
+        lines.append(f"  ! enrich: {e}")
+        return False
+    if res.get("skipped"):
+        lines.append(f"  ! enrich: SKIPPED ({res.get('skip_reason')}) -- content NOT pulled into {label}")
+        return False
+    # NB "0 new" is the idempotent case (the file is already in the folder), NOT a failure. Say so,
+    # or a clean re-run reads like a silent miss and sends the next session hunting a non-bug.
+    n = len(res.get("attachments_pulled") or [])
+    ex = res.get("extract_path")
+    lines.append(f"  ✓ enrich: {n} new attachment(s), extract "
+                 f"{'written' if ex else 'already present'} -> {label}")
+    if manifest:
+        manifest.write(json.dumps({"step": "enrich", "thread_id": dec["thread_id"],
+                                   "home": home, "attachments": n}) + "\n")
+    return True
 
 
 def _gmail_drift(dec, fin, lines):
@@ -337,6 +417,16 @@ def capture(dec, apply=False, manifest=None):
         tl.cc_sql(f"UPDATE triage_decisions SET task_id={q(task_id)} WHERE message_id='{tl.esc(mid)}'")
         if manifest:
             manifest.write(json.dumps({"step": "task-create", "task_id": task_id}) + "\n")
+
+    # 4) vault enrichment -- pull the thread's attachments + body extract into the entity's Drive home.
+    # The skill has called this non-negotiable on every filing-label thread since 1 Jul 2026, but
+    # NOTHING executed it: triage-log had zero references to vault-enricher, so a whole triage could
+    # label 70 threads and log NOT ONE attachment into an entity's home (found 28 Jul 2026, Pete).
+    # A rule that no code runs is not a rule. It runs here, as a verb side-effect, or it never runs.
+    if fin.get("label") and not dec.get("no_enrich"):
+        enr = _enrich(dec, fin, lines, manifest)
+        if enr is False:
+            ok = False
 
     # flip applied
     tl.cc_sql(f"UPDATE triage_decisions SET apply_status='applied', applied_at=now() "

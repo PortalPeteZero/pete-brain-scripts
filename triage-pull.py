@@ -176,7 +176,19 @@ def _calendar_invite(msg, g):
         mm = re.match(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})", dtstart)
         if mm:
             when = f"{mm.group(1)}-{mm.group(2)}-{mm.group(3)} {mm.group(4)}:{mm.group(5)}"
-    return {"summary": _val("SUMMARY"), "when": when, "tzid": tzid, "location": _val("LOCATION")}
+    # METHOD is what separates an INVITATION from a RESPONSE to one. REQUEST = someone is asking
+    # Pete to attend (a real RSVP). REPLY = someone accepting/declining a meeting Pete organised --
+    # nothing is owed back, and treating it as an RSVP forces three dead rows into the Replies tray.
+    # (Pete, 28 Jul 2026: "why are you routing those last 3 to replies?" — three METHOD:REPLY
+    # acceptances of his own Clancy board invite.) PARTSTAT carries accepted/declined/tentative.
+    method = (_val("METHOD") or "").upper() or None
+    partstat = None
+    for l in lines:
+        mm = re.search(r"PARTSTAT=([A-Z-]+)", l)
+        if mm:
+            partstat = mm.group(1).lower(); break
+    return {"summary": _val("SUMMARY"), "when": when, "tzid": tzid, "location": _val("LOCATION"),
+            "method": method, "partstat": partstat}
 
 
 # --- CRM presence -------------------------------------------------------------------
@@ -239,10 +251,20 @@ def _process_thread(t, g, tl, team, today):
         text, flags = extract_message(m)
         cal = _calendar_invite(m, g)
         if cal:
-            flags.add("meeting_invite")
-            text = ("📅 MEETING INVITE -- When: %s (tz: %s) -- Where: %s -- %s"
-                    % (cal.get("when") or "?", cal.get("tzid") or "?",
-                       cal.get("location") or "?", cal.get("summary") or "")).strip() + "\n\n" + text
+            # METHOD:REPLY = an attendee accepting/declining a meeting Pete ORGANISED. That is not
+            # an RSVP owed by Pete, so it must NOT carry `meeting_invite` (which the ops-table gate
+            # refuses to let anyone file). Flag it separately so it can be filed or cleared.
+            if (cal.get("method") or "") == "REPLY":
+                flags.add("meeting_response")
+                text = ("📅 MEETING RESPONSE (%s) -- When: %s (tz: %s) -- Where: %s -- %s"
+                        % (cal.get("partstat") or "?", cal.get("when") or "?",
+                           cal.get("tzid") or "?", cal.get("location") or "?",
+                           cal.get("summary") or "")).strip() + "\n\n" + text
+            else:
+                flags.add("meeting_invite")
+                text = ("📅 MEETING INVITE -- When: %s (tz: %s) -- Where: %s -- %s"
+                        % (cal.get("when") or "?", cal.get("tzid") or "?",
+                           cal.get("location") or "?", cal.get("summary") or "")).strip() + "\n\n" + text
         thread_flags |= flags
         emsgs.append({
             "from": _hdr(m, "From"), "to": _hdr(m, "To"), "cc": _hdr(m, "Cc"),
