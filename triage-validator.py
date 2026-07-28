@@ -141,9 +141,17 @@ def validate_ops(ops: Iterable[Mapping[str, Any]]) -> None:
         is_task_verb = action.startswith('Task ')
         is_hand_verb = action.startswith('Hand to ')
         is_route_verb = action.startswith('Route')          # v6: hand to the EE/BL engine
+        # `Keep {label}` = label it and LEAVE IT IN THE INBOX until Pete acts. That is only ever
+        # asked for on a thread that DOES need action -- which the matrix used to forbid, so the
+        # one verb built for "needs doing, keep it under my nose" could not be paired with any
+        # actionable ask and was effectively dead. (Pete, 28 Jul 2026, on a Clancy damages report:
+        # "leave this in my inbox for now".) Keep is actionable, but unlike Reply/Task it carries
+        # no tray entry and no task -- the thread sitting in the inbox IS the record.
+        is_keep_verb = action.startswith('Keep ')
         is_task_permitted = is_reply_verb or is_task_verb   # a Task cell may appear
         is_task_required = is_task_verb                     # a Task cell MUST appear
-        is_actionable_verb = is_reply_verb or is_task_verb or is_hand_verb or is_route_verb
+        is_actionable_verb = (is_reply_verb or is_task_verb or is_hand_verb or is_route_verb
+                              or is_keep_verb)
 
         # 1. Allowed-verb rule
         if not _is_allowed_verb(action):

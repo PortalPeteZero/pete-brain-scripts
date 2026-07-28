@@ -141,9 +141,15 @@ def _drive_home(label):
     rows = tl.cc_sql("SELECT drive, path FROM gmail_label_homes WHERE label='%s'" % tl.esc(label))
     if not rows:
         return None
-    root = os.path.expanduser(
-        "~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com/Shared drives")
-    return os.path.join(root, rows[0]["drive"], rows[0]["path"])
+    drive, path = rows[0]["drive"], rows[0]["path"]
+    mount = os.path.expanduser(
+        "~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com")
+    # "My Drive" is NOT a shared drive -- it sits beside "Shared drives" under the mount. An early
+    # version joined every home onto the Shared-drives root, so any registry row pointing at My
+    # Drive resolved to a path that does not exist and the enrich failed as 'not on disk'.
+    if drive == "My Drive":
+        return os.path.join(mount, "My Drive", path)
+    return os.path.join(mount, "Shared drives", drive, path)
 
 
 def _enrich(dec, fin, lines, manifest):
@@ -265,7 +271,15 @@ def capture(dec, apply=False, manifest=None):
             # re-execute the verb.
             drift = _gmail_drift(dec, fin, lines)
             if drift is False:
-                lines.append(f"  = {mid[:24]}… unchanged re-decision, Gmail verified — FULL NO-OP")
+                # Gmail matches, but that is only one of the side-effects. Enrichment can have
+                # FAILED on the original run (28 Jul 2026: two labels had no gmail_label_homes row,
+                # so the enrich refused; adding the row and re-running repaired nothing because
+                # this no-op returned first and the attachments were never pulled). The enricher is
+                # idempotent -- it skips files already on disk -- so running it here costs little
+                # and makes a re-run the actual repair path it is supposed to be.
+                if fin.get("label") and not dec.get("no_enrich"):
+                    _enrich(dec, fin, lines, manifest)
+                lines.append(f"  = {mid[:24]}… unchanged re-decision, Gmail verified — NO-OP")
                 return True, lines
             if drift is True:
                 lines.append(f"  ⟳ {mid[:24]}… ledger says applied but Gmail has drifted "
