@@ -99,6 +99,7 @@ def audit(num, m, base, tok, locmap):
     CURRENT["num"], CURRENT["who"] = num, ""
     rows = sql(f"""SELECT d.id, d.device_number, d.tl_output_index, d.property_id, d.is_active,
                           d.monitoring_from, d.install_date, d.litres_per_pulse, d.subscription_tier,
+                          d.callin_interval_reason,
                           d.tl_latitude::float AS lat, d.tl_longitude::float AS lon, d.tl_timezone,
                           d.send_alarms_to_customer, d.device_name,
                           p.address_line1, p.house_number, p.city, p.timezone AS prop_tz,
@@ -152,9 +153,29 @@ def audit(num, m, base, tok, locmap):
          tl_lpp is not None and crm_lpp is not None and abs(tl_lpp - crm_lpp) < 1e-6,
          f"ThingsLog coef {coef} = {tl_lpp} L/pulse, CRM {crm_lpp} L/pulse"
          + ("" if tl_lpp == crm_lpp else "  — every reading is scaled by this"))
+    # A deliberate interval and an abandoned diagnostic look IDENTICAL in the config. The only thing
+    # that tells them apart is a reason, and until 28 Jul 2026 there was nowhere to write one.
+    #
+    # Michelle Johnson called in six times a day for at least eleven days because she had asked for
+    # it. I swept her onto the 8-hour standard along with two real diagnostics, without asking, and
+    # she lost the three call-ins she relies on. Restoring her was not the fix: THIS CHECK would have
+    # gone on saying "a shortened interval is a DIAGNOSTIC and must be put back" for ever, so the
+    # next session would have reverted her again and been right to, following the tool.
+    #
+    # So: a documented reason makes a non-standard interval CORRECT, and the reason is printed. No
+    # reason means it is still treated as something somebody forgot to put back.
     ct = cfg.get("countsThreshold")
-    step("call-in is the 8h standard", ct == 32,
-         f"{(ct * 15 / 60) if ct else '?'}h — a shortened interval is a DIAGNOSTIC and must be put back")
+    hours = (ct * 15 / 60) if ct else None
+    why = (main.get("callin_interval_reason") or "").strip()
+    if ct == 32:
+        step("call-in is the 8h standard", True, "8.0h")
+    elif why:
+        step("call-in is off-standard ON PURPOSE", True,
+             f"{hours}h — {why[:160]}{'…' if len(why) > 160 else ''}")
+    else:
+        step("call-in is the 8h standard", False,
+             f"{hours or '?'}h with NO recorded reason — treated as a diagnostic left running. If it "
+             f"is deliberate, say so in devices.callin_interval_reason rather than reverting it.")
     # A weak version of this check ("is it set?") passed a brand-new install sitting at 0 on
     # 28 Jul 2026, because "0" is a set value. A meter can genuinely read zero, so this cannot hard
     # fail on the number alone -- but a device commissioned in the last fortnight whose initial

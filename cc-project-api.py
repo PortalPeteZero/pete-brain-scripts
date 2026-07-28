@@ -35,6 +35,15 @@ def rest(method, path, body=None, headers=None):
     h = dict(HR)
     if headers: h.update(headers)
     data = json.dumps(body).encode() if body is not None else None
+    # Slugs are name-verbatim (DB CHECK projects_slug_eq_name) so they may carry spaces —
+    # encode the query-string values or urllib rejects the URL outright.
+    if "?" in path:
+        base, qs = path.split("?", 1)
+        pairs = []
+        for part in qs.split("&"):
+            k, _, v = part.partition("=")
+            pairs.append(f"{k}={urllib.parse.quote(v, safe='.,=')}")
+        path = f"{base}?{'&'.join(pairs)}"
     req = urllib.request.Request(f"{URL}/rest/v1/{path}", data=data, headers=h, method=method)
     try:
         return json.loads(urllib.request.urlopen(req, timeout=30).read() or "null")
