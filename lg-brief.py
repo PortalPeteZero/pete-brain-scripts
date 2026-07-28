@@ -542,17 +542,25 @@ sops = cc(f"""SELECT vault_path, title, word_count, updated_at::date AS d, body
               WHERE type = 'sop' AND vault_path LIKE '{SOP_DIR}%'
               ORDER BY vault_path""")
 
-SOPS_READ = [s_["vault_path"] for s_ in sops]
+SOPS_READ = [s_["vault_path"] for s_ in sops if "leakguard" in s_["vault_path"].lower()]
 
 if not sops:
     print("  ⛔ NO SOPs FOUND AT THAT PATH. Something has been moved or deleted.")
     print("     Do NOT proceed on memory — find them before you touch anything:")
     print("     cc-sql.py \"SELECT vault_path FROM vault_notes WHERE type=\'sop\'\"")
 else:
-    total = sum(int(s_["word_count"] or 0) for s_ in sops)
-    print(f"  {len(sops)} SOP(s), {total} words, printed in full below. All of them live in {SOP_DIR}")
-    print("  They are here rather than linked because linking to them has never once worked.\n")
-    for s_ in sops:
+    # LeakGuard ones are printed IN FULL. The rest of Canary Detect's operating procedures are
+    # named so you know they exist and where, but not pasted — a CloudTalk phone config in a
+    # LeakGuard brief is noise, and noise is what makes people skim the part that matters.
+    mine = [s_ for s_ in sops if "leakguard" in s_["vault_path"].lower()]
+    others = [s_ for s_ in sops if s_ not in mine]
+    total = sum(int(s_["word_count"] or 0) for s_ in mine)
+    print(f"  {len(mine)} LeakGuard SOP(s), {total} words, printed IN FULL below. They live in {SOP_DIR}")
+    print("  They are here rather than linked because linking to them has never once worked.")
+    if others:
+        print(f"\n  Also in that folder, not LeakGuard, not printed: "
+              + ", ".join(o["vault_path"].rsplit("/", 1)[-1] for o in others))
+    for s_ in mine:
         print("\n" + "-" * 92)
         print(f"  {s_['vault_path']}   ({s_['word_count']} words, updated {s_['d']})")
         print("-" * 92)
