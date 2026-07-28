@@ -150,6 +150,60 @@ def quiet_commit(cmd: str) -> bool:
     return bool(_QUIET_RE.search(_mask(cmd)))
 
 
+# --- shared-clone protection (added 28 Jul 2026) -------------------------------------------------
+# /tmp/pbs is ONE checkout shared by every concurrent session (the boot kernel materialises it).
+# Two sessions doing git operations there race each other's index: on 28 Jul 2026 a fleet-work
+# session committed while a LeakGuard session had a file staged — the commit wrapped the other
+# session's work under the wrong message, then a recovery reset un-staged the other session's file
+# mid-flow. Nothing was lost, but only by luck and hand-unpicking. Session-local git work belongs in
+# a session-local clone; /tmp/pbs is a runtime artefact.
+_SHARED_CLONE_RE = re.compile(r"(?:/private)?/tmp/pbs(?:/|\s|$|['\"])")
+
+# Subcommands that mutate the index, worktree branch state, or history. Read-only git
+# (status/log/show/diff/fetch/grep) and `pull` (tool refresh) stay allowed.
+_GIT_MUTATE_RE = re.compile(
+    r"\bgit\b(?:\s+-C\s+(\S+)|\s+-[^\sC]\S*)*\s+"
+    r"(add|commit|reset|restore|stash|rebase|merge|cherry-pick|am|rm|mv|checkout|switch|push|clean)\b"
+)
+
+
+def shared_clone_mutation(cmd: str):
+    """A git mutation whose target repo is the SHARED /tmp/pbs checkout."""
+    masked = _mask(cmd)
+    m = _GIT_MUTATE_RE.search(masked)
+    if not m:
+        return None
+    # Judge the repo TARGET: the -C argument if given, else `cd /tmp/pbs`-style in the same command,
+    # else the working directory. (Same target-scoping principle as unverified_author_commit.)
+    target = m.group(1) or ""
+    if not target:
+        cd = re.search(r"(?:^|[\s(])cd\s+(\S+)", masked)
+        if cd:
+            target = cd.group(1)
+    if not target:
+        try:
+            target = os.getcwd()
+        except Exception:
+            return None
+    if _SHARED_CLONE_RE.match(target) or _SHARED_CLONE_RE.match(target + " "):
+        return _SHARED_MSG
+    return None
+
+
+_SHARED_MSG = """BLOCKED: git mutations in /tmp/pbs are forbidden — it is ONE checkout SHARED by every live session.
+Staging, committing or resetting here races any parallel session's git state (two sessions collided
+exactly this way on 28 Jul 2026: one session's commit swallowed the other's staged file).
+
+Do your git work in a session-local clone instead:
+  PAT=$(cat "/tmp/pbs/Library/processes/secrets/github-pat")
+  git clone "https://${PAT}@github.com/PortalPeteZero/pete-brain-scripts.git" /tmp/pbs-work-<yourtask>
+  cp /tmp/pbs/<your-file> /tmp/pbs-work-<yourtask>/   # bring your edited file across
+  # then add / commit / push THERE (commit still as its own Bash call)
+
+Reading (git log/show/diff/status) and running tools from /tmp/pbs is fine — only mutations are blocked.
+Your edited file in /tmp/pbs keeps working for THIS session; the next boot pulls the pushed version."""
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -161,6 +215,10 @@ def main() -> int:
             return 0
         cmd = (payload.get("tool_input") or {}).get("command") \
             or (payload.get("tool_input") or {}).get("input") or ""
+        shared = shared_clone_mutation(cmd)
+        if shared:
+            sys.stderr.write(shared + "\n")
+            return 2
         if is_chained_commit(cmd):
             sys.stderr.write(_MSG + "\n")
             return 2
