@@ -33,7 +33,24 @@ Usage:
   VAULT=/tmp/pbs python3 triage-read.py <round_file> --from 1 --to 12
   VAULT=/tmp/pbs python3 triage-read.py <round_file> --receipt       # show receipt coverage
 """
-import hashlib, json, os, sys
+import hashlib, json, os, re, sys
+
+
+def normalise(text):
+    """Collapse FORMATTING noise only. No word is ever removed.
+
+    HTML marketing mail arrives as a few hundred words wrapped in thousands of blank lines and
+    trailing spaces (the NCL cruise survey: 2,471 characters, roughly 200 of them content). Printing
+    that verbatim buries the real mail and burns the reader's attention, which is the same failure
+    truncation causes, arrived at from the other direction.
+
+    This strips trailing whitespace and collapses runs of blank lines to one. It is applied BEFORE
+    hashing, so what gets printed is exactly what gets hashed -- the receipt stays honest. Anything
+    that removed words would have to be rejected on that basis alone.
+    """
+    text = re.sub(r"[ \t]+(\n)", r"\1", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip() + "\n"
 
 ARGS = sys.argv[1:]
 if not ARGS or ARGS[0].startswith("--"):
@@ -58,7 +75,7 @@ def thread_full_text(t):
     parts = []
     for m in t.get("messages", []):
         parts.append(f"--- FROM {m.get('from','?')} | TO {m.get('to','?')} | {m.get('date','?')}\n")
-        parts.append((m.get("body") or "") + "\n")
+        parts.append(normalise(m.get("body") or "") + "\n")
         for a in (m.get("attachments") or []):
             parts.append(f"[attachment: {a.get('filename')} {a.get('size')} bytes]\n")
     return "".join(parts)

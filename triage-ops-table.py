@@ -69,14 +69,10 @@ def main():
         if not got:
             unread.append(t)
             continue
-        parts = []
-        for m in t.get("messages", []):
-            parts.append(f"--- FROM {m.get('from','?')} | TO {m.get('to','?')} | {m.get('date','?')}\n")
-            parts.append((m.get("body") or "") + "\n")
-            for a in (m.get("attachments") or []):
-                parts.append(f"[attachment: {a.get('filename')} {a.get('size')} bytes]\n")
-        import hashlib
-        if hashlib.sha256("".join(parts).encode("utf-8")).hexdigest() != got.get("sha256"):
+        # hash EXACTLY what triage-read.py emits -- import its helpers so the two can never drift
+        tr = _load("triage-read.py", "triage_read")
+        if tr.thread_full_text(t) and __import__("hashlib").sha256(
+                tr.thread_full_text(t).encode("utf-8")).hexdigest() != got.get("sha256"):
             stale.append(t)
     if unread or stale:
         print(f"BLOCKED: {len(unread)} thread(s) never read in full"
