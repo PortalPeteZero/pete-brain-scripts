@@ -515,19 +515,37 @@ print("  Jane Williams is Pete's own staff on Pete's own card. A test account. N
 
 # ══ 5 · THE NOTES ════════════════════════════════════════════════════════════════════════════════
 rule("5 · READ IN FULL BEFORE WRITING CODE")
-for path, why in [
-    ("Projects/CD-LeakGuard/leakguard-crm-front-door.md", "repos, deploys, the data model, state of play"),
-    ("Projects/CD-LeakGuard/lg-sop-verify-before-claiming.md", "the one rule + what was learned the hard way"),
-    # Written 28 Jul 2026. Until then there was NO commissioning process written down anywhere —
-    # a tool had been built and Pete had been told the process existed. It did not.
-    ("Projects/CD-LeakGuard/lg-sop-commissioning.md", "how to set a logger up, and the order it must go in"),
-]:
-    r = cc(f"SELECT length(body) AS n, frontmatter->>'status' AS st, updated_at::date AS d "
-           f"FROM vault_notes WHERE vault_path='{path}'")
-    print(f"  {'✓' if r else '✗'} {path}" + (f"  ({r[0]['n']} chars, status {r[0]['st']})" if r else "  NOT FOUND"))
-    print(f"      {why}")
-print("""
-  cc-sql.py "SELECT body FROM vault_notes WHERE vault_path='Projects/CD-LeakGuard/leakguard-crm-front-door.md'"
+
+# The list is QUERIED, never hardcoded.
+#
+# It used to be three literal paths. By 28 Jul 2026 two of them were wrong: one SOP had been filed
+# under Projects/ and moved, another had been superseded by a note in a different folder that the
+# original never mentioned. A hardcoded list in the very tool whose job is to stop the SOPs rotting
+# is the same failure one level up.
+#
+# So: every SOP Canary Detect holds is listed, straight from the database, every run. Write a new
+# one and it appears here on its own. Move one and nothing breaks. Pete, 28 Jul 2026: "you need to
+# ensure any future work I do with LeakGuard knows exactly where these are."
+SOP_DIR = "Businesses/canary-detect/sops/"
+sops = cc(f"""SELECT vault_path, title, word_count, updated_at::date AS d
+              FROM vault_notes
+              WHERE type = 'sop' AND vault_path LIKE '{SOP_DIR}%'
+              ORDER BY vault_path""")
+print(f"  THE SOPs — all of them live in {SOP_DIR}")
+if not sops:
+    print("  ⛔ NO SOPs FOUND AT THAT PATH. Something has been moved. Do not proceed on memory.")
+for s_ in sops:
+    print(f"     {s_['vault_path'].rsplit('/', 1)[-1]:<42} {s_['word_count']:>5} words   {s_['d']}")
+    print(f"       {s_['title']}")
+
+print("\n  THE FRONT DOOR — repos, deploys, the data model, state of play")
+fd = "Projects/CD-LeakGuard/leakguard-crm-front-door.md"
+r = cc(f"SELECT length(body) AS n, updated_at::date AS d FROM vault_notes WHERE vault_path='{fd}'")
+print(f"     {'✓' if r else '✗ NOT FOUND'} {fd}" + (f"  ({r[0]['n']} chars, {r[0]['d']})" if r else ""))
+
+print(f"""
+  Read one:   cc-sql.py "SELECT body FROM vault_notes WHERE vault_path='{SOP_DIR}<name>.md'"
+  Read all:   cc-sql.py "SELECT vault_path, body FROM vault_notes WHERE type='sop' AND vault_path LIKE '{SOP_DIR}%'"
 """)
 
 rule("VERDICT")
