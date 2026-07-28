@@ -3,7 +3,10 @@
 
 # CRON-META
 # key: odoo-invoice-es-copy
-# schedule: NOT DEPLOYED YET (proposed: every 15 min) — manual runs only until Pete approves
+# schedule: NONE — the LIVE path is event-driven: Odoo automation rule
+#   "Spanish copy on invoice posting" -> Supabase edge function odoo-invoice-es-copy
+#   (CC project; source mirrored at supabase-functions/odoo-invoice-es-copy/index.ts).
+#   This script is the manual/backfill twin (--ids / --days / --dry-run).
 # what: for each recently posted customer invoice, render the invoice PDF in Spanish
 #       (es_ES) via Odoo's real report pipeline and attach it to the invoice as
 #       "<INV name> ES.pdf" so Nicola always has a Spanish copy for water-company /
