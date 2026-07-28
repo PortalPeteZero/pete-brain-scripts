@@ -85,14 +85,34 @@ It pulls the live fleet state, the outstanding audit findings, the pending alert
 list, and it names the notes you must read in full before writing code. Nothing in it is quoted from
 a plan document.
 
+It also RECONCILES THINGSLOG AGAINST THE CRM — counters, pulse rate, map location, device name —
+and it will not unlock anything if ThingsLog could not be reached. That is deliberate. Pete, 28 Jul
+2026: "half of the problem is you always rely on our CRM and never check ThingsLog." Reading the
+copy is one command; reading the record takes a login, so the copy wins and gets quoted. Every
+correction that day came from exactly that. If ThingsLog is genuinely down, say so and do not act on
+the CRM alone.
+
 READING is never blocked. Look at anything you like — cat, grep, a SELECT through lg-sql.py — this
 gate only stops ACTION taken before the context was loaded."""
 
 
 def fresh():
+    """Recent AND proving ThingsLog was actually read.
+
+    The marker used to be a bare timestamp, so "briefed" meant "ran a command", not "saw the system
+    of record". Pete, 28 Jul 2026: "I need a gate to make you read ThingsLog as well as the CRM."
+    lg-brief.py now writes {"thingslog_reached": true} only after reconciling the two live, and
+    refuses to write anything at all when ThingsLog cannot be reached.
+
+    A pre-JSON marker left over from an older session is treated as NOT briefed — it cannot prove
+    the reconciliation happened, and assuming in the gate's favour is how the gate becomes theatre.
+    """
     try:
-        return (time.time() - os.path.getmtime(MARKER)) < FRESH_SECS
-    except OSError:
+        if (time.time() - os.path.getmtime(MARKER)) >= FRESH_SECS:
+            return False
+        with open(MARKER) as fh:
+            return json.load(fh).get("thingslog_reached") is True
+    except (OSError, ValueError):
         return False
 
 

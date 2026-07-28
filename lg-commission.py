@@ -201,8 +201,23 @@ def audit(num, m, base, tok, locmap):
     step("property carries its own timezone", main["prop_tz"] == TZ,
          f"{main['prop_tz']} — the engine reads this FIRST, so it is the real safety net")
     step("install date recorded", bool(main["install_date"]), str(main["install_date"]))
-    step("monitoring boundary set", bool(main["monitoring_from"]),
-         f"{main['monitoring_from']} — without it, pre-install water is booked to the customer")
+    # Only asserted on a RECENT install. `recent` is set above from the install date.
+    #
+    # Blank means "count everything from the first reading", which is what every device did before
+    # this field existed. Measured across the fleet on 28 Jul 2026: of the 24 installed meters only
+    # two carry any pre-install water at all — Szilard Zsovak 393 L and Michelle Johnson 307 L,
+    # both under 1.2% of what they have used since, neither enough to move a bill, a threshold or an
+    # alarm. Pete's call, same day: leave them. Failing all 24 for a setting that costs nothing on 22
+    # of them just buries the gaps that do matter.
+    #
+    # It is still asserted where it is cheap and where it bites: a device fitted in the last
+    # fortnight, which may have been sitting on the bench being tested first.
+    if recent:
+        step("monitoring boundary set", bool(main["monitoring_from"]),
+             f"{main['monitoring_from']} — a fresh install must not book bench water to the customer")
+    else:
+        print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
+              f"(established install — informational, see the note in the source)")
 
     for r in rows:
         pid, idx = r["id"], r["tl_output_index"]

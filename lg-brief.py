@@ -370,6 +370,129 @@ probe("test the COUNTER, not delta_litres, when asking whether a meter has ever 
       None, "Any device whose litres were corrected or bounded has zero positive deltas and a counter that moved.")
 
 # ══ 4 · LIVE STATE ═══════════════════════════════════════════════════════════════════════════════
+# ══ 3B · THINGSLOG vs THE CRM ════════════════════════════════════════════════════════════════════
+# WHY THIS IS MANDATORY AND WHY THE ACK FAILS WITHOUT IT.
+#
+# Pete, 28 Jul 2026: "half of the problem is you always rely on our CRM and never check ThingsLog."
+# He is right, and the reason is mechanical rather than moral: reading our CRM is one command,
+# reading ThingsLog needs a login and several calls, so the cheap source wins and gets quoted.
+#
+# Every correction he had to make that day came from exactly that:
+#   * Keith Ferris's setup reported from our records without opening ThingsLog at all.
+#   * Glenn Dickson quoted at 10 litres per pulse from our CRM while ThingsLog said 1.
+#   * The new Fleet page built on a battery percentage that only a manual sync ever wrote,
+#     with the live voltage sitting unused in the next column.
+#
+# The counter reconciliation already existed in this brief and was SKIPPED unless somebody passed
+# --deep. The single most important comparison in the system was opt-in. It is not any more: it
+# costs 35 seconds across the fleet, once a session, and it is the difference between knowing and
+# assuming.
+#
+# THE GATE: if ThingsLog cannot be reached, --ack REFUSES and writes no marker, so the tools stay
+# locked. A session that cannot see the system of record must not act on the copy.
+rule("3B · THINGSLOG vs THE CRM — the copy against the record")
+
+TL_REACHED = False
+TL_DISAGREE = []
+
+
+def _reconcile():
+    """Compare every installed meter against ThingsLog on the axes that have actually burned us."""
+    global TL_REACHED
+
+    # 1. COUNTERS. ThingsLog is the system of record for readings; ours is a copy that has been
+    #    wrong before. 23 devices, ~35s.
+    r = subprocess.run(["python3", f"{VAULT}/lg-crosscheck.py", "--all"],
+                       capture_output=True, text=True, env=ENV)
+    if r.returncode not in (0, 1) or "agree" not in r.stdout:
+        raise RuntimeError(f"ThingsLog unreachable or crosscheck failed: {(r.stdout + r.stderr)[:200]}")
+    TL_REACHED = True
+    for line in r.stdout.splitlines():
+        if line.strip().startswith("FAIL"):
+            TL_DISAGREE.append("counter " + line.strip()[4:].strip())
+    summary = [l.strip() for l in r.stdout.splitlines() if "agree" in l]
+    print(f"  counters      {summary[-1] if summary else 'no summary'}")
+
+    # 2. PULSE COEFFICIENT. Ours is what scales every litre we store. Glenn was 10 against
+    #    ThingsLog's 1 and nothing noticed for a day.
+    fleet = sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py fleet")
+    tl_pulse = {}
+    for line in fleet.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 5 and parts[0].isdigit():
+            try:
+                tl_pulse[parts[0]] = float(parts[4].replace(" L/pulse", ""))
+            except ValueError:
+                pass
+    ours = lg("""SELECT device_number AS num, litres_per_pulse::float AS lpp
+                 FROM devices WHERE tl_output_index = 0 AND device_number NOT LIKE 'DEMO%'""")
+    bad = [f"{o['num']} pulse: ThingsLog {tl_pulse.get(o['num'])} vs CRM {o['lpp']}"
+           for o in ours
+           if o["num"] in tl_pulse and o["lpp"] is not None
+           and abs(tl_pulse[o["num"]] - o["lpp"]) > 1e-6]
+    TL_DISAGREE.extend(bad)
+    print(f"  pulse rate    {len(ours)} meters compared, {len(bad)} disagree")
+
+    # 3. GPS. From /api/devices/locations — the device DTO's own lat/lon are vestigial and a PUT
+    #    against them returns 200 while dropping the value.
+    loc = json.loads(sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py get "
+                        f"/api/devices/locations") or "{}")
+    ours = lg("""SELECT device_number AS num, tl_latitude::float AS lat, tl_longitude::float AS lon
+                 FROM devices WHERE property_id IS NOT NULL AND tl_output_index = 0
+                   AND device_number NOT LIKE 'DEMO%'""")
+    bad = []
+    for o in ours:
+        l = loc.get(o["num"]) or {}
+        tla, tlo = l.get("latitude"), l.get("longitude")
+        if None in (tla, tlo, o["lat"], o["lon"]) \
+                or abs(tla - o["lat"]) > 1e-5 or abs(tlo - o["lon"]) > 1e-5:
+            bad.append(f"{o['num']} GPS: ThingsLog {tla},{tlo} vs CRM {o['lat']},{o['lon']}")
+    TL_DISAGREE.extend(bad)
+    print(f"  map location  {len(ours)} installed compared, {len(bad)} disagree")
+
+    # 4. DEVICE NAME vs the address we hold. Read from the JSON, never the fleet TABLE — that
+    #    display truncates at 34 characters and comparing against the stump invents mismatches
+    #    (did exactly that on three devices, 28 Jul 2026, before checking).
+    names, page = {}, 0
+    while True:
+        d = json.loads(sh(f"VAULT={VAULT} python3 {VAULT}/thingslog-api.py get "
+                          f"'/api/v2/devices?page={page}&size=100'") or "{}")
+        for c in d.get("content", []):
+            names[c.get("number")] = (c.get("name") or "").strip()
+        page += 1
+        if page >= int(d.get("totalPages") or 1) or page > 20:
+            break
+    ours = lg("""SELECT d.device_number AS num, p.address_line1 AS a1, p.city AS city
+                 FROM devices d JOIN properties p ON p.id = d.property_id
+                 WHERE d.tl_output_index = 0 AND d.device_number NOT LIKE 'DEMO%'""")
+    bad = []
+    for o in ours:
+        nm = names.get(o["num"], "")
+        street = ((o["a1"] or "").split(",")[0]).strip().lower()
+        town = (o["city"] or "").strip().lower()
+        if not nm or nm in ("!", "?") or (street and street not in nm.lower()) \
+                or (town and town not in nm.lower()):
+            bad.append(f"{o['num']} name: ThingsLog {nm!r} vs {o['a1']}, {o['city']}")
+    TL_DISAGREE.extend(bad)
+    print(f"  device name   {len(ours)} installed compared, {len(bad)} disagree")
+
+
+try:
+    _reconcile()
+except Exception as e:
+    print(f"  ⛔ COULD NOT READ THINGSLOG: {e}")
+    print("     Nothing below about device state can be trusted, because the only source that")
+    print("     could confirm it was unreachable. The ack will refuse.")
+
+if TL_REACHED:
+    if TL_DISAGREE:
+        print(f"\n  ⚠️  {len(TL_DISAGREE)} DISAGREEMENT(S). ThingsLog is the record; the CRM is the copy.")
+        for d in TL_DISAGREE:
+            print(f"      - {d}")
+        print("      Quote ThingsLog, not the CRM, until these are reconciled.")
+    else:
+        print("\n  Both systems agree on every installed meter. The CRM can be quoted for these fields.")
+
 rule("4 · LIVE STATE")
 f = lg("""SELECT count(*) AS rows, count(DISTINCT device_number) AS loggers,
                  count(*) FILTER (WHERE property_id IS NOT NULL) AS installed FROM devices""")[0]
@@ -395,7 +518,9 @@ rule("5 · READ IN FULL BEFORE WRITING CODE")
 for path, why in [
     ("Projects/CD-LeakGuard/leakguard-crm-front-door.md", "repos, deploys, the data model, state of play"),
     ("Projects/CD-LeakGuard/lg-sop-verify-before-claiming.md", "the one rule + what was learned the hard way"),
-    ("Projects/CD-LeakGuard/lg-fix-plan.md", "INTENT, never live state"),
+    # Written 28 Jul 2026. Until then there was NO commissioning process written down anywhere —
+    # a tool had been built and Pete had been told the process existed. It did not.
+    ("Projects/CD-LeakGuard/lg-sop-commissioning.md", "how to set a logger up, and the order it must go in"),
 ]:
     r = cc(f"SELECT length(body) AS n, frontmatter->>'status' AS st, updated_at::date AS d "
            f"FROM vault_notes WHERE vault_path='{path}'")
@@ -416,6 +541,21 @@ else:
 print("\n  Before claiming anything is done:  VAULT=/tmp/pbs python3 /tmp/pbs/lg-verify.py")
 
 if "--ack" in sys.argv:
+    # THE GATE. An ack is a claim that this session has seen the system of record, so it cannot be
+    # granted when the system of record was unreachable. Reading our own CRM and calling that
+    # "briefed" is the exact habit this exists to break — Pete, 28 Jul 2026: "I need a gate to make
+    # you read ThingsLog as well as the CRM."
+    #
+    # There is no --force. If ThingsLog is genuinely down, the honest move is to say so and not
+    # touch the fleet, not to wave the check through and report from a copy.
+    if not TL_REACHED:
+        print("\n⛔ ACK REFUSED — ThingsLog was not reached, so the tools stay locked.")
+        print("   Retry when it answers:  VAULT=/tmp/pbs python3 /tmp/pbs/lg-brief.py --ack")
+        print("   If it is genuinely down, say so to Pete and do not act on the CRM alone.")
+        sys.exit(1)
     with open(MARKER, "w") as fh:
-        fh.write(str(time.time()))
-    print(f"\nACK recorded. LeakGuard tools unlocked for this session.")
+        json.dump({"at": time.time(), "thingslog_reached": True,
+                   "disagreements": TL_DISAGREE}, fh)
+    print("\nACK recorded — ThingsLog read and reconciled. LeakGuard tools unlocked for this session.")
+    if TL_DISAGREE:
+        print(f"Carry this with you: {len(TL_DISAGREE)} field(s) where our CRM and ThingsLog disagree.")
