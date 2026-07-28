@@ -528,11 +528,47 @@ The helper exists and is documented — what was missing in practice was the act
 > [!important] `vault-enricher` pulls the EMAIL — it does NOT update the customer's KNOWLEDGE section (Pete, 2026-07-17)
 > The enricher drops the raw email body + attachments into the entity's Drive folder. That is NOT the same as capturing the **substantive facts** of the exchange into the entity's living knowledge note. So for **every SUBSTANTIVE touch** (ask ∈ reply/decision/review/rsvp, or a Reply/Task/Hand-to verb, or an EE reply) on a customer/supplier/project **that has a CC knowledge home** (a `vault_notes` note of type customer/supplier/project), you MUST also **update that home's knowledge note with the durable new facts** — decisions, prices, agreed venues, dates, state changes, relationship shifts — and re-embed (`cc-embedder.py`). A routine info-only `File` needs no knowledge update; a real decision/reply does. This is not optional and not "when Pete reminds me" — it is enforced at sign-off by `entity-enrich-signoff.py` (below). The M Group EUSR Cat 2 venue (secured venue + £180/day + air-lance caveat) that had to be chased into the customer note on 17 Jul is the worked example.
 
+> [!important] ⛔ THE DRIVE HOME IS A JUDGEMENT, NOT A LABEL LOOKUP (Pete, 28 Jul 2026)
+> **Pete: *"this makes me realise you are relying on labels too much and not even reading the emails."*** He was right, and it was the root cause.
+>
+> `triage-log` now runs the enricher for you, and it takes the home in this order:
+> 1. **`drive_home` on the judgment** — the home YOU chose from reading the thread. Always wins.
+>    Absolute path, or `"Drive|path"` (e.g. `"Sygma Hub|Customers and Suppliers/Customers/Clancy"`).
+> 2. **`public.gmail_label_homes`** — only for labels where ONE home genuinely fits the whole label.
+> 3. **`is_bucket = true`** — the label is a catch-all; the tool REFUSES the lookup and demands (1).
+>
+> **Why.** A label is a filing bucket. It is NOT a statement of what a thread is about. They coincide
+> for `Suppliers/CD-Carburos`, so a registry row is right there. They do not coincide for
+> `Businesses/SY-Finance`: 277 threads covering payroll, HMRC, insurance and invoices across three
+> Sygma entities, with **no `Businesses` folder tree in any drive and never one**. A registry row
+> there would file every one of them somewhere wrong and report ✓.
+>
+> The failure shape to avoid: read three threads in full, understand each, then hand all three to the
+> same label and ask the LABEL where they go. The reading was real; the last step threw it away.
+> If you read it well enough to judge the ask and the verb, you read it well enough to name the home.
+>
+> **Never invent a home to satisfy the tool.** No confident guess is worth filing a customer's
+> documents into another account. If you cannot name it, say so and leave the content unpulled — the
+> refusal is the correct outcome, not a blocker to route around.
+
+Bucket labels currently flagged: `Businesses/SY-Finance`, `General`, `General/CD-General`,
+`General/AT-General`, `zz-Retired/SY-General`.
+
+> [!warning] `General/SY-General` is RETIRED (28 Jul 2026) — renamed `zz-Retired/SY-General`
+> The **project** `SY-General` was archived in the General consolidation (along with CD-, PA-, AT-
+> and Team-General); the Gmail label outlived it by months and was still taking 128 threads in 90
+> days. It was renamed rather than deleted because **126 of its 143 threads carried it as their only
+> filing label**, so deleting would have destroyed their sole classification. Never propose it for
+> new mail. Route Sygma odds-and-ends to the live `General` project instead, and judge the Drive home
+> per thread.
+
+Calling the enricher by hand (triage-log does this itself as a verb side-effect):
+
 ```bash
-VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "{target-entity}"
+VAULT=/tmp/pbs python3 /tmp/pbs/vault-enricher.py {thread_id} "/absolute/path/to/the/real/Drive/folder"
 ```
 
-- **target-entity** = the filing label converted to its entity/project slug (e.g. `SY-Clancy`, `CD-LeakGuard`, or the bare entity `Sygma`); the enricher resolves it to the entity's Drive home + `vault_notes` record
+- **the second argument is an ABSOLUTE resolved Drive path, never a slug** — the enricher refuses a slug by design (returns `skipped:true`, exit 0). Treat `skipped:true` as a failure to surface, not a success
 - **For supplier/customer**: enricher auto-pulls substantive attachments to the entity's Drive folder, body extracts to its `vault_notes` record, contacts to the CC record's Key contacts
 - **Result is idempotent**: re-running on the same thread is safe (skips files that already exist)
 - **Skip rules baked in**: PA-General, operational labels, signature cruft, auto-reply threads

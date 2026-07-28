@@ -125,8 +125,20 @@ _NO_ENRICH_PREFIX = ("Briefings", "Newsletters", "Receipts", "Shipping", "Alerts
                      "General/PA-General", "Pete Learning")
 
 
+def _abs_home(drive, path):
+    mount = os.path.expanduser(
+        "~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com")
+    # "My Drive" is NOT a shared drive -- it sits beside "Shared drives" under the mount.
+    if drive == "My Drive":
+        return os.path.join(mount, "My Drive", path)
+    return os.path.join(mount, "Shared drives", drive, path)
+
+
 def _drive_home(label):
     """Resolve a Gmail filing label to the ABSOLUTE Drive folder that is its canonical home.
+
+    Returns a path, None (no row -- refuse), or the string 'BUCKET' (the label is a catch-all and
+    has no single home; the caller must use the per-thread judged home instead).
 
     LOOKED UP, NEVER DERIVED. The mapping lives in `public.gmail_label_homes`, one hand-written row
     per label. A label with no row returns None and the caller REFUSES to enrich, loudly.
@@ -138,18 +150,13 @@ def _drive_home(label):
     fixing". A folder-name match is a guess wearing a lookup's clothes, and a wrong home is worse
     than no home -- it files a customer's documents into someone else's account in silence.
     """
-    rows = tl.cc_sql("SELECT drive, path FROM gmail_label_homes WHERE label='%s'" % tl.esc(label))
+    rows = tl.cc_sql("SELECT drive, path, is_bucket FROM gmail_label_homes WHERE label='%s'"
+                     % tl.esc(label))
     if not rows:
         return None
-    drive, path = rows[0]["drive"], rows[0]["path"]
-    mount = os.path.expanduser(
-        "~/Library/CloudStorage/GoogleDrive-pete.ashcroft@sygma-solutions.com")
-    # "My Drive" is NOT a shared drive -- it sits beside "Shared drives" under the mount. An early
-    # version joined every home onto the Shared-drives root, so any registry row pointing at My
-    # Drive resolved to a path that does not exist and the enrich failed as 'not on disk'.
-    if drive == "My Drive":
-        return os.path.join(mount, "My Drive", path)
-    return os.path.join(mount, "Shared drives", drive, path)
+    if rows[0].get("is_bucket"):
+        return "BUCKET"
+    return _abs_home(rows[0]["drive"], rows[0]["path"])
 
 
 def _enrich(dec, fin, lines, manifest):
@@ -165,11 +172,31 @@ def _enrich(dec, fin, lines, manifest):
     if not label.startswith(("Customers/", "Suppliers/", "Projects/", "Accreditations/",
                              "Businesses/", "Personal/", "General/", "Working-Groups/")):
         return None
-    home = _drive_home(label)
+    # THE HOME IS A JUDGEMENT, NOT A LOOKUP (Pete, 28 Jul 2026: "you are relying on labels too much
+    # and not even reading the emails"). The label is a filing bucket; it is not a statement of what
+    # the thread is ABOUT. `Suppliers/CD-Carburos` happens to be both, so a registry row is right
+    # there. `Businesses/SY-Finance` is 277 threads spanning payroll, HMRC, insurance and invoices
+    # across three Sygma entities -- no single folder can be right for them, and a registry row
+    # would just let every one of them be filed somewhere wrong and reported ✓.
+    # So: a home judged per thread (from actually reading it) ALWAYS wins; the registry is only the
+    # default for labels where one home genuinely fits; and a label flagged is_bucket refuses a
+    # lookup outright and demands the judged home.
+    judged = dec.get("drive_home")
+    home = None
+    if judged:
+        home = judged if os.path.isabs(judged) else _abs_home(*judged.split("|", 1))
+    else:
+        home = _drive_home(label)
+        if home == "BUCKET":
+            lines.append(f"  ! enrich: '{label}' is a catch-all bucket with no single Drive home. "
+                         f"The home has to come from reading THIS thread, not from the label. "
+                         f"Thread is filed and labelled; content NOT pulled. Re-run with "
+                         f"drive_home on the judgment (absolute path, or 'Drive|path').")
+            return False
     if not home:
         lines.append(f"  ! enrich: '{label}' has no row in gmail_label_homes -- REFUSING to guess a "
-                     f"folder. Thread is filed and labelled; its attachments are NOT pulled. Add the "
-                     f"row, then re-run this decision:")
+                     f"folder. Thread is filed and labelled; its attachments are NOT pulled. Either "
+                     f"put drive_home on the judgment, or add the row:")
         lines.append(f"      INSERT INTO gmail_label_homes (label, drive, path, confirmed_by) "
                      f"VALUES ('{label}', '<drive>', '<path>', '<who>');")
         return False
@@ -193,10 +220,12 @@ def _enrich(dec, fin, lines, manifest):
         return False
     # NB "0 new" is the idempotent case (the file is already in the folder), NOT a failure. Say so,
     # or a clean re-run reads like a silent miss and sends the next session hunting a non-bug.
+    # And do NOT dress a missing extract up as "already present" -- extract_path is None when the
+    # enricher wrote nothing, which is not the same claim and was not checked.
     n = len(res.get("attachments_pulled") or [])
     ex = res.get("extract_path")
     lines.append(f"  ✓ enrich: {n} new attachment(s), extract "
-                 f"{'written' if ex else 'already present'} -> {label}")
+                 f"{'written' if ex else 'none'} -> {label}")
     if manifest:
         manifest.write(json.dumps({"step": "enrich", "thread_id": dec["thread_id"],
                                    "home": home, "attachments": n}) + "\n")

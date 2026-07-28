@@ -188,6 +188,9 @@ def main():
                "final": {"ask": j["ask"], "verb": j["verb"], "label": j.get("label")},
                "decided_by": "pete"}
         if j.get("engine"): dec["engine"] = j["engine"]
+        # The Drive home judged from READING this thread. Carried straight through to capture,
+        # where it beats the label->home registry. See the note in triage-log._enrich.
+        if j.get("drive_home"): dec["drive_home"] = j["drive_home"]
         if j.get("task"): dec["create_task"] = j["task"]
         if j.get("note"): dec["body_gist"] = j["note"]
         batch.append(dec)
