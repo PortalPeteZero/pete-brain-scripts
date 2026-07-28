@@ -164,6 +164,32 @@ oncust = sql("""SELECT device_number FROM devices
 check("customer alarm emails stay OFF (settled policy: CD is alerted, CD notifies)", not oncust,
       f"{[d['device_number'] for d in oncust] or 'none'} would email the customer directly")
 
+# ── THE MONEY LADDER ─────────────────────────────────────────────────────────────────────────────
+# The property ladder is install_quoted -> install_paid -> install_booked -> leakguarded, and
+# statusConfig.tsx says so in as many words. Found 28 Jul 2026: SIX properties sat at install_booked
+# with no subscription row of any kind, quotes going back to April, because booking an installation
+# appointment flipped the status with no payment check at all. An engineer's day booked against work
+# nobody has bought.
+print("\nTHE MONEY LADDER")
+unpaid = sql("""SELECT c.full_name, p.address_line1 FROM properties p
+                LEFT JOIN customers c ON c.id = p.customer_id
+                WHERE p.status = 'install_booked'
+                  AND NOT EXISTS (SELECT 1 FROM subscriptions s
+                                  WHERE s.property_id = p.id
+                                    AND s.status IN ('active','grandfathered','pending_payment'))""")
+check("no install booked against an unpaid quote", not unpaid,
+      f"{[(u['full_name'], u['address_line1']) for u in unpaid] or 'none'}", warn_only=True)
+
+freeloader = sql("""SELECT c.full_name, p.address_line1 FROM properties p
+                    LEFT JOIN customers c ON c.id = p.customer_id
+                    WHERE p.status IN ('leakguarded','live') AND p.device_id IS NOT NULL
+                      AND p.address_line1 NOT ILIKE '%Ejemplo%'
+                      AND NOT EXISTS (SELECT 1 FROM subscriptions s
+                                      WHERE s.property_id = p.id
+                                        AND s.status IN ('active','grandfathered'))""")
+check("no property being monitored for free", not freeloader,
+      f"{[(f['full_name'], f['address_line1']) for f in freeloader] or 'none'}")
+
 # ── THINGS THAT REACH NOBODY ─────────────────────────────────────────────────────────────────────
 print("\nUNSEEN BY ANYONE")
 iss = sql("SELECT count(*) AS n FROM issue_reports WHERE status = 'open'")[0]["n"]
