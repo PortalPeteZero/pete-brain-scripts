@@ -459,6 +459,33 @@ class GmailAPI:
                 "  You wrote: send(to, subject, body=<plain>, html=<markup>)"
             )
 
+        # GATE — a mail.google.com link points into the SENDER'S own mailbox. It can never open for
+        # any other recipient (Gmail thread links are account-scoped), so in an email to anyone but
+        # the account owner it is always a dead link. That exact mistake went to Neal Sadd on
+        # 27 Jul 2026: a Balfour Beatty handoff carried a mail.google.com/#all link instead of a
+        # forward of the thread, and Neal could not open it. Refusing here covers EVERY caller.
+        # Forward the actual thread/content instead (reply_thread with the original body inline).
+        if "mail.google.com" in body:
+            def _addrs(v):
+                if not v: return []
+                items = v if isinstance(v, (list, tuple)) else v.split(",")
+                import re as _re
+                out = []
+                for it in items:
+                    m = _re.search(r"[\w.+-]+@[\w.-]+", str(it))
+                    if m: out.append(m.group(0).lower())
+                return out
+            recips = _addrs(to) + _addrs(cc) + _addrs(bcc)
+            external = [a for a in recips if a != self.user.lower()]
+            if external:
+                raise ValueError(
+                    "gmail-api: the body contains a mail.google.com link, which only opens inside "
+                    f"the sender's own mailbox — it is a guaranteed dead link for {', '.join(external)}. "
+                    "Forward the actual thread content instead (e.g. reply_thread on the original "
+                    "thread with the message body quoted inline). Failure this prevents: the "
+                    "27 Jul 2026 Balfour Beatty handoff link Neal Sadd could not open."
+                )
+
         if html is None:
             html = self._looks_like_html(body)  # auto-detect when caller doesn't specify
         msg = MIMEText(body, "html" if html else "plain", "utf-8")
