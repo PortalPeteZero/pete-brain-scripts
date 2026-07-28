@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# CRON-META
+# what: Sygma fleet <- DVSA MOT sync. Per hub.fleet reg: upsert hub.vehicle_mot_tests, set fleet.mot_due from the latest expiry, append MOT odometer readings to vehicle_mileage, bump last_mileage when the MOT reading is newest.
+# why: MOT dates + mileage maintain themselves from the official record instead of being hand-typed (Pete approved monthly, 28 Jul 2026)
+# reads: DVSA MOT History API (via mot-api.py); Sygma Platform hub.fleet
+# writes: Sygma Platform (rsczwfstwkthaybxhszy) hub.vehicle_mot_tests + hub.vehicle_mileage + hub.fleet (mot_due, last_mileage) via PostgREST service key
+# entity: sygma
+# schedule: 15 6 1 * *
+# timezone: Atlantic/Canary
+# secrets: dvsa-mot-history-api.json, sygma-portal-supabase-keys.json
+# CRON-META-END
 """
 Sygma fleet <- DVSA MOT sync: pull every fleet vehicle's MOT record and write it into the platform.
 
@@ -14,9 +24,9 @@ For each reg in hub.fleet (Sygma Platform DB rsczwfstwkthaybxhszy):
 Writes go through PostgREST with the service key (secret sygma-portal-supabase-keys.json)
 -- NOT the Management API query endpoint (2026-05-29 lesson). DVSA access via mot-api.py
 (secret dvsa-mot-history-api.json). A vehicle under 3 years old has no tests -- reported,
-not an error. Run manually:  VAULT=/tmp/pbs python3 /tmp/pbs/fleet-mot-sync.py [--dry-run]
+not an error. Manual run:  VAULT=/tmp/pbs python3 /tmp/pbs/fleet-mot-sync.py [--dry-run]
 
-NO cron yet -- manual runs only until Pete approves a schedule.
+Runs monthly on Railway (1st, 06:15 Atlantic/Canary) -- Pete approved the schedule 28 Jul 2026.
 """
 import os, sys, json, urllib.request, importlib.util
 
