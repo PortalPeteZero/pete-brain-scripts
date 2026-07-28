@@ -67,10 +67,16 @@ def tl_get(m, base, tok, path):
     return m._get(base, tok, path)
 
 
+# Which device the current run is auditing, so the closing summary can name it. Without this the
+# fleet sweep printed 31 anonymous lines — "monitoring boundary set: None" twenty times over with
+# nothing to say whose. A summary you have to scroll back through is not a summary.
+CURRENT = {"num": "", "who": ""}
+
+
 def step(name, ok, detail):
     print(f"  {'PASS' if ok else 'GAP '}  {name}: {detail}")
     if not ok:
-        GAPS.append(f"{name}: {detail}")
+        GAPS.append(f"{CURRENT['num']} {CURRENT['who']}".strip() + f" — {name}: {detail}")
     return ok
 
 
@@ -90,6 +96,7 @@ def geocode(addr):
 # Every one of these was a real defect on a device somebody had already called commissioned.
 def audit(num, m, base, tok, locmap):
     print(f"\n{num}")
+    CURRENT["num"], CURRENT["who"] = num, ""
     rows = sql(f"""SELECT d.id, d.device_number, d.tl_output_index, d.property_id, d.is_active,
                           d.monitoring_from, d.install_date, d.litres_per_pulse, d.subscription_tier,
                           d.tl_latitude::float AS lat, d.tl_longitude::float AS lon, d.tl_timezone,
@@ -108,6 +115,7 @@ def audit(num, m, base, tok, locmap):
         return True
 
     who = main["full_name"] or "?"
+    CURRENT["who"] = who
     print(f"       {who}, {main['address_line1']} {main['house_number'] or ''}, {main['city'] or ''}")
 
     cfg = json.loads(subprocess.run(["python3", f"{VAULT}/thingslog-api.py", "config", num],
@@ -118,9 +126,32 @@ def audit(num, m, base, tok, locmap):
 
     step("ThingsLog timezone is Canary", cfg.get("timeZone") == TZ, str(cfg.get("timeZone")))
     step("pulse inputs enabled match the meters we have", on == ports, f"ThingsLog {on}, CRM {ports}")
-    step("pulse rate, digits and decimals are the fleet standard",
-         p0.get("digits") == "8" and p0.get("fraction") == "3",
-         f"coef {p0.get('pulse_coef')}, digits {p0.get('digits')}, fraction {p0.get('fraction')}")
+    # The pulse COEFFICIENT used to be printed here and compared to nothing, and the CRM's
+    # litres_per_pulse was selected in the query above and never read. Glenn Dickson passed this
+    # check clean on 28 Jul 2026 with ThingsLog on 1 L/pulse and our own record saying 10 — a tenfold
+    # disagreement on a live customer, invisible because the assertion only looked at digits and
+    # decimals. Both halves are now tested, and the two systems are compared to each other.
+    coef = p0.get("pulse_coef")
+    try:
+        tl_lpp = float(coef) * 1000 if coef is not None else None
+    except (TypeError, ValueError):
+        tl_lpp = None
+    crm_lpp = float(main["litres_per_pulse"]) if main["litres_per_pulse"] is not None else None
+    # DECIMALS are asserted; DIGITS are only reported.
+    #
+    # The original check demanded digits == "8" and failed a third of the fleet. Measured 28 Jul
+    # 2026: 15 installed devices run 8 digits and 8 run 9, and every one of those 8 has a counter
+    # that agrees with ThingsLog to the litre. Digits is the size of the physical meter register,
+    # not a fleet setting, so requiring one value manufactures eight failures that are not faults.
+    # `fraction` is different: it scales the counter, it is 3 on every device in the fleet, and a
+    # wrong value would misread every reading.
+    step("decimal places are the fleet standard", p0.get("fraction") == "3",
+         f"fraction {p0.get('fraction')} (meter register digits: {p0.get('digits')}, "
+         f"reported not asserted — the fleet runs both 8 and 9)")
+    step("our litres-per-pulse matches ThingsLog's coefficient",
+         tl_lpp is not None and crm_lpp is not None and abs(tl_lpp - crm_lpp) < 1e-6,
+         f"ThingsLog coef {coef} = {tl_lpp} L/pulse, CRM {crm_lpp} L/pulse"
+         + ("" if tl_lpp == crm_lpp else "  — every reading is scaled by this"))
     ct = cfg.get("countsThreshold")
     step("call-in is the 8h standard", ct == 32,
          f"{(ct * 15 / 60) if ct else '?'}h — a shortened interval is a DIAGNOSTIC and must be put back")
@@ -140,15 +171,33 @@ def audit(num, m, base, tok, locmap):
 
     dev = tl_get(m, base, tok, f"/api/v2/devices/{num}")
     nm = (dev.get("name") or "").strip()
-    step("ThingsLog device name is the address", nm not in ("", "!", "?"), repr(nm))
+    # This used to assert only that the name was not blank or a placeholder, under the label
+    # "is the address" — so a logger named after the WRONG property passed. Now it actually looks
+    # for the street and the town in the name. Kept loose on purpose: the convention is
+    # "Town - Street - Number - Villa name", and the villa name and separators vary.
+    street = ((main["address_line1"] or "").split(",")[0]).strip().lower()
+    town = (main["city"] or "").strip().lower()
+    name_matches = bool(nm) and nm not in ("!", "?") \
+        and (not street or street in nm.lower()) and (not town or town in nm.lower())
+    step("ThingsLog device name is the address", name_matches,
+         f"{nm!r} vs {main['address_line1']}, {main['city']}")
 
     loc = locmap.get(num) or {}
-    tl_lat = loc.get("latitude")
-    step("GPS is set at ThingsLog", bool(tl_lat), f"{tl_lat},{loc.get('longitude')}")
-    step("GPS mirrored into the CRM and agreeing", bool(main["lat"]) and bool(tl_lat)
-         and abs(main["lat"] - tl_lat) < 1e-5, f"CRM {main['lat']},{main['lon']}")
+    tl_lat, tl_lon = loc.get("latitude"), loc.get("longitude")
+    step("GPS is set at ThingsLog", bool(tl_lat) and bool(tl_lon), f"{tl_lat},{tl_lon}")
+    # Longitude was fetched and never compared, so a device on the right latitude and the wrong
+    # longitude — i.e. the wrong island — passed. Both are compared now.
+    gps_ok = all(v is not None for v in (main["lat"], main["lon"], tl_lat, tl_lon)) \
+        and abs(main["lat"] - tl_lat) < 1e-5 and abs(main["lon"] - tl_lon) < 1e-5
+    step("GPS mirrored into the CRM and agreeing, both axes", gps_ok,
+         f"ThingsLog {tl_lat},{tl_lon} vs CRM {main['lat']},{main['lon']}")
 
-    step("CRM timezone mirrors ThingsLog", main["tl_timezone"] == TZ, str(main["tl_timezone"]))
+    # Compared to ThingsLog's OWN value, not to the constant. The old version tested the CRM against
+    # TZ and called it "mirrors ThingsLog", which is only true because the check above pins
+    # ThingsLog to TZ as well — it would not have caught the two drifting apart.
+    step("CRM timezone mirrors ThingsLog",
+         main["tl_timezone"] == cfg.get("timeZone") and main["tl_timezone"] == TZ,
+         f"CRM {main['tl_timezone']} vs ThingsLog {cfg.get('timeZone')}")
     step("property carries its own timezone", main["prop_tz"] == TZ,
          f"{main['prop_tz']} — the engine reads this FIRST, so it is the real safety net")
     step("install date recorded", bool(main["install_date"]), str(main["install_date"]))
@@ -171,6 +220,67 @@ def audit(num, m, base, tok, locmap):
     step("customer alarm emails are OFF", not main["send_alarms_to_customer"],
          "settled policy: CD is alerted, CD notifies the customer")
 
+    # ── IS IT ACTUALLY WORKING ───────────────────────────────────────────────────────────────────
+    # Everything above checks how the device is SET UP. None of it noticed that Glenn Dickson had
+    # stopped talking (28 Jul 2026: passed clean while six hours past his call-in), that a counter
+    # could disagree with ThingsLog, or that two hours of recording had gone missing. A device can
+    # be perfectly configured and still not be watching the property.
+
+    step("the device is switched on", bool(main["is_active"]),
+         "is_active — an inactive device stops being monitored")
+
+    live = sql(f"""SELECT tl_last_transmission AS last, tl_next_transmission AS next,
+                          tl_transmission_interval_minutes AS mins,
+                          round(extract(epoch FROM (now() - tl_next_transmission)) / 60) AS late
+                     FROM devices WHERE id = '{main['id']}'""")[0]
+    # One interval of slack: an 8-hour logger routinely drifts a few minutes and the whole fleet
+    # runs 480-minute intervals, so anything inside its own interval is jitter, not a fault.
+    slack = int(live["mins"] or 480)
+    late = float(live["late"]) if live["late"] is not None else None
+    if late is None:
+        when = ", never transmitted"
+    elif late <= 0:
+        when = f", not due for another {abs(int(late))} min"
+    else:
+        when = f", {int(late)} MIN LATE (one interval of slack = {slack})"
+    step("transmitting on schedule", bool(live["last"]) and late is not None and late <= slack,
+         f"last {live['last']}, due {live['next']}{when}")
+
+    for r in rows:
+        pid, idx = r["id"], r["tl_output_index"]
+        # Our stored counter against ThingsLog's, the same comparison lg-crosscheck.py makes. It was
+        # never part of the definition of done, so a device could be storing something different
+        # from the system of record and still be called commissioned.
+        # /readings/current returns a LIST of sensors; the counter is the `reading` field of the one
+        # whose sensorIndex is this port. Parsing it any other way silently yields 0.0 and reports a
+        # false failure, which is worse than no check — caught before this shipped. Same shape
+        # lg-crosscheck.py uses.
+        ours = sql(f"""SELECT counter_m3, reading_time FROM readings WHERE device_id = '{pid}'
+                        ORDER BY reading_time DESC LIMIT 1""")
+        tlc = tl_get(m, base, tok, f"/api/v2/devices/{num}/readings/current")
+        tl_counter = None
+        if isinstance(tlc, list):
+            for s in tlc:
+                if s.get("sensorIndex") == idx and s.get("reading") is not None:
+                    tl_counter = float(s["reading"])
+                    break
+        our_counter = float(ours[0]["counter_m3"]) if ours else None
+        agree = (our_counter is not None and tl_counter is not None
+                 and abs(our_counter - tl_counter) * 1000 < 1)   # within a litre
+        step(f"port {idx}: our counter agrees with ThingsLog", agree,
+             f"ours {our_counter} vs ThingsLog {tl_counter}"
+             + ("" if agree else "  — the CRM is a copy; ThingsLog is the record"))
+
+        # A gap means the logger stopped recording. Correcting a device's TIMEZONE costs a gap the
+        # size of the shift plus one interval — 27 Jul 2026, three devices moved off Europe/Sofia
+        # each lost 2h15m, Sofia to Canary being exactly two hours. Do that before a device is
+        # fitted, not after. Anything in the last week is worth knowing about.
+        g = sql(f"""SELECT count(*) AS n, max(round(dt_seconds/60.0)) AS worst FROM readings
+                     WHERE device_id = '{pid}' AND dt_seconds > 900
+                       AND reading_time > now() - interval '7 days'""")[0]
+        step(f"port {idx}: no recording gaps in the last week", int(g["n"] or 0) == 0,
+             f"{g['n']} gap(s)" + (f", longest {g['worst']} min" if g["n"] else ""))
+
     sub = sql(f"""SELECT s.status, pl.tier FROM subscriptions s JOIN plans pl ON pl.id = s.plan_id
                   WHERE s.property_id = '{main['property_id']}' AND s.status IN ('active','grandfathered')""")
     step("subscription is live and the device tier matches it", bool(sub) and
@@ -188,9 +298,12 @@ def main():
                                        env=ENV).stdout or "{}")
     if "--check" in sys.argv or not args:
         if "--all" in sys.argv or not args:
+            # `AND is_active` used to be here, which meant switching a device OFF removed it from
+            # the audit instead of failing it — exactly backwards for a device that has stopped
+            # being monitored. Inactive devices are now included and fail the "switched on" step.
             nums = [r["device_number"] for r in sql(
                 "SELECT DISTINCT device_number FROM devices WHERE property_id IS NOT NULL "
-                "AND is_active AND device_number NOT LIKE 'DEMO%' ORDER BY 1")]
+                "AND device_number NOT LIKE 'DEMO%' ORDER BY 1")]
         else:
             nums = args
         print("COMMISSIONING AUDIT — the same definition of done that lg-commission applies\n")
