@@ -4,8 +4,11 @@
 Every EE reply is rendered by ee-html.to_html → a CLEAN, SIMPLE email (Pete 2026-07-07: no navy banner,
 no cards; readable paragraphs, underlined worded links, bold figures) and, by default, DRAFTED into
 Gmail for Pete to review (Mode B).
-On Pete's OK, --apply sends + captures via te-log. Recipient is always the enquiry's own `email`
-(never derived from the thread — that's what mis-addressed web-form replies back to info@).
+On Pete's OK, --apply sends + captures via te-log, THEN clears the superseded review draft off the
+thread (the send is a separate message and never consumes the draft — without the sweep every
+reviewed reply left an orphan in Drafts that looked like a failed send). Recipient is always the
+enquiry's own `email` (never derived from the thread — that's what mis-addressed web-form replies
+back to info@).
 
 Takes the SAME payload JSON as te-log. Body = activity.final_text or draft_text.
 
@@ -19,6 +22,59 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 def _load(name, path):
     s = importlib.util.spec_from_file_location(name, path); m = importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
+
+def _msg_text(payload):
+    """Decoded, tag-stripped, whitespace-collapsed body of a Gmail message payload — used only to
+    compare a leftover draft against what we actually sent, so it just has to be stable, not pretty."""
+    import base64, re
+    chunks = []
+    def walk(part):
+        data = (part.get("body") or {}).get("data")
+        if data and part.get("mimeType", "").startswith("text/"):
+            chunks.append(base64.urlsafe_b64decode(data).decode("utf-8", "replace"))
+        for child in part.get("parts") or []:
+            walk(child)
+    walk(payload or {})
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", "\n".join(chunks))).strip()
+
+def _sweep_review_draft(g, thread_id, sent_msg):
+    """After --apply sends, delete the leftover review draft the default (no --apply) run created on
+    this thread.
+
+    Why: ee-send drafts and sends as TWO SEPARATE Gmail messages — the send does NOT consume the
+    draft (`reply_thread(as_draft=False)` posts a brand-new message; nothing calls `drafts.send`).
+    So every reviewed reply left an orphan copy sitting in Drafts, which is indistinguishable from
+    "it never went". Pete, 29 Jul 2026: found the 28 Jul Kier and One Stop drafts still there the
+    morning after both replies had in fact been sent, and reasonably assumed the sends had failed.
+
+    Only deletes a draft whose body MATCHES what we just sent. A draft that DIFFERS is left in place
+    and reported loudly — that means the Gmail copy was edited and those edits are not what went out,
+    which Pete needs to see rather than have quietly binned. Best-effort throughout: a sweep failure
+    must never break a send + capture that already succeeded."""
+    try:
+        if not thread_id:
+            return
+        sent_text = _msg_text(sent_msg.get("payload", {}))
+        for d in g.list_drafts(max_results=100):
+            if (d.get("message") or {}).get("threadId") != thread_id:
+                continue
+            did = d.get("id")
+            try:
+                draft_text = _msg_text((g.get_draft(did, fmt="full").get("message") or {}).get("payload", {}))
+            except Exception as e:
+                print(f"  ⚠ leftover draft {did} on this thread — couldn't read it to compare ({e}); left in place.")
+                continue
+            if sent_text and draft_text == sent_text:
+                try:
+                    g.delete_draft(did)
+                    print(f"  ◦ cleared the superseded review draft ({did}) — it matched what was sent.")
+                except Exception as e:
+                    print(f"  ⚠ couldn't delete the superseded review draft {did} ({e}) — delete it in Gmail.")
+            else:
+                print(f"  ⚠ a DIFFERENT draft ({did}) is still on this thread — its text does not match what was sent.")
+                print("    That means the Gmail copy was edited and those edits did NOT go out. Left in place for you to check.")
+    except Exception as e:
+        print(f"  ⚠ draft sweep skipped ({e}) — the send and capture are unaffected.")
 
 def main():
     args = sys.argv[1:]
@@ -135,6 +191,8 @@ def main():
     print(f"=== ee-send · SENT · {sid} · To {sh.get('to')} · formatted={formatted} ===")
     if not formatted:
         print("  ⚠ note: ee-html didn't produce the clean-template markers — worth a glance at the render. Capture still proceeding.")
+    # the draft was only ever a review copy; the send above is a separate message, so clear it now
+    _sweep_review_draft(g, thread_id or sm.get("threadId"), sm)
     a["final_text"] = body; p["activity"] = a
     p["message_id"] = sid or p.get("message_id")   # stable idempotency key for te-log's dedup — re-run safe even if the Gmail auto-pull later fails
     json.dump(p, open(inpath, "w"))
