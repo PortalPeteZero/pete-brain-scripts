@@ -61,23 +61,32 @@ def _get(tok, cid, path):
         return {"_http_error": e.code}
 
 
-def check(tok, cid, num, verbose=True):
-    """Returns (ok, note). ok=False means disagreement or unverifiable."""
+def check(tok, cid, num, port=0, verbose=True):
+    """Returns (ok, note). ok=False means disagreement or unverifiable.
+
+    `port` is the ThingsLog sensor index. It used to be hardcoded to 0 here AND in the --all
+    listing, so SUB-METERS WERE NEVER COMPARED TO THINGSLOG AT ALL — lg-verify reported "every
+    installed device agrees with ThingsLog: 23 agree" while 24 meters were installed. One logger
+    can back several meters (see the multi-output SOP), and the missing one on 29 Jul 2026 was
+    04298116 port 1, the dead meter on Kathy Kinnerley's property. The gap grows with every
+    sub-meter added.
+    """
     tl = _get(tok, cid, f"/api/v2/devices/{num}/readings/current")
-    tl_val = None
+    tl_val = tl_date = None
     if isinstance(tl, list):
         for s in tl:
-            if s.get("sensorIndex") == 0 and s.get("reading") is not None:
+            if s.get("sensorIndex") == port and s.get("reading") is not None:
                 tl_val = float(s["reading"])
                 tl_date = s.get("date")
     rows = _sql(f"""SELECT r.counter_m3, r.reading_time
                     FROM readings r JOIN devices d ON d.id=r.device_id
-                    WHERE d.device_number='{num}' AND d.tl_output_index=0
+                    WHERE d.device_number='{num}' AND d.tl_output_index={int(port)}
                     ORDER BY r.reading_time DESC LIMIT 1""")
     ours = float(rows[0]["counter_m3"]) if rows else None
+    label = num if port == 0 else f"{num}:{port}"
 
     if tl_val is None:
-        note = "ThingsLog returned no sensor-0 reading — CANNOT VERIFY"
+        note = f"ThingsLog returned no sensor-{port} reading — CANNOT VERIFY"
         ok = False
     elif ours is None:
         note = f"ThingsLog {tl_val} but we hold NO readings — CANNOT VERIFY"
@@ -88,7 +97,7 @@ def check(tok, cid, num, verbose=True):
         note = (f"ThingsLog {tl_val:>10.3f} @ {tl_date}   ours {ours:>10.3f} @ {rows[0]['reading_time']}"
                 f"   diff {diff*1000:,.0f} L")
     if verbose:
-        print(f"  {'OK  ' if ok else 'FAIL'} {num}  {note}")
+        print(f"  {'OK  ' if ok else 'FAIL'} {label:<12} {note}")
     return ok, note
 
 
@@ -150,17 +159,19 @@ if __name__ == "__main__":
         sys.exit(0 if series(tok, cid, num, day) else 1)
 
     if "--all" in args:
-        # Installed devices only. Unassigned spares correctly hold no readings, and DEMO0001 is
-        # synthetic — neither is a cross-check failure, so they would only make the gate cry wolf.
-        nums = [d["device_number"] for d in _sql(
-            "SELECT device_number FROM devices WHERE tl_output_index=0 AND is_active "
+        # EVERY installed METER, not every installed logger — the tl_output_index=0 filter that
+        # used to be here silently excluded sub-meters from the only check that compares us to the
+        # system of record. Unassigned spares correctly hold no readings and DEMO0001 is synthetic;
+        # neither is a cross-check failure, so both stay out.
+        meters = [(d["device_number"], int(d["tl_output_index"])) for d in _sql(
+            "SELECT device_number, tl_output_index FROM devices WHERE is_active "
             "AND property_id IS NOT NULL AND device_number <> 'DEMO0001' "
-            "ORDER BY device_number")]
+            "ORDER BY device_number, tl_output_index")]
     else:
-        nums = [args[0]]
+        meters = [(args[0], 0)]
 
-    print(f"ThingsLog vs our readings — {len(nums)} device(s), tolerance {TOL_M3*1000:.0f} L\n")
-    fails = [n for n in nums if not check(tok, cid, n)[0]]
-    print(f"\n{len(nums)-len(fails)} agree, {len(fails)} disagree/unverifiable"
+    print(f"ThingsLog vs our readings — {len(meters)} meter(s), tolerance {TOL_M3*1000:.0f} L\n")
+    fails = [f"{n}:{p}" if p else n for n, p in meters if not check(tok, cid, n, p)[0]]
+    print(f"\n{len(meters)-len(fails)} agree, {len(fails)} disagree/unverifiable"
           + (f": {', '.join(fails)}" if fails else ""))
     sys.exit(1 if fails else 0)

@@ -49,24 +49,50 @@ def cfg(n):
 
 
 def sql(q):
+    # RAISES rather than returning []. A swallowed database failure used to leave crm_ports()
+    # falling back to [0], so a two-meter logger was audited as single-port. It now also decides
+    # the expected pulse coefficient and call-in, where an empty result would report a correct
+    # 10 L/pulse device as WRONG — so silence here is not survivable.
     out = subprocess.run(["python3", f"{VAULT}/lg-sql.py", q],
                          capture_output=True, text=True, env=ENV).stdout
     i = out.find("[")
-    return json.loads(out[i:]) if i >= 0 else []
+    if i < 0:
+        raise SystemExit(f"lg-device-spec: SQL failed, refusing to guess — {out[:300]}")
+    return json.loads(out[i:])
 
 
 # ── THE SPECIFICATION ────────────────────────────────────────────────────────────────────────────
 # A value, or a callable taking (device_number, live_config) and returning the expected value.
 # EVERY top-level key of the config DTO must appear here or in IGNORED, or it is reported.
+def _callin_reason(n):
+    """The recorded justification for a non-standard call-in, if there is one."""
+    rows = sql(f"SELECT callin_interval_reason AS r FROM devices "
+               f"WHERE device_number = '{n}' AND tl_output_index = 0")
+    return ((rows[0].get("r") if rows else None) or "").strip()
+
+
+def _expected_callin(n, c):
+    """32 quarter-hours = the 8h fleet call-in — UNLESS somebody wrote down why it is different.
+
+    A deliberate interval and an abandoned diagnostic look identical in the config; the only thing
+    that tells them apart is a recorded reason, which is why devices.callin_interval_reason exists.
+    This tool did not read it, so on 29 Jul 2026 it was still reporting 04298215 as WRONG. That is
+    Michelle Johnson, whose 4-hourly call-ins are a customer request relayed by Jane and confirmed
+    by Pete on 28 Jul, and whose reason field ends "DO NOT put this back to 8 hours". She had
+    already lost those call-ins once, on 27 Jul, to exactly this kind of tidy-up.
+
+    A tool that keeps flagging a settled decision will eventually get it reverted by someone
+    following the tool. lg-commission.py takes a recorded reason as making the setting CORRECT;
+    this now does the same, and prints the reason so it stays visible rather than silently passing.
+    """
+    return c.get("countsThreshold") if _callin_reason(n) else 32
+
+
 SPEC = {
     "timeZone": "Atlantic/Canary",
     "recordPeriod": "MINUTES",
     "every": 15,
-    # 32 quarter-hours = the 8h fleet call-in. Shortening it is a legitimate DIAGNOSTIC, and three
-    # devices were found still shortened weeks later (04299212 at 30 min = 16x battery drain,
-    # 04298215 at 4h, 04327014 at 2h), so a non-standard value is always reported and must be
-    # justified out loud rather than left to be noticed by accident.
-    "countsThreshold": 32,
+    "countsThreshold": _expected_callin,
     # An ACTION flag, not a setting. It deletes ThingsLog's stored history for the device and a
     # whole-DTO PUT carrying `true` would fire it as a side effect.
     "deleteOldCounters": False,
@@ -84,8 +110,17 @@ IGNORED = {
 # Per-slot parameters for an ENABLED pulse input. initial_counter is per-device (the meter face at
 # install) so it is required to exist rather than to equal anything.
 SENSOR_SPEC = {
-    "pulse_coef": lambda n: "0.01" if n in ("04259810", "04295016") else "0.001",
-    "digits": "8",
+    # Read from the CRM's own record of what meter is fitted, rather than a hardcoded pair of
+    # device numbers. The same list used to be duplicated in lg-verify.py, lg-device-spec.py and
+    # lg-device-config.py, and duplication is precisely why they drifted apart: on 29 Jul 2026
+    # lg-device-config had no list at all and would have reset both of these to 1 L/pulse.
+    "pulse_coef": lambda n: _crm_coef(n),
+    # REPORTED, NOT ASSERTED. `digits` is the size of the PHYSICAL meter register, not a fleet
+    # setting: 15 installed meters run 8 and 8 run 9, and every one of those agrees with ThingsLog
+    # to the litre. lg-commission.py stopped asserting it on 28 Jul for that reason. This file kept
+    # demanding "8" and so, on 29 Jul, 9 of the 10 faults it reported were not faults — a tool that
+    # is wrong nine times out of ten is one you learn to ignore.
+    "digits": "<any>",
     "fraction": "3",
     "sensor_type": "water_meter",
     "units_type": "CUBIC_METER",
@@ -96,6 +131,17 @@ SENSOR_SPEC = {
 def crm_ports(n):
     rows = sql(f"SELECT tl_output_index FROM devices WHERE device_number = '{n}' ORDER BY 1")
     return sorted(int(r["tl_output_index"]) for r in rows) or [0]
+
+
+def _crm_coef(n):
+    """The pulse coefficient this logger's meter should be on, per the CRM's litres_per_pulse.
+
+    Unfitted stock has no meter to describe, so it falls to the fleet default of 1 L/pulse.
+    """
+    rows = sql(f"SELECT litres_per_pulse AS lpp FROM devices "
+               f"WHERE device_number = '{n}' AND tl_output_index = 0")
+    lpp = rows[0].get("lpp") if rows else None
+    return f"{float(lpp) / 1000:g}" if lpp is not None else "0.001"
 
 
 def check(n):
@@ -112,6 +158,11 @@ def check(n):
         want = SPEC[k](n, c) if callable(SPEC[k]) else SPEC[k]
         if v != want:
             out.append(("WRONG", k, repr(v), f"expected {want!r}"))
+        elif k == "countsThreshold" and v != 32:
+            # Passing only because a reason is on file. Say so — a settled decision should be
+            # visible in the report, not silently absent from it.
+            out.append(("BY DESIGN", k, repr(v),
+                        f"off-standard on purpose: {_callin_reason(n)[:150]}"))
 
     ports = crm_ports(n)
     for i, sc in enumerate(c.get("sensorConfigs", [])):
@@ -167,12 +218,15 @@ def main():
         for n, f in report.items():
             bad = [x for x in f if x[0] == "WRONG"]
             un = [x for x in f if x[0] == "UNSPECIFIED"]
-            if not bad and not un:
+            byd = [x for x in f if x[0] == "BY DESIGN"]
+            if not bad and not un and not byd:
                 print(f"  {n}  matches the specification")
                 continue
             print(f"  {n}")
             for _, k, got, why in bad:
                 print(f"     WRONG        {k} = {got}   ({why})")
+            for _, k, got, why in byd:
+                print(f"     BY DESIGN    {k} = {got}   ({why})")
             for _, k, got, why in un:
                 print(f"     UNSPECIFIED  {k} = {got}   ({why})")
         print(f"\n{wrong} field(s) wrong, {unspec} field(s) nobody has decided about.")

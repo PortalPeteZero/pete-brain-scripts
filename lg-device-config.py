@@ -30,8 +30,29 @@ _ctx = ssl.create_default_context()
 ENV = {**os.environ, "VAULT": os.environ.get("VAULT", "/tmp/pbs")}
 
 TZ = "Atlantic/Canary"
-STD = {"pulse_coef": "0.001", "digits": "8", "fraction": "3"}   # 1 L/pulse, fleet standard
+STD = {"pulse_coef": "0.001", "digits": "8", "fraction": "3"}   # defaults for UNFITTED stock only
 FACTORY = {"pulse_coef": "0.01", "digits": "7", "fraction": "2"}  # 10 L/pulse — never ship this
+
+# ── WHY `STD` IS NOT APPLIED WHOLESALE (29 Jul 2026) ─────────────────────────────────────────────
+# `p.update(STD)` used to be unconditional, so --standard forced 1 L/pulse and an 8-digit register
+# onto whatever device it was pointed at. Measured against ThingsLog on 29 Jul: that would have
+# misconfigured 9 of the 23 installed loggers.
+#
+#   * TWO are legitimately on 10 L/pulse — 04259810 (Paul Kieser) and 04295016 (Ian Lawson, which
+#     Pete confirmed himself). Forcing 0.001 makes every reading read TEN TIMES TOO LOW: the exact
+#     mirror of the factory-default fault this tool was written to prevent.
+#   * EIGHT legitimately run a 9-digit register. `digits` is the size of the PHYSICAL meter
+#     register, not a fleet setting. lg-commission.py stopped asserting it on 28 Jul for that
+#     reason; this tool went on WRITING it.
+#
+# And the commissioning SOP names this command as step 1, so the damage was one keystroke away.
+#
+# The fix is not another hardcoded list of exceptions — three other tools already keep one, and
+# that duplication is itself why they drift apart. The CRM already records what each meter is
+# (`devices.litres_per_pulse`), so that is what gets written. A device we know nothing about (an
+# unfitted spare) still gets the fleet defaults, because for new stock there is no meter to
+# contradict them.
+FLEET_ALWAYS = {"fraction": "3"}   # genuinely fleet-wide: scales every reading, 3 across the fleet
 
 
 def _sql(q):
@@ -99,6 +120,25 @@ def _crm_ports(n):
     return sorted(int(r["tl_output_index"]) for r in rows) or [0]
 
 
+def _crm_meter(n):
+    """What the CRM says this logger's MAIN meter is: (fitted?, litres_per_pulse, who).
+
+    The CRM is the authority on what meter is physically on the end of the wire — the same
+    authority this tool already trusts for how many ports are enabled. `fitted` is False for
+    unassigned shelf stock, which is the only case where fleet defaults may be imposed blind.
+    """
+    rows = _sql(f"""SELECT d.litres_per_pulse, d.property_id, c.full_name AS who
+                    FROM devices d
+                    LEFT JOIN properties p ON p.id = d.property_id
+                    LEFT JOIN customers c ON c.id = p.customer_id
+                    WHERE d.device_number = '{n}' AND d.tl_output_index = 0""")
+    if not rows:
+        return False, None, None
+    r = rows[0]
+    lpp = float(r["litres_per_pulse"]) if r["litres_per_pulse"] is not None else None
+    return bool(r["property_id"]), lpp, r["who"]
+
+
 def apply_standard(tok, cid, n, initial_litres=None, hours=8, dry=False):
     cfg = _get(tok, cid, f"/api/devices/{n}/config")
     p = cfg["sensorConfigs"][0]["parameters"]
@@ -132,7 +172,23 @@ def apply_standard(tok, cid, n, initial_litres=None, hours=8, dry=False):
     for i, sc in enumerate(cfg.get("sensorConfigs", [])):
         sc["enabled"] = i in ports
 
-    p.update(STD)
+    # ── WHAT THIS METER ACTUALLY IS ─────────────────────────────────────────────────────────────
+    # See the note beside STD. A FITTED meter's pulse rate and register size are facts about the
+    # hardware; only unfitted stock gets fleet defaults imposed on it.
+    fitted, crm_lpp, who = _crm_meter(n)
+    if fitted:
+        if crm_lpp is None:
+            raise SystemExit(
+                f"  {n}: REFUSED — this logger is fitted at {who or 'a customer property'} but the "
+                f"CRM has no litres_per_pulse for it. Writing a guessed pulse rate scales every "
+                f"reading that meter ever produces. Set devices.litres_per_pulse first.")
+        target = {"pulse_coef": f"{crm_lpp / 1000:g}",
+                  "digits": str(p.get("digits")),      # the meter's register, not ours to change
+                  **FLEET_ALWAYS}
+    else:
+        target = dict(STD)
+
+    p.update(target)
     if initial_litres is not None:
         p["initial_counter"] = str(int(initial_litres))
     cfg["recordPeriod"] = "MINUTES"
@@ -141,9 +197,15 @@ def apply_standard(tok, cid, n, initial_litres=None, hours=8, dry=False):
     # deleteOldCounters is an ACTION flag, not a setting. Never let a whole-DTO PUT carry it true.
     cfg["deleteOldCounters"] = False
 
-    want = {**STD, "initial_counter": str(int(initial_litres)) if initial_litres is not None
+    want = {**target, "initial_counter": str(int(initial_litres)) if initial_litres is not None
             else before["initial_counter"]}
     print(f"  {n}  {before}  ->  {want}  call-in {hours}h")
+    if fitted:
+        print(f"     fitted at {who or '?'} — pulse rate {crm_lpp:g} L/pulse taken from the CRM, "
+              f"register digits {p.get('digits')} left as the meter has them")
+    else:
+        print(f"     unfitted stock — fleet defaults applied ({STD['pulse_coef']} = 1 L/pulse, "
+              f"{STD['digits']} digits)")
     if tz_before != TZ:
         print(f"     timezone   {tz_before} -> {TZ}")
     if enables_before != ports:
@@ -193,8 +255,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if "--standard" in args:
-        print(f"Applying fleet standard (1 L/pulse, 8 digits, 3 dp) to {len(nums)} device(s)"
-              f"{' [DRY RUN]' if dry else ''}\n")
+        print(f"Applying the standard to {len(nums)} device(s){' [DRY RUN]' if dry else ''}\n"
+              f"  fitted meters  : pulse rate from the CRM, register digits left alone, "
+              f"fraction 3, {hours:g}h call-in, Canary time, sensor enables from the CRM\n"
+              f"  unfitted stock : fleet defaults ({STD['pulse_coef']} = 1 L/pulse, "
+              f"{STD['digits']} digits, 3 dp)\n")
         fails = [n for n in nums if not apply_standard(tok, cid, n, initial, hours, dry)]
         print(f"\n{len(nums)-len(fails)} ok, {len(fails)} failed"
               + (f": {', '.join(fails)}" if fails else ""))

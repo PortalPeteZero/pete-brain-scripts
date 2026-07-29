@@ -183,6 +183,8 @@ def _set_config_field(base, tok, cid, number, field, value):
         return False
     before = _get(base, tok, f"/api/devices/{number}/config")
     after = json.loads(json.dumps(before)); after[field] = value
+    # Same reason as in _set_transmission: a whole-DTO round trip must never carry the action flag.
+    after["deleteOldCounters"] = False
     st, _ = _put(base, tok, cid, f"/api/devices/{number}/config", after)
     chk = _get(base, tok, f"/api/devices/{number}/config")
     got = chk.get(field)
@@ -194,14 +196,26 @@ def _set_config_field(base, tok, cid, number, field, value):
 # with 15-min logging, 8h => 32 records). Keeps logging at <logging_min> MINUTES. Round-trips the
 # device's own config so nothing else changes. Applies on the device's next call-in.
 def _set_transmission(base, tok, cid, numbers, hours, logging_min=15):
+    """Returns the list of devices whose read-back did NOT match, so the caller can exit non-zero.
+
+    It used to print FAIL and return None, and main() exited 0 regardless — a partial fleet write
+    reported itself as a success to anything scripting this.
+    """
+    bad = []
     for n in numbers:
         cfg = _get(base, tok, f"/api/devices/{n}/config")
         cfg["recordPeriod"]="MINUTES"; cfg["every"]=logging_min
         cfg["countsThreshold"]=round(hours*60/logging_min)
+        # deleteOldCounters is an ACTION flag that rides along on a whole-DTO PUT and wipes the
+        # device's stored history. Never let a round-trip carry it true.
+        cfg["deleteOldCounters"]=False
         st,_=_put(base, tok, cid, f"/api/devices/{n}/config", cfg)
         chk=_get(base, tok, f"/api/devices/{n}/config")
         ok = st==200 and chk.get("countsThreshold")==cfg["countsThreshold"] and chk.get("every")==logging_min
+        if not ok:
+            bad.append(n)
         print(f"{n}: countsThreshold={chk.get('countsThreshold')} every={chk.get('every')}{chk.get('recordPeriod')} -> {'OK' if ok else 'FAIL '+str(st)}")
+    return bad
 
 def main():
     c = _creds(); base = c.get("base_url",BASE_DEFAULT); tok = _login(c); cid = c.get("company_id",1251)
@@ -215,7 +229,11 @@ def main():
         target=sys.argv[2]; hours=float(sys.argv[3]); lmin=int(sys.argv[4]) if len(sys.argv)>4 else 15
         nums=[d["number"] for d in _all_devices(base,tok)] if target=="all" else [target]
         print(f"Setting {len(nums)} device(s) to {hours}h call-in + {lmin}-min logging (applies on next call-in):")
-        _set_transmission(base,tok,cid,nums,hours,lmin); return
+        bad=_set_transmission(base,tok,cid,nums,hours,lmin)
+        if bad:
+            print(f"\n{len(bad)} device(s) did NOT take the change: {', '.join(bad)}")
+            sys.exit(1)
+        return
     if cmd == "initial-config":
         print(json.dumps(_get(base,tok,f"/api/devices/{sys.argv[2]}/initial-config"), indent=2)); return
     if cmd == "audit":

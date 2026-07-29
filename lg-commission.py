@@ -39,12 +39,17 @@ WHAT IT DELIBERATELY WILL NOT DO
   * It never enables customer alarm emails. Settled policy, 27 Jul 2026: internal CD contacts are
     alerted and CD notifies the customer.
 """
+import importlib.util as _ilu
 import json, math, os, re, subprocess, sys, types, urllib.request
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 ENV = {**os.environ, "VAULT": VAULT}
 TZ = "Atlantic/Canary"
 GAPS: list[str] = []
+
+_k_spec = _ilu.spec_from_file_location("lg_known", f"{VAULT}/lg-known.py")
+lg_known = _ilu.module_from_spec(_k_spec); _k_spec.loader.exec_module(lg_known)
+KNOWN = lg_known.load()
 
 
 def sql(q):
@@ -55,10 +60,18 @@ def sql(q):
     return json.loads(out[i:])
 
 
+# The leakguard-name-sync module, which owns the naming convention (format_name +
+# name_matches_address). Set by tl_session(); audit() reads it rather than keeping a second,
+# subtly different copy of "does this name identify this property".
+NS = None
+
+
 def tl_session():
+    global NS
     src = open(f"{VAULT}/leakguard-name-sync.py").read().replace('if __name__ == "__main__":\n    main()', "")
     mod = types.ModuleType("ns")
     exec(compile(src, "ns", "exec"), mod.__dict__)
+    NS = mod
     m, _c, base, tok, cid = mod._tl()
     return mod, m, base, tok, cid
 
@@ -74,6 +87,15 @@ CURRENT = {"num": "", "who": ""}
 
 
 def step(name, ok, detail):
+    # A finding you have already ruled on is printed as a DECISION, not re-raised as a gap. See
+    # lg-known.py for why this exists — before it, a settled call had nowhere to live except a
+    # comment in somebody's source, so every session met it again as if it were new.
+    if not ok:
+        why = lg_known.reason_for(KNOWN, CURRENT["num"], name)
+        if why:
+            print(f"  ----  {name}: {detail}")
+            print(f"        DECIDED: {why}")
+            return True
     print(f"  {'PASS' if ok else 'GAP '}  {name}: {detail}")
     if not ok:
         GAPS.append(f"{CURRENT['num']} {CURRENT['who']}".strip() + f" — {name}: {detail}")
@@ -196,10 +218,11 @@ def audit(num, m, base, tok, locmap):
     # "is the address" — so a logger named after the WRONG property passed. Now it actually looks
     # for the street and the town in the name. Kept loose on purpose: the convention is
     # "Town - Street - Number - Villa name", and the villa name and separators vary.
-    street = ((main["address_line1"] or "").split(",")[0]).strip().lower()
-    town = (main["city"] or "").strip().lower()
-    name_matches = bool(nm) and nm not in ("!", "?") \
-        and (not street or street in nm.lower()) and (not town or town in nm.lower())
+    # Shared with lg-brief.py via leakguard-name-sync, which owns the naming convention. The
+    # substring test that used to live here failed on any address carrying its house number inline
+    # and raised a permanent false gap on 04326710 (Gillian Guidi), whose name is exactly right.
+    name_matches = NS.name_matches_address(nm, main["address_line1"], main["city"],
+                                           main["house_number"])
     step("ThingsLog device name is the address", name_matches,
          f"{nm!r} vs {main['address_line1']}, {main['city']}")
 

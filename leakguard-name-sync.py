@@ -33,6 +33,35 @@ def _db(query):
 # --- formatter: mirror of src/lib/deviceName.ts ---
 def _clean(s): return re.sub(r"\s+", " ", (s or "")).strip()
 
+def name_matches_address(name, address_line1, city, house_number=None):
+    """Does this ThingsLog name identify this property? The ONE definition, shared by the checkers.
+
+    Token-based, not substring-based, and that is the whole point. format_name() below builds
+    `Town - Street - Number - Unit - Villa`, so a substring test against the raw address_line1
+    breaks the moment an address carries its house number inline: "Avenida Italia 9" is not a
+    substring of "Puerto del Carmen - Avenida Italia - 9 - Casa 16", although they are the same
+    place and the name is character-for-character what this tool generates.
+
+    That false positive was live in BOTH lg-brief.py and lg-commission.py on 29 Jul 2026, on
+    04326710 (Gillian Guidi), where ThingsLog and the CRM held identical names. Every LeakGuard
+    session opened by announcing a disagreement that did not exist, above the instruction "quote
+    ThingsLog, not the CRM, until these are reconciled" — so the one line meant to build trust in
+    the reconciliation was the line undermining it.
+
+    Every significant word and number of the address must appear in the name, in any order and
+    whatever the separators. A name pointing at a different property still fails, which is the
+    thing this check is actually for.
+    """
+    if not name or _clean(name) in ("!", "?"):
+        return False
+
+    def toks(s):
+        return {t for t in re.split(r"[^0-9a-z]+", (s or "").lower()) if t}
+
+    want = toks((address_line1 or "").split(",")[0]) | toks(city) | toks(house_number)
+    return want.issubset(toks(name))
+
+
 def format_name(row):
     ov = _clean(row.get("thingslog_name_override"))
     if ov: return ov
@@ -100,11 +129,26 @@ def main():
         print("Dry-run only. Re-run with --apply to write BOTH ThingsLog and devices.device_name.")
         return
     print("\nAPPLYING...")
+    failed = []
     for num, old, new in changes:
         applied = set_name_thingslog(m, base, tok, cid, num, new)
+        # THE READ-BACK IS CHECKED. It was already being fetched and returned by
+        # set_name_thingslog(), and then thrown away — the CRM was updated whatever ThingsLog had
+        # actually stored. ThingsLog returns HTTP 200 for fields it silently drops (proven on the
+        # device DTO's own latitude/longitude), so writing our copy on the strength of a 200 is how
+        # the copy and the record drift apart while the tool prints success.
+        if _clean(applied) != _clean(new):
+            failed.append(num)
+            print(f"  {num}: CRM NOT UPDATED — ThingsLog stored {applied!r}, not {new!r}. "
+                  f"ThingsLog is the record, so our copy is left alone rather than made to "
+                  f"disagree with it.")
+            continue
         _db(f"UPDATE devices SET device_name = '{new.replace(chr(39), chr(39)+chr(39))}' WHERE device_number = '{num}' AND tl_output_index = 0")
         print(f"  {num}: '{old}' -> '{applied}'  (CRM device_name updated)")
-    print(f"\nDone. {len(changes)} devices renamed in ThingsLog + CRM.")
+    print(f"\nDone. {len(changes) - len(failed)} device(s) renamed in ThingsLog + CRM."
+          + (f"  {len(failed)} FAILED: {', '.join(failed)}" if failed else ""))
+    if failed:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

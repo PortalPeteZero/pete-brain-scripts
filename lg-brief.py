@@ -462,16 +462,20 @@ def _reconcile():
         page += 1
         if page >= int(d.get("totalPages") or 1) or page > 20:
             break
-    ours = lg("""SELECT d.device_number AS num, p.address_line1 AS a1, p.city AS city
+    ours = lg("""SELECT d.device_number AS num, p.address_line1 AS a1, p.city AS city,
+                        p.house_number AS hn
                  FROM devices d JOIN properties p ON p.id = d.property_id
                  WHERE d.tl_output_index = 0 AND d.device_number NOT LIKE 'DEMO%'""")
+    # Uses leakguard-name-sync's own definition of "this name identifies this property" rather than
+    # a second, subtly different copy. The local substring test this replaces reported a false
+    # disagreement on 04326710 every single run — see name_matches_address() for the detail.
+    import importlib.util as _ilu
+    _ns_spec = _ilu.spec_from_file_location("_ns", f"{VAULT}/leakguard-name-sync.py")
+    _ns = _ilu.module_from_spec(_ns_spec); _ns_spec.loader.exec_module(_ns)
     bad = []
     for o in ours:
         nm = names.get(o["num"], "")
-        street = ((o["a1"] or "").split(",")[0]).strip().lower()
-        town = (o["city"] or "").strip().lower()
-        if not nm or nm in ("!", "?") or (street and street not in nm.lower()) \
-                or (town and town not in nm.lower()):
+        if not _ns.name_matches_address(nm, o["a1"], o["city"], o.get("hn")):
             bad.append(f"{o['num']} name: ThingsLog {nm!r} vs {o['a1']}, {o['city']}")
     TL_DISAGREE.extend(bad)
     print(f"  device name   {len(ours)} installed compared, {len(bad)} disagree")

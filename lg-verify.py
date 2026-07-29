@@ -20,11 +20,17 @@ Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/lg-verify.py            # full check, exit 1 on any failure
   VAULT=/tmp/pbs python3 /tmp/pbs/lg-verify.py --device 04299212
 """
+import importlib.util as _ilu
 import json, os, subprocess, sys
 
-ENV = {**os.environ, "VAULT": os.environ.get("VAULT", "/tmp/pbs")}
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
+ENV = {**os.environ, "VAULT": VAULT}
 FAILURES: list[str] = []
 WARNINGS: list[str] = []
+
+_k_spec = _ilu.spec_from_file_location("lg_known", f"{VAULT}/lg-known.py")
+lg_known = _ilu.module_from_spec(_k_spec); _k_spec.loader.exec_module(lg_known)
+KNOWN = lg_known.load()
 
 
 def sql(q):
@@ -36,6 +42,14 @@ def sql(q):
 
 
 def check(name, ok, detail, warn_only=False):
+    # Already ruled on? Print the decision instead of the fault. lg-known.py explains why: without
+    # somewhere to record a judgement, this file re-raised settled matters every single run.
+    if not ok:
+        why = lg_known.reason_for(KNOWN, "ALL", name)
+        if why:
+            print(f"  ----  {name}: {detail}")
+            print(f"        DECIDED: {why}")
+            return True
     tag = "OK  " if ok else ("WARN" if warn_only else "FAIL")
     print(f"  {tag}  {name}: {detail}")
     if not ok:
@@ -142,11 +156,28 @@ check("every installed meter has a location AT THINGSLOG too", not notl and bool
       f"{notl or 'none'} unset at ThingsLog" if tlloc else "could not read /api/devices/locations",
       warn_only=not tlloc)
 
-drift = [d["device_number"] for d in installed
-         if d["lat"] and (tlloc.get(d["device_number"], {}) or {}).get("latitude")
-         and abs(d["lat"] - tlloc[d["device_number"]]["latitude"]) > 1e-5]
-check("ThingsLog and our CRM agree on where each meter is", not drift,
-      f"{drift or 'none'} differ between the two systems")
+# BOTH AXES, and it must not pass on no data. Until 29 Jul 2026 this compared LATITUDE only, so a
+# meter on the right latitude and the wrong longitude — a different island — was signed off.
+# lg-commission.py fixed exactly this on 28 Jul and said so in its comment; this file never got it.
+#
+# Worse, the whole comparison was skipped when /api/devices/locations could not be read: `tlloc`
+# came back {}, `drift` was therefore empty, and the check printed "none differ between the two
+# systems". A pass built on nothing compared. `not checked` is not `clean`, so it now FAILS and
+# says which it is. (`is None` rather than truthiness: latitude 0.0 is a real value here — it is
+# how ThingsLog stores "never set" — and falsiness silently skipped those rows too.)
+drift = []
+for d in installed:
+    t = tlloc.get(d["device_number"]) or {}
+    pair = (d["lat"], d["lon"], t.get("latitude"), t.get("longitude"))
+    if any(v is None for v in pair):
+        continue                      # absent coordinates are the two checks above, not drift
+    if abs(d["lat"] - t["latitude"]) > 1e-5 or abs(d["lon"] - t["longitude"]) > 1e-5:
+        drift.append(d["device_number"])
+check("ThingsLog and our CRM agree on where each meter is, BOTH axes",
+      bool(tlloc) and not drift,
+      f"{len(installed)} compared, {drift or 'none'} differ between the two systems" if tlloc
+      else "NOT CHECKED — /api/devices/locations could not be read, so nothing was compared. "
+           "This is not a clean result.")
 
 badtz = sql("""SELECT device_number FROM devices
                WHERE is_active AND tl_timezone IS DISTINCT FROM 'Atlantic/Canary'""")

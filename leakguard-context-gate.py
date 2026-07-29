@@ -40,8 +40,10 @@ FRESH_SECS = 6 * 3600
 
 # An EXECUTION of a LeakGuard tool. `head`/`cat`/`grep`/`sed` of the same file does not match,
 # because there is no python token in front of it.
+# Anchored the same way as _DEVICE_WRITE_RE below (29 Jul 2026) — see the note there. Grepping a
+# document that quotes one of these commands is reading, not running.
 _LG_EXEC_RE = re.compile(
-    r"python3?\s+(?:[^\n;|&]*?/)?"
+    r"(?:^|[\n;&|]\s*)(?:\w+=\S*\s+)*python3?\s+(?:[^\n;|&]*?/)?"
     r"(lg-(?:verify|crosscheck|device-config|sql)"
     r"|leakguard-(?:name-sync)"
     r"|thingslog-api)\.py\b"
@@ -136,12 +138,39 @@ def fresh():
 # make the change without writing down who asked for it, and the reason is kept, so the next session
 # finds a decision instead of an anomaly to tidy away.
 
+# EVERY alternative below is anchored to a PYTHON INVOCATION, exactly like _LG_EXEC_RE above.
+#
+# It was not, until 29 Jul 2026: the patterns matched the bare filename anywhere in the command, so
+# `cat lg-commission.py`, `grep -n "geocode" lg-commission.py`, `wc -l lg-device-config.py`,
+# `git log -- lg-commission.py` and even grepping a DOCUMENT that quotes a `--apply` command were
+# all refused as live-customer writes. Measured that day: 8 of 8 plain reads blocked, 0 of 3 real
+# writes missed — the guard was catching everything it should and a great deal it should not.
+#
+# That is the THIRD time this exact class has been fixed in this one file (see _LG_EXEC_RE's
+# comment, and the /tmp/lg-hub note below). The rule, stated once: a guard keys on the ACT, never on
+# the NAME of the thing acted upon. Reading is never the offence — it is the remedy.
+# A python invocation must stand at the START of the command or of a new segment (after ; && ||),
+# optionally behind VAR=value assignments. Without that anchor the text merely has to APPEAR, so
+# `grep -rn 'python3 leakguard-name-sync.py --apply' skills/` — searching the docs for a command —
+# reads as running it. Quoted text is data; only a command position is a command.
+_SEG = r"(?:^|[\n;&|]\s*)"
+_ENV = r"(?:\w+=\S*\s+)*"
+_PY = _SEG + _ENV + r"python3?\s+(?:[^\n;|&]*?/)?"
 _DEVICE_WRITE_RE = re.compile(
-    r"lg-device-config\.py\b(?![^\n;|&]*--show)"          # writes config unless it is --show
-    r"|thingslog-api\.py\s+set-transmission\b"
-    r"|thingslog-api\.py\s+set-config\b"
-    r"|leakguard-name-sync\.py\b[^\n;|&]*--apply"
-    r"|lg-commission\.py\b(?![^\n;|&]*--check)"           # the commissioning WRITE path
+    # --show and --dry-run write nothing. --dry-run was refused until 29 Jul 2026, which meant the
+    # one safe way to preview a config change was harder than making it.
+    _PY + r"lg-device-config\.py\b(?![^\n;|&]*(?:--show|--dry-run))"
+    r"|" + _PY + r"thingslog-api\.py\s+set-transmission\b"
+    r"|" + _PY + r"thingslog-api\.py\s+set-config\b"
+    # delete-counters DELETES a device's entire stored history at ThingsLog — it wiped 3,718 live
+    # readings on 26 Jul 2026. It carries its own --i-mean-it interlock but was NOT on this list, so
+    # the most destructive verb in the toolset was the one nobody had to justify or have recorded.
+    r"|" + _PY + r"thingslog-api\.py\s+delete-counters\b"
+    # `commands <device> <TYPE>` queues a command (RESET, SEND_CONFIG_OVER_MQTT...) onto a live
+    # logger. Listing the queue takes no type and stays free.
+    r"|" + _PY + r"thingslog-api\.py\s+commands\s+\S+\s+\S"
+    r"|" + _PY + r"leakguard-name-sync\.py\b[^\n;|&]*--apply"
+    r"|" + _PY + r"lg-commission\.py\b(?![^\n;|&]*--check)"           # the commissioning WRITE path
 )
 # A ThingsLog logger number: eight digits, standing on its own.
 _DEVNUM_RE = re.compile(r"(?<!\d)(\d{8})(?!\d)")
