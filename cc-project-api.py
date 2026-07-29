@@ -31,21 +31,20 @@ ROUTING = {
     "Sygma": ("Sygma Hub", "Projects"),
 }
 
-def rest(method, path, body=None, headers=None):
+def rest(method, table, body=None, headers=None, params=None):
     h = dict(HR)
     if headers: h.update(headers)
     data = json.dumps(body).encode() if body is not None else None
-    # Slugs are name-verbatim (DB CHECK projects_slug_eq_name) so they may carry spaces —
-    # encode the query-string values or urllib rejects the URL outright.
-    # CONTRACT: this is the ONLY place query values get encoded. Call sites pass values raw;
-    # pre-quoting at a call site double-encodes ('%' → '%25') and silently returns zero rows.
-    if "?" in path:
-        base, qs = path.split("?", 1)
-        pairs = []
-        for part in qs.split("&"):
-            k, _, v = part.partition("=")
-            pairs.append(f"{k}={urllib.parse.quote(v, safe='.,=')}")
-        path = f"{base}?{'&'.join(pairs)}"
+    # Slugs are name-verbatim (DB CHECK projects_slug_eq_name), so a value can carry a space, an '&'
+    # or an '=' ("Tom & Jerry"). Build the query string HERE, from raw values: urlencode quotes each
+    # value whole, so a stray '&' can't split one filter into two bogus parameters. '.' and ',' stay
+    # literal because PostgREST parses them structurally (the `eq.` prefix, `select` lists).
+    # CONTRACT: call sites pass filters via params= with RAW values. Pre-quoting at a call site
+    # double-encodes ('%' → '%25') and silently matches nothing; hand-building a query string is
+    # what the '&' bug was — hence the guard below rather than a silent re-parse.
+    if "?" in table:
+        raise ValueError(f"rest(): pass filters via params=, not a query string in the path ({table!r})")
+    path = f"{table}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote, safe='.,')}" if params else table
     req = urllib.request.Request(f"{URL}/rest/v1/{path}", data=data, headers=h, method=method)
     try:
         return json.loads(urllib.request.urlopen(req, timeout=30).read() or "null")
@@ -67,10 +66,12 @@ def helper(script, *args):
 
 def find_projects_folder_id(drive, parent_name):
     # Look up the top-level "<parent_name>" folder id in <drive> from the drive_files index.
-    # Values go in RAW — rest() is the single encoder. Quoting here too double-encodes the space in
+    # Values go in RAW — rest() is the single encoder. Quoting here too double-encoded the space in
     # every drive name ("One System" → "One%2520System"), which matched nothing and made the tool
     # report "no 'Projects' folder found" for every entity.
-    rows = rest("GET", f"drive_files?drive=eq.{drive}&name=eq.{parent_name}&is_folder=eq.true&select=drive_file_id,path&limit=20")
+    rows = rest("GET", "drive_files", params={
+        "drive": f"eq.{drive}", "name": f"eq.{parent_name}", "is_folder": "eq.true",
+        "select": "drive_file_id,path", "limit": "20"})
     if isinstance(rows, list) and rows:
         # prefer the shallowest path (top-level Projects, not Archive/Projects)
         rows.sort(key=lambda r: len((r.get("path") or "").split("/")))
@@ -90,7 +91,7 @@ def main():
     out = {"slug": slug, "name": a.name, "entity": a.entity, "links": {}}
 
     # 1) projects row + General bucket
-    existing = rest("GET", f"projects?slug=eq.{slug}&select=slug")
+    existing = rest("GET", "projects", params={"slug": f"eq.{slug}", "select": "slug"})
     if isinstance(existing, list) and existing:
         print(json.dumps({"_error": f"project '{slug}' already exists"})); sys.exit(1)
     res = rest("POST", "projects", {"slug": slug, "name": a.name, "entity_slug": a.entity, "status": "active", "description": a.desc or None}, {"Prefer": "return=minimal"})
@@ -112,7 +113,8 @@ def main():
             if rc == 0 and m:
                 fid = m.group(1)
                 furl = f"https://drive.google.com/drive/folders/{fid}"
-                rest("PATCH", f"projects?slug=eq.{slug}", {"drive": drive, "drive_folder_id": fid, "drive_folder_url": furl}, {"Prefer": "return=minimal"})
+                rest("PATCH", "projects", {"drive": drive, "drive_folder_id": fid, "drive_folder_url": furl},
+                     {"Prefer": "return=minimal"}, params={"slug": f"eq.{slug}"})
                 out["links"]["drive"] = furl
             else:
                 out["links"]["drive"] = f"(could not create under {drive}/{parent_name}: {res[:120]})"
