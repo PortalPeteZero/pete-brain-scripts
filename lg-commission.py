@@ -245,58 +245,43 @@ def audit(num, m, base, tok, locmap):
     step("property carries its own timezone", main["prop_tz"] == TZ,
          f"{main['prop_tz']} — the engine reads this FIRST, so it is the real safety net")
     step("install date recorded", bool(main["install_date"]), str(main["install_date"]))
-    # Only asserted on a RECENT install. `recent` is set above from the install date.
+    # THE MONITORING BOUNDARY IS NOT ASSERTED, AND HERE IS WHY (Pete, 29 Jul 2026).
     #
-    # Blank means "count everything from the first reading", which is what every device did before
-    # this field existed. Measured across the fleet on 28 Jul 2026: of the 24 installed meters only
-    # two carry any pre-install water at all — Szilard Zsovak 393 L and Michelle Johnson 307 L,
-    # both under 1.2% of what they have used since, neither enough to move a bill, a threshold or an
-    # alarm. Pete's call, same day: leave them. Failing all 24 for a setting that costs nothing on 22
-    # of them just buries the gaps that do matter.
+    # I spent an afternoon treating "litres timestamped before install_date" as something that
+    # needed excluding, and floated three mechanisms for it — water running through the unit on a
+    # bench, accumulated bench pulses, a mistyped date. None of them happen. Pete, in the end,
+    # spelling out how a fit actually goes:
     #
-    # It is still asserted where it is cheap and where it bites: a device fitted in the last
-    # fortnight, which may have been sitting on the bench being tested first.
-    # And asserted only where it CHANGES SOMETHING. The boundary stops litres recorded before the
-    # fit being booked to the customer, so where there are none there is nothing to exclude and an
-    # empty field is not a defect. Asserting on the empty FIELD rather than on the litres raised all
-    # three of the 27 Jul installs on 29 Jul: Dickson and Ferris had no readings at all before their
-    # fit, and Guidi had 249 readings registering zero litres. Three gaps, not one litre of
-    # consequence between them, which is the noise that gets a real finding ignored.
+    #     "it gets installed, water is turned on, it then might take a day or 2 for the first call
+    #      in, sometimes we need to reposition the box to get a signal so could even be a week,
+    #      when it does connect it registers the water"
     #
-    # WHAT PRE-INSTALL LITRES ARE NOT. Pete knocked down three guesses of mine on 29 Jul 2026, so
-    # they are written here to stop the next session reaching for them again:
-    #   * NOT water through the unit. It is a pulse counter wired to the meter; no water passes
-    #     through it and the first water it ever sees is at install.
-    #   * NOT bench pulses. There are none.
-    #   * NOT simply a mistyped install_date.
-    # How a fit actually goes, in his words: it gets installed, the water is turned on, and the
-    # first call-in can be a day or two later — up to a week if the box has to be repositioned to
-    # get a signal. When it does connect, it registers the water.
+    # So the logger records from the moment it is fitted and the water is on, holds those readings
+    # internally, and uploads them with their TRUE timestamps whenever it first calls in.
+    # `install_date` is when the unit came online and got linked, which is necessarily LATER. The
+    # readings sitting before it are the gap between going on the wall and getting a signal.
     #
-    # THE CAUSE OF THE FIVE SEEN ON 29 JUL IS NOT ESTABLISHED. Observed, and nothing beyond it:
-    # Kieser 10,190 L against a recorded install of 11 Apr, readings from 13 Mar; Smith 1,870 L,
-    # readings from 19 Jan; Reilly 2,156 L, readings from 6 May against an install of 6 Jul; Zsovak
-    # 393 L and Johnson 307 L, both about 6 days. Kieser's is 351 L/day against an everyday average
-    # of 447. Do NOT invent a mechanism to fit that. Ask Pete, or leave it alone.
-    if recent:
-        pre = sql(f"""SELECT COALESCE(SUM(r.delta_litres), 0) AS litres, count(*) AS n
-                      FROM readings r
-                      WHERE r.device_id = '{main['id']}'
-                        AND r.reading_time < '{main['install_date']}'::timestamptz""")
-        pre_l = float(pre[0]["litres"] or 0)
-        pre_n = int(pre[0]["n"] or 0)
-        if pre_l > 0:
-            # Reports the NUMBER, deliberately without diagnosing it — see the note above.
-            step("monitoring boundary set", bool(main["monitoring_from"]),
-                 f"{main['monitoring_from'] or 'not set'} — {pre_l:,.0f} L recorded against "
-                 f"timestamps before the install date of {main['install_date']}. Worth a human "
-                 f"look before setting anything: the cause of this pattern is not established.")
-        else:
-            print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
-                  f"(nothing to exclude — {pre_n} reading(s) before the fit, 0 L)")
+    # Every one of those litres is the customer's real water. There is nothing to exclude, so a
+    # blank monitoring_from is not a defect and setting one would DISCARD genuine usage history.
+    # That is why the five carrying the largest figures look like ordinary households: Kieser's
+    # 10,190 L before his 11 Apr link date is 351 L/day against an everyday average of 447.
+    #
+    # Reported for visibility, never as a gap. A long lag is worth a glance — it means a unit was
+    # fitted and left hunting for signal for a while — but it is an install-quality observation,
+    # not a commissioning fault.
+    pre = sql(f"""SELECT COALESCE(SUM(r.delta_litres), 0) AS litres, count(*) AS n,
+                         min(r.reading_time AT TIME ZONE 'Atlantic/Canary')::date AS first
+                  FROM readings r
+                  WHERE r.device_id = '{main['id']}'
+                    AND r.reading_time < '{main['install_date']}'::timestamptz""")[0]
+    pre_l = float(pre["litres"] or 0)
+    if pre_l > 0:
+        print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
+              f"(correctly unset — {pre_l:,.0f} L of the customer's own water recorded from "
+              f"{pre['first']}, before it first called in on {main['install_date']})")
     else:
         print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
-              f"(established install — informational, see the note in the source)")
+              f"(nothing recorded before it came online)")
 
     for r in rows:
         pid, idx = r["id"], r["tl_output_index"]
