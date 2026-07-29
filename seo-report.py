@@ -28,6 +28,20 @@ def _sql(q):
     return json.loads(r.stdout) if r.stdout.strip() else []
 
 
+def _print_registry_banner(key):
+    """PAGE JOBS ARE LAW. Prints the property's targeting-registry pointer on every report.
+    Added 29 Jul 2026 after recommendations were made against Pete-approved page assignments
+    on lanzarote-lates-website because the registry was never read. Each page's keyword job is
+    a SIGNED DECISION recorded in the registry note; a recommendation that contradicts it is
+    re-litigating Pete's call. Read the registry BEFORE recommending; conflicts are surfaced,
+    never re-recommended."""
+    rows = _sql(f"SELECT targeting_registry FROM seo_property_config WHERE property_key=$x${key}$x$")
+    reg = rows[0].get("targeting_registry") if rows else None
+    if reg:
+        print(f"  ⚠ PAGE JOBS ARE ASSIGNED: read vault note '{reg}' BEFORE recommending any page or")
+        print(f"    keyword work. Every page's target set is a Pete-approved decision recorded there;")
+        print(f"    recommend against it and you are re-litigating a signed call.")
+
 def _cfg(key):
     rows = _sql(f"SELECT intent_commercial_patterns AS comm, intent_vanity_terms AS vanity, "
                 f"money_pages, ads_running, reporting_cadence FROM seo_property_config WHERE property_key=$x${key}$x$")
@@ -75,6 +89,7 @@ def report(key, days=13):
     w2 = window_agg(key, start2.isoformat(), end2.isoformat(), comm, vanity)
 
     print(f"\n=== {key} -- COMMERCIAL-INTENT terms only ({days}-day windows, GSC) ===")
+    _print_registry_banner(key)
     print(f"{'':22}{'prev':>10}{'latest':>10}")
     print(f"{'  clicks':22}{w1['clicks']:>10}{w2['clicks']:>10}   <- the measure")
     print(f"{'  impressions':22}{w1['impr']:>10}{w2['impr']:>10}")
@@ -205,6 +220,7 @@ def trend(key, term=None, page=None, by="month"):
         print(f"no stored rows for {term or page} on {key}"); return
     what = f"SEARCH TERM '{term}'" if term else f"PAGE {page} (all its search terms combined)"
     print(f"{key} -- {what}")
+    _print_registry_banner(key)
     print(f"measure: impression-WEIGHTED average position in Google (UK), from GSC. "
           f"Lower is better. The plain average is shown alongside ONLY to prove why it must not "
           f"be used. Never quote a position without naming the term or page it belongs to.")

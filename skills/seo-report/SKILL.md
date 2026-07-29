@@ -119,6 +119,27 @@ Every check was sound. Narrating each one as a finding is what made the day wort
 **Never promote a measurement to a diagnosis.** "A difference I measured" and "the reason we rank
 here" are different claims. Sliding between them is what read as flip-flopping all day.
 
+## RULE THREE — PAGE JOBS ARE LAW (read the registry before recommending anything)
+
+Born 29 Jul 2026, Lanzarote Lates: a full report and recommendations were delivered without reading
+the property's targeting registry. The recommendations contradicted THREE Pete-approved decisions in
+one message (the homepage's cluster job, the Playa Blanca handoff, the deliberately-lean villa store)
+and one of them read as "get rid of the booking page". Pete: "I am so fucking tired of having to
+correct you."
+
+- **Before FIND, DIAGNOSE or any recommendation:** read the property's targeting registry — the note
+  named in `seo_property_config.targeting_registry` (the engine prints this pointer on every report;
+  the banner is not decoration, it is the gate). Read the PAGE ENTRIES, not just the principles at
+  the top: each page's keyword job, priority and locks are recorded per page.
+- **A page's assigned job is a signed decision.** A page ranking "badly" on terms outside its job is
+  usually a page DOING its job (the lean booking page, the de-optimised homepage). Never call it a
+  problem without checking its entry.
+- **Conflicts are surfaced, never re-recommended.** If the data suggests a page's assignment should
+  change, present the evidence AGAINST the recorded decision and ask — the registry updates first,
+  the work follows. Never recommend around it as if the decision didn't exist.
+- **No registry?** Say so, and treat creating one (with Pete) as the first recommendation — never
+  freelance page jobs on a property that has no recorded strategy.
+
 ## The five principles (never break these)
 
 1. **GSC is the scoreboard, Ahrefs is the map.** Judge our own rank/traffic on GSC (Google's own data,
