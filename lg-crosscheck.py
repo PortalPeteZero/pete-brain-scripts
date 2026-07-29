@@ -16,6 +16,7 @@ Usage:
 Exit code 1 if any device disagrees or cannot be checked, so it can gate a script.
 """
 import json, os, ssl, subprocess, sys, urllib.request, urllib.error
+from datetime import datetime
 
 BASE = "https://iot.thingslog.com:4443"
 _ctx = ssl.create_default_context()
@@ -98,24 +99,44 @@ def series(tok, cid, num, day):
         print(f"  ThingsLog holds NO series for {num} on {day}. "
               f"Use the current-reading check instead; our table is the only record.")
         return False
-    ours = _sql(f"""SELECT r.reading_time, r.counter_m3
+    # Compare on the absolute INSTANT, never on an HH:MM string. ThingsLog stamps carry a real
+    # offset (+01:00) and our reading_time is timestamptz, which lg-sql renders in UTC — so slicing
+    # HH:MM off each side compares Canary local against UTC and shifts every row by an hour.
+    # Found 29 Jul 2026: a day where ThingsLog and our table were identical row-for-row reported
+    # "32 of 63 disagree". The old code also filtered our side on the UTC date, which dropped
+    # real rows and invented missing ones at both ends of the day.
+    tlrows = []
+    for x in tl:
+        if x.get("counter") is None or not x.get("date"):
+            continue
+        try:
+            ts = datetime.fromisoformat(str(x["date"])).timestamp()
+        except ValueError:
+            continue
+        tlrows.append((ts, str(x["date"]), float(x["counter"])))
+    if not tlrows:
+        print(f"  ThingsLog returned {len(tl)} row(s) for {num} on {day}, none with a usable "
+              f"counter + timestamp — CANNOT VERIFY")
+        return False
+
+    lo, hi = min(r[0] for r in tlrows) - 1, max(r[0] for r in tlrows) + 1
+    ours = _sql(f"""SELECT EXTRACT(EPOCH FROM r.reading_time) AS ts, r.counter_m3
                     FROM readings r JOIN devices d ON d.id=r.device_id
                     WHERE d.device_number='{num}' AND d.tl_output_index=0
-                      AND r.reading_time::date='{day}' ORDER BY r.reading_time""")
-    ourmap = {o["reading_time"][11:16]: float(o["counter_m3"]) for o in ours}
+                      AND r.reading_time >= to_timestamp({lo})
+                      AND r.reading_time <= to_timestamp({hi})
+                    ORDER BY r.reading_time""")
+    ourmap = {round(float(o["ts"])): float(o["counter_m3"]) for o in ours}
+
     bad = 0
-    for x in tl:
-        # counter/reading dates carry a CORRECT +01:00 (unlike /api/transmissions — see docstring)
-        hhmm = str(x.get("date"))[11:16]
-        if x.get("counter") is None:
-            continue
-        o = ourmap.get(hhmm)
-        if o is None or abs(float(x["counter"]) - o) > TOL_M3:
+    for ts, stamp, tlv in tlrows:
+        o = ourmap.get(round(ts))
+        if o is None or abs(tlv - o) > TOL_M3:
             bad += 1
             if bad <= 8:
-                print(f"    {hhmm}  ThingsLog {x['counter']}  ours {o}")
-    print(f"  {'OK  ' if bad == 0 else 'FAIL'} {num} {day}: {len(tl)} ThingsLog rows, "
-          f"{len(ours)} ours, {bad} disagree")
+                print(f"    {stamp[11:16]}  ThingsLog {tlv}  ours {'MISSING' if o is None else o}")
+    print(f"  {'OK  ' if bad == 0 else 'FAIL'} {num} {day}: {len(tlrows)} ThingsLog rows, "
+          f"{len(ourmap)} ours in window, {bad} disagree")
     return bad == 0
 
 
