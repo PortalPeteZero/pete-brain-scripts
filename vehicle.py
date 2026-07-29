@@ -50,7 +50,11 @@ def norm(reg):
 
 def find(reg):
     n = norm(reg)
-    v = q(f"SELECT * FROM hub.fleet WHERE replace(vehicle_reg,' ','') = {lit(n)}")
+    # upper() BOTH sides. norm() already uppercases the search term, so comparing it against a
+    # non-uppercased column silently missed any reg that is not already all-caps. Real plates are,
+    # which hid the bug until the 'On order - Van 2' placeholder went in (29 Jul 2026): the row was
+    # in hub.fleet and `vehicle.py find` still said "no vehicle".
+    v = q(f"SELECT * FROM hub.fleet WHERE upper(replace(vehicle_reg,' ','')) = {lit(n)}")
     if not v:
         near = q("SELECT vehicle_reg FROM hub.fleet ORDER BY vehicle_reg")
         sys.exit(f"no vehicle {reg}. Fleet is: " + ", ".join(r['vehicle_reg'] for r in near))
