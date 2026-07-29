@@ -43,7 +43,7 @@ AHREFS_PROJECT = "9613452"
 # Deep-dive cluster pages (the "recently worked on" set). Each tracks a curated
 # set of commercial terms day-by-day regardless of which URL they currently rank to.
 PAGES = [
-    {"path": "/courses/eusr-cat1", "kw": "eusr cat 1", "label": "EUSR CAT1",
+    {"path": "/courses/eusr-cat1", "kw": "eusr cat 1 training", "label": "EUSR CAT1",
      "terms": ["eusr cat and genny training", "eusr cat 1 training", "eusr cat 1",
                "eusr category 1", "locate utility services training"]},
     {"path": "/courses/cat-and-genny-training", "kw": "cat and genny training", "label": "Cat & Genny",
