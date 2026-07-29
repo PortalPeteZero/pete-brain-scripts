@@ -232,6 +232,101 @@ def _enrich(dec, fin, lines, manifest):
     return True
 
 
+# The definition of "substantive" below is COPIED FROM entity-enrich-signoff.py's SQL on purpose.
+# If the two ever disagree, the gate fails on rows this never writes, or passes on rows it should
+# have caught. Change both together.
+_SUBSTANTIVE_ASKS = ("reply", "decision", "review", "rsvp")
+_KNOWLEDGE_PREFIXES = ("Customers/", "Suppliers/", "Projects/")
+_ACTIVITY_MARK = "<!-- TRIAGE-ACTIVITY (newest first, appended by triage-log) -->"
+_ACTIVITY_KEEP = 20
+
+
+def _is_substantive(fin):
+    verb = (fin.get("verb") or "")
+    if verb == "Route":                      # EE handoff; the EE arm owns that corpus
+        return False
+    if not (fin.get("label") or "").startswith(_KNOWLEDGE_PREFIXES):
+        return False
+    return ((fin.get("ask") or "") in _SUBSTANTIVE_ASKS
+            or verb.startswith(("Reply", "Task", "Hand to")))
+
+
+def _knowledge_note(dec, fin, lines):
+    """Write the JUDGED substance of a substantive touch into the entity's knowledge note.
+
+    Why this exists (Pete, 29 Jul 2026 -- "not only fixed but understanding why we are in this
+    position"): the enrichment rule has been enforced since 17 Jul by entity-enrich-signoff.py, but
+    NOTHING in the pipeline performed the step it enforces. `_enrich` above pulls the raw email and
+    attachments into Drive; the entity's vault_notes knowledge note was left to whoever remembered
+    at the end of the session. So the gate failed on every triage by construction -- a detector
+    wired to no actuator, and the only thing that ever closed it was a human writing three notes by
+    hand.
+
+    The substance was already there and was being thrown away. When each thread is judged, the
+    per-row `note` becomes `body_gist` on the capture payload (triage-ops-table.py). It is the
+    read-it-and-say-what-changed line, which is exactly what the rule asks for. It reached this
+    file and went in the bin. This routes it to the note the gate actually checks:
+    `vault_path = '<label>/README.md'`.
+
+    Deliberately NOT done: stamping a generic "activity happened" line to make the gate go green.
+    The gate compares timestamps, not content, so that would buy a passing gate with none of the
+    facts written -- a green light that means nothing, which is worse than the red one.
+
+    Idempotent on thread_id, so a re-run appends nothing. Fail-open and loud: the Gmail mutation
+    and the ledger row have already happened and are not in doubt.
+    """
+    gist = (dec.get("body_gist") or "").strip()
+    if not gist:
+        lines.append("  ! knowledge: substantive touch but the judgment carried no note -- "
+                     "nothing to write. Put the durable facts in the judgment's `note`.")
+        return False
+    label = fin["label"]
+    tid = dec["thread_id"]
+    rows = tl.cc_sql(f"SELECT id, body FROM vault_notes WHERE vault_path = '{tl.esc(label + '/README.md')}' LIMIT 1") \
+        or tl.cc_sql("SELECT id, body FROM vault_notes WHERE type IN ('customer','supplier','project') "
+                     f"AND vault_path LIKE '{tl.esc(label + '/%')}' ORDER BY length(vault_path) LIMIT 1")
+    if not rows:
+        lines.append(f"  – knowledge: '{label}' has no CC knowledge home, nothing to enrich "
+                     f"(create one, or ignore if it does not warrant one)")
+        return None
+    note_id, body = rows[0]["id"], rows[0].get("body") or ""
+    if tid in body:
+        lines.append("  = knowledge: this thread is already recorded in the note -- no duplicate")
+        return True
+    stamp = dt.date.today().isoformat()
+    entry = (f"- **{stamp}** {gist} "
+             f"([thread](https://mail.google.com/mail/u/0/#all/{tid}) `{tid}`)")
+    if _ACTIVITY_MARK in body:
+        head, tail = body.split(_ACTIVITY_MARK, 1)
+        existing = [l for l in tail.splitlines() if l.strip().startswith("- ")]
+        trailing = [l for l in tail.splitlines() if not l.strip().startswith("- ") and l.strip()]
+        kept = ([entry] + existing)[:_ACTIVITY_KEEP]
+        new_body = head + _ACTIVITY_MARK + "\n" + "\n".join(kept) + "\n"
+        if trailing:
+            new_body += "\n" + "\n".join(trailing) + "\n"
+    else:
+        new_body = (body.rstrip() + "\n\n## Recent activity\n\n"
+                    "_Appended automatically by triage when a substantive email is filed here. "
+                    "Newest first. Standing terms live above, not in this list._\n\n"
+                    + _ACTIVITY_MARK + "\n" + entry + "\n")
+    try:
+        # source_updated AND updated_at are both set deliberately. vault_notes has NO trigger
+        # maintaining them, and entity-enrich-signoff decides "was this enriched?" purely on
+        # `source_updated >= cutoff OR updated_at >= cutoff`. Writing the body without stamping
+        # them changes the note and leaves the gate blind -- verified 29 Jul 2026: three notes
+        # carried the new block, the gate still reported all three outstanding, and this function
+        # had already printed ✓ for each. A tick the gate cannot see is the bug, not the fix.
+        tl.cc_sql(f"UPDATE vault_notes SET body = $TRG${new_body}$TRG$, embedding = NULL, "
+                  f"embedded_hash = NULL, source_updated = now(), updated_at = now() "
+                  f"WHERE id = '{tl.esc(note_id)}'")
+    except Exception as e:
+        lines.append(f"  ! knowledge: could NOT update '{label}' note ({e}) -- the gate will "
+                     f"still flag this entity; write it by hand")
+        return False
+    lines.append(f"  ✓ knowledge: recorded in {label} note")
+    return True
+
+
 def _gmail_drift(dec, fin, lines):
     """Has the LIVE Gmail state drifted from what this decision says was applied?
 
@@ -308,6 +403,8 @@ def capture(dec, apply=False, manifest=None):
                 # and makes a re-run the actual repair path it is supposed to be.
                 if fin.get("label") and not dec.get("no_enrich"):
                     _enrich(dec, fin, lines, manifest)
+                    if _is_substantive(fin):
+                        _knowledge_note(dec, fin, lines)   # idempotent on thread_id
                 lines.append(f"  = {mid[:24]}… unchanged re-decision, Gmail verified — NO-OP")
                 return True, lines
             if drift is True:
@@ -469,6 +566,12 @@ def capture(dec, apply=False, manifest=None):
     if fin.get("label") and not dec.get("no_enrich"):
         enr = _enrich(dec, fin, lines, manifest)
         if enr is False:
+            ok = False
+        # The knowledge half. _enrich puts the raw email in Drive; this puts the JUDGED substance in
+        # the entity's note -- the step entity-enrich-signoff.py has been enforcing since 17 Jul with
+        # nothing in the pipeline performing it. Same side-effect status as the enrich above: it runs
+        # here or it never runs.
+        if _is_substantive(fin) and _knowledge_note(dec, fin, lines) is False:
             ok = False
 
     # flip applied
