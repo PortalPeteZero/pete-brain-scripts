@@ -198,7 +198,8 @@ def trend(key, term=None, page=None, by="month"):
     rows = _sql(f"SELECT to_char({grp},{fmt}) AS p, "
                 f"round((sum(position*impressions)/NULLIF(sum(impressions),0))::numeric,1) AS wpos, "
                 f"round(avg(position)::numeric,1) AS plain, sum(impressions) AS impr, "
-                f"sum(clicks) AS clk, count(DISTINCT page) AS pages "
+                f"sum(clicks) AS clk, count(DISTINCT page) AS pages, "
+                f"count(DISTINCT date) AS days "
                 f"FROM seo_gsc_daily WHERE {where} GROUP BY 1 ORDER BY 1")
     if not rows:
         print(f"no stored rows for {term or page} on {key}"); return
@@ -207,10 +208,22 @@ def trend(key, term=None, page=None, by="month"):
     print(f"measure: impression-WEIGHTED average position in Google (UK), from GSC. "
           f"Lower is better. The plain average is shown alongside ONLY to prove why it must not "
           f"be used. Never quote a position without naming the term or page it belongs to.")
-    print(f"  {'period':10}{'WEIGHTED':>10}{'(plain)':>10}{'impr':>7}{'clicks':>8}{'pages':>7}")
+    print(f"  {'period':10}{'WEIGHTED':>10}{'(plain)':>10}{'impr':>7}{'clicks':>8}{'pages':>7}{'days':>6}")
+    # PARTIAL-BUCKET GUARD (added 29 Jul 2026). A month bucket built on a thin backfill reads like a
+    # real month: 2 stored days of June (29-30) vs 27 of July presented "June 189 -> July 2,134
+    # impressions" as a 10x visibility explosion on Lanzarote Lates. It was the backfill window edge.
+    # Every bucket now prints its day coverage and flags PARTIAL; never compare flagged buckets.
+    expected = 25 if by == "month" else 7
+    partial = []
     for r in rows:
+        flag = "  ⚠PARTIAL" if int(r.get('days') or 0) < expected else ""
+        if flag: partial.append(r['p'])
         print(f"  {r['p']:10}{str(r['wpos']):>10}{str(r['plain']):>10}"
-              f"{r['impr']:>7}{r['clk']:>8}{r['pages']:>7}")
+              f"{r['impr']:>7}{r['clk']:>8}{r['pages']:>7}{r['days']:>6}{flag}")
+    if partial:
+        print(f"  ⚠ PARTIAL buckets ({', '.join(partial)}): the store holds only part of that period "
+              f"(backfill edge or in-progress period). NEVER compare a partial bucket against a full "
+              f"one -- backfill more history (seo-pull-gsc.py --days N, free) or compare per-day rates.")
     iv = interventions(key)
     if iv:
         print("\n  ⚠ DATED INTERVENTIONS on this property — do NOT average across these dates; split at them:")
