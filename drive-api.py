@@ -439,25 +439,60 @@ def upload_text(content_or_path, folder_id, name, mime_type="text/markdown"):
     print(f"Uploaded text: {result['name']} (ID: {result['id']})")
     return result
 
+def _repair_index_after_rename(file_id, new_name):
+    """Put drive_files right after a rename, HERE, so no caller has to remember a second step.
+
+    Why this is code and not a printed instruction (Pete, 29 Jul 2026, renaming Morrison -> M Group):
+    this used to print "now run drive-path-rebuild.py --apply". That instruction does not work on
+    its own. `drive-path-rebuild` recomputes every path from `parent_id + name` AS STORED IN THE
+    INDEX — so while the stored name is still the OLD one, it rebuilds the stale path from the stale
+    name, finds it matches what is already there, and reports "0 drifted — clean". The index is
+    wrong and the repair tool says it is fine, which is worse than no tool at all.
+
+    The stored name has to be corrected FIRST; only then can the descendant rebuild do its job. So:
+      1. UPDATE this row's name (the one fact Drive changed and the index cannot derive)
+      2. run the descendant path rebuild, which is now working from a true name
+
+    Fail-open and loud: the Drive rename already succeeded and is not in doubt, so an index repair
+    failure must never read as a failed rename — but it must never be silent either.
+    """
+    VAULT = os.environ.get("VAULT", "/tmp/pbs")   # module has no VAULT global; resolve it here
+    def _sql(q):
+        r = subprocess.run(["python3", os.path.join(VAULT, "cc-sql.py"), q],
+                           env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True, timeout=120)
+        if r.returncode != 0 or r.stdout.startswith("ERROR"):
+            raise RuntimeError((r.stdout or r.stderr).strip()[:300])
+        return r.stdout
+    lit = lambda s: "'" + str(s).replace("'", "''") + "'"
+    try:
+        _sql(f"UPDATE drive_files SET name = {lit(new_name)} WHERE drive_file_id = {lit(file_id)}")
+        r = subprocess.run(["python3", os.path.join(VAULT, "drive-path-rebuild.py"), "--apply"],
+                           env={**os.environ, "VAULT": VAULT}, capture_output=True, text=True, timeout=600)
+        tail = [l for l in (r.stdout or "").strip().splitlines() if l.strip()][-1:]
+        print(f"  ◦ index repaired: name updated, paths rebuilt — {tail[0].strip() if tail else 'rebuild ran'}")
+    except Exception as e:
+        print(f"\n  ⚠ RENAME SUCCEEDED IN DRIVE but the drive_files index was NOT repaired: {e}")
+        print( "    The index now shows the OLD name/path and will not self-heal. Fix it with:")
+        print(f"      VAULT={VAULT} python3 {VAULT}/cc-sql.py \"UPDATE drive_files SET name = {lit(new_name)} WHERE drive_file_id = {lit(file_id)}\"")
+        print(f"      VAULT={VAULT} python3 {VAULT}/drive-path-rebuild.py --apply")
+        print( "    In that order. The rebuild alone reports 'clean' while the stored name is stale.")
+
+
 def rename_file(file_id, new_name):
-    """Rename a file/folder in place. Drive links are by ID, so a rename never breaks a link or
-    a recorded drive_folder_id — but the drive_files index shows the OLD path until the next
-    drive-changes-watch run."""
+    """Rename a file/folder in place, and repair the drive_files index in the same breath.
+
+    Drive links are by ID, so a rename never breaks a link or a recorded drive_folder_id. The index
+    is the fragile part: `path` is denormalised, so a folder rename strands every descendant on the
+    old path. That repair now happens automatically — see _repair_index_after_rename."""
     before = api("GET", f"/files/{file_id}", {"fields": "name,mimeType", "supportsAllDrives": "true"})
     old_name = before.get("name")
     result = api("PATCH", f"/files/{file_id}",
                  body={"name": new_name},
                  params={"fields": "id,name", "supportsAllDrives": "true"})
     print(f"Renamed: '{old_name}' → '{result['name']}' ({file_id})")
-    if before.get("mimeType") == "application/vnd.google-apps.folder":
-        # drive_files.path is a denormalised string built from the parent chain. Renaming a FOLDER
-        # updates only that folder's own row on the next changes-watch; every descendant keeps the
-        # OLD path forever, because the descendants themselves never changed so are never re-upserted.
-        # Verified 18 Jul 2026: renaming SY-Portal-Development left 19 child rows on the stale path.
-        print("\n  ⚠ FOLDER rename — descendants in drive_files keep the OLD path and will NOT self-heal.")
-        print("    Repair the index NOW:")
-        print("      VAULT=/tmp/pbs python3 /tmp/pbs/drive-path-rebuild.py --apply")
-        print("    (rebuilds every path from the parent tree; the daily cc-locator-audit also flags this)")
+    # Runs for files as well as folders: a file rename strands its own row's name and path just the
+    # same, it simply has no descendants to carry the damage further.
+    _repair_index_after_rename(file_id, result.get("name", new_name))
 
 
 def move_file(file_id, dest_folder_id):
