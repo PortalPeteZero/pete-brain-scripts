@@ -37,6 +37,8 @@ def rest(method, path, body=None, headers=None):
     data = json.dumps(body).encode() if body is not None else None
     # Slugs are name-verbatim (DB CHECK projects_slug_eq_name) so they may carry spaces —
     # encode the query-string values or urllib rejects the URL outright.
+    # CONTRACT: this is the ONLY place query values get encoded. Call sites pass values raw;
+    # pre-quoting at a call site double-encodes ('%' → '%25') and silently returns zero rows.
     if "?" in path:
         base, qs = path.split("?", 1)
         pairs = []
@@ -65,7 +67,10 @@ def helper(script, *args):
 
 def find_projects_folder_id(drive, parent_name):
     # Look up the top-level "<parent_name>" folder id in <drive> from the drive_files index.
-    rows = rest("GET", f"drive_files?drive=eq.{urllib.parse.quote(drive)}&name=eq.{urllib.parse.quote(parent_name)}&is_folder=eq.true&select=drive_file_id,path&limit=20")
+    # Values go in RAW — rest() is the single encoder. Quoting here too double-encodes the space in
+    # every drive name ("One System" → "One%2520System"), which matched nothing and made the tool
+    # report "no 'Projects' folder found" for every entity.
+    rows = rest("GET", f"drive_files?drive=eq.{drive}&name=eq.{parent_name}&is_folder=eq.true&select=drive_file_id,path&limit=20")
     if isinstance(rows, list) and rows:
         # prefer the shallowest path (top-level Projects, not Archive/Projects)
         rows.sort(key=lambda r: len((r.get("path") or "").split("/")))
