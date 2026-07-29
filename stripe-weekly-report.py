@@ -176,17 +176,13 @@ def summarise(acc):
 
 
 def flags_for(acc, totals):
+    # Deliberately NOT flagged: a manual payout schedule. Pete decided on 29 Jul 2026 that LeakGuard
+    # stays on manual payouts, so raising it weekly is a nag about a settled decision, not a finding.
+    # The schedule is still printed in each account's header, so the fact stays visible.
     out = []
     if acc["error"]:
         out.append(("red", acc["error"]))
         return out
-    interval = (acc["schedule"] or {}).get("interval")
-    avail = sum(acc["available"].values())
-    if interval == "manual" and avail > 0:
-        out.append(("red", f"Payouts are set to manual and {money(avail)} is sitting in Stripe. "
-                           f"It will not reach the bank until someone pays it out."))
-    elif interval == "manual":
-        out.append(("amber", "Payouts are set to manual, so nothing moves to the bank on its own."))
     if acc.get("charges_enabled") is False:
         out.append(("red", "This account cannot currently take card payments."))
     if acc.get("payouts_enabled") is False:
