@@ -31,9 +31,12 @@ Params are passed as key=value (form-encoded, Stripe-style). Nested keys work:
   "recurring[interval]=month"   "metadata[founder_only]=true"
 Output: pretty JSON. HTTP errors are returned as {"error": {...}} (Stripe's error body).
 """
-import sys, json, urllib.request, urllib.parse, urllib.error
+import os, sys, json, urllib.request, urllib.parse, urllib.error
 
-SECRETS_DIR = "/tmp/pbs/Library/processes/secrets"
+# $VAULT-aware: the boot kernel sets VAULT=/tmp/pbs locally, railway-bootstrap sets it to the repo
+# root inside a cron container. Hardcoding /tmp/pbs made this helper unusable on Railway (caught
+# 29 Jul 2026 when stripe-weekly-report's first cloud run died on a missing secrets path).
+SECRETS_DIR = os.path.join(os.environ.get("VAULT", "/tmp/pbs"), "Library", "processes", "secrets")
 BASE = "https://api.stripe.com"
 
 # slug -> (secret filename, key layout). "nested" = {live|test: {secret_key, restricted_key}};

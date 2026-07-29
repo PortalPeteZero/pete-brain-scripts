@@ -30,6 +30,7 @@ Usage:
 # report: stripe-weekly
 # schedule: 0 18 * * 5
 # timezone: Atlantic/Canary
+# secrets: SECRETFILE__stripe-camello-blanco__json, SECRETFILE__stripe-canary-detect__json, GOOGLE_SA_JSON
 # CRON-META-END
 from __future__ import annotations
 
