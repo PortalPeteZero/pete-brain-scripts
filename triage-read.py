@@ -77,7 +77,15 @@ def thread_full_text(t):
         parts.append(f"--- FROM {m.get('from','?')} | TO {m.get('to','?')} | {m.get('date','?')}\n")
         parts.append(normalise(m.get("body") or "") + "\n")
         for a in (m.get("attachments") or []):
-            parts.append(f"[attachment: {a.get('filename')} {a.get('size')} bytes]\n")
+            # triage-pull writes the key as `name`. This read `filename` and so printed
+            # "[attachment: None 49383 bytes]" on EVERY attachment of EVERY round ever run --
+            # the single most informative thing about a file, silently withheld from the judge.
+            # 29 Jul 2026: "Sales OrderSO SO001363.pdf" arrived with the four words "Don't need
+            # the beach entry" and was judged info-only. That PDF is a LIVE Eco Finish order with
+            # an overdue payment task against it, and the four words drop a 728 EUR line from it.
+            # The name alone would have made it obvious. Keep the fallback: never regress to None.
+            parts.append(f"[attachment: {a.get('name') or a.get('filename') or 'unnamed'} "
+                         f"{a.get('size')} bytes]\n")
     return "".join(parts)
 
 
