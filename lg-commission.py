@@ -256,14 +256,21 @@ def audit(num, m, base, tok, locmap):
     #
     # It is still asserted where it is cheap and where it bites: a device fitted in the last
     # fortnight, which may have been sitting on the bench being tested first.
-    # And asserted only where it CHANGES SOMETHING. The boundary's whole job is to stop water
-    # recorded before the fit being booked to the customer, so on a device with no pre-install water
-    # there is nothing for it to exclude and an empty field is not a defect. Asserting on the empty
-    # FIELD rather than on the actual litres raised all three of the 27 Jul installs on 29 Jul —
-    # Dickson and Ferris had no readings at all before their fit, and Guidi had 249 readings that
-    # between them registered zero litres (a logger recording on the bench with nothing flowing).
-    # Three gaps, not one litre of consequence between them. That is the noise that gets a real
-    # finding ignored, so the check now measures the thing it cares about.
+    # And asserted only where it CHANGES SOMETHING. The boundary stops litres recorded before the
+    # fit being booked to the customer, so where there are none there is nothing to exclude and an
+    # empty field is not a defect. Asserting on the empty FIELD rather than on the litres raised all
+    # three of the 27 Jul installs on 29 Jul: Dickson and Ferris had no readings at all before their
+    # fit, and Guidi had 249 readings registering zero litres. Three gaps, not one litre of
+    # consequence between them, which is the noise that gets a real finding ignored.
+    #
+    # WHAT THIS IS NOT (Pete, 29 Jul 2026, correcting me): no water passes through the logger. It is
+    # a pulse counter wired to the meter, and the first water it ever sees is at install. So
+    # "pre-install litres" is never test water running through the unit. It means one of two things:
+    # pulses accumulated in the counter before the unit was fitted, or — far more often — the logger
+    # WAS already fitted and working before the date written on the record. On 29 Jul the five
+    # devices carrying pre-install litres all read as the latter: Kieser 10,190 L over the month
+    # before his recorded install date is 351 L/day against an everyday average of 447. That is a
+    # household, not a bench. Treat a large pre-install figure as a suspect install_date first.
     if recent:
         pre = sql(f"""SELECT COALESCE(SUM(r.delta_litres), 0) AS litres, count(*) AS n
                       FROM readings r
