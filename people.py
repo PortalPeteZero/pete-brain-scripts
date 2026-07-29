@@ -286,6 +286,7 @@ def search_phone_mirror(q, phone):
         "email": first(x.get("emails")),
         "phone": first(x.get("phones_e164")) or first(x.get("phones")),
         "extra": {"resource_name": x.get("resource_name")},
+        "_notes": x.get("notes"),          # carried for the [no-nag] check in tidy_gaps
     } for x in json.loads(txt)]
 
 
@@ -307,24 +308,34 @@ def tidy_gaps(r):
     Returns [(what_is_missing, the_exact_fix)]. The `people tidy` form is emitted ONLY for rows
     carrying a resource_name -- i.e. Google Contacts, the only store `tidy` covers. Printing a
     tidy command for a platform or Odoo row would name a command that tidy refuses.
+
+    A MISSING CHANNEL IS NOT A GAP (Pete, 29 Jul 2026). This used to flag any record missing an
+    email OR a phone, so every phone-only contact -- a perfectly complete record, and most of the
+    personal ones -- nagged on every single lookup, forever, with no way to satisfy it. That is
+    noise, and noise is what makes the real warnings get ignored.
+
+    `people check` already had the right rule ("half-finished (no email AND no phone)"); this
+    function disagreed with it. They now match. A record is only half-finished when it gives you
+    NO way to reach the person at all. One good channel is a complete contact.
+
+    Escape hatch: put `[no-nag]` anywhere in the contact's notes and it is never flagged -- the
+    same marker Pete already uses on tasks, so there is one convention, not two.
     """
+    if "[no-nag]" in (r.get("_notes") or "").lower():
+        return []
     gaps = []
     name = (r.get("name") or "").strip()
     res = (r.get("extra") or {}).get("resource_name")
-    on_phone = "Google Contacts" in (r.get("store") or "")
     if name and len(name.split()) < 2:
+        # a part-name record is the real duplicate risk -- it is what let "Freya" get duplicated
         gaps.append(("no surname -- part name only",
                      f'people tidy {res} --name "FULL NAME" --confirm-replace --dry-run' if res else
                      f'add the full name for "{name}" in its store'))
-    if not r.get("email"):
-        gaps.append(("no email",
-                     f'people tidy {res} --email ADDRESS --dry-run' if res else
-                     f'add an email for "{name}" in its store'))
-    if not r.get("phone"):
-        gaps.append(("no phone",
-                     f'people tidy {res} --phone NUMBER --dry-run' if res else
-                     f'add a phone for "{name}" in its store'))
-    return gaps if (on_phone or gaps) else []
+    if not r.get("email") and not r.get("phone"):
+        gaps.append(("no email AND no phone -- no way to reach them",
+                     f'people tidy {res} --email ADDRESS --phone NUMBER --dry-run' if res else
+                     f'add an email or a phone for "{name}" in its store'))
+    return gaps
 
 
 def partial_sweep(q, phone):
