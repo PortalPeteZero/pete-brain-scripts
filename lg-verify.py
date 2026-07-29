@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS (27 Jul 2026). A full day of work produced a repeating failure: predict what a change
 would do, then report the prediction as the outcome without going back to the system. Concretely:
-  - Fired deleteOldCounters to clear a logger's bench pulses, reported it handled. It cleared
+  - Fired deleteOldCounters to clear a logger's accumulated counter, reported it handled. It cleared
     ThingsLog's HISTORY, not the device's accumulator. A live customer's counter is 3,766 L out.
   - Claimed a monitoring boundary would exclude already-stored litres. It would not.
   - Claimed no cross-check was possible for a device. readings/current worked fine.

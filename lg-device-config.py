@@ -15,8 +15,10 @@ This re-reads the config afterwards and exits 1 on any mismatch. Never assume th
 ⚠️ initial_counter is ADDITIVE to the pulse accumulator, not a replacement. The reported counter is
    (pulses + initial_counter) x pulse_coef. Verified 27 Jul 2026: device 04302516 carries
    initial_counter 574 and reported exactly 0.574 when its pulse count was zero; 04160611 carries 29
-   and reported 0.029. So on a logger that has been bench-run, set the meter-face value AND clear the
-   accumulated pulses, or the counter reads high by the bench amount for ever.
+   and reported 0.029. Its job is to carry the meter's existing FACE READING so the logger's total
+   matches the physical dial; because it is additive, set it to the meter face at install and the
+   two agree. (No water passes through the logger and there are no bench pulses — Pete, 29 Jul 2026;
+   so a non-zero pulse count on a new fit is real recorded water, not a bench artefact to clear.)
 
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/lg-device-config.py <device> --show

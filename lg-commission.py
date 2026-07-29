@@ -16,7 +16,10 @@ detected by the tooling; every one was found by Pete looking at the ThingsLog co
      dead-meter watchdog exists to flag.
   3  GPS location never set, so the fleet map had no pin and the Maps link never rendered.
   4  the ThingsLog device name left as "!", so the console could not tell you which unit was where.
-  5  monitoring_from never set, so pre-install water counts as the customer's.
+  5  [NOT ACTUALLY A DEFECT — see note at the monitoring-boundary check below.] This was recorded on
+     28 Jul as "monitoring_from never set, so pre-install water counts as the customer's". Pete
+     corrected it on 29 Jul: readings before the first call-in ARE the customer's real water, so
+     there is nothing to exclude and no boundary to set. Kept in the list so the number stays intact.
   6  deleteOldCounters fired in the belief it would clear the device's pulse accumulator. It clears
      ThingsLog's stored HISTORY. The accumulator survived and a live customer's counter sat 3,766 L
      above her meter face.
@@ -35,7 +38,8 @@ against a device that is already live, so an old mistake surfaces too.
 
 WHAT IT DELIBERATELY WILL NOT DO
   * It never fires deleteOldCounters. That flag is destructive, it does not do what its name
-    suggests, and nothing about commissioning needs it. Bench pulses are handled by monitoring_from.
+    suggests, and nothing about commissioning needs it. (An existing meter-face reading is carried
+    by initial_counter, not by any boundary — there are no bench pulses.)
   * It never enables customer alarm emails. Settled policy, 27 Jul 2026: internal CD contacts are
     alerted and CD notifies the customer.
 """
@@ -403,7 +407,8 @@ def main():
     print("  2  leakguard-name-sync.py <dev> --apply                                 (name, BOTH systems)")
     print("  3  PUT /api/devices/<dev>/location  from geocoding the property address (NOT the device DTO:")
     print("     its latitude/longitude fields are vestigial and a PUT returns 200 and drops the value)")
-    print("  4  link the device to the property, set install_date and monitoring_from")
+    print("  4  link the device to the property, set install_date (do NOT set monitoring_from —")
+    print("     readings before first call-in are the customer's real water; see the check note)")
     print("  5  derive_high_use_thresholds(), overnight window, internal alarm contact")
     print("  6  lg-commission.py --check <dev>   <- must come back clean")
     return 2
