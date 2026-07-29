@@ -256,9 +256,28 @@ def audit(num, m, base, tok, locmap):
     #
     # It is still asserted where it is cheap and where it bites: a device fitted in the last
     # fortnight, which may have been sitting on the bench being tested first.
+    # And asserted only where it CHANGES SOMETHING. The boundary's whole job is to stop water
+    # recorded before the fit being booked to the customer, so on a device with no pre-install water
+    # there is nothing for it to exclude and an empty field is not a defect. Asserting on the empty
+    # FIELD rather than on the actual litres raised all three of the 27 Jul installs on 29 Jul —
+    # Dickson and Ferris had no readings at all before their fit, and Guidi had 249 readings that
+    # between them registered zero litres (a logger recording on the bench with nothing flowing).
+    # Three gaps, not one litre of consequence between them. That is the noise that gets a real
+    # finding ignored, so the check now measures the thing it cares about.
     if recent:
-        step("monitoring boundary set", bool(main["monitoring_from"]),
-             f"{main['monitoring_from']} — a fresh install must not book bench water to the customer")
+        pre = sql(f"""SELECT COALESCE(SUM(r.delta_litres), 0) AS litres, count(*) AS n
+                      FROM readings r
+                      WHERE r.device_id = '{main['id']}'
+                        AND r.reading_time < '{main['install_date']}'::timestamptz""")
+        pre_l = float(pre[0]["litres"] or 0)
+        pre_n = int(pre[0]["n"] or 0)
+        if pre_l > 0:
+            step("monitoring boundary set", bool(main["monitoring_from"]),
+                 f"{main['monitoring_from'] or 'not set'} — {pre_l:,.0f} L recorded before the fit "
+                 f"would be booked to the customer without it")
+        else:
+            print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
+                  f"(nothing to exclude — {pre_n} reading(s) before the fit, 0 L)")
     else:
         print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
               f"(established install — informational, see the note in the source)")
