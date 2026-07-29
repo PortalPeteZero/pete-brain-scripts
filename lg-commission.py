@@ -263,14 +263,21 @@ def audit(num, m, base, tok, locmap):
     # fit, and Guidi had 249 readings registering zero litres. Three gaps, not one litre of
     # consequence between them, which is the noise that gets a real finding ignored.
     #
-    # WHAT THIS IS NOT (Pete, 29 Jul 2026, correcting me): no water passes through the logger. It is
-    # a pulse counter wired to the meter, and the first water it ever sees is at install. So
-    # "pre-install litres" is never test water running through the unit. It means one of two things:
-    # pulses accumulated in the counter before the unit was fitted, or — far more often — the logger
-    # WAS already fitted and working before the date written on the record. On 29 Jul the five
-    # devices carrying pre-install litres all read as the latter: Kieser 10,190 L over the month
-    # before his recorded install date is 351 L/day against an everyday average of 447. That is a
-    # household, not a bench. Treat a large pre-install figure as a suspect install_date first.
+    # WHAT PRE-INSTALL LITRES ARE NOT. Pete knocked down three guesses of mine on 29 Jul 2026, so
+    # they are written here to stop the next session reaching for them again:
+    #   * NOT water through the unit. It is a pulse counter wired to the meter; no water passes
+    #     through it and the first water it ever sees is at install.
+    #   * NOT bench pulses. There are none.
+    #   * NOT simply a mistyped install_date.
+    # How a fit actually goes, in his words: it gets installed, the water is turned on, and the
+    # first call-in can be a day or two later — up to a week if the box has to be repositioned to
+    # get a signal. When it does connect, it registers the water.
+    #
+    # THE CAUSE OF THE FIVE SEEN ON 29 JUL IS NOT ESTABLISHED. Observed, and nothing beyond it:
+    # Kieser 10,190 L against a recorded install of 11 Apr, readings from 13 Mar; Smith 1,870 L,
+    # readings from 19 Jan; Reilly 2,156 L, readings from 6 May against an install of 6 Jul; Zsovak
+    # 393 L and Johnson 307 L, both about 6 days. Kieser's is 351 L/day against an everyday average
+    # of 447. Do NOT invent a mechanism to fit that. Ask Pete, or leave it alone.
     if recent:
         pre = sql(f"""SELECT COALESCE(SUM(r.delta_litres), 0) AS litres, count(*) AS n
                       FROM readings r
@@ -279,9 +286,11 @@ def audit(num, m, base, tok, locmap):
         pre_l = float(pre[0]["litres"] or 0)
         pre_n = int(pre[0]["n"] or 0)
         if pre_l > 0:
+            # Reports the NUMBER, deliberately without diagnosing it — see the note above.
             step("monitoring boundary set", bool(main["monitoring_from"]),
-                 f"{main['monitoring_from'] or 'not set'} — {pre_l:,.0f} L recorded before the fit "
-                 f"would be booked to the customer without it")
+                 f"{main['monitoring_from'] or 'not set'} — {pre_l:,.0f} L recorded against "
+                 f"timestamps before the install date of {main['install_date']}. Worth a human "
+                 f"look before setting anything: the cause of this pattern is not established.")
         else:
             print(f"  ----  monitoring boundary: {main['monitoring_from'] or 'not set'} "
                   f"(nothing to exclude — {pre_n} reading(s) before the fit, 0 L)")
