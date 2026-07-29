@@ -48,6 +48,10 @@ def note_body(title_ilike):
     rows = sql(f"SELECT body FROM vault_notes WHERE title ILIKE $x${title_ilike}$x$ LIMIT 1")
     return rows[0]["body"] if rows else None
 
+def note_full(title_ilike):
+    rows = sql(f"SELECT body, frontmatter FROM vault_notes WHERE title ILIKE $x${title_ilike}$x$ LIMIT 1")
+    return rows[0] if rows else None
+
 def section(body, heading_prefix):
     """Extract one '## heading...' section's markdown (to the next ## or EOF)."""
     m = re.search(rf"^##\s+{re.escape(heading_prefix)}.*?$", body, re.M)
@@ -111,7 +115,28 @@ def term_positions(terms):
     return {r["query"].lower(): r for r in rows}
 
 # ---------- 3. authority (gated Ahrefs; ~2 metered calls) ----------
+def last_published_authority():
+    try:
+        import urllib.request
+        ck = json.load(open(os.path.join(VAULT, "Library/processes/secrets/command-centre-supabase-keys.json")))
+        u = (ck["url"] + "/rest/v1/snapshots?report_key=eq.ll-seo-report&select=period_date,payload&order=period_date.desc&limit=1")
+        req = urllib.request.Request(u, headers={"apikey": ck["service_role_key"], "Authorization": "Bearer " + ck["service_role_key"], "Accept-Profile": "reports"})
+        rows = json.load(urllib.request.urlopen(req, timeout=30))
+        if rows:
+            a = ((rows[0].get("payload") or {}).get("data") or {}).get("authority") or {}
+            if a and "_err" not in a:
+                return {**a, "as_of": rows[0]["period_date"], "carried": True}
+    except Exception:
+        pass
+    return {"_err": "no prior authority snapshot (cron runs never spend on Ahrefs; run manually to refresh)"}
+
 def authority():
+    # COST DISCIPLINE (fail-safe direction): a scheduled run must NEVER spend money, and a cron
+    # cannot be trusted to pass a flag. So NO-SPEND IS THE DEFAULT: bare runs (cron or manual)
+    # carry the newest published authority forward, dated. Fresh Ahrefs figures are pulled ONLY
+    # when a human passes --fresh-authority.
+    if "--fresh-authority" not in sys.argv:
+        return last_published_authority()
     try:
         amod = _load("ahrefs_api", f"{SC}/ahrefs-api.py")
         api = amod.AhrefsAPI(caller="ll-seo-report")
@@ -124,10 +149,20 @@ def authority():
     except Exception as e:
         return {"_err": str(e)[:150]}
 
+def _dr_card(auth):
+    if "_err" in auth:
+        return card("Domain Rating", "n/a", "no fresh pull")
+    sub = f'{auth.get("refdomains", "?")} ref. domains'
+    if auth.get("carried"):
+        sub += f' &middot; as of {auth.get("as_of")}'
+    return card("Domain Rating", auth.get("dr", "?"), sub)
+
 # ---------- build ----------
 def build():
     today = dt.date.today().isoformat()
-    ssot = note_body("Lanzarote Lates%STATE OF PLAY%") or ""
+    ssot_row = note_full("Lanzarote Lates%STATE OF PLAY%") or {}
+    ssot = ssot_row.get("body") or ""
+    fm = ssot_row.get("frontmatter") or {}
     one_liner = section(ssot, "Site in one line")
     verified = section(ssot, "✅ Verified current state") or section(ssot, "Verified current state")
 
@@ -137,11 +172,13 @@ def build():
     auth = authority()
     ships = sql("SELECT date, title, outcome FROM work_log WHERE property_name ILIKE '%lanzarote lates%' ORDER BY date DESC LIMIT 12")
 
+    inv = fm.get("inventory") or {}
+    inv_card = (card("Villas listed", inv.get("villas_live", "?"), f'verified {inv.get("verified","?")}') if inv else "")
     cards = (card("Clicks", int(now28["clicks"] or 0), f'28d &nbsp; {dlt(now28["clicks"], prev28["clicks"])} vs prior 28d')
              + card("Impressions", f'{int(now28["impr"] or 0):,}', f'28d &nbsp; {dlt(now28["impr"], prev28["impr"])}')
              + card("Weighted position", now28["wpos"], f'lower=better &nbsp; {dlt(now28["wpos"], prev28["wpos"], invert=True)}')
-             + (card("Domain Rating", auth.get("dr", "?"), f'{auth.get("refdomains","?")} ref. domains') if "_err" not in auth
-                else card("Domain Rating", "n/a", "Ahrefs unavailable")))
+             + _dr_card(auth)
+             + inv_card)
 
     kw_rows = ""
     shown = [t for t in terms if t.get("vol")] or terms
@@ -166,6 +203,17 @@ def build():
                    + '<table style="width:100%;border-collapse:collapse;font-size:13px">'
                    + th(("Date", "left"), ("What shipped", "left"), ("Outcome", "center")) + ships_rows + "</table>")
 
+    checklist = fm.get("status_checklist") or []
+    chk_rows = "".join(trow(i, (c.get("item",""), "left"),
+                            ("✅ done" if c.get("state")=="done" else "▶ next", "center"),
+                            (c.get("note",""), "left")) for i, c in enumerate(checklist))
+    chk_block = (h2("Programme status") + '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+                 + th(("Workstream", "left"), ("State", "center"), ("Note", "left")) + chk_rows + "</table>") if checklist else ""
+
+    owner_lead = ""
+    if fm.get("owner_summary"):
+        owner_lead = (f'<div style="background:#eef3f8;border-left:4px solid #1a3c5e;border-radius:6px;padding:12px 16px;margin:0 0 14px;font-size:14px">{fm["owner_summary"]}</div>')
+
     prose_block = ""
     if one_liner:
         prose_block += h2("The property in one line") + md_html.md_to_html(one_liner)
@@ -175,7 +223,8 @@ def build():
     html_doc = (
         f'<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:860px">'
         f'<p style="font-size:12px;color:#5f6b76;margin:0 0 12px">Generated {today} &middot; every figure and paragraph read live at generation time from: the CC search store (Google UK), the property SSOT note, the targeting registry, the Work Log, Ahrefs. Nothing hand-authored.</p>'
-        f'<div>{cards}</div>' + kw_block + ships_block + prose_block + "</div>")
+
+        + owner_lead + f'<div>{cards}</div>' + chk_block + kw_block + ships_block + prose_block + "</div>")
 
     payload = {
         "meta": {"property": PROP, "generated_at": dt.datetime.utcnow().isoformat() + "Z",
