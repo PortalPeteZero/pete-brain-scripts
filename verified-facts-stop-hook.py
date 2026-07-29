@@ -31,7 +31,7 @@ gets switched off -- see the outbound-approval gate built and reverted the same 
   echo '{"transcript_path": "..."}' | python3 verified-facts-stop-hook.py
   python3 verified-facts-stop-hook.py --test <transcript.jsonl>   # measure before wiring
 """
-import json, os, re, sys
+import json, os, re, subprocess, sys, time
 
 # A domain is guarded only where a PRIMARY source exists and is one command away.
 DOMAINS = [
@@ -72,6 +72,118 @@ ABSENCE = re.compile(
     r"|don'?t have (?:access|visibility|a way)"
     r"|(?:have )?no (?:visibility|access)"
     r")\b", re.I)
+
+# --- capability denial (added 29 Jul 2026) ------------------------------------------------
+# The ABSENCE shapes above are about DATA ("no record of X"). This one is about MY OWN REACH:
+# "I can only issue Google invites", "I'm not able to create a Teams meeting". Different
+# sentence, same failure, and the existing shapes do not match it.
+#
+# THE FAILURE: on 29 Jul 2026 I told Pete I could only issue Google Calendar invites and asked
+# Clancy to set the Teams meeting up their end. `teams-api.py` was in the helper registry, its
+# docstring said exactly how to do it, there was a lesson banked on 26 Jul saying the same, and
+# the token refreshed first time. Pete had spent a session giving me that access weeks earlier.
+# I asserted a limit on myself from memory and never looked.
+#
+# WHY NOT A NEW DOMAINS ENTRY: a hardcoded "teams" row fixes teams and nothing else. There are
+# 290 helpers. This resolves the claim against `public.helpers` itself, so a helper added
+# tomorrow is covered the day it lands, with nobody maintaining a list.
+CAPABILITY = re.compile(
+    r"\b(?:"
+    r"I (?:can|could) only\b"
+    r"|(?:I'?m|I am|I|we'?re|we are|we) (?:can'?t|cannot|not able to|am not able to|are not able to|"
+    r"do not have a way to|don'?t have a way to)\s+"
+    r"(?:create|make|mint|issue|send|set ?up|generate|build|book|raise|post)"
+    r"|(?:there|that) is no way (?:for me )?to\s+(?:create|make|mint|issue|send|set ?up|generate)"
+    r"|(?:is|are) (?:not|n'?t) something I can (?:create|make|do|send|issue)"
+    r")", re.I)
+
+_HELPER_CACHE = os.path.expanduser("~/.config/pete-cc/helper-index.json")
+_CACHE_TTL = 6 * 3600
+
+# Words that are never the subject of a capability claim -- keeps the candidate set small.
+_STOP = {"the", "a", "an", "you", "your", "our", "them", "their", "this", "that", "it", "one",
+         "only", "just", "and", "or", "but", "from", "with", "into", "for", "can", "not",
+         "i", "we", "me", "my", "is", "are", "be", "to", "of", "in", "on", "at", "so", "up",
+         "google", "invite", "invites", "meeting", "meetings", "email", "emails", "here",
+         # The VERBS in the CAPABILITY regex itself. Without these, "I can't SEND the remittance
+         # through Xero" matches on `send` -> ee-send.py and blocks a perfectly honest sentence
+         # that already names the system it tried (caught in test, 29 Jul 2026). A capability
+         # claim is about the SYSTEM, never the verb.
+         "send", "create", "make", "mint", "issue", "generate", "build", "book", "raise",
+         "post", "able", "sync", "pull", "push", "read", "write", "check", "find", "log",
+         "report", "save", "open", "call", "run", "look", "list", "show", "give", "take"}
+
+
+def _helper_index():
+    """{token -> helper name} from public.helpers, cached. Fail-open to {} on any problem:
+    a Stop hook that dies, or that adds a network round trip to every reply, gets switched off."""
+    try:
+        if (os.path.exists(_HELPER_CACHE)
+                and (time.time() - os.path.getmtime(_HELPER_CACHE)) < _CACHE_TTL):
+            return json.load(open(_HELPER_CACHE))
+    except Exception:
+        pass
+    try:
+        vault = os.environ.get("VAULT", "/tmp/pbs")
+        r = subprocess.run(["python3", os.path.join(vault, "cc-sql.py"),
+                            "SELECT name, what FROM helpers"],
+                           capture_output=True, text=True, timeout=25,
+                           env={**os.environ, "VAULT": vault})
+        rows = json.loads(r.stdout)
+        # Rank matters: the block message NAMES the helper, so a wrong name sends me to the wrong
+        # tool. `<token>-api.py` is the canonical helper for a system; `<token>.py` next; anything
+        # merely CONTAINING the token last. Without this, xero -> remittance-to-xero.py and
+        # odoo -> odoo-invoice-es-copy.py instead of their real API helpers (caught in test, 29 Jul).
+        def rank(token, name):
+            if name == f"{token}-api.py":
+                return 0
+            if name == f"{token}.py":
+                return 1
+            return 2 + name.index(token) if token in name else 9
+        idx, best = {}, {}
+        for row in rows:
+            name = row.get("name") or ""
+            stem = re.sub(r"(-api)?\.py$", "", name)
+            for tok in re.split(r"[-_]", stem):
+                tok = tok.lower()
+                if len(tok) <= 3 or tok in _STOP:
+                    continue
+                r_ = rank(tok, name)
+                if tok not in best or r_ < best[tok]:
+                    best[tok], idx[tok] = r_, name
+        os.makedirs(os.path.dirname(_HELPER_CACHE), exist_ok=True)
+        json.dump(idx, open(_HELPER_CACHE, "w"))
+        return idx
+    except Exception:
+        return {}
+
+
+def capability_finding(reply, tool_text):
+    """A denial of my own reach, about a thing that HAS a helper this session never ran."""
+    m = CAPABILITY.search(reply or "")
+    if not m:
+        return None
+    idx = _helper_index()
+    if not idx:
+        return None
+    # look only in the sentence carrying the claim -- the rest of a long reply is noise
+    start = reply.rfind(".", 0, m.start()) + 1
+    end = reply.find(".", m.end())
+    sentence = reply[start: end if end != -1 else len(reply)]
+    # Collect EVERY helper the sentence points at, then block only if NOT ONE of them was
+    # consulted. Blocking on the first unconsulted match is too eager: "I can't send the
+    # remittance through Xero" after running remittance-to-xero.py would still trip on the word
+    # Xero. Consulting a relevant helper and then reporting a limit is the honest shape, exactly
+    # as NAMED_SOURCE treats it for absence claims (caught in test, 29 Jul 2026).
+    candidates = []
+    for tok in re.findall(r"[A-Za-z][A-Za-z0-9_-]{3,}", sentence):
+        helper = idx.get(tok.lower())
+        if not helper:
+            continue
+        if helper.replace(".py", "") in tool_text:
+            return None                       # a relevant helper WAS run -- claim is grounded
+        candidates.append({"term": tok, "helper": helper})
+    return candidates[0] if candidates else None
 
 
 def read_transcript(path):
@@ -131,6 +243,21 @@ def main():
     except Exception:
         sys.exit(0)                                   # fail open
     reply, tools = read_transcript(payload.get("transcript_path", ""))
+
+    cap = capability_finding(reply, tools)
+    if cap:
+        sys.stderr.write(
+            f"BLOCKED by verified-facts: you are telling Pete you CANNOT do something involving "
+            f"'{cap['term']}', and {cap['helper']} exists for exactly that. This session never ran it.\n"
+            f"  Check before you claim a limit on yourself:\n"
+            f"    VAULT=/tmp/pbs python3 /tmp/pbs/whereis.py \"{cap['term']}\"\n"
+            f"    VAULT=/tmp/pbs python3 /tmp/pbs/{cap['helper']}\n"
+            f"  29 Jul 2026: told Pete I could only issue Google invites and asked a customer to set "
+            f"the Teams meeting up themselves. teams-api.py was registered, documented, and its token "
+            f"refreshed first time. Pete had spent a session granting that access weeks before.\n"
+            f"  If the helper genuinely cannot do it, say so NAMING the helper and what it lacks.\n")
+        sys.exit(2)
+
     findings = evaluate(reply, tools)
     if not findings:
         sys.exit(0)
