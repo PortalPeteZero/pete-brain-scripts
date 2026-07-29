@@ -40,6 +40,15 @@ FIELD_MAP = {
     "gsc": ("gsc_property", "gsc"),
     "ga4": ("ga4_property_id", "ga4"),
 }
+# Keys the READERS take from `f` top-level (whereis.py, the CC property pages, property-state).
+# A --set landing only in f.declared is invisible to all of them while the tool still prints
+# success -- a silent no-op. That is how locator-data kept a dead supabase_ref: the write went
+# to f.declared, every reader kept serving the old top-level value (found 29 Jul 2026).
+TOP_LEVEL_KEYS = {
+    "ahrefs", "business", "domains", "front_door", "ga4", "github", "gsc", "gtm", "hosting",
+    "prod_branch", "ptype", "seo_scope", "status", "supabase_ref", "surfer", "vercel_project",
+    "vercel_team",
+}
 ENTITY_BIZ = {
     "Sygma": "[[Businesses/sygma-solutions]]", "Canary Detect": "[[Businesses/canary-detect]]",
     "Personal": "personal", "One System": "[[Businesses/one-system]]", "El Atico": "[[Businesses/el-atico]]",
@@ -127,7 +136,7 @@ def main():
             sys.exit(f"cc-property: '{name}' {'not found (use --create)' if not card else 'is ambiguous'}")
         f = card["f"] or {}
         declared = f.get("declared") or {}
-        changed = []
+        changed, declared_only = [], []
         for kv in a[2:]:
             if "=" not in kv:
                 continue
@@ -136,10 +145,18 @@ def main():
             declared[dkey] = v
             if ftop:
                 f[ftop] = v
+            elif k in TOP_LEVEL_KEYS or k in f:
+                f[k] = v            # mirror to where the readers actually look
+            else:
+                declared_only.append(k)
             changed.append(f"{dkey}={v}")
         f["declared"] = declared
         ccq(f"UPDATE property_declarations SET f = {jlit(f)}, updated_at = now() WHERE name = {lit(card['name'])}")
-        print(f"cc-property: {card['name']} ← " + ", ".join(changed)); return
+        print(f"cc-property: {card['name']} ← " + ", ".join(changed))
+        if declared_only:
+            print("cc-property: WARNING -- these went to f.declared ONLY, where whereis.py and the "
+                  "CC pages do NOT read them: " + ", ".join(declared_only))
+        return
 
     sys.exit(__doc__)
 
