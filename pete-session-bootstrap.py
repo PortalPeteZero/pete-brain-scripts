@@ -43,12 +43,107 @@ def cc_get(path):
     return json.loads(urllib.request.urlopen(req, timeout=60).read().decode())
 
 
+def _same_as_origin(g, f):
+    """True when the working-tree file is byte-identical to origin/main's version (so reverting it
+    discards nothing)."""
+    blob = subprocess.run(["git", "-C", str(PBS), "show", f"origin/main:{f}"], capture_output=True)
+    if blob.returncode != 0:
+        return False                      # not on origin at all → never safe to bin
+    try:
+        return (PBS / f).read_bytes() == blob.stdout
+    except OSError:
+        return False
+
+
+def self_heal():
+    """A fast-forward pull was refused because the SHARED /tmp/pbs clone is dirty — a session edited
+    files in place. Sessions must push from their own clones (git-commit-atomic-guard enforces that),
+    so a leftover here is nearly always a copy of something already on origin: dead weight that
+    silently pins every later session to stale code (measured 28-29 Jul 2026 — 11 commits behind,
+    all 12 leftovers byte-identical to origin).
+
+    Deliberately SURGICAL, because other sessions may be live in this same clone:
+      • revert only tracked files that are byte-identical to origin/main — discards nothing;
+      • never hard-reset and never `git clean`, so another session's untracked work-in-progress
+        survives; the ONLY untracked files touched are ones origin/main now adds at the same path
+        (their pushed version supersedes the local copy) — and those are preserved first;
+      • anything that genuinely differs is COPIED to /tmp/pbs-preserved-<stamp>/ and left in place,
+        and is only reverted if it is what still blocks the pull (the copy is then the record).
+    Fail-open: a heal failure must never stop a session booting."""
+    import time
+    g = lambda *a: subprocess.run(["git", "-C", str(PBS)] + list(a), capture_output=True, text=True)
+    try:
+        if g("fetch", "-q", "origin", "main").returncode != 0:
+            print("bootstrap: ⚠ pull blocked AND fetch failed — running on the existing (possibly stale) copy", flush=True)
+            return "stale (fetch failed)"
+
+        dirty = [l[3:].strip() for l in g("status", "--porcelain").stdout.splitlines()
+                 if l[:2].strip() and not l.startswith("??")]
+        # untracked files origin/main now carries at the same path: the pushed version wins
+        on_origin = set(g("ls-tree", "-r", "--name-only", "origin/main").stdout.splitlines())
+        shadowing = [f for f in g("ls-files", "--others", "--exclude-standard").stdout.splitlines()
+                     if f in on_origin]
+
+        preserved = Path(f"/tmp/pbs-preserved-{time.strftime('%Y%m%d-%H%M%S')}")
+
+        def stash(f):
+            dest = preserved / f
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(PBS / f, dest)
+            except OSError:
+                pass
+
+        redundant = [f for f in dirty if _same_as_origin(g, f)]
+        differs = [f for f in dirty if f not in redundant]
+        if redundant:
+            g("checkout", "--", *redundant)
+        for f in differs:
+            stash(f)
+
+        for f in shadowing:
+            if not _same_as_origin(g, f):
+                stash(f)
+                differs.append(f)
+            try:
+                (PBS / f).unlink()
+            except OSError:
+                pass
+
+        r = g("pull", "-q", "--ff-only")
+        if r.returncode != 0 and differs:
+            # those genuinely-different files are what still blocks it; the copy above is the record
+            still = [f for f in differs if (PBS / f).exists()]
+            if still:
+                g("checkout", "--", *still)
+            r = g("pull", "-q", "--ff-only")
+
+        if differs:
+            print(f"bootstrap: ⚠ SELF-HEAL — {len(differs)} leftover file(s) differed from origin, copied to "
+                  f"{preserved}: {', '.join(differs[:8])}{' …' if len(differs) > 8 else ''}. "
+                  "Review and route them (push from your own clone / ingest / discard).", flush=True)
+        if r.returncode != 0:
+            print(f"bootstrap: ⚠ self-heal could not complete the pull ({(r.stderr or '').strip()[:140]}) — "
+                  "running on the existing (possibly stale) copy", flush=True)
+            return "stale (heal incomplete)"
+
+        detail = f"{len(redundant)} stale duplicate(s) reverted" if redundant else "leftovers cleared"
+        if differs:
+            detail += f", {len(differs)} preserved"
+        return f"self-healed + pulled ({detail})"
+    except Exception as e:
+        print(f"bootstrap: ⚠ self-heal failed ({e}) — running on the existing (possibly stale) copy", flush=True)
+        return "stale (self-heal failed)"
+
+
 def clone_or_pull():
     rows = cc_get("secrets?select=value&name=eq.github-pat")
     pat = rows[0]["value"].strip() if rows else None
     if (PBS / ".git").exists():
-        subprocess.run(["git", "-C", str(PBS), "pull", "-q", "--ff-only"], check=False)
-        return "pulled"
+        r = subprocess.run(["git", "-C", str(PBS), "pull", "-q", "--ff-only"], capture_output=True, text=True)
+        if r.returncode == 0:
+            return "pulled"
+        return self_heal()
     url = f"https://{pat}@github.com/{REPO}.git" if pat else f"https://github.com/{REPO}.git"
     # GitHub throws transient SSL_ERROR_SYSCALL on clones — retry with backoff (boot-critical).
     import time
@@ -99,12 +194,36 @@ def materialise_config():
     return n
 
 
+def publish_gate_wiring():
+    """Publish this machine's hook wiring into the CC `gates` registry (plan step 0b).
+
+    Every hook-type gate is wired in a settings.json on this Mac; `cc-locator-audit` runs on Railway
+    and cannot read local disk. Without this the daily audit can never tell a registered gate from a
+    wired one. Runs here because the kernel is the one thing that runs locally every session.
+
+    Fail-open and quiet: a reporting failure must never stop a session booting.
+    """
+    try:
+        r = subprocess.run([sys.executable, str(PBS / "gate-report.py")],
+                           capture_output=True, text=True, timeout=45,
+                           env={**os.environ, "VAULT": str(PBS)})
+        head = (r.stdout or "").strip().split("\n")[0]
+        warns = [l for l in (r.stdout or "").split("\n") if l.strip().startswith("⚠")]
+        if head:
+            print(f"bootstrap: {head}" + (f" — {len(warns)} needing attention" if warns else ""), flush=True)
+        for w in warns:
+            print(f"bootstrap: {w.strip()}", flush=True)
+    except Exception as e:
+        print(f"bootstrap: gate wiring not published ({e}) — continuing", flush=True)
+
+
 def main():
     how = clone_or_pull()
     n = materialise_secrets()
     c = materialise_config()
     os.environ["VAULT"] = str(PBS)
     print(f"bootstrap: /tmp/pbs ready ({how} {REPO}, {n} secrets + {c} config docs materialised), VAULT={PBS}", flush=True)
+    publish_gate_wiring()
     if len(sys.argv) > 1:
         tool = PBS / sys.argv[1]
         if not tool.exists():
