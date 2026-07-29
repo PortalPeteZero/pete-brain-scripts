@@ -42,8 +42,9 @@ FIELD_MAP = {
 }
 # Keys the READERS take from `f` top-level (whereis.py, the CC property pages, property-state).
 # A --set landing only in f.declared is invisible to all of them while the tool still prints
-# success -- a silent no-op. That is how locator-data kept a dead supabase_ref: the write went
-# to f.declared, every reader kept serving the old top-level value (found 29 Jul 2026).
+# success -- a silent no-op. Found 29 Jul 2026 on locator-data, whose card still held the
+# PRE-MIGRATION Lovable backend after the 16 Jul cutover: the correcting --set reported success
+# but wrote to f.declared, so every reader kept serving the stale top-level value.
 TOP_LEVEL_KEYS = {
     "ahrefs", "business", "domains", "front_door", "ga4", "github", "gsc", "gtm", "hosting",
     "prod_branch", "ptype", "seo_scope", "status", "supabase_ref", "surfer", "vercel_project",
