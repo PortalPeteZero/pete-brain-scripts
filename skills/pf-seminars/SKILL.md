@@ -46,18 +46,30 @@ recording, or anything Pete did not run.
 If it is genuinely borderline, say so in one line with the evidence and let Pete call it.
 
 ## Step 2 — Get the verbatim transcript
-Run from Pete's logged-in Chrome (`claude-in-chrome`), never headless — the auth is a bearer
-JWT in the page's `localStorage` and cannot be extracted (the token expires **26 Oct 2026**).
 
-**Plaud** (`web.plaud.ai`), host `https://api-euc1.plaud.ai`:
-- List: `GET /file/simple/web?skip=0&limit=99999&is_trash=0&sort_by=start_time&is_desc=true`
-  — the key is **`data_file_list`**; `start_time` and `duration` are **milliseconds**.
-- One file: `GET /file/detail/<file_id>` -> `content_list[]`, each with a **presigned `data_link`**
-  you fetch directly with no auth header.
-- Take **`transaction`** (verbatim). Ignore `auto_sum_note` — we write summaries fresh.
+**Plaud — use the helper. No browser, no headless caveat** (changed 30 Jul 2026, the day Plaud
+shipped CLI access):
+```
+VAULT=/tmp/pbs python3 /tmp/pbs/plaud-api.py recent --days 30       # find it
+VAULT=/tmp/pbs python3 /tmp/pbs/plaud-api.py transcript <file_id> -o verbatim.txt
+VAULT=/tmp/pbs python3 /tmp/pbs/plaud-api.py pull <file_id> --out DIR   # all streams at once
+```
+- `transcript` returns the **verbatim** stream (`transaction`) by default, timestamped and
+  speaker-labelled. Verified 30 Jul 2026 against the 27 Jul Drive export of the 07-06 seminar:
+  17,346 words / 162 segments in both, word stream identical.
+- Ignore the AI summary — we write summaries fresh (see Step 4).
 - If it is in the trash, restore it and tag it into the **PF** folder (see Step 5).
+- Full config, limits and the token-rotation rule: `[[plaud-api-configuration]]`.
 
-**Google Recorder** (a `recorder.google.com/<uuid>` share link) — awkward, so follow exactly:
+> [!warning] The old browser route is RETIRED — do not use it
+> This step used to say "run from Pete's logged-in Chrome, never headless — the auth is a bearer JWT
+> in `localStorage` and **cannot be extracted**". That is no longer true, and the hand-scraped
+> `api-euc1.plaud.ai` route (with its 26 Oct 2026 token cliff) is dead. Do not drive `web.plaud.ai`
+> through `claude-in-chrome` for transcripts. Plaud's *own* search is names-only over the 500 most
+> recent, so to find a seminar by what was **said**, query `vault_notes` / `drive_files`, not Plaud.
+
+**Google Recorder** (a `recorder.google.com/<uuid>` share link) — still browser-driven, and awkward,
+so follow exactly. Run from Pete's logged-in Chrome (`claude-in-chrome`), never headless:
 - The page is deep shadow DOM. `get_page_text` returns nothing.
 - Walk shadow roots for `RECORDER-TRANSCRIPT-UTTERANCE` (the whole transcript is present, not
   virtualised) using a recursive walker that descends into each node's `shadowRoot`.
