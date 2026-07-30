@@ -14,7 +14,28 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 # only has SUPABASE_TOKEN in its env write via cc-sql.py without materialising a token file.
 TOK = (os.environ.get("SUPABASE_TOKEN") or "").strip() or open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
 REF = "zhexcaflgahdcbzvbyfq"
-sql = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read()
+# Same guard as lg-sql.py: a flag on the command line must never be mistaken for the QUERY.
+# `cc-sql.py < file.sql --reason "..."` would otherwise send "--reason" to Postgres, which reads it
+# as a comment, runs nothing, and returns [] exactly like a successful write while the file on stdin
+# is never read. A silent no-op that looks like success. Caught in lg-sql.py on 30 Jul 2026 after an
+# UPDATE reported success and changed nothing; fixed here too because it is the same fault.
+_FLAGS_WITH_VALUE = ("--reason",)
+_args, _i = [], 1
+while _i < len(sys.argv):
+    a = sys.argv[_i]
+    if a in _FLAGS_WITH_VALUE:
+        _i += 2
+        continue
+    if a.startswith("--"):
+        _i += 1
+        continue
+    _args.append(a)
+    _i += 1
+
+sql = _args[0] if _args else sys.stdin.read()
+
+if not sql.strip():
+    sys.exit("cc-sql: no SQL given. Pass it as an argument or pipe/redirect it on stdin.")
 req = urllib.request.Request(
     f"https://api.supabase.com/v1/projects/{REF}/database/query",
     data=json.dumps({"query": sql}).encode(),
