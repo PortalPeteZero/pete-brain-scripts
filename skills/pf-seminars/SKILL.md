@@ -1,6 +1,6 @@
 ---
 name: pf-seminars
-version: 1.2.0
+version: 1.3.0
 description: >
   Add a Passion Fit seminar to the archive, end to end, from nothing but a link or a
   "here's Monday's seminar". Pulls the verbatim transcript out of Plaud or Google
@@ -18,6 +18,14 @@ description: >
 > *"I need to ensure when I do add a seminar I don't have to explain everything and check
 > everything."* So: he says "add this seminar" plus a link, and everything below happens
 > without a single question back, unless something genuinely needs his judgement.
+
+> [!warning] Boundary — this skill or `meeting-notes`?
+> **`pf-seminars` (here)** = a Passion Fit seminar. The output is a **member-facing product** that
+> syncs to the portal, written to the teaching-notes spec, banked with `pf-seminar-ingest.py`.
+> **`meeting-notes`** = any other recorded meeting — customer, supplier, internal, board. The output
+> is an internal record, followed by a **discussion** of next actions with Pete.
+> They share only the transcript step. Running the wrong one produces the wrong kind of document,
+> so decide this before Step 1. If a recording is genuinely borderline, ask Pete.
 
 ## Before anything — load the two records
 1. **[[Passion Fit seminars — the corpus definition (what is and isn't a seminar)]]** — what
@@ -89,6 +97,12 @@ One folder per seminar, named `YYYY-MM-DD - <title>`. **If the date is not estab
 read like minutes ("Speaker 1 initiated the conversation by asking participants…"); a member
 opening this wants teaching notes. **Members never see the transcript**, so the summary IS the
 product. Target ~2,000–2,500 words from a 90-minute seminar.
+
+The rule is evidence-backed, and the evidence is worth knowing before you are tempted: measured
+30 Jul 2026 against Plaud's summary of the 07-06 seminar, it produced 15 Action Items tables with a
+**due date invented on every row** (`2026-07-13` appeared 32 times, and one ran to `2026-12-31`),
+assigned other members' example goals to Pete, and listed "Lauren" and "Laura" as two separate
+people. Full write-up of the failure modes lives in the `meeting-notes` skill — do not re-derive it.
 
 Structure: standfirst · sectioned teaching notes in the order taught · pull-quotes where the
 session turns · tables where the content is genuinely a list · quote bank with attributions ·

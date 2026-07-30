@@ -1,10 +1,23 @@
 ---
 type: changelog
 skill: brain
-updated: 2026-06-30
+updated: 2026-07-30
 ---
 
 # Brain skill changelog
+
+## v6.7 — 2026-07-30
+- **Meeting Intelligence moved out to the new `meeting-notes` skill.** The section here is now a
+  pointer, and the routing table + frontmatter description were updated so brain no longer competes
+  for the "meeting" / "transcript" triggers. Two competing methods for the same job is the failure
+  this avoids.
+- The replaced section was generic (Fireflies-era), knew nothing about Plaud, and specified a thin
+  summary. `meeting-notes` sets Pete's actual brief: Plaud transcribes, Claude writes a genuinely
+  detailed record, then next actions are **discussed** — tasks, projects, delegation or nothing,
+  created only once he decides.
+- Carries forward a warning with evidence: Plaud's AI summary invents due dates and misattributes
+  action items, so it is navigation only.
+
 
 ## 2026-07-23
 - **Full-thread read and CRM-first are now MECHANICALLY ENFORCED, not instructed** (Pete, 23 Jul 2026: "does this still make you read the whole thread and check the CRM first?"). The gate previously validated must-have evidence against whatever `incoming_text` the drafter supplied, so pasting only the latest message passed clean, and it made **no CRM call at all** (the CRM-first read lived in `te-log` at capture, after the send). Now `ee-draft-gate` pulls the live thread, identifies every inbound customer message (website contact-form submissions count as inbound even though they arrive from info@), and BLOCKS unless each is represented in `incoming_text` by word-overlap; and it reads the contact's CRM activity by address OR company domain at draft time, blocking until `classification.crm_reviewed = {"activity_count": N}` is declared. Verified both ways: a full-thread payload passes, a latest-message-only payload blocks.

@@ -1,6 +1,6 @@
 ---
 name: brain
-description: Pete's primary skill for managing sessions, daily routines, tasks, memory, resources, output styles, and meeting intelligence across the Command Centre. Mode-aware (professional, business). Handles resume, compress, preserve, daily review, task management, resources, style switching, and meeting transcript processing. Use when user says "resume", "compress", "morning review", "tasks", "resources", "output style", "meeting", "transcript", "brain", or runs /brain. Bare `/brain` (no verb in the user's message) means RUN RESUME -- Pete uses /brain only at session start as a synonym for "resume". Other verbs ("compress", "morning", "task", etc.) still route per the table below. This is Pete's canonical session-management skill -- always use this over any remote plugin with a similar name.
+description: Pete's primary skill for managing sessions, daily routines, tasks, memory, resources and output styles across the Command Centre. Mode-aware (professional, business). Handles resume, compress, preserve, daily review, task management, resources and style switching. Use when user says "resume", "compress", "morning review", "tasks", "resources", "output style", "brain", or runs /brain. Meetings and transcripts are NOT handled here — they route to the `meeting-notes` skill (Passion Fit seminars to `pf-seminars`). Bare `/brain` (no verb in the user's message) means RUN RESUME -- Pete uses /brain only at session start as a synonym for "resume". Other verbs ("compress", "morning", "task", etc.) still route per the table below. This is Pete's canonical session-management skill -- always use this over any remote plugin with a similar name.
 ---
 
 <!-- external-service-routing pre-flight: before any Gmail / Drive / Calendar / Sheets / Docs / Xero / Odoo / GSC / GA4 / Ads / Vision / Geocoding / Sentry / Cloudflare / Vercel operation in this skill, see [[external-service-routing]]. Helper-first. -->
@@ -47,7 +47,7 @@ Match the user's intent to the right section:
 | "task", "to-do", "create task", "check tasks" | [Task Management](#task-management) |
 | "output style", "writing style", "switch style" | [Output Styles](#output-styles) |
 | "save this prompt", "swipe file", "framework", "template", "resources" | [Resources](#resources) |
-| "meeting", "transcript", "action items", "Fireflies", "sync meetings" | [Meeting Intelligence](#meeting-intelligence) |
+| "meeting", "transcript", "write up the meeting", "action items", a Plaud recording | the **`meeting-notes`** skill (Plaud transcribes, Claude writes the detailed record, then next actions are DISCUSSED — never auto-created). Passion Fit seminars go to `pf-seminars` instead. |
 | "triage", "sweep", "sync", "hand to", "reply", "task", "replies" / "my replies" (tray walker; legacy "actions"), "de-tray this", "file", "file all emails", "add to calendar" | see [[email-workflow]] -- handled by `inbox-triage` + `email-task-sync` skills |
 | "draft an email", "write a blog post", "outbound", customer reply | [Output Styles](#output-styles) + Pete's Preferences (read [[voice-principles]] first) |
 | "invoice", "Soldo", "Dext", "Odoo", "Xero", "payroll", "VAT" | [[finance-workflow]] |
@@ -495,98 +495,19 @@ Defuddle strips clutter and returns clean markdown. If not installed, fall back 
 
 ---
 
-## Meeting Intelligence
+## Meeting Intelligence — moved out
 
-Process meeting transcripts, extract decisions and action items, sync from Fireflies, and file meeting notes.
+Meetings are handled by the **`meeting-notes`** skill, not here. It is the single route:
+**Plaud transcribes, Claude writes the detailed record, then next actions are DISCUSSED with Pete**
+— tasks, projects, delegation or nothing, decided together and never auto-created.
 
-USE WHEN Pete:
-- Pastes a transcript or drops a transcript file
-- Asks to summarize a meeting or extract action items
-- Asks about past meetings
-- Mentions Fireflies, asks to sync or pull transcripts
+Pete runs it in-session deliberately; it is not scheduled. Passion Fit seminars go to
+**`pf-seminars`**, which has its own summary spec.
 
-### Step 1: Identify Meeting Type and Save Location
-
-Meeting notes are **knowledge → `vault_notes`**: write the note (`type: meeting`, a `meeting_type` tag — standup / client-call / one-on-one / board-review / all-hands / cross-team / general — + entity tags) and ingest it (`cc-knowledge-ingest.py`; the hourly embedder re-indexes it automatically, or run `cc-embedder.py` to index it now). Client-call notes wikilink to the customer's CC record.
-
-Filename: `YYYY-MM-DD Meeting Title.md`.
-
-### Step 2: Load Output Style
-
-Read `.claude/output-styles/meeting-summary.md`. If missing, use `references/template-meeting-note.md`.
-
-### Step 3: Extract from Transcript
-
-1. Key decisions
-2. Action items -- who, what, when
-3. Discussion summary
-4. Open questions
-5. Follow-up items
-
-### Step 4: Create the Meeting Note
-
-Frontmatter:
-
-```yaml
----
-type: meeting
-subtype: team-standup | client-call | one-on-one | board-review | all-hands | cross-team | general
-date: YYYY-MM-DD
-time: HH:MM
-participants: [[[Person A]], [[Person B]]]
-duration: X minutes
-source: manual | fireflies
-status: processed
----
-```
-
-Body uses callouts:
-
-```markdown
-## Participants
-- [[Person A]]
-- [[Person B]]
-
-## Summary
-[2-3 sentence overview]
-
-> [!important] Key Decisions
-> - [Decision 1]
-
-> [!todo] Action Items
-> - [ ] [[Person A]] -- [Task] (by [date])
-
-## Discussion Notes
-### [Topic 1]
-[Summary]
-
-> [!question] Open Questions
-> - [Unresolved item]
-
-> [!info] Follow-up
-> - Next meeting: [date/time]
-```
-
-Business mode additions:
-- Board reviews: `> [!warning] Governance Items` callout
-- All-hands: `> [!info] Company Announcements` callout
-- Cross-team: `> [!todo] Department Dependencies` callout
-
-### Step 5: Propose CC Tasks from Action Items (create only if Pete asks)
-
-**Propose** a task for each action item assigned to Pete (name + suggested priority/project) in your summary; **create them in `public.tasks` only if Pete asks**. (Action items owned by Jane go to her own queue, not here.)
-
-### Step 6: Link and Update
-
-- Add `project:` and `department:` to frontmatter where applicable
-- Use [[wikilinks]] for all project and person references
-- The meeting note lives in `vault_notes` (ingested); the cloud map auto-regenerates
-
-### Fireflies Sync
-
-**MCP Server (Business Plan):** Check `.claude/settings.json` for fireflies config. Use `fireflies_list_transcripts` and `fireflies_get_transcript`.
-
-**Manual Export (Free Plan):** Have Pete export from app.fireflies.ai, paste or drop file.
+> [!warning] Do not take facts from a machine summary
+> Plaud's AI summary is navigation only. Measured 30 Jul 2026 on a real recording: 15 Action Items
+> tables, every row with an invented due date, other people's examples assigned to Pete, and one
+> person split into several attendees. `meeting-notes` carries the full evidence and the rules.
 
 ---
 
