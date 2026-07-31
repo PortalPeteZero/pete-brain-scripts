@@ -93,22 +93,42 @@ def queue(limit, fy=None, oldest=False, with_actions_only=False):
                 "&order=incident_date.desc&limit=1")
     tot = rest("clancy_dn_incidents?select=id&limit=10000")
     cap = rest("clancy_dn_incidents?select=id&pdf_captured_at=not.is.null&limit=10000")
-    have_actions = {a["incident_id"] for a in
-                    rest("clancy_dn_actions?select=incident_id&limit=10000")}
+    _acts = rest("clancy_dn_actions?select=incident_id,date_raised&limit=10000")
+    have_actions = {a["incident_id"] for a in _acts}
+    # The high-water mark of the actions export. Anything newer is simply not covered by it.
+    _d = [a["date_raised"][:10] for a in _acts if a.get("date_raised")]
+    ACT_CUTOFF = max(_d) if _d else None
     print(f"captured {len(cap)} of {len(tot)} incidents"
           + (f" · newest captured: {done[0]['id']} ({(done[0]['incident_date'] or '')[:10]})" if done else " · none captured yet"))
     if not todo:
         print("nothing left to capture" + (f" in {fy}" if fy else ""))
         return
+    print("\nA damage is NOT captured until BOTH sides are done: the incident (PDF, documents,"
+          "\nphotos) AND its actions (closure detail + each action's own photos/videos/documents).")
     print(f"\nnext {len(todo)} to capture ({'oldest' if oldest else 'newest'} first"
           + (f", {fy}" if fy else "") + "):")
     for r in todo:
         if with_actions_only and r["id"] not in have_actions:
             continue
-        acts = " ·  HAS ACTIONS (do the Closed Actions scrape too)" if r["id"] in have_actions else ""
+        # EVERY entry states its action work, including the ones where we cannot see any.
+        # A blank used to mean "nothing to do here", but 16 of this year's damages post-date the
+        # actions export, so a blank was really "we do not know". Pete, 31 Jul: he should never
+        # have to ask whether the actions were done. The queue says it every time.
+        n_act = sum(1 for a in have_actions if a == r["id"])
+        if r["id"] in have_actions:
+            acts = f" ·  HAS ACTIONS"
+            todo_line = "      ACTIONS: open BOTH tabs (Outstanding + Closed). Scrape Closed/Closed By, then click View on EVERY action and take its Photos, Videos and Documents."
+        elif ACT_CUTOFF and (r["incident_date"] or "")[:10] > ACT_CUTOFF:
+            acts = " ·  ACTIONS UNKNOWN"
+            todo_line = (f"      ACTIONS: this damage is newer than our actions export ({ACT_CUTOFF}), so we CANNOT see whether any exist."
+                         "\n               Open both tabs and check — do not assume none.")
+        else:
+            acts = " ·  no actions in the export"
+            todo_line = "      ACTIONS: none in the export. Open both tabs to confirm, then record capture_actions='none'."
         print(f"  {r['id']}  {(r['incident_date'] or '')[:10]}  {r['fy']}  "
               f"{(r['contract_family'] or '')[:18]:18s} {(r['location'] or '')[:40]:40s} {r['status']}{acts}")
         print(f"      https://clancy.depotnet.co.uk/#/incidentmanager/imincident/{r['id']}")
+        print(todo_line)
 
 
 def main():
