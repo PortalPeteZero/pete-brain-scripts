@@ -84,7 +84,7 @@ def _voyage(texts):
             json.loads(urllib.request.urlopen(req, timeout=300).read().decode())["data"]]
 
 
-ORDER_COL = {"clancy_dn_gc_inspections": "id", "clancy_dn_gc_actions": "id,question_id", "clancy_dn_gc_coverage": "operative"}
+ORDER_COL = {"clancy_dn_gc_inspections": "id", "clancy_dn_gc_actions": "id,question_id", "clancy_dn_gc_coverage": "operative", "clancy_dn_gc_findings": "inspection_id"}
 
 def fetch_all(table):
     out, page = [], 0
