@@ -298,7 +298,19 @@ def main():
         print("dry-run: nothing written")
         return
 
+    # PostgREST rejects a bulk insert whose objects do not all carry the SAME keys
+    # (PGRST102 "All object keys must match"). Only CHANGED rows get import_changed_at, so the
+    # moment an export contains a brand-new damage alongside changed ones, the batch is a mix of
+    # two shapes and the whole import 400s. Pad every row to the union of keys before posting.
+    # Found 31 Jul 2026 the first time a new damage (153523) appeared in an export.
+    def uniform(rows):
+        keys = set()
+        for r in rows:
+            keys |= r.keys()
+        return [{k: r.get(k) for k in keys} for r in rows]
+
     H = {"Prefer": "resolution=merge-duplicates"}
+    inc_rows, act_rows = uniform(inc_rows), uniform(act_rows)
     for i in range(0, len(inc_rows), 200):
         rest("clancy_dn_incidents", "POST", inc_rows[i:i+200], H)
     for i in range(0, len(act_rows), 200):

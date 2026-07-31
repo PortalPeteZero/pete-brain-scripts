@@ -66,6 +66,9 @@ text-decoration:none;color:#182230;box-shadow:0 1px 2px rgba(16,24,40,.05),0 8px
 transition:transform .16s,box-shadow .16s;position:relative;overflow:hidden}
 .door:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(16,24,40,.14)}
 .door::before{content:"";position:absolute;inset:0 auto 0 0;width:6px;background:#2f5fd0}
+.door.genny{border-color:#97D700}
+.door.genny .t{color:#5c8600}
+.warnnote{border-left:4px solid #b45309;background:#fff9f0}
 .door.dive::before{background:#c0281e}
 .door .kicker{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#8b95a3}
 .door .t{font-size:23px;font-weight:800;color:#1c2a6e;margin:6px 0 8px;letter-spacing:-.01em}
@@ -110,7 +113,16 @@ def build():
          AND module_key NOT LIKE '%people%' AND module_key NOT LIKE '%coverage%') AS person_pages,
       (SELECT count(*) FROM drive_files WHERE path LIKE '%depotnet-inspection-reviews%'
          AND lower(name) LIKE '%.pdf') AS review_pdfs,
-      (SELECT min(fy) FROM clancy_dn_incidents) AS first_fy""")[0]
+      (SELECT min(fy) FROM clancy_dn_incidents) AS first_fy,
+      -- The two registers come from separate exports and drift apart. Surface the drift on the page
+      -- rather than letting a reader assume an empty actions list means no actions were raised.
+      (SELECT max(date_raised)::date FROM clancy_dn_actions) AS act_latest,
+      (SELECT max(incident_date)::date FROM clancy_dn_incidents) AS inc_latest,
+      (SELECT count(*) FROM clancy_dn_incidents
+        WHERE incident_date > (SELECT max(date_raised) FROM clancy_dn_actions)) AS after_cut""")[0]
+    d["total"] = d["damages"]
+    fmt = lambda v: datetime.datetime.strptime(str(v)[:10], "%Y-%m-%d").strftime("%-d %b %Y") if v else "unknown"
+    d["act_latest"] = fmt(d["act_latest"]); d["inc_latest"] = fmt(d["inc_latest"])
     fys = sql("SELECT fy, count(*) n FROM clancy_dn_incidents GROUP BY fy ORDER BY fy DESC")
     today = datetime.date.today()
     LBL = {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26",
@@ -171,18 +183,42 @@ for in the first place.</div>
   </div>
   <div class="go">Open the review →</div>
  </a>
+ <a class="door genny" href="/m/clancy-bot">
+  <div class="kicker">Ask instead of hunt</div>
+  <div class="t">Genny</div>
+  <div class="d">The assistant for this section. She reads the whole store: every damage and its
+  investigation, the corrective actions, the evidence held against each one, the usage inspections
+  and Sygma's own findings. Named after the instrument that finds what is buried.</div>
+  <div class="figs">
+   <div><div class="n">{d['total']}</div><div class="l">damages she can read</div></div>
+   <div><div class="n">{d['answers']:,}</div><div class="l">investigation answers</div></div>
+   <div><div class="n">{d['files']}</div><div class="l">documents &amp; photos</div></div>
+  </div>
+  <div class="go">Ask Genny →</div>
+ </a>
 </div>
 
 <h2>Straight to a year</h2>
 <div class="mini">{tiles}</div>
 
-<div class="note"><b>Note on the two sections.</b> Damages is fully database-driven and searchable.
-The Genny &amp; CAT review is currently a written analysis with its evidence attached — only the
-{d['inspections']}-record sample export sits in the database so far, so it is not yet covered by
-the search. Bringing the full inspection dataset in is the next piece of work.</div>
+<div class="note"><b>Note on the sections.</b> Damages is fully database-driven and searchable, and
+Genny reads the same store. The Genny &amp; CAT review is a written analysis with its evidence
+attached; {d['inspections']} inspection records sit in the database so far, so that section is not
+yet fully covered by the search. Bringing the complete inspection dataset in is the next piece of
+work.</div>
+
+<div class="note warnnote"><b>No corrective action has been raised on a service damage since
+{d['act_latest']}.</b> This was checked against Depotnet directly on 31 July 2026, with every filter
+cleared: the Action Report holds <b>3,765</b> actions across seven incident categories, of which
+Service Damage is <b>269</b> — exactly the set we hold, complete back to October 2023. Over the same
+weeks Depotnet raised <b>160</b> actions in other categories (Observation and Near Miss, Injury,
+Fleet, Security) right through to 31 July, so the system is in daily use. In that time
+<b>{d['after_cut']} service damages</b> have been logged, running to {d['inc_latest']}, with not one
+corrective action raised against any of them. This is a gap in the process, not a gap in the data.</div>
 
 <div class="foot"><span>Live from the Command Centre store · {today.strftime('%-d %b %Y')}</span>
 <span>Prepared by Sygma Solutions.</span></div>
+<script src="/clancy/genny-widget.js" defer></script>
 </div></body></html>"""
 
 

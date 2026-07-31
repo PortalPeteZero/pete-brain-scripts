@@ -63,7 +63,15 @@ def load():
         a["due"] = a["due_date"][:10] if a["due_date"] else None
     enr = rest("clancy_damages?select=dn_id,job_ref,status,stage_note,summary,key_findings,next_actions,drive_folder,report_url&dn_id=not.is.null")
     enrich = {e["dn_id"]: e for e in enr}
-    return inc, act, enrich
+    # Everything the capture pulled off Depotnet for each damage: the incident PDF, the photos and
+    # any documents attached to it. These live in their own Drive folder, which is NOT the same
+    # folder as the Sygma panel-review material, so a page that renders only the review folder shows
+    # none of them.
+    files = rest("clancy_dn_files?select=incident_id,kind,name,drive_id,drive_folder&order=kind,name&limit=20000")
+    fby = defaultdict(list)
+    for f in files:
+        fby[f["incident_id"]].append(f)
+    return inc, act, enrich, dict(fby)
 
 FAM_ORDER = ["Southern Water", "Anglian Water", "South East Water", "Scottish Water", "UKPN", "SGN"]
 FAM_COLORS = {"Southern Water": "#2f5fd0", "Anglian Water": "#d97706", "South East Water": "#0e9594",
@@ -424,6 +432,7 @@ def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
 {body}
 <div class="foot"><span>Source: Depotnet Incident Manager exports (Incident Register + Action Report), imported {datetime.date.today().strftime('%-d %b %Y')}.</span><span>Prepared by Sygma Solutions.</span></div>
 </div>
+<script src="/clancy/genny-widget.js" defer></script>
 </body></html>"""
 
 # ---------------------------------------------------------------- aggregations
@@ -619,7 +628,7 @@ def search_box(fy=None):
 
 # ---------------------------------------------------------------- per-damage detail page
 
-def fy_detail_page(inc, act, enrich, fykey):
+def fy_detail_page(inc, act, enrich, files_by_inc, fykey):
     """One page per year that renders ANY of the year's damages in full from embedded JSON
     (?id=N): every register field, every action in full, the timeline, and the Sygma layer."""
     label = FY_LABEL[fykey]
@@ -631,6 +640,9 @@ def fy_detail_page(inc, act, enrich, fykey):
         "incidents": {str(r["id"]): r for r in rows},
         "actions": defaultdict(list),
         "enrich": {str(k): v for k, v in enrich.items() if k in year_ids},
+        "files": {str(k): v for k, v in files_by_inc.items() if k in year_ids},
+        "capfolder": {str(r["id"]): r.get("capture_drive_folder") for r in rows
+                      if r.get("capture_drive_folder")},
     }
     for a in acts:
         data["actions"][str(a["incident_id"])].append(a)
@@ -697,6 +709,28 @@ function render(){{
     +'</div>';
  }});
  h+='</div>';
+ // Everything pulled off Depotnet for this damage. Kept separate from the Sygma layer below
+ // because they are two different Drive folders: this one is Depotnet's own attachments, that one
+ // is the panel-review material. Showing only one of them is what made the record look empty.
+ const FKIND={{pdf:['Incident record','the full Depotnet PDF'],photo:['Photos','site photographs attached on Depotnet'],document:['Documents','everything else attached to the incident']}};
+ const fls=(D.files||{{}})[id]||[];
+ const capf=(D.capfolder||{{}})[id];
+ h+='<div class="card"><div class="h2row"><h2>Captured from Depotnet</h2><span class="note">'
+   +(fls.length?fls.length+' file'+(fls.length==1?'':'s')+' held in Drive':'nothing captured yet')+'</span></div>';
+ if(fls.length){{
+  ['pdf','photo','document'].forEach(k=>{{
+   const g=fls.filter(f=>f.kind===k); if(!g.length)return;
+   h+='<div class="fl" style="margin-top:10px">'+FKIND[k][0]+' <span class="muted" style="font-weight:400">'+FKIND[k][1]+'</span></div>';
+   // A row with no drive_id is a file we know the NAME of but do not hold. Rendering it as a link
+   // gives a click that goes nowhere, which is worse than not listing it. Reported live 31 Jul 2026
+   // after a migration carried 15 name-only entries in from the old Sygma records.
+   h+='<ul class="kf">'+g.map(f=>f.drive_id
+     ? '<li><a href="https://drive.google.com/file/d/'+f.drive_id+'/view" target="_blank" rel="noopener">'+f.name+'</a></li>'
+     : '<li>'+f.name+' <span class="muted">(referenced, not held)</span></li>').join('')+'</ul>';
+  }});
+  if(capf)h+='<div class="legend" style="margin-top:12px"><span class="lg"><a href="'+capf+'">Open the Depotnet capture folder in Drive</a></span></div>';
+ }} else h+='<p class="small muted">The Depotnet record for this damage has not been captured yet, so no PDF, photos or documents are held.</p>';
+ h+='</div>';
  // Sygma layer
  h+='<div class="card"><div class="h2row"><h2>Sygma material</h2><span class="note">panel reviews, findings, documents</span></div>';
  if(en){{
@@ -704,7 +738,10 @@ function render(){{
   if(en.key_findings&&en.key_findings.length)h+='<div class="fl" style="margin-top:10px">Key findings</div><ul class="kf">'+en.key_findings.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   if(en.next_actions&&en.next_actions.length)h+='<div class="fl" style="margin-top:10px">Agreed next actions</div><ul class="kf">'+en.next_actions.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   const links=[];
-  if(en.drive_folder)links.push('<a href="'+en.drive_folder+'">Drive folder — documents & transcripts</a>');
+  // ONE Drive link per damage. The panel-review material now lives INSIDE the damage folder
+  // (moved 31 Jul 2026) — two links meant clicking the wrong one and finding transcripts where
+  // you expected the incident PDF, which is exactly what happened.
+  
   if(en.report_url)links.push('<a href="'+en.report_url+'">Report</a>');
   if(links.length)h+='<div class="legend" style="margin-top:10px">'+links.map(l=>'<span class="lg">'+l+'</span>').join('')+'</div>';
   h+='<p class="small muted" style="margin-top:8px">Sygma status: '+(en.status||'—')+(en.stage_note?' · '+en.stage_note:'')+'</p>';
@@ -1042,7 +1079,7 @@ def main():
     ap.add_argument("--local")
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
-    inc, act, enrich = load()
+    inc, act, enrich, files_by_inc = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
     pages = {"overview.html": hub(inc, act)}
     # this year IS the landing: the module index serves the current-FY dashboard
@@ -1053,7 +1090,7 @@ def main():
         pages[yp["incidents"]] = fy_incidents_page(inc, act, f, enrich)
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
-        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, f)
+        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, f)
     if args.local:
         os.makedirs(args.local, exist_ok=True)
         for name, htm in pages.items():
