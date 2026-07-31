@@ -117,6 +117,12 @@ def main():
     ap.add_argument("--files", help="folder of everything downloaded for this incident")
     ap.add_argument("--actions", help="JSON from the Closed Actions tab scrape")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--actions-none", action="store_true",
+                    help="this damage genuinely has no actions in Depotnet (records 'none')")
+    ap.add_argument("--incident-missing", metavar="WHY",
+                    help="the incident PDF was attempted and could not be retrieved")
+    ap.add_argument("--actions-missing", metavar="WHY",
+                    help="the action detail was attempted and could not be retrieved")
     ap.add_argument("--queue", action="store_true",
                     help="show what is still uncaptured (newest first) and where to resume")
     ap.add_argument("--limit", type=int, default=15, help="queue size (default 15 — about a week)")
@@ -167,6 +173,33 @@ def main():
         r = subprocess.run(["python3", PDF_PARSER, os.path.join(a.files, p)],
                            capture_output=True, text=True, env={**os.environ, "VAULT": VAULT})
         print("   ", (r.stdout or r.stderr).strip().replace("\n", "\n    "))
+
+    # ---- capture state, recorded explicitly so the register shows real gaps -------
+    import datetime as _dt
+    now_iso = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    state = {}
+    if a.incident_missing:
+        state["capture_incident"] = "missing"
+        state["capture_note"] = a.incident_missing
+    if a.actions_missing:
+        state["capture_actions"] = "missing"
+        state["capture_note"] = ((state.get("capture_note", "") + " · ") if state.get("capture_note") else "") + a.actions_missing
+        state["actions_captured_at"] = now_iso
+    elif a.actions_none:
+        state["capture_actions"] = "none"
+        state["actions_captured_at"] = now_iso
+    elif a.actions:
+        state["capture_actions"] = "captured"
+        state["actions_captured_at"] = now_iso
+    else:
+        # no action flag given: if Depotnet holds no actions for this damage, that IS the answer
+        if not rest(f"clancy_dn_actions?select=id&incident_id=eq.{iid}&limit=1"):
+            state["capture_actions"] = "none"
+            state["actions_captured_at"] = now_iso
+    if state:
+        rest(f"clancy_dn_incidents?id=eq.{iid}", "PATCH", state)
+        print(f"    capture state: {state.get('capture_actions','-')} (actions)"
+              + (f", {state['capture_incident']} (incident)" if state.get("capture_incident") else ""))
 
     # ---- action closures -------------------------------------------------
     if a.actions:

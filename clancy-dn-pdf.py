@@ -172,9 +172,14 @@ def main():
             rest("clancy_dn_answers?on_conflict=incident_id,section,q_no", "POST", rows,
                  {"Prefer": "resolution=merge-duplicates"})
         import datetime as _dt
+        # Capture state is recorded explicitly so the register can show what is genuinely missing
+        # versus what was never attempted (Pete, 31 Jul). "no-investigation" is an HONEST state:
+        # the PDF is in and Depotnet's investigation is blank because it has not been done.
+        state = "full" if parsed["investigation"] else "no-investigation"
         rest(f"clancy_dn_incidents?id=eq.{iid}", "PATCH",
-             {**prom, "pdf_captured_at": _dt.datetime.now(_dt.timezone.utc).isoformat()})
-        print(f"    written: {len(rows)} answer row(s), {len(prom)} promoted field(s)")
+             {**prom, "pdf_captured_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+              "capture_incident": state})
+        print(f"    written: {len(rows)} answer row(s), {len(prom)} promoted field(s), state={state}")
 
 
 if __name__ == "__main__":

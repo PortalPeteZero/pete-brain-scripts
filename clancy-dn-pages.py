@@ -260,6 +260,14 @@ td .clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
 .b{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
 .b.yes{background:#ecf7f0;color:#15803d}.b.no{background:#f1f3f6;color:#8b95a3}
 .b.warn{background:#fdecea;color:#b91c1c}
+.caps{display:inline-flex;gap:4px}
+.caps i{width:22px;height:22px;border-radius:6px;font-style:normal;font-size:11px;font-weight:800;
+ display:inline-flex;align-items:center;justify-content:center;cursor:help;border:1px solid transparent}
+.caps i.cap-ok{background:#ecf7f0;color:#15803d;border-color:#c8e6d3}
+.caps i.cap-part{background:#fdf3e7;color:#b45309;border-color:#f0dcc0}
+.caps i.cap-bad{background:#fdecea;color:#b91c1c;border-color:#f3cfcb}
+.caps i.cap-na{background:#eef1f5;color:#64748b;border-color:#e0e5ec}
+.caps i.cap-none{background:#fff;color:#c3cad3;border-color:#e4e8ee}
 .ol .fl{margin-bottom:1px}
 .ol .t{font-size:12.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ol .t.muted{color:#9aa3ad}
@@ -295,6 +303,11 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .backbar{margin-bottom:14px}
 .backbar a{display:inline-block;font-size:14px;font-weight:700;color:#fff;background:var(--navy);padding:10px 18px;border-radius:10px;text-decoration:none;box-shadow:var(--shadow);transition:background .15s}
 .backbar a:hover{background:var(--navy2)}
+.card.searching{border-color:#c9d6f0;box-shadow:0 0 0 3px rgba(47,95,208,.09),var(--shadow)}
+.semhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:2px solid var(--border)}
+.semhead b{font-size:14px;color:var(--navy)}
+.semclear{margin-left:auto;font:inherit;font-size:12px;font-weight:700;padding:5px 12px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--muted);cursor:pointer}
+.semclear:hover{background:#f2f6fc;color:var(--navy)}
 .searchrow{display:flex;gap:8px}
 .searchrow input{flex:1;font:inherit;font-size:14px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#fff}
 .sem-btn{font:inherit;font-size:13.5px;font-weight:700;padding:10px 18px;border:0;border-radius:10px;background:var(--navy);color:#fff;cursor:pointer;transition:background .15s}
@@ -343,8 +356,11 @@ function initTable(tid){
     });
     if(cnt) cnt.textContent=shown+' shown';
   }
-  if(q) q.addEventListener('input',apply);
-  sels.forEach(s=>s.addEventListener('change',apply));
+  const wipeSearch=()=>{const sr=document.getElementById('sem-res');
+    if(sr&&sr.innerHTML){sr.innerHTML='';sr.parentElement.classList.remove('searching');
+      const si=document.getElementById('sem-q'); if(si) si.value='';}};
+  if(q) q.addEventListener('input',()=>{wipeSearch();apply();});
+  sels.forEach(s=>s.addEventListener('change',()=>{wipeSearch();apply();}));
   rows().forEach(r=>{r.addEventListener('click',()=>{
     if(r.dataset.href) location.href=r.dataset.href;
   });});
@@ -469,10 +485,14 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
     if fy_filter and len(fys) > 1:
         sel.append(('fy', 'FY', fys))
     sel += [('fam', 'Contract', fams), ('ugroup', 'Utility', utils), ('sev', 'Severity', sevs), ('status', 'Status', stats)]
+    CAPOPTS = [("todo", "not captured yet"), ("part", "part captured"),
+               ("missing", "tried — missing"), ("done", "fully captured")]
     selects = "".join(
         f'<select data-filter-for="{tid}" data-key="{key}"><option value="">{lab}: all</option>' +
         "".join(f'<option>{esc(o)}</option>' for o in opts) + "</select>"
         for key, lab, opts in sel)
+    selects += ('<select data-filter-for="' + tid + '" data-key="cap"><option value="">Captured: all</option>'
+                + "".join(f'<option value="{v}">{esc(l)}</option>' for v, l in CAPOPTS) + "</select>")
     rows_html = []
     for r in sorted(inc, key=lambda x: (x["d"] or ""), reverse=True):
         acts = act_by_inc.get(r["id"], [])
@@ -482,6 +502,19 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
         overdue = sum(1 for a in acts if a["status"] == "Overdue")
         act_h = (f'{len(acts)}' + (f' <span class="pill st-over">{overdue} overdue</span>' if overdue else "")) if acts else '<span class="muted">0</span>'
         detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
+        ci, ca = r.get("capture_incident"), r.get("capture_actions")
+        CI = {"full": ("cap-ok", "Incident PDF + investigation captured"),
+              "no-investigation": ("cap-part", "PDF captured — Depotnet investigation is blank (not done)"),
+              "missing": ("cap-bad", "Tried — could not retrieve the incident PDF")}
+        CA = {"captured": ("cap-ok", "Action detail captured"),
+              "none": ("cap-na", "Depotnet holds no actions for this damage"),
+              "missing": ("cap-bad", "Tried — action detail could not be retrieved")}
+        icls, itip = CI.get(ci, ("cap-none", "Not captured yet"))
+        acls, atip = CA.get(ca, ("cap-none", "Not captured yet"))
+        cap_key = ("done" if ci in ("full", "no-investigation") and ca in ("captured", "none")
+                   else ("missing" if "missing" in (ci, ca) else ("part" if (ci or ca) else "todo")))
+        cap_html = (f'<span class="caps"><i class="{icls}" title="Incident: {itip}">I</i>'
+                    f'<i class="{acls}" title="Actions: {atip}">A</i></span>')
         en = enrich.get(r["id"])
         overdue_n = sum(1 for a in acts if a["status"] == "Overdue")
         if acts:
@@ -501,7 +534,7 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
               f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
         rows_html.append(
             f'<tr class="row" data-href="{detail}" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
-            f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}">'
+            f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}" data-cap="{cap_key}">'
             f'<td class="mono" data-v="{r["id"]}">{r["id"]}<div class="small muted" data-v="{r["d"] or ""}">{r["d"] or "—"}</div></td>'
             f'<td>{esc(fam(r))}<div class="small muted">{esc(r["contract"] or "")}</div></td>'
             f'<td style="min-width:150px">{esc((r["location"] or "—")[:70])}</td>'
@@ -511,6 +544,7 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
             f'<td>{status_pill(r["status"] or "—")}</td>'
             f'<td data-v="{len(acts)}">{act_b}</td>'
             f'<td data-v="{1 if en else 0}">{syg_b}</td>'
+            f'<td data-v="{ {"done":0,"part":1,"missing":2,"todo":3}[cap_key] }">{cap_html}</td>'
             f'<td style="min-width:230px">{ol}</td></tr>')
     return f"""
 <div class="filters"><input type="search" id="{tid}-q" placeholder="Search location, description, ID…">{selects}<span class="count" id="{tid}-count"></span></div>
@@ -520,7 +554,8 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
 <th data-col="3">What happened <span class="arr">↕</span></th>
 <th data-col="4">Utility <span class="arr">↕</span></th><th data-col="5" data-num="1">Severity <span class="arr">↕</span></th>
 <th data-col="6">Status <span class="arr">↕</span></th><th data-col="7" data-num="1">Action? <span class="arr">↕</span></th>
-<th data-col="8" data-num="1">Sygma? <span class="arr">↕</span></th><th data-col="9">Outcome &amp; learning</th>
+<th data-col="8" data-num="1">Sygma? <span class="arr">↕</span></th>
+<th data-col="9" data-num="1">Captured <span class="arr">↕</span></th><th data-col="10">Outcome &amp; learning</th>
 </tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>
 <p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material. "None recorded" is honest: it means neither Depotnet nor Sygma holds an outcome or learning for that damage yet.</p>
 <script>{TABLE_JS}initTable("{tid}");</script>"""
@@ -530,13 +565,15 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
 FY_STEM_JS = json.dumps({f: FY_PAGE[f][:-5] for f in FYS})
 
 def search_box(fy=None):
-    """Semantic search over the whole store (or one FY), calling the gated CC API."""
+    """Hybrid search: an exact hit on a place, job ref or ID wins outright and is found in ANY
+    year (labelled when it is outside the year you are in — the 'south drove' miss, 31 Jul);
+    meaning-matches stay inside the year you are viewing and are labelled as related."""
     fyq = f",fy:{json.dumps(fy)}" if fy else ""
-    scope = f"this year's damages" if fy else "every damage, every year"
+    scope = "this year" if fy else "every year"
     return f"""
 <div class="card" style="padding:14px 18px;margin-bottom:18px">
  <div class="searchrow">
-  <input type="search" id="sem-q" placeholder="Search {scope} by meaning — e.g. 'hit a gas main while breaking out concrete'">
+  <input type="search" id="sem-q" placeholder="Search a place, job ref, ID — or describe it: 'hit a gas main breaking out concrete'">
   <button id="sem-go" class="sem-btn">Search</button>
  </div>
  <div id="sem-res"></div>
@@ -545,6 +582,7 @@ def search_box(fy=None):
 (function(){{
  const STEM={FY_STEM_JS};
  const box=document.getElementById('sem-res'), inp=document.getElementById('sem-q');
+ const LBL={{'FY26/27':'FY 2026/27','FY25/26':'FY 2025/26','FY24/25':'FY 2024/25','FY23/24':'FY 2023/24'}};
  async function go(){{
   const q=inp.value.trim(); if(!q){{box.innerHTML='';return;}}
   box.innerHTML='<p class="small muted" style="margin-top:10px">Searching…</p>';
@@ -552,14 +590,26 @@ def search_box(fy=None):
    const r=await fetch('/api/clancy-dn-search',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{q:q{fyq}}})}});
    if(!r.ok) throw 0;
    const d=await r.json();
-   if(!d.results||!d.results.length){{box.innerHTML='<p class="small muted" style="margin-top:10px">Nothing close — try different words.</p>';return;}}
-   box.innerHTML='<div class="sem-list">'+d.results.map(x=>{{
+   const res=d.results||[];
+   if(!res.length){{box.innerHTML='<div class="semhead"><b>No match for &ldquo;'+q.replace(/[<>]/g,'')+'&rdquo;</b><span class="small muted"> — nothing in {scope} matches by name or meaning</span><button class="semclear" onclick="this.closest(\'.card\').querySelector(\'#sem-res\').innerHTML=\'\';this.closest(\'.card\').classList.remove(\'searching\')">Clear</button></div>';box.parentElement.classList.add('searching');return;}}
+   const exact=res.filter(x=>x.match!=='meaning'), rel=res.filter(x=>x.match==='meaning');
+   const row=x=>{{
     const stem=STEM[x.fy]||'fy-2026-27';
-    const badge=x.kind==='action'?'<span class="pill st-out">action</span> ':'';
+    const yr=('{fy or ""}'&&x.fy!=='{fy or ""}')?'<span class="b warn" style="margin-left:6px">'+(LBL[x.fy]||x.fy)+'</span>':'';
+    const act=x.kind==='action'?'<span class="b no" style="margin-left:6px">action</span>':'';
     return '<a class="sem-hit" href="/raw/{MK}/'+stem+'-damage.html?id='+x.incident_id+'">'
       +'<span class="mono">'+x.incident_id+'</span> · '+(x.incident_date||'')+' · <b>'+(x.contract||'')+'</b> · '
-      +(x.location||'').slice(0,50)+' '+badge+'<span class="small muted">'+(x.snippet||'').slice(0,130)+'…</span></a>';
-   }}).join('')+'</div>';
+      +(x.location||'').slice(0,55)+yr+act
+      +'<span class="small muted" style="display:block">'+(x.snippet||'').slice(0,150)+'…</span></a>';
+   }};
+   let h='<div class="semhead"><b>Search results for &ldquo;'+q.replace(/[<>]/g,'')+'&rdquo;</b>'
+     +'<span class="small muted"> — these are search hits, not the filtered list below</span>'
+     +'<button class="semclear" id="sem-clear">Clear</button></div>';
+   if(exact.length) h+='<div class="fl" style="margin-top:10px">Exact matches</div><div class="sem-list">'+exact.map(row).join('')+'</div>';
+   if(rel.length) h+='<div class="fl" style="margin-top:'+(exact.length?'14px':'10px')+'">Related by meaning ({scope})</div><div class="sem-list">'+rel.map(row).join('')+'</div>';
+   box.innerHTML=h;
+   box.parentElement.classList.add('searching');
+   document.getElementById('sem-clear').addEventListener('click',()=>{{box.innerHTML='';inp.value='';box.parentElement.classList.remove('searching');}});
   }}catch(e){{box.innerHTML='<p class="small muted" style="margin-top:10px">Search is unavailable right now.</p>';}}
  }}
  document.getElementById('sem-go').addEventListener('click',go);
@@ -751,18 +801,20 @@ def hub(inc, act):
     overdue = sum(1 for a in act if a["status"] == "Overdue")
     open_n = sum(1 for r in inc if r["status"] == "Open")
     pct = (curn - same) / same * 100 if same else 0
+    cur_open = sum(1 for r in cur if r["status"] == "Open")
+    cur_ids = {r["id"] for r in cur}
+    cur_overdue = sum(1 for a in act if a["status"] == "Overdue" and a["incident_id"] in cur_ids)
     cards = [
-        dict(n=len(inc), l="service damages on the Depotnet register (Apr 2023 → today)",
-             href=f"/raw/{MK}/all-incidents.html"),
+        dict(n=len(inc), l="service damages on the Depotnet register (Apr 2023 → today) — pick a year below"),
         dict(n=len(cur), l="so far this financial year (from 1 Apr 2026)",
-             href=f"/raw/{MK}/fy-2026-27.html"),
+             href=f"/raw/{MK}/fy-2026-27-incidents.html"),
         dict(n=f"{pct:+.0f}%", cls="green" if pct < 0 else "red",
              l=f"vs the same months last year ({curn} v {same})",
              href=f"/raw/{MK}/fy-2026-27-insights.html"),
-        dict(n=open_n, cls="amber", l="incidents still open, all years",
-             href=f"/raw/{MK}/all-incidents.html?status=Open"),
-        dict(n=overdue, cls="red", l="corrective actions overdue, all years",
-             href=f"/raw/{MK}/all-actions.html?status=Overdue"),
+        dict(n=cur_open, cls="amber", l="still open THIS YEAR",
+             href=f"/raw/{MK}/fy-2026-27-incidents.html?status=Open"),
+        dict(n=cur_overdue, cls="red" if cur_overdue else "green", l="actions overdue THIS YEAR",
+             href=f"/raw/{MK}/fy-2026-27-actions.html?status=Overdue"),
     ]
     doors = f"""
 <div class="doors">
@@ -992,9 +1044,7 @@ def main():
     args = ap.parse_args()
     inc, act, enrich = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
-    pages = {"overview.html": hub(inc, act),
-             "all-incidents.html": all_incidents_page(inc, act, enrich),
-             "all-actions.html": actions_page(inc, act, fykey=None)}
+    pages = {"overview.html": hub(inc, act)}
     # this year IS the landing: the module index serves the current-FY dashboard
     pages["index.html"] = fy_dashboard(inc, act, "FY26/27", full=True)
     for f in FYS:
