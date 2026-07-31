@@ -115,12 +115,80 @@ def s(v):
 
 # ---- main -----------------------------------------------------------------
 
+def verify(register, actions):
+    """Cell-by-cell reconciliation of both sheets against the DB. Exits non-zero on ANY
+    missing row, unmapped column, or differing cell — the runnable 'is everything captured' gate."""
+    MAP_I = {"ID": "id", "Date Raised": "date_raised", "Incident Date": "incident_date",
+             "Category": "category", "Subcategory": "subcategory", "Raised By": "raised_by",
+             "Job ID": "job_id", "Job Ref": "job_ref", "Contract": "contract",
+             "Contract Number": "contract_number", "Workstream": "workstream",
+             "Business Unit": "business_unit", "Location": "location", "Severity": "severity",
+             "Subcontractor": "subcontractor", "Description": "description", "Status": "status"}
+    MAP_A = {"ID": "id", "Incident ID": "incident_id", "Job ID": "job_id", "Job Ref": "job_ref",
+             "Date Raised": "date_raised", "Raised By": "raised_by", "Incident Date": "incident_date",
+             "Due Date": "due_date", "Category": "category", "Severity": "severity",
+             "Action Classification": "action_classification",
+             "Action Subclassification": "action_subclassification", "Assigned To": "assigned_to",
+             "Contract": "contract", "Contract Number": "contract_number", "Workstream": "workstream",
+             "Business Unit": "business_unit", "Subcontractor": "subcontractor", "Question": "question",
+             "Description": "description", "Status": "status", "Incident Status": "incident_status",
+             "Corrective Measure": "corrective_measure"}
+
+    def norm(v, is_date):
+        if v is None:
+            return None
+        if isinstance(v, datetime.datetime):
+            return v.strftime("%Y-%m-%dT%H:%M:%S")
+        s2 = str(v).strip()
+        if not s2:
+            return None
+        return s2.replace(" ", "T")[:19] if is_date else s2
+
+    bad = 0
+    for xlsx, table, mapping in ((register, "clancy_dn_incidents", MAP_I),
+                                 (actions, "clancy_dn_actions", MAP_A)):
+        from openpyxl import load_workbook
+        ws = load_workbook(os.path.expanduser(xlsx), data_only=True).active
+        hdr = [c.value for c in ws[1]]
+        unmapped = [h for h in hdr if h not in mapping]
+        rows = [dict(zip(hdr, [c.value for c in r])) for r in ws.iter_rows(min_row=2)]
+        db = {r["id"]: r for r in rest(f"{table}?select=*&limit=10000")}
+        missing, mism = [], 0
+        for r in rows:
+            rid = int(r["ID"])
+            d = db.get(rid)
+            if not d:
+                missing.append(rid)
+                continue
+            for h, col in mapping.items():
+                if col in ("id", "incident_id"):
+                    a, b = (int(r[h]) if r[h] is not None else None), d[col]
+                else:
+                    a, b = norm(r[h], "Date" in h), norm(d[col], "Date" in h)
+                if a != b:
+                    mism += 1
+                    if mism <= 5:
+                        print(f"  MISMATCH {table} {rid} [{h}]: sheet={a!r} db={b!r}")
+        cells = len(rows) * len(mapping)
+        ok = not (unmapped or missing or mism)
+        bad += 0 if ok else 1
+        print(f"verify {table}: {len(rows)} rows, {cells} cells -> "
+              f"{'ALL CAPTURED' if ok else f'unmapped={unmapped} missing={len(missing)} mismatched={mism}'}")
+    if bad:
+        sys.exit(1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--register", required=True)
     ap.add_argument("--actions", required=True)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--verify", action="store_true",
+                    help="after import (or standalone), prove every sheet cell is in the DB")
     a = ap.parse_args()
+    if a.verify:
+        verify(a.register, a.actions)
+        return
 
     reg = read_sheet(a.register)
     act = read_sheet(a.actions)
