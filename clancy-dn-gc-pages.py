@@ -24,6 +24,7 @@ The renderer is deterministic: same store + same shells = byte-identical pages.
 """
 import os, sys, json, re, argparse, datetime, statistics, urllib.request, html as H
 from collections import Counter, defaultdict
+import clancy_dn_ui as ui
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = os.path.expanduser("~/.config/pete-secrets")
@@ -258,6 +259,10 @@ def build_image_map():
 
 # ---------------------------------------------------------------- assemble + publish
 def publish(key, htmlpage, local, do_publish):
+    # Every page in this section goes through here, so this is where the shared section chrome
+    # (navbar + breadcrumbs) is retrofitted onto shells that predate the design system. The
+    # injector is idempotent, so re-running the generator cannot stack two navbars.
+    htmlpage = ui.inject(htmlpage, "reviews")
     if local:
         fn = os.path.join(local, key.replace("/", "__") + (".html" if not key.endswith(".html") else ""))
         open(fn, "w").write(htmlpage)

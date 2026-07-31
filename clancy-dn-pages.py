@@ -11,7 +11,7 @@ summary) · incidents (all-years interactive register) · actions (actions centr
 (trends / improvements / capture quality).
 
 Design: data-dense dashboard language; palettes validated with the dataviz six-checks
-(contract families #2f5fd0 #d97706 #0e9594 #7c5cd6 #c2417f #4d7c0f + grey Other; utilities
+(one Clancy chartreuse for single-series bars; utilities
 Gas #b45309 · Water #2563eb · Electric #dc2626 · Comms #15803d + grey Other).
 
 Usage:
@@ -21,6 +21,7 @@ Usage:
 """
 import os, sys, json, re, argparse, datetime, urllib.request, html as H
 from collections import Counter, defaultdict
+import clancy_dn_ui as ui
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = os.path.expanduser("~/.config/pete-secrets")
@@ -82,8 +83,9 @@ def load():
     return inc, act, enrich, dict(fby), dict(aby)
 
 FAM_ORDER = ["Southern Water", "Anglian Water", "South East Water", "Scottish Water", "UKPN", "SGN"]
-FAM_COLORS = {"Southern Water": "#2f5fd0", "Anglian Water": "#d97706", "South East Water": "#0e9594",
-              "Scottish Water": "#7c5cd6", "UKPN": "#c2417f", "SGN": "#4d7c0f", "Other": "#737373"}
+# Contract families no longer carry their own hue: the "By contract" chart is a single series
+# (a count per contract) and giving each bar a different colour encoded nothing the label was not
+# already saying. Kept as a name list only.
 UTIL_ORDER = ["Gas", "Water", "Electric", "Comms / fibre", "Other"]
 UTIL_COLORS = {"Gas": "#b45309", "Water": "#2563eb", "Electric": "#dc2626",
                "Comms / fibre": "#15803d", "Other": "#737373"}
@@ -112,7 +114,7 @@ MON = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Fe
 def esc(s):
     return H.escape(str(s if s is not None else ""), quote=True)
 
-def vbar_months(series, prior=None, width=920, height=240, color="#2f5fd0", prior_color="#b6c3e8",
+def vbar_months(series, prior=None, width=920, height=240, color="#97D700", prior_color="#ccd3da",
                 label="", prior_label=""):
     """Monthly vertical bars (Apr..Mar) with optional prior-FY ghost bars behind."""
     n = 12
@@ -150,7 +152,7 @@ def hbar(items, width=440, row_h=30, color=None, colors=None, maxw=None, fmt="{}
     out = [f'<svg viewBox="0 0 {width} {Hh}" role="img" class="chart">']
     for i, (lab, v) in enumerate(items):
         y = i * row_h + 4
-        c = (colors or {}).get(lab, color or "#2f5fd0")
+        c = (colors or {}).get(lab, color or "#97D700")
         bw = (width - lw - 54) * v / mx
         out.append(f'<text x="{lw-8}" y="{y+row_h/2+4:.1f}" class="blabel" text-anchor="end">{esc(lab)}</text>')
         out.append(f'<rect x="{lw}" y="{y+5}" width="{max(bw,2):.1f}" height="{row_h-12}" rx="3" fill="{c}" class="bar"><title>{esc(lab)}: {fmt.format(v)}</title></rect>')
@@ -192,8 +194,11 @@ def legend(items, colors):
 # ---------------------------------------------------------------- html shell
 
 CSS = """
-:root{--bg:#f4f6f9;--card:#ffffff;--ink:#182230;--muted:#5b6774;--soft:#8property5;--border:#e4e8ee;
---navy:#1c2a6e;--navy2:#2f3f8f;--red:#c0281e;--accent:#2f5fd0;--green:#15803d;--amber:#b45309;
+/* Palette is The Clancy Group's own, sampled from their logo: #97D700 chartreuse, #D50032 red,
+   #353E47 charcoal. The variable NAMES are historic (--navy dates from the first blue build) but
+   the values are the brand's, so the register matches the rest of the Damage Depot. */
+:root{--bg:#f4f6f9;--card:#ffffff;--ink:#182230;--muted:#5b6774;--soft:#8b95a3;--border:#e4e8ee;
+--navy:#353E47;--navy2:#4a5560;--red:#D50032;--accent:#5f8b00;--green:#15803d;--amber:#b45309;
 --shadow:0 1px 2px rgba(16,24,40,.05),0 4px 16px rgba(16,24,40,.07)}
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -201,19 +206,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:1180px;margin:0 auto;padding:0 22px 70px}
 .wrap.wide{max-width:1760px}
-.mast{background:linear-gradient(135deg,#16215c 0%,#1c2a6e 55%,#27358a 100%);color:#fff;margin:0 0 26px}
-.mast .wrap{padding:26px 22px 24px}
-.mast .brand{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#c6cdf0}
-.mast .brand .dot{width:7px;height:7px;border-radius:50%;background:#f0b429}
-.mast h1{font-size:27px;letter-spacing:-.01em;margin:10px 0 4px}
-.mast .sub{font-size:14px;color:#c6cdf0;max-width:80ch}
+.mast{background:#353E47;color:#fff;margin:0 0 26px;border-bottom:3px solid #97D700}
+.mast .wrap{padding:20px 22px 22px}
+.mast h1{font-size:27px;font-weight:800;letter-spacing:-.02em;margin:14px 0 4px}
+.mast .sub{font-size:14px;color:#b9c1ca;max-width:80ch}
 .nav{display:flex;gap:6px;flex-wrap:wrap;margin-top:18px}
-.nav a{font-size:13px;font-weight:600;color:#dfe4fa;text-decoration:none;padding:7px 13px;border-radius:8px;background:rgba(255,255,255,.08);transition:background .2s}
-.nav a:hover{background:rgba(255,255,255,.18)}
-.nav a.on{background:#fff;color:var(--navy)}
+.nav a{font-size:13px;font-weight:600;color:#c8ced6;text-decoration:none;padding:7px 13px;border-radius:8px;background:rgba(255,255,255,.08);transition:background .2s,color .2s}
+.nav a:hover{background:rgba(255,255,255,.18);color:#fff}
+.nav a.on{background:#97D700;color:#1d2b00;font-weight:800}
 .nav.subnav{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14)}
 .nav.subnav a{font-size:12.5px;padding:6px 12px;background:rgba(255,255,255,.05)}
-.nav.subnav a.on{background:#f0b429;color:#1c2a6e}
+.nav.subnav a.on{background:#fff;color:#353E47}
 h2{font-size:15px;font-weight:700;color:var(--navy);letter-spacing:.02em;margin:0 0 4px}
 .h2row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
 .h2row .note{font-size:12.5px;color:var(--muted)}
@@ -304,7 +307,7 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .qaq{padding:8px 12px;background:#f7f8fa;font-size:12.5px;color:#4a5561}
 .qaa{padding:8px 12px;font-size:13.5px;color:#22303f;white-space:pre-wrap}
 @media(max-width:640px){.qarow{grid-template-columns:1fr}.qaq{border-bottom:1px solid #eef1f5}}
-.invbox{border:1px solid var(--line);border-left:4px solid #2f5fd0;border-radius:0 10px 10px 0;padding:12px 16px;margin-top:10px;background:#fbfcfd}
+.invbox{border:1px solid var(--line);border-left:4px solid #97D700;border-radius:0 10px 10px 0;padding:12px 16px;margin-top:10px;background:#fbfcfd}
 .invbox.invnone{border-left-color:#c7ccd3;background:#f7f8fa}
 .invbox.invthin{border-left-color:#b45309;background:#fff9f0}
 .invl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7784}
@@ -314,7 +317,7 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .pill.act-no{background:#f4f6f9;color:#7b8694;border-color:#e2e6ec}
 .pill.act-unk{background:#fff6e8;color:#a35f00;border-color:#f0d9b5}
 .pill.st-over{background:#fdecea;color:#b91c1c}
-.pill.uc{background:#eef2fb;color:#2f5fd0}
+.pill.uc{background:#f0f7e0;color:#4e7300}
 .mono{font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
 .small{font-size:12.5px}
@@ -427,7 +430,6 @@ def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
     links = "".join(
         f'<a href="/raw/{MK}/{h}"{" class=\"on\"" if h == active else ""}>{t}</a>'
         for h, t in nav)
-    links += f'<a href="/m/clancy-genny-cat-reviews" style="margin-left:auto">Data Dive ↗</a>'
     if fykey:
         yp = year_pages(fykey)
         sub_items = [(yp["dash"], "Dashboard"), (yp["incidents"], "Incidents"),
@@ -436,17 +438,36 @@ def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
             f'<a href="/raw/{MK}/{h}"{" class=\"on\"" if k == subactive else ""}>{t}</a>'
             for (h, t), k in zip(sub_items, ["dash", "incidents", "actions", "insights"]))
     wrapcls = "wrap wide" if wide else "wrap"
+    # Breadcrumbs are built from what the shell already knows about the page, so every page in the
+    # register gets a real trail back to the Depot without each caller having to hand-write one.
+    YLBL = {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26",
+            "FY24/25": "FY 2024/25", "FY23/24": "FY 2023/24"}
+    SUBLBL = {"dash": "Dashboard", "incidents": "Incidents",
+              "actions": "Actions", "insights": "Insights"}
+    trail = [("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}")]
+    if fykey:
+        trail.append(("Damages", f"/m/{MK}"))
+        yhref = f'/raw/{MK}/{year_pages(fykey)["dash"]}'
+        if subactive and subactive != "dash":
+            trail.append((YLBL.get(fykey, fykey), yhref))
+            trail.append(SUBLBL.get(subactive, subactive))
+        else:
+            trail.append(YLBL.get(fykey, fykey))
+    else:
+        trail.append("Damages")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>{esc(title)} | Sygma Solutions × The Clancy Group</title>
-<style>{CSS}</style>
+<title>{esc(title)} | Genny&#8217;s Damage Depot</title>
+<style>{ui.CHROME}{CSS}</style>
 </head>
 <body>
+{ui.navbar("damages")}
+{ui.crumbs(*trail)}
 <div class="mast"><div class="wrap">
-<div class="brand"><span class="dot"></span> Sygma Solutions × The Clancy Group — Depotnet</div>
+{ui.logos()}
 <h1>{esc(title)}</h1>
 <div class="sub">{sub}</div>
 <div class="nav">{links}</div>
@@ -455,7 +476,7 @@ def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
 {body}
 <div class="foot"><span>Source: Depotnet Incident Manager exports (Incident Register + Action Report), imported {datetime.date.today().strftime('%-d %b %Y')}.</span><span>Prepared by Sygma Solutions.</span></div>
 </div>
-<script src="/clancy/genny-widget.js" defer></script>
+<script src="/clancy/genny-widget.js?v=20260731b" defer></script>
 </body></html>"""
 
 # ---------------------------------------------------------------- aggregations
@@ -524,7 +545,8 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
     sel += [('fam', 'Contract', fams), ('ugroup', 'Utility', utils), ('sev', 'Severity', sevs), ('status', 'Status', stats)]
     CAPOPTS = [("todo", "not captured yet"), ("part", "part captured"),
                ("missing", "tried — missing"), ("done", "fully captured")]
-    ACTOPTS = [("yes", "has actions"), ("no", "none raised"), ("unk", "not covered by the export")]
+    ACTOPTS = [("open", "some still outstanding"), ("closed", "recorded, all closed"),
+               ("no", "NONE recorded in Depotnet"), ("unk", "unknown — not in our export")]
     selects = "".join(
         f'<select data-filter-for="{tid}" data-key="{key}"><option value="">{lab}: all</option>' +
         "".join(f'<option>{esc(o)}</option>' for o in opts) + "</select>"
@@ -543,14 +565,19 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
         # "0" on its own is ambiguous — it could mean none were raised, or that our actions export
         # does not reach this damage. Say which. (Pete, 31 Jul: mark clearly which have and which
         # do not.) ACT_CUTOFF is the high-water mark of the actions export.
-        act_key = "yes" if acts else ("unk" if (ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF) else "no")
-        if acts:
-            act_h = (f'<span class="pill act-yes">{len(acts)} action{"s" if len(acts)!=1 else ""}</span>'
-                     + (f' <span class="pill st-over">{overdue} overdue</span>' if overdue else ""))
+        act_key = ("open" if overdue else "closed") if acts else ("unk" if (ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF) else "no")
+        # Four DISTINCT states. "None outstanding" and "none recorded in Depotnet" are completely
+        # different things and must never share a label (Pete, 31 Jul).
+        if acts and overdue:
+            act_h = (f'<span class="pill act-yes">{len(acts)} recorded</span>'
+                     f' <span class="pill st-over">{overdue} still outstanding</span>')
+        elif acts:
+            act_h = (f'<span class="pill act-yes" title="Depotnet holds {len(acts)} corrective action(s) for this damage and all are closed">'
+                     f'{len(acts)} recorded, all closed</span>')
         elif ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF:
-            act_h = '<span class="pill act-unk" title="This damage is more recent than the corrective-actions export we hold, so we cannot see whether any were raised">not covered yet</span>'
+            act_h = '<span class="pill act-unk" title="This damage post-dates the corrective-actions export we hold, so we cannot see whether Depotnet has any. It is NOT a statement that none exist.">unknown — not in our export</span>'
         else:
-            act_h = '<span class="pill act-no" title="No corrective action has been raised against this damage in Depotnet">none raised</span>'
+            act_h = '<span class="pill act-no" title="Depotnet holds NO corrective action record for this damage at all. This is not the same as having none outstanding.">none recorded in Depotnet</span>'
         detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
         ci, ca = r.get("capture_incident"), r.get("capture_actions")
         CI = {"full": ("cap-ok", "Incident PDF + investigation captured"),
@@ -882,7 +909,7 @@ def fy_dashboard(inc, act, fykey, full=True):
     ]
     label = FY_LABEL[fykey]
     body = [search_box(fykey), kpis_html(cards)]
-    prior_leg = f'<div class="legend"><span class="lg"><i style="background:#2f5fd0"></i>{label}</span>' + \
+    prior_leg = f'<div class="legend"><span class="lg"><i style="background:#97D700"></i>{label}</span>' + \
                 (f'<span class="lg"><i style="background:#b6c3e8"></i>{FY_LABEL[prior_key]} (same month)</span>' if prior_key else "") + "</div>"
     body.append(f'<div class="card"><div class="h2row"><h2>Damages by month</h2><span class="note">financial year, April to March</span></div>'
                 + vbar_months(mser, pser, label=label, prior_label=FY_LABEL.get(prior_key, "")) + prior_leg + "</div>")
@@ -890,7 +917,7 @@ def fy_dashboard(inc, act, fykey, full=True):
     utils = util_split(rows)
     sevs = sev_split(rows)
     body.append('<div class="grid c3" style="margin-top:16px">')
-    body.append(f'<div class="card"><div class="h2row"><h2>By contract</h2></div>{hbar(fams, colors=FAM_COLORS)}</div>')
+    body.append(f'<div class="card"><div class="h2row"><h2>By contract</h2></div>{hbar(fams)}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>By utility hit</h2><span class="note">auto-read from descriptions</span></div>{donut([u for u in utils if u[1]], UTIL_COLORS)}{legend(utils, UTIL_COLORS)}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>By severity</h2></div>{donut([s for s in sevs if s[1]], SEV_COLORS)}{legend(sevs, SEV_COLORS)}</div>')
     body.append('</div>')
@@ -968,7 +995,7 @@ def hub(inc, act):
     pser = monthly_series(inc, "FY25/26")
     trend = (f'<div class="card"><div class="h2row"><h2>This year against last, month by month</h2></div>'
              + vbar_months(mser, pser, label="FY 2026/27", prior_label="FY 2025/26")
-             + '<div class="legend"><span class="lg"><i style="background:#2f5fd0"></i>FY 2026/27</span><span class="lg"><i style="background:#b6c3e8"></i>FY 2025/26</span></div></div>')
+             + '<div class="legend"><span class="lg"><i style="background:#97D700"></i>FY 2026/27</span><span class="lg"><i style="background:#ccd3da"></i>FY 2025/26</span></div></div>')
     sub = "The whole register across every year — the per-year sections are where the detail lives."
     return shell("Depotnet Damages — all years", search_box(None) + kpis_html(cards) + doors + fys_html + trend, "overview.html", sub)
 
@@ -1030,7 +1057,7 @@ def actions_page(inc, act, fykey=None):
     byass = Counter((a["assigned_to"] or "Unassigned").split(" (")[0] for a in act).most_common(10)
     od_fam = Counter((a["contract_family"] or a["contract"] or "Unstated") for a in overdue).most_common(10)
     body = [search_box(fykey), kpis_html(cards), '<div class="grid c2">']
-    body.append(f'<div class="card"><div class="h2row"><h2>Who holds the actions</h2><span class="note">all {len(act)} actions</span></div>{hbar(byass, color="#2f5fd0")}</div>')
+    body.append(f'<div class="card"><div class="h2row"><h2>Who holds the actions</h2><span class="note">all {len(act)} actions</span></div>{hbar(byass)}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>Overdue, by contract</h2><span class="note">{len(overdue)} overdue</span></div>{hbar(od_fam, color="#dc2626")}</div>')
     body.append('</div>')
     # actions table
