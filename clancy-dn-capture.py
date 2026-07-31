@@ -203,12 +203,19 @@ def main():
 
     # ---- action closures -------------------------------------------------
     if a.actions:
+        import datetime as _dt2
+        def _closed_iso(v):
+            # Depotnet's Closed Actions tab renders dd/mm/yyyy HH:MM — not valid for a timestamptz PATCH
+            try:
+                return _dt2.datetime.strptime(v.strip(), "%d/%m/%Y %H:%M").isoformat()
+            except ValueError:
+                return v  # unrecognised shape: pass through, let PostgREST reject it loudly
         acts = json.load(open(a.actions))
         n = 0
         for act in acts:
             patch = {}
             if act.get("closed"):
-                patch["closed_at"] = act["closed"]
+                patch["closed_at"] = _closed_iso(act["closed"])
             if act.get("closed_by"):
                 patch["closed_by"] = act["closed_by"]
             if not patch:
