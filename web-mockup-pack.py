@@ -17,6 +17,7 @@ Usage: pack2.py <dom.html> <base-url> <output.html> <banner-html>
 """
 import re
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -113,8 +114,11 @@ def main() -> int:
     dead = len(re.findall(r'src="#"', html))
     print(f"  dead image srcs: {dead}" + ("  <-- CHECK" if dead else ""))
     print(f"  inline opacity:0 cleared: {inline}")
-    left = (len(re.findall(r"opacity-0(?![\d.])", html))
-            + len(re.findall(r'style="[^"]*opacity: ?0[;"]', html)))
+    # count on the body only: the injected <style> block talks ABOUT opacity-0 in a comment, and a
+    # gate that cries wolf gets ignored
+    body = html[html.find("<body"):]
+    left = (len(re.findall(r"opacity-0(?![\d.])", body))
+            + len(re.findall(r'style="[^"]*opacity: ?0[;"]', body)))
     print(f"  still hidden after fix: {left}" + ("  <-- CHECK" if left else ""))
     return 0
 
