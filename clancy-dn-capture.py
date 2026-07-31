@@ -79,13 +79,57 @@ def is_photo(name):
         (name.lower().endswith((".jpg", ".jpeg", ".png", ".heic")) and not name.lower().startswith("incident-"))
 
 
+def queue(limit, fy=None, oldest=False, with_actions_only=False):
+    """WHERE DO I START? — the resumable pointer. Prints what is still uncaptured, newest first,
+    so a session never has to be told which incidents to do. Capture is stateful in the DB
+    (`pdf_captured_at`), so this survives sessions, crashes and re-runs."""
+    q = "clancy_dn_incidents?select=id,incident_date,fy,contract_family,location,status,pdf_captured_at"
+    q += "&pdf_captured_at=is.null"
+    if fy:
+        q += f"&fy=eq.{urllib.request.quote(fy)}"
+    q += f"&order=incident_date.{'asc' if oldest else 'desc'}&limit={limit}"
+    todo = rest(q)
+    done = rest("clancy_dn_incidents?select=id,incident_date&pdf_captured_at=not.is.null"
+                "&order=incident_date.desc&limit=1")
+    tot = rest("clancy_dn_incidents?select=id&limit=10000")
+    cap = rest("clancy_dn_incidents?select=id&pdf_captured_at=not.is.null&limit=10000")
+    have_actions = {a["incident_id"] for a in
+                    rest("clancy_dn_actions?select=incident_id&limit=10000")}
+    print(f"captured {len(cap)} of {len(tot)} incidents"
+          + (f" · newest captured: {done[0]['id']} ({(done[0]['incident_date'] or '')[:10]})" if done else " · none captured yet"))
+    if not todo:
+        print("nothing left to capture" + (f" in {fy}" if fy else ""))
+        return
+    print(f"\nnext {len(todo)} to capture ({'oldest' if oldest else 'newest'} first"
+          + (f", {fy}" if fy else "") + "):")
+    for r in todo:
+        if with_actions_only and r["id"] not in have_actions:
+            continue
+        acts = " ·  HAS ACTIONS (do the Closed Actions scrape too)" if r["id"] in have_actions else ""
+        print(f"  {r['id']}  {(r['incident_date'] or '')[:10]}  {r['fy']}  "
+              f"{(r['contract_family'] or '')[:18]:18s} {(r['location'] or '')[:40]:40s} {r['status']}{acts}")
+        print(f"      https://clancy.depotnet.co.uk/#/incidentmanager/imincident/{r['id']}")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("incident_id", type=int)
-    ap.add_argument("--files", required=True, help="folder of everything downloaded for this incident")
+    ap.add_argument("incident_id", nargs="?", type=int)
+    ap.add_argument("--files", help="folder of everything downloaded for this incident")
     ap.add_argument("--actions", help="JSON from the Closed Actions tab scrape")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--queue", action="store_true",
+                    help="show what is still uncaptured (newest first) and where to resume")
+    ap.add_argument("--limit", type=int, default=15, help="queue size (default 15 — about a week)")
+    ap.add_argument("--fy", help="restrict the queue to one financial year, e.g. FY26/27")
+    ap.add_argument("--oldest", action="store_true", help="queue oldest-first instead of newest")
+    ap.add_argument("--with-actions", action="store_true",
+                    help="queue only incidents that have corrective actions")
     a = ap.parse_args()
+    if a.queue:
+        queue(a.limit, a.fy, a.oldest, a.with_actions)
+        return
+    if not a.incident_id or not a.files:
+        sys.exit("give an incident id and --files, or use --queue to see where to start")
     iid = a.incident_id
 
     got = rest(f"clancy_dn_incidents?id=eq.{iid}&select=id,location,utility_class,incident_date,capture_drive_folder")
