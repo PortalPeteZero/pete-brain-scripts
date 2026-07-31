@@ -62,8 +62,16 @@ def load():
                        "Comms / fibre" if u.startswith("Comms") else "Other")
     for a in act:
         a["due"] = a["due_date"][:10] if a["due_date"] else None
-    enr = rest("clancy_damages?select=dn_id,job_ref,status,stage_note,summary,key_findings,next_actions,drive_folder,report_url&dn_id=not.is.null")
-    enrich = {e["dn_id"]: e for e in enr}
+    # Sygma's own review of a damage is merged onto the incident itself (the sygma_* fields), so
+    # this reads the register rather than the retired clancy_damages table. Same shape out.
+    enr = rest("clancy_dn_incidents?select=id,job_ref,status,sygma_stage_note,sygma_summary,"
+               "sygma_findings,sygma_next_actions,sygma_drive_folder,sygma_report_url"
+               "&sygma_reviewed_at=not.is.null")
+    enrich = {e["id"]: {"dn_id": e["id"], "job_ref": e["job_ref"], "status": e["status"],
+                        "stage_note": e["sygma_stage_note"], "summary": e["sygma_summary"],
+                        "key_findings": e["sygma_findings"], "next_actions": e["sygma_next_actions"],
+                        "drive_folder": e["sygma_drive_folder"], "report_url": e["sygma_report_url"]}
+              for e in enr}
     # Everything the capture pulled off Depotnet for each damage: the incident PDF, the photos and
     # any documents attached to it. These live in their own Drive folder, which is NOT the same
     # folder as the Sygma panel-review material, so a page that renders only the review folder shows
@@ -206,8 +214,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:1180px;margin:0 auto;padding:0 22px 70px}
 .wrap.wide{max-width:1760px}
-.mast{background:#353E47;color:#fff;margin:0 0 26px;border-bottom:3px solid #97D700}
-.mast .wrap{padding:20px 22px 22px}
+.mast .wrap{padding:18px 22px 22px}
+.mast .row{display:flex;align-items:center;gap:22px;margin-top:18px}
+.mast .gw{position:relative;flex-shrink:0;padding-bottom:13px}
+.mast .gw img{width:88px;height:88px;border-radius:50%;object-fit:cover;object-position:center 20%;border:3px solid #97D700;box-shadow:0 10px 26px rgba(0,0,0,.5);display:block;background:#2a323a}
+@media(max-width:560px){.mast .gw img{width:60px;height:60px}}
+.mast .np{position:absolute;left:50%;bottom:0;transform:translateX(-50%);background:#97D700;color:#1d2b00;font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;padding:3px 10px;border-radius:20px;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.4)}
 .mast h1{font-size:27px;font-weight:800;letter-spacing:-.02em;margin:14px 0 4px}
 .mast .sub{font-size:14px;color:#b9c1ca;max-width:80ch}
 .nav{display:flex;gap:6px;flex-wrap:wrap;margin-top:18px}
@@ -466,12 +478,8 @@ def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
 <body>
 {ui.navbar("damages")}
 {ui.crumbs(*trail)}
-<div class="mast"><div class="wrap">
-{ui.logos()}
-<h1>{esc(title)}</h1>
-<div class="sub">{sub}</div>
-<div class="nav">{links}</div>
-</div></div>
+{ui.hero(kicker=FY_LABEL.get(fykey, "The register"), title=esc(title), sub=sub,
+         extra=f'''<div class="yearnav"><div class="nav">{links}</div></div>''')}
 <div class="{wrapcls}">
 {body}
 <div class="foot"><span>Source: Depotnet Incident Manager exports (Incident Register + Action Report), imported {datetime.date.today().strftime('%-d %b %Y')}.</span><span>Prepared by Sygma Solutions.</span></div>
@@ -1232,7 +1240,9 @@ def main():
         mod = {
             "module_key": MK, "slug": MK, "title": "Depotnet Damages",
             "section": "Customers", "subsection": "External", "area": "Clancy",
-            "tier": "passcode", "passcode": "strive2030", "icon": "📊", "accent": "#1c2a6e",
+            "tier": "passcode", "passcode": "strive2030",
+               # one section, one gate: every Depot page shares this group
+               "unlock_group": "clancy-depotnet", "icon": "📊", "accent": "#1c2a6e",
             "status": "live", "enabled": True, "sort": 14,
             "groups": ["clancy", "clancy-external"], "tags": ["clancy", "customer", "depotnet", "damages"],
         }

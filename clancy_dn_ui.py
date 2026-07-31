@@ -36,7 +36,7 @@ BOT = "clancy-bot"
 A_SYGMA = "/clancy/sygma-white.png"
 A_CLANCY = "/clancy/clancy-white.png"
 A_GENNY = "/clancy/genny.png?v=hivis1"
-A_HERO = "/clancy/hero-works.jpg"
+A_HERO = "/clancy/hero-works-v3.jpg"
 
 # ── the shared stylesheet ────────────────────────────────────────────────────────────────────
 # Split deliberately in two:
@@ -102,12 +102,56 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
  color:rgba(255,255,255,.62);text-align:center}
 @media(max-width:640px){.logos .mid{display:none}.logos img.sy{height:26px}.logos img.cl{height:23px}}
 
-/* ── compact masthead for inner pages ── */
-.mastc{background:#353E47;color:#fff;padding:20px 0 24px;border-bottom:3px solid #97D700}
-.mastc h1{font-size:27px;letter-spacing:-.02em;margin:18px 0 6px;font-weight:800;color:#fff}
-.mastc .sub{font-size:14.5px;color:#b9c1ca;max-width:78ch}
-.mastc .kick{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;
- color:#97D700}
+/* ── THE hero. Identical on every page in the Depot: photograph, both logos, Genny with her
+      nameplate, the name and the strapline. Only the page line underneath changes. ── */
+.hero{position:relative;color:#fff;overflow:hidden;background:#353E47;
+ border-bottom:3px solid #97D700}
+.hero-bg{position:absolute;inset:0;max-width:1160px;margin:0 auto;
+ background-image:url('/clancy/hero-works-v3.jpg');background-size:cover;
+ background-position:center 34%;filter:saturate(.72);
+ -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%);
+ mask-image:linear-gradient(90deg,transparent 0,#000 6%,#000 94%,transparent 100%)}
+.hero-bg::after{content:"";position:absolute;inset:0;
+ background:linear-gradient(100deg,rgba(28,34,41,.90) 0%,rgba(28,34,41,.68) 44%,rgba(28,34,41,.42) 74%,rgba(28,34,41,.52) 100%),
+ linear-gradient(180deg,rgba(28,34,41,.28) 0%,rgba(28,34,41,.04) 34%,rgba(28,34,41,.50) 100%)}
+.hero-in{position:relative;max-width:1160px;margin:0 auto;padding:20px 22px 34px}
+.hero-mid{display:flex;align-items:center;gap:30px;margin-top:26px}
+@media(max-width:820px){.hero-mid{flex-direction:column;text-align:center;gap:20px}}
+.gennywrap{position:relative;flex-shrink:0;padding-bottom:16px}
+.gennywrap img{width:132px;height:132px;border-radius:50%;object-fit:cover;
+ object-position:center 20%;border:4px solid #97D700;box-shadow:0 14px 36px rgba(0,0,0,.5);
+ display:block;background:#2a323a}
+@media(max-width:560px){.gennywrap img{width:96px;height:96px}}
+.nameplate{position:absolute;left:50%;bottom:0;transform:translateX(-50%);background:#97D700;
+ color:#1d2b00;font-size:12px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+ padding:5px 15px;border-radius:20px;white-space:nowrap;box-shadow:0 5px 16px rgba(0,0,0,.4);
+ display:flex;align-items:center;gap:7px}
+.nameplate .live{width:7px;height:7px;border-radius:50%;background:#1d2b00;
+ animation:pulse 2.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.hero h1{font-size:40px;line-height:1.08;letter-spacing:-.03em;font-weight:800;margin-bottom:8px;
+ color:#fff}
+.hero h1 .g{color:#97D700}
+@media(max-width:640px){.hero h1{font-size:29px}}
+.hero .strap{font-size:16.5px;color:#d3dae2;font-style:italic;letter-spacing:.01em}
+.hero .pageline{margin-top:18px;padding-left:14px;border-left:3px solid #97D700}
+@media(max-width:820px){.hero .pageline{border-left:0;border-top:3px solid #97D700;
+ padding:12px 0 0;margin-left:auto;margin-right:auto;display:inline-block}}
+.hero .pageline .kick{font-size:10.5px;font-weight:800;letter-spacing:.16em;
+ text-transform:uppercase;color:#97D700;display:block;margin-bottom:3px}
+.hero .pageline .pt{font-size:21px;font-weight:800;letter-spacing:-.02em;color:#fff;
+ line-height:1.2}
+.hero .pageline .ps{font-size:13.5px;color:#c3cbd4;margin-top:4px;max-width:74ch}
+.hero .says{margin-top:16px;font-size:14.5px;color:#c3cbd4;max-width:56ch;
+ border-left:3px solid #97D700;padding-left:14px}
+@media(max-width:820px){.hero .says{border-left:0;border-top:3px solid #97D700;
+ padding:12px 0 0;margin-left:auto;margin-right:auto}}
+.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:18px}
+@media(max-width:820px){.chips{justify-content:center}}
+.chip{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.20);border-radius:99px;
+ padding:6px 14px;font-size:12.5px;color:#e4e9ee;font-weight:600}
+.chip b{color:#97D700;font-variant-numeric:tabular-nums}
+.hero .yearnav{margin-top:20px}
 @media print{.dnav,.crumbs{display:none}}
 """
 
@@ -123,40 +167,6 @@ CSS = CHROME + """
 }
 body{background:var(--bg);color:var(--ink);line-height:1.5}
 .wrap{max-width:1160px;margin:0 auto;padding:0 22px}
-
-/* ── hero (landing only) ── */
-.hero{position:relative;color:#fff;overflow:hidden;background:var(--char);
- border-bottom:3px solid var(--green)}
-.hero-bg{position:absolute;inset:0;background-image:url('IMG_HERO');background-size:cover;
- background-position:center 42%;filter:saturate(.72)}
-.hero-bg::after{content:"";position:absolute;inset:0;
- background:linear-gradient(100deg,rgba(28,34,41,.97) 0%,rgba(28,34,41,.88) 46%,rgba(28,34,41,.60) 78%,rgba(28,34,41,.72) 100%),
- linear-gradient(180deg,rgba(28,34,41,.35) 0%,rgba(28,34,41,0) 30%,rgba(28,34,41,.55) 100%)}
-.hero-in{position:relative;max-width:1160px;margin:0 auto;padding:22px 22px 46px}
-.hero-mid{display:flex;align-items:center;gap:30px;margin-top:34px}
-@media(max-width:820px){.hero-mid{flex-direction:column;text-align:center;gap:22px}}
-.gennywrap{position:relative;flex-shrink:0;padding-bottom:16px}
-.gennywrap img{width:148px;height:148px;border-radius:50%;object-fit:cover;object-position:center 20%;
- border:4px solid var(--green);box-shadow:0 14px 36px rgba(0,0,0,.5);display:block;background:#2a323a}
-.nameplate{position:absolute;left:50%;bottom:0;transform:translateX(-50%);
- background:var(--green);color:#1d2b00;font-size:12.5px;font-weight:900;letter-spacing:.1em;
- text-transform:uppercase;padding:5px 15px;border-radius:20px;white-space:nowrap;
- box-shadow:0 5px 16px rgba(0,0,0,.4);display:flex;align-items:center;gap:7px}
-.nameplate .live{width:7px;height:7px;border-radius:50%;background:#1d2b00;animation:pulse 2.4s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.hero h1{font-size:44px;line-height:1.08;letter-spacing:-.03em;font-weight:800;margin-bottom:10px}
-.hero h1 .g{color:var(--green)}
-@media(max-width:640px){.hero h1{font-size:31px}}
-.hero .strap{font-size:17px;color:#d3dae2;font-style:italic;letter-spacing:.01em}
-.hero .says{margin-top:16px;font-size:14.5px;color:#c3cbd4;max-width:56ch;
- border-left:3px solid var(--green);padding-left:14px}
-@media(max-width:820px){.hero .says{border-left:0;border-top:3px solid var(--green);
- padding:12px 0 0;margin-left:auto;margin-right:auto}}
-.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}
-@media(max-width:820px){.chips{justify-content:center}}
-.chip{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.20);border-radius:99px;
- padding:6px 14px;font-size:12.5px;color:#e4e9ee;font-weight:600}
-.chip b{color:var(--green);font-variant-numeric:tabular-nums}
 
 /* ── cards, doors, stats ── */
 .body{padding-bottom:74px}
@@ -261,12 +271,38 @@ def logos():
             f'<img class="cl" src="{A_CLANCY}" alt="The Clancy Group"></div>')
 
 
+def hero(kicker="", title="", sub="", body="", extra=""):
+    """THE hero. The same block on every page in the Depot.
+
+    Pete, 31 Jul 2026: "i want this hero on all pages in the damage depot" — and then, when inner
+    pages got a compact variant instead: "you havent copied the fucking hero, its not the same,
+    doesnt say gennys damage depot, every damage oppurtunity". So the identity is fixed and
+    identical everywhere: the works photograph, both logos, Genny with her nameplate, the name,
+    and the strapline. What varies is the line UNDERNEATH, which says where you are.
+
+      body   — the landing page's own introduction and chips, in place of the page line.
+      extra  — anything that belongs inside the hero after it, e.g. the register's year tabs.
+    """
+    page = ""
+    if kicker or title or sub:
+        page = ('<div class="pageline">'
+                + (f'<span class="kick">{kicker}</span>' if kicker else "")
+                + (f'<div class="pt">{title}</div>' if title else "")
+                + (f'<div class="ps">{sub}</div>' if sub else "")
+                + "</div>")
+    return (f'<div class="hero"><div class="hero-bg"></div><div class="hero-in">{logos()}'
+            '<div class="hero-mid">'
+            f'<div class="gennywrap"><img src="{A_GENNY}" alt="Genny">'
+            '<div class="nameplate"><span class="live"></span>Genny</div></div>'
+            '<div style="min-width:0">'
+            '<h1>Genny&#8217;s <span class="g">Damage Depot</span></h1>'
+            '<div class="strap">Where every damage becomes an opportunity.</div>'
+            f"{body}{page}</div></div>{extra}</div></div>")
+
+
+# Every caller that asked for a masthead gets the hero, unchanged at the call site.
 def mast_compact(kicker, title, sub=""):
-    """Inner-page masthead: the co-branded bar plus the page's own title."""
-    return (f'<div class="mastc"><div class="wrap">{logos()}'
-            f'<div style="margin-top:16px"><div class="kick">{kicker}</div>'
-            f"<h1>{title}</h1>" + (f'<div class="sub">{sub}</div>' if sub else "") +
-            "</div></div></div>")
+    return hero(kicker, title, sub)
 
 
 def head(title, extra_css=""):

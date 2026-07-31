@@ -129,6 +129,7 @@ def build():
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_hi,
       (SELECT count(*) FROM clancy_reports) AS reports,
+      (SELECT count(*) FROM clancy_unmapped_damages) AS unmapped,
       (SELECT count(*) FROM clancy_dn_incidents WHERE sygma_reviewed_at IS NOT NULL) AS sygma_rev,
       (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
          AND (lessons_learnt IS NULL OR btrim(lessons_learnt)='')
@@ -185,28 +186,15 @@ def build():
 {ui.navbar("overview")}
 {ui.crumbs(("Command Centre", "/"), ("Clancy", "/m/clancy-cockpit"), "Damage Depot")}
 
-<div class="hero"><div class="hero-bg"></div><div class="hero-in">
-{ui.logos()}
-<div class="hero-mid">
- <div class="gennywrap">
-  <img src="{ui.A_GENNY}" alt="Genny, the assistant for this section">
-  <div class="nameplate"><span class="live"></span>Genny</div>
- </div>
- <div>
-  <h1>Genny&#8217;s <span class="g">Damage Depot</span></h1>
-  <div class="strap">Where every damage becomes an opportunity.</div>
-  <div class="says">Hello, I am Genny and this is my depot. I have read every damage on here,
-  every investigation, every corrective action and every document behind them. Ask me anything
-  and I will tell you what the record actually says.</div>
+{ui.hero(body=f'''<div class="says">Hello, I am Genny and this is my depot. I have read every
+  damage on here, every investigation, every corrective action and every document behind them.
+  Ask me anything and I will tell you what the record actually says.</div>
   <div class="chips">
    <span class="chip"><b>{d['damages']:,}</b> damages</span>
    <span class="chip"><b>{d['answers']:,}</b> investigation answers</span>
    <span class="chip"><b>{d['files']}</b> documents &amp; photos</span>
    <span class="chip"><b>{d['reports']}</b> reports</span>
-  </div>
- </div>
-</div>
-</div></div>
+  </div>''')}
 
 <div class="wrap body">
 <div class="kpis">
@@ -294,6 +282,14 @@ def build():
 <h2 class="sec">Straight to a year</h2>
 <div class="mini">{tiles}</div>
 
+<div class="dnote"><b>{d['unmapped']} Sygma records have no Depotnet counterpart.</b> Sygma kept
+its own damage register alongside Depotnet. Those records have been merged in: the ones that
+matched a Depotnet incident now carry their Sygma summary, findings, narrative and report on the
+Depotnet record itself. The {d['unmapped']} that matched nothing are held separately, out of every
+count on this site, because they are not Depotnet damages.
+<a href="/m/clancy-unmapped-damages" style="color:var(--green-d);font-weight:800;
+text-decoration:none">See the unmapped damages &rarr;</a></div>
+
 <div class="dnote"><b>Note on coverage.</b> The register itself is complete for all four years and
 fully searchable, and Genny reads the same store. Deep capture, meaning the investigation answers
 and the documents pulled off each Depotnet record, has been done for this financial year and is all but finished there:
@@ -340,7 +336,9 @@ def main():
     if a.publish:
         mod = {"module_key": MK, "slug": MK, "title": "Genny's Damage Depot",
                "section": "Customers", "subsection": "External", "area": "Clancy",
-               "tier": "passcode", "passcode": "strive2030", "icon": "🦺", "accent": "#97D700",
+               "tier": "passcode", "passcode": "strive2030",
+               # one section, one gate: every Depot page shares this group
+               "unlock_group": "clancy-depotnet", "icon": "🦺", "accent": "#97D700",
                "status": "live", "enabled": True, "sort": 12,
                "groups": ["clancy", "clancy-external"], "tags": ["clancy", "customer", "depotnet"]}
         req = urllib.request.Request(f"{URL}/rest/v1/modules?on_conflict=module_key",

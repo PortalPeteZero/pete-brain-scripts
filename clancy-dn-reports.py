@@ -393,7 +393,9 @@ def main():
     if a.publish:
         mod = {"module_key": MK, "slug": MK, "title": "Reports & Reviews",
                "section": "Customers", "subsection": "External", "area": "Clancy",
-               "tier": "passcode", "passcode": "strive2030", "icon": "📄", "accent": "#D50032",
+               "tier": "passcode", "passcode": "strive2030",
+               # one section, one gate: every Depot page shares this group
+               "unlock_group": "clancy-depotnet", "icon": "📄", "accent": "#D50032",
                "status": "live", "enabled": True, "sort": 13,
                "groups": ["clancy", "clancy-external"], "tags": ["clancy", "customer", "reports"]}
         req = urllib.request.Request(f"{URL}/rest/v1/modules?on_conflict=module_key",
