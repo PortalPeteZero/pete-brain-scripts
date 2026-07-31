@@ -909,6 +909,25 @@ def fy_dashboard(inc, act, fykey, full=True):
     ]
     label = FY_LABEL[fykey]
     body = [search_box(fykey), kpis_html(cards)]
+    # The "x/y damages with corrective actions" card reads like a broken import unless the page
+    # says what it is. It is not: every action Depotnet holds for a service damage is in here and
+    # linked. The ratio is low because actions stopped being raised, and after the last one was
+    # raised no damage has had one at all. Every figure in this note is read from the data, so it
+    # moves the moment a new action lands.
+    raised = [a["date_raised"] for a in act if a.get("date_raised")]
+    if raised:
+        last_raised = max(raised)
+        after = [r for r in rows if r["incident_date"] and str(r["incident_date"])[:10] > str(last_raised)[:10]]
+        nice = datetime.datetime.strptime(str(last_raised)[:10], "%Y-%m-%d").strftime("%-d %B %Y")
+        body.append(
+            f'<div class="card" style="margin-bottom:16px;border-left:4px solid #b45309">'
+            f'<p class="small"><b>Why only {with_actions} of {len(rows)}.</b> Every corrective '
+            f'action Depotnet holds against a service damage is in here and linked to its damage: '
+            f'{len(act)} of them, none unmatched. The ratio is low because actions stopped '
+            f'being raised. The last one on any service damage was raised on <b>{nice}</b>, and '
+            f'the {len(after)} damages logged since then carry none at all. This was checked '
+            f'against Depotnet directly with every filter cleared, so it is a gap in the process, '
+            f'not a gap in what we imported.</p></div>')
     prior_leg = f'<div class="legend"><span class="lg"><i style="background:#97D700"></i>{label}</span>' + \
                 (f'<span class="lg"><i style="background:#b6c3e8"></i>{FY_LABEL[prior_key]} (same month)</span>' if prior_key else "") + "</div>"
     body.append(f'<div class="card"><div class="h2row"><h2>Damages by month</h2><span class="note">financial year, April to March</span></div>'

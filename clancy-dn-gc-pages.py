@@ -65,6 +65,10 @@ def dt(v):
 
 def esc(s): return H.escape(str(s), quote=False)
 
+def norm_name(v):
+    """An inspector's name without its payroll suffix — the store holds both forms for one person."""
+    return re.sub(r"\s*\(\d+\)\s*$", "", str(v or "")).strip()
+
 # ---------------------------------------------------------------- data pulls
 def load_store():
     ins = fetch_all("clancy_dn_gc_inspections")
@@ -258,6 +262,41 @@ def build_image_map():
     return {int(rid): [fig(s, c) for s, c in items] for rid, items in M.items()}
 
 # ---------------------------------------------------------------- assemble + publish
+def figures(I, A, C, n_findings):
+    """Every live figure the narrative shells can quote, in one place.
+
+    A shell writes {{inspections}}; this decides what that means. Numbers embedded in a card's
+    LABEL are tokens too — "170 inspectors, 22 contracts" sat frozen inside a label for months
+    while the big number above it was being refreshed.
+    """
+    lo, hi = I["period"]
+    months = (datetime.datetime.strptime(hi, "%d %b %Y") - datetime.datetime.strptime(lo, "%d %b %Y")).days / 30.44
+    return {
+        "inspections": f"{I['total']:,}",
+        "inspectors": f"{I['inspectors']:,}",
+        "contracts": f"{I['contracts']:,}",
+        "months": f"{months:.0f}",
+        "zero_pct": f"{I['zero'] / I['total'] * 100:.0f}%" if I["total"] else "0%",
+        "gc_actions": f"{A['total']:,}",
+        "same_second_pct": f"{A['ss'] / A['closed_n'] * 100:.1f}%" if A["closed_n"] else "0%",
+        "median_days": f"{C['median']:.0f}",
+        "over90": f"{C['over90']:,}",
+        "pdfs": f"{n_findings:,}",
+        "with_action": f"{I['with_action']:,}",
+    }
+
+
+def fill(html, figs):
+    """Substitute {{tokens}}. An unknown token is a hard error, not a silent placeholder: a page
+    that shipped a literal {{inspections}} to a Clancy reader would be worse than a stale number."""
+    def sub(m):
+        k = m.group(1)
+        if k not in figs:
+            raise KeyError(f"shell uses {{{{{k}}}}} but figures() does not define it")
+        return figs[k]
+    return re.sub(r"\{\{(\w+)\}\}", sub, html)
+
+
 def publish(key, htmlpage, local, do_publish):
     # Every page in this section goes through here, so this is where the shared section chrome
     # (navbar + breadcrumbs) is retrofitted onto shells that predate the design system. The
@@ -294,18 +333,23 @@ def main():
     # person pages: shell head + regenerated record section + tail
     for slug, shell in ((s, v) for s, v in shells.items() if s.startswith("person/")):
         name = shell["inspector"]
-        page = shell["head"] + person_section(name, fnd, ins, imap) + shell["tail"]
+        # The inspector field carries a payroll number on some rows and not others — "Jack
+        # Blowers (10009565)" and "Adam Bailey" both occur, and the SAME person appears in both
+        # forms. An exact match counted Jack Blowers as 0 and Adam Bailey as 1; normalising the
+        # suffix away gives 83 and 44, which is what the shells were written from.
+        mine = sum(1 for i in ins if norm_name(i["inspector"]) == norm_name(name))
+        page = fill(shell["head"] + person_section(name, fnd, ins, imap) + shell["tail"],
+                    {**figures(I, A, C, len(fnd)), "my_reviews": f"{mine:,}"})
         publish(f"{MODULE}/{slug.split('/')[1]}.html", page, a.local, a.publish)
-    # narrative shells (landing/findings/people): republished as stored, numbers refreshed by token swap
-    swaps = {
-        "5,403": f"{I['total']:,}", "2,038": f"{A['total']:,}",
-        "68.7%": f"{A['ss']/A['closed_n']*100:.1f}%",
-    }
-    for keyname, slug in (("landing", MODULE), ("findings", f"{MODULE}/findings.html"), ("people", f"{MODULE}/people.html")):
-        page = shells[keyname]["html"]
-        for old, new in swaps.items():
-            page = page.replace(old, new)
-        publish(slug, page, a.local, a.publish)
+    # narrative shells (landing/findings/people): republished as stored, with every LIVE figure
+    # filled from the store. This used to be a find-and-replace on the literal numbers ("5,403" ->
+    # the current total), which only ever covered three figures and silently did nothing once a
+    # shell was edited. Tokens are explicit: a {{name}} with no value fails loudly below rather
+    # than shipping a placeholder to a customer.
+    figs = figures(I, A, C, len(fnd))
+    for keyname, slug in (("landing", MODULE), ("findings", f"{MODULE}/findings.html"),
+                          ("people", f"{MODULE}/people.html")):
+        publish(slug, fill(shells[keyname]["html"], figs), a.local, a.publish)
     print("NOTE: actions/inspections/coverage full-page regeneration comes from the v1 generators; "
           "this renderer refreshes person pages + shell numbers. Extend page-by-page as sections are ported.")
 

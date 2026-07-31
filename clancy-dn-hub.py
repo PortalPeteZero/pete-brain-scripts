@@ -103,9 +103,31 @@ def build():
       (SELECT count(*) FROM clancy_dn_actions) AS actions,
       (SELECT count(*) FROM clancy_dn_actions WHERE status='Overdue') AS overdue,
       (SELECT count(*) FROM clancy_dn_incidents WHERE pdf_captured_at IS NOT NULL) AS captured,
+      (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
+         AND pdf_captured_at IS NOT NULL) AS captured_cur,
       (SELECT count(*) FROM clancy_dn_answers) AS answers,
       (SELECT count(*) FROM clancy_dn_files) AS files,
-      (SELECT count(*) FROM clancy_dn_inspections) AS inspections,
+      -- The Genny & CAT store is clancy_dn_gc_*. There is an older clancy_dn_inspections holding
+      -- 83 rows — one inspector, one contract, and every row of it also present here. Reading that
+      -- one made the hub report 83 where the section itself reports 5,403.
+      (SELECT count(*) FROM clancy_dn_gc_inspections) AS inspections,
+      (SELECT count(*) FROM clancy_dn_gc_actions) AS gc_actions,
+      (SELECT count(*) FROM clancy_dn_gc_coverage) AS gc_operatives,
+      (SELECT min(date_raised)::date FROM clancy_dn_actions) AS act_first,
+      -- The 22 with no root cause are NOT uninvestigated: count how many of them carry a
+      -- completed Depotnet form, and the range of questions answered, so the page can say so.
+      (SELECT count(*) FROM clancy_dn_incidents i WHERE i.fy='FY26/27'
+         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
+         AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
+         AND EXISTS (SELECT 1 FROM clancy_dn_answers x WHERE x.incident_id=i.id)) AS inv_form,
+      (SELECT min(n) FROM (SELECT count(*) n FROM clancy_dn_answers x
+         JOIN clancy_dn_incidents i ON i.id=x.incident_id WHERE i.fy='FY26/27'
+         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
+         AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_lo,
+      (SELECT max(n) FROM (SELECT count(*) n FROM clancy_dn_answers x
+         JOIN clancy_dn_incidents i ON i.id=x.incident_id WHERE i.fy='FY26/27'
+         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
+         AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_hi,
       (SELECT count(*) FROM clancy_reports) AS reports,
       (SELECT count(*) FROM clancy_dn_incidents WHERE sygma_reviewed_at IS NOT NULL) AS sygma_rev,
       (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
@@ -152,7 +174,6 @@ def build():
         f'<div class="s">{"this year, still running" if r["fy"] == "FY26/27" else "damages"}</div></a>'
         for r in sorted(known, key=lambda r: r["fy"], reverse=True))
 
-    pct = round(100 * d["captured"] / d["damages"]) if d["damages"] else 0
     today = datetime.date.today()
 
     ch_months = cols([(r["m"], r["n"]) for r in months], dim_last=True)
@@ -194,9 +215,9 @@ def build():
  <div class="kpi"><div class="n {'red' if d['cur_open'] else 'grn'}">{d['cur_open']}</div>
   <div class="l">still open<br>this year</div></div>
  <div class="kpi"><div class="n red">{d['no_inv']}</div>
-  <div class="l">this year with no<br>investigation on Depotnet</div></div>
- <div class="kpi"><div class="n">{d['captured']}</div>
-  <div class="l">deep-captured<br>from Depotnet ({pct}%)</div></div>
+  <div class="l">this year with no root cause<br>or lessons recorded</div></div>
+ <div class="kpi"><div class="n">{d['captured_cur']}/{d['cur']}</div>
+  <div class="l">of this year deep-captured<br>from Depotnet</div></div>
  <div class="kpi"><div class="n {'red' if d['overdue'] else 'grn'}">{d['overdue']}</div>
   <div class="l">corrective actions<br>overdue</div></div>
 </div>
@@ -223,7 +244,7 @@ def build():
   against it and Sygma&#8217;s own findings on top.</div>
   <div class="figs">
    <div><div class="n">{d['cur']}</div><div class="l">this year</div></div>
-   <div><div class="n">{d['captured']}</div><div class="l">deep-captured</div></div>
+   <div><div class="n">{d['captured_cur']}/{d['cur']}</div><div class="l">this year deep-captured</div></div>
    <div><div class="n">{d['files']}</div><div class="l">documents</div></div>
   </div>
   <div class="go">Open the register &rarr;</div>
@@ -249,8 +270,8 @@ def build():
   are not.</div>
   <div class="figs">
    <div><div class="n">{d['person_pages']}</div><div class="l">named reviews</div></div>
-   <div><div class="n">{d['review_pdfs']}</div><div class="l">inspection reports</div></div>
-   <div><div class="n">{d['inspections']}</div><div class="l">inspections stored</div></div>
+   <div><div class="n">{d['review_pdfs']}</div><div class="l">reports read line by line</div></div>
+   <div><div class="n">{d['inspections']:,}</div><div class="l">usage inspections</div></div>
   </div>
   <div class="go">Open the review &rarr;</div>
  </a>
@@ -275,20 +296,32 @@ def build():
 
 <div class="dnote"><b>Note on coverage.</b> The register itself is complete for all four years and
 fully searchable, and Genny reads the same store. Deep capture, meaning the investigation answers
-and the documents pulled off each Depotnet record, has been done for this financial year:
-{d['captured']} of {d['damages']:,} damages carry it. The Genny &amp; CAT review is a written
-analysis with its evidence attached, and {d['inspections']} inspection records sit in the database
-so far, so that section is not yet fully covered by the search.</div>
+and the documents pulled off each Depotnet record, has been done for this financial year and is all but finished there:
+{d['captured_cur']} of this year's {d['cur']} damages carry it, and {d['captured']} across the
+register as a whole. The Genny &amp; CAT review is a written
+analysis with its evidence attached, sitting on {d['inspections']:,} usage inspections and
+{d['gc_actions']:,} inspection actions in the database.</div>
+
+<div class="dnote"><b>{d['no_inv']} of this year's {d['cur']} damages carry no root cause and no
+lessons learnt.</b> That is not the same as no investigation: {d['inv_form']} of those
+{d['no_inv']} do have a completed Depotnet investigation form against them, with
+{d['inv_lo']} to {d['inv_hi']} questions answered. What is missing on every one is the pair of
+fields that would say why it happened and what to do differently. The form is being filled in; the
+conclusion is being left blank.</div>
 
 <div class="dnote"><b>No corrective action has been raised on a service damage since
-{d['act_latest']}.</b> This was checked against Depotnet directly on 31 July 2026, with every
-filter cleared: the Action Report holds <b>3,765</b> actions across seven incident categories, of
-which Service Damage is <b>269</b>, exactly the set we hold, complete back to October 2023. Over
-the same weeks Depotnet raised <b>160</b> actions in other categories (Observation and Near Miss,
-Injury, Fleet, Security) right through to 31 July, so the system is in daily use. In that time
-<b>{d['after_cut']} service damages</b> have been logged, running to {d['inc_latest']}, with not
-one corrective action raised against any of them. This is a gap in the process, not a gap in the
-data.</div>
+{d['act_latest']}.</b> We hold <b>{d['actions']}</b> Service Damage actions, running back to
+{d['act_first']}, every one of them linked to a damage on this register. That is the complete set:
+checked against Depotnet directly on 31 July 2026 with every filter cleared, where the Action
+Report held 3,765 actions across seven incident categories and Service Damage was exactly the
+{d['actions']} we hold. Over the same weeks Depotnet raised 160 actions in other categories
+(Observation and Near Miss, Injury, Fleet, Security) right through to 31 July, so the system is in
+daily use. Since {d['act_latest']}, <b>{d['after_cut']} service damages</b> have been logged,
+running to {d['inc_latest']}, with not one corrective action raised against any of them. This is a
+gap in the process, not a gap in the data.<br><span style="color:var(--faint);font-size:12.5px">
+The 3,765 and the 160 are the only figures on this page not read live from the database: they
+count Depotnet categories we do not import, so they are what was on screen on 31 July 2026.
+Everything else updates itself.</span></div>
 
 {ui.foot(today.strftime('%-d %b %Y'))}
 </div>
