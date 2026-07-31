@@ -336,16 +336,17 @@ def year_pages(fykey):
 
 def shell(title, body, active, sub="", fykey=None, subactive=None):
     nav = [
-        ("index.html", "Overview"),
-        ("fy-2026-27.html", "FY 2026/27"),
+        ("fy-2026-27.html", "This year"),
         ("fy-2025-26.html", "FY 2025/26"),
         ("fy-2024-25.html", "FY 2024/25"),
         ("fy-2023-24.html", "FY 2023/24"),
+        ("overview.html", "All years"),
     ]
     # the top tab stays lit for every page inside its year
     links = "".join(
-        f'<a href="/raw/{MK}{"" if h == "index.html" else "/" + h}"{" class=\"on\"" if h == active else ""}>{t}</a>'
+        f'<a href="/raw/{MK}/{h}"{" class=\"on\"" if h == active else ""}>{t}</a>'
         for h, t in nav)
+    links += f'<a href="/m/clancy-genny-cat-reviews" style="margin-left:auto">Data Dive ↗</a>'
     if fykey:
         yp = year_pages(fykey)
         sub_items = [(yp["dash"], "Dashboard"), (yp["incidents"], "Incidents"),
@@ -608,8 +609,8 @@ def hub(inc, act):
     trend = (f'<div class="card"><div class="h2row"><h2>This year against last, month by month</h2></div>'
              + vbar_months(mser, pser, label="FY 2026/27", prior_label="FY 2025/26")
              + '<div class="legend"><span class="lg"><i style="background:#2f5fd0"></i>FY 2026/27</span><span class="lg"><i style="background:#b6c3e8"></i>FY 2025/26</span></div></div>')
-    sub = "Every Clancy service damage on Depotnet, group-wide, with Sygma's analysis on top — plus the Genny & CAT data dive."
-    return shell("Depotnet Damages", kpis_html(cards) + doors + fys_html + trend, "index.html", sub)
+    sub = "The whole register across every year — the per-year sections are where the detail lives."
+    return shell("Depotnet Damages — all years", kpis_html(cards) + doors + fys_html + trend, "overview.html", sub)
 
 def fy_incidents_page(inc, act, fykey):
     rows = [r for r in inc if r["fy"] == fykey]
@@ -630,7 +631,7 @@ def all_incidents_page(inc, act):
         act_by_inc[a["incident_id"]].append(a)
     body = [f'<div class="h2row"><h2>The full register, all years</h2><span class="note">{len(inc)} service damages, April 2023 to today — reached from the Overview cards; each year also has its own register</span></div>']
     body.append(incident_table(inc, act_by_inc, "tall"))
-    return shell("All incidents — every year", "\n".join(body), "index.html",
+    return shell("All incidents — every year", "\n".join(body), "overview.html",
                  f"{len(inc)} service damages · the whole register in one table")
 
 def actions_page(inc, act, fykey=None):
@@ -707,7 +708,7 @@ def actions_page(inc, act, fykey=None):
         return shell(f"Actions — {FY_LABEL[fykey]}", "\n".join(body), FY_PAGE[fykey],
                      f"{FY_LABEL[fykey]} · {len(act)} corrective actions on the year's damages · {len(overdue)} overdue",
                      fykey=fykey, subactive="actions")
-    return shell("Actions — every year", "\n".join(body), "index.html",
+    return shell("Actions — every year", "\n".join(body), "overview.html",
                  f"{len(act)} corrective actions across all years · {len(overdue)} overdue · reached from the Overview cards")
 
 def fy_insights_page(inc, act, fykey):
@@ -805,9 +806,11 @@ def main():
     args = ap.parse_args()
     inc, act = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions")
-    pages = {"index.html": hub(inc, act),
+    pages = {"overview.html": hub(inc, act),
              "all-incidents.html": all_incidents_page(inc, act),
              "all-actions.html": actions_page(inc, act, fykey=None)}
+    # this year IS the landing: the module index serves the current-FY dashboard
+    pages["index.html"] = fy_dashboard(inc, act, "FY26/27", full=True)
     for f in FYS:
         yp = year_pages(f)
         pages[yp["dash"]] = fy_dashboard(inc, act, f, full=True)
