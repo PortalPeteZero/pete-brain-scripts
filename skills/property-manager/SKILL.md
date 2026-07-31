@@ -7,6 +7,26 @@ description: "Use this skill whenever Pete wants to work on any website, app, or
 
 # Property Manager — Universal Workflow Skill
 
+> [!important] ⛔ DESIGN GATE — query the design database BEFORE writing any UI
+> **Never choose a style, palette, font pairing or layout by eye.** The `ui-ux-pro-max` skill is
+> vendored into this repo and pulled to `/tmp/pbs` on every boot. Query it first, every time:
+> ```
+> cd /tmp/pbs/skills/ui-ux-pro-max
+> python3 scripts/search.py "<what you are building>" --domain product --max-results 3
+> python3 scripts/search.py "<style you are considering>" --domain style --stack nextjs
+> python3 scripts/search.py "<brand or mood>" --domain color
+> python3 scripts/search.py "<product type>" --domain typography
+> ```
+> Domains: `style` `color` `typography` `product` `landing` `ux` `icons` `gsap` `chart` `react` `web`.
+> It returns exact hex values, CSS variables, border-radius and weight specs, and an implementation
+> checklist. **If a query returns no match, say so explicitly rather than quietly falling back to
+> taste.** Full note: [[ui-ux-pro-max-design-intelligence]].
+>
+> **And when the user supplies a reference template or repo: TAKE IT. Clone it, swap the tokens,
+> swap the copy. Do not hand-write an imitation of it.** On 30 Jul 2026 three Passion Fit mockups
+> were written from scratch off two templates Pete supplied, and all three were rejected. His words:
+> *"your website building is shit"*.
+
 > [!important] Where property state lives
 > A property's **card** (domain, tech stack, tracking IDs, live-state block) lives in the **CC Properties module** (Part E). Its **reference data** (SEO crawl, audit results, ads/analytics exports) lives in the property's **Google Drive** folder (find via `drive_files`: `/tmp/pbs/cc-sql.py`). **Decisions / notes** → **`vault_notes`** (search with `cc-knowledge-api.py`, persist with **`cc-save.py`**); **plans** (`type: session-plan`) → `vault_notes` via **`cc-save.py`** (a session-plan is a lifecycle note the bulk `cc-knowledge-ingest.py` drops — F3). **Session log** → CC `daily_log`. Customer/supplier/business context → the entity's Drive folder + a `vault_notes` record. Code repos clone to `/tmp/<repo>` (a fresh working copy each session); tools run from `/tmp/pbs`; a `[[wikilink]]` links a note by its name in `vault_notes`. Route per the matrix in [[vault-routing]].
 

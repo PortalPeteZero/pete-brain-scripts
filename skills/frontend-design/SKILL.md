@@ -5,6 +5,26 @@ description: Create distinctive, production-grade frontend interfaces with high 
 
 # Frontend Design
 
+> [!important] ⛔ DESIGN GATE — query the design database BEFORE writing any UI
+> **Never choose a style, palette, font pairing or layout by eye.** The `ui-ux-pro-max` skill is
+> vendored into this repo and pulled to `/tmp/pbs` on every boot. Query it first, every time:
+> ```
+> cd /tmp/pbs/skills/ui-ux-pro-max
+> python3 scripts/search.py "<what you are building>" --domain product --max-results 3
+> python3 scripts/search.py "<style you are considering>" --domain style --stack nextjs
+> python3 scripts/search.py "<brand or mood>" --domain color
+> python3 scripts/search.py "<product type>" --domain typography
+> ```
+> Domains: `style` `color` `typography` `product` `landing` `ux` `icons` `gsap` `chart` `react` `web`.
+> It returns exact hex values, CSS variables, border-radius and weight specs, and an implementation
+> checklist. **If a query returns no match, say so explicitly rather than quietly falling back to
+> taste.** Full note: [[ui-ux-pro-max-design-intelligence]].
+>
+> **And when the user supplies a reference template or repo: TAKE IT. Clone it, swap the tokens,
+> swap the copy. Do not hand-write an imitation of it.** On 30 Jul 2026 three Passion Fit mockups
+> were written from scratch off two templates Pete supplied, and all three were rejected. His words:
+> *"your website building is shit"*.
+
 This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
 
 The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
