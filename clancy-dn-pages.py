@@ -188,6 +188,9 @@ background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:ant
 .nav a{font-size:13px;font-weight:600;color:#dfe4fa;text-decoration:none;padding:7px 13px;border-radius:8px;background:rgba(255,255,255,.08);transition:background .2s}
 .nav a:hover{background:rgba(255,255,255,.18)}
 .nav a.on{background:#fff;color:var(--navy)}
+.nav.subnav{margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14)}
+.nav.subnav a{font-size:12.5px;padding:6px 12px;background:rgba(255,255,255,.05)}
+.nav.subnav a.on{background:#f0b429;color:#1c2a6e}
 h2{font-size:15px;font-weight:700;color:var(--navy);letter-spacing:.02em;margin:0 0 4px}
 .h2row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
 .h2row .note{font-size:12.5px;color:var(--muted)}
@@ -239,6 +242,8 @@ text.blabel{font-size:12px;fill:#44506
 .fyt .n{font-size:30px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;margin:2px 0}
 .fyt .s{font-size:12px;color:var(--muted)}
 .fyt.cur{outline:2px solid var(--accent);outline-offset:-2px}
+.fyt .s a{color:var(--accent);text-decoration:none;font-weight:600}
+.fyt .s a:hover{text-decoration:underline}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .filters input[type=search]{font:inherit;font-size:13.5px;padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:#fff;min-width:210px}
 .filters select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--ink);cursor:pointer}
@@ -323,20 +328,31 @@ function initTable(tid){
 }
 """
 
-def shell(title, body, active, sub=""):
+def year_pages(fykey):
+    """The four pages of one year's section."""
+    stem = FY_PAGE[fykey][:-5]  # fy-2026-27
+    return {"dash": f"{stem}.html", "incidents": f"{stem}-incidents.html",
+            "actions": f"{stem}-actions.html", "insights": f"{stem}-insights.html"}
+
+def shell(title, body, active, sub="", fykey=None, subactive=None):
     nav = [
         ("index.html", "Overview"),
         ("fy-2026-27.html", "FY 2026/27"),
         ("fy-2025-26.html", "FY 2025/26"),
         ("fy-2024-25.html", "FY 2024/25"),
         ("fy-2023-24.html", "FY 2023/24"),
-        ("incidents.html", "All incidents"),
-        ("actions.html", "Actions"),
-        ("insights.html", "Insights"),
     ]
+    # the top tab stays lit for every page inside its year
     links = "".join(
         f'<a href="/raw/{MK}{"" if h == "index.html" else "/" + h}"{" class=\"on\"" if h == active else ""}>{t}</a>'
         for h, t in nav)
+    if fykey:
+        yp = year_pages(fykey)
+        sub_items = [(yp["dash"], "Dashboard"), (yp["incidents"], "Incidents"),
+                     (yp["actions"], "Actions"), (yp["insights"], "Insights")]
+        links += '</div><div class="nav subnav">' + "".join(
+            f'<a href="/raw/{MK}/{h}"{" class=\"on\"" if k == subactive else ""}>{t}</a>'
+            for (h, t), k in zip(sub_items, ["dash", "incidents", "actions", "insights"]))
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -481,13 +497,9 @@ def fy_dashboard(inc, act, fykey, full=True):
     pser = monthly_series(inc, prior_key) if prior_key else None
     # same-period comparison for the running year
     today = datetime.date.today()
+    yp = year_pages(fykey)
     def link(**params):
-        # full pages filter their own on-page register; summary years deep-link into All incidents
-        if full:
-            base = f"/raw/{MK}/{FY_PAGE[fykey]}"
-        else:
-            base = f"/raw/{MK}/incidents.html"
-            params = {"fy": fykey, **params}
+        base = f"/raw/{MK}/{yp['incidents']}"
         qs = "&".join(f"{k}={urllib.request.quote(str(v))}" for k, v in params.items())
         return base + ("?" + qs if qs else "")
     cards = [dict(n=len(rows), l="service damages recorded", href=link())]
@@ -505,9 +517,9 @@ def fy_dashboard(inc, act, fykey, full=True):
         dict(n=open_n, cls="amber" if open_n else "", l="still open", href=link(status="Open")),
         dict(n=high, cls="red" if high else "", l="High (Cat 1)", href=link(sev="High (Cat 1)")),
         dict(n=f"{with_actions}/{len(rows)}", l="damages with corrective actions",
-             href=f"/raw/{MK}/actions.html"),
+             href=f"/raw/{MK}/{yp['actions']}"),
         dict(n=overdue, cls="red" if overdue else "green", l="actions overdue right now",
-             href=f"/raw/{MK}/actions.html?status=Overdue"),
+             href=f"/raw/{MK}/{yp['actions']}?status=Overdue"),
     ]
     label = FY_LABEL[fykey]
     body = [kpis_html(cards)]
@@ -534,16 +546,14 @@ def fy_dashboard(inc, act, fykey, full=True):
     body.append(f'<div class="card"><div class="h2row"><h2>Delivered by</h2><span class="note">subcontractor on the incident record</span></div>{hbar(subs, color="#64748b")}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>Most-hit places</h2></div>{hbar(towns.most_common(8), color="#0e9594")}</div>')
     body.append('</div>')
-    if full:
-        act_by_inc = defaultdict(list)
-        for a in act:
-            act_by_inc[a["incident_id"]].append(a)
-        body.append(f'<div class="h2row" style="margin-top:26px"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — searchable, sortable, click to expand</span></div>')
-        body.append(incident_table(rows, act_by_inc, f"t{fykey.replace('/', '')}", fy_filter=False))
-    else:
-        body.append(f'<p class="small muted" style="margin-top:6px">Summary year — the full register for {label} is in <a href="/raw/{MK}/incidents.html">All incidents</a>, filtered to {label}.</p>')
+    body.append(f"""<div class="grid c3" style="margin-top:20px">
+<a class="fyt" href="/raw/{MK}/{yp['incidents']}"><div class="y">Incidents</div><div class="n">{len(rows)}</div><div class="s">every {label} damage — searchable, expandable</div></a>
+<a class="fyt" href="/raw/{MK}/{yp['actions']}"><div class="y">Actions</div><div class="n">{len(fy_act)}</div><div class="s">{overdue} overdue — who owes what</div></a>
+<a class="fyt" href="/raw/{MK}/{yp['insights']}"><div class="y">Insights</div><div class="n">{label.split()[-1]}</div><div class="s">trends, improvements, capture quality</div></a>
+</div>""")
     sub = f"{label} · {len(rows)} service damages across {len(fams)} contract groups"
-    return shell(f"Service damages — {label}", "\n".join(body), FY_PAGE[fykey], sub)
+    return shell(f"Service damages — {label}", "\n".join(body), FY_PAGE[fykey], sub,
+                 fykey=fykey, subactive="dash")
 
 def hub(inc, act):
     today = datetime.date.today()
@@ -557,15 +567,16 @@ def hub(inc, act):
     pct = (curn - same) / same * 100 if same else 0
     cards = [
         dict(n=len(inc), l="service damages on the Depotnet register (Apr 2023 → today)",
-             href=f"/raw/{MK}/incidents.html"),
+             href=f"/raw/{MK}/all-incidents.html"),
         dict(n=len(cur), l="so far this financial year (from 1 Apr 2026)",
              href=f"/raw/{MK}/fy-2026-27.html"),
         dict(n=f"{pct:+.0f}%", cls="green" if pct < 0 else "red",
-             l=f"vs the same months last year ({curn} v {same})", href=f"/raw/{MK}/insights.html"),
-        dict(n=open_n, cls="amber", l="incidents still open",
-             href=f"/raw/{MK}/incidents.html?status=Open"),
-        dict(n=overdue, cls="red", l="corrective actions overdue",
-             href=f"/raw/{MK}/actions.html?status=Overdue"),
+             l=f"vs the same months last year ({curn} v {same})",
+             href=f"/raw/{MK}/fy-2026-27-insights.html"),
+        dict(n=open_n, cls="amber", l="incidents still open, all years",
+             href=f"/raw/{MK}/all-incidents.html?status=Open"),
+        dict(n=overdue, cls="red", l="corrective actions overdue, all years",
+             href=f"/raw/{MK}/all-actions.html?status=Overdue"),
     ]
     doors = f"""
 <div class="doors">
@@ -584,33 +595,54 @@ def hub(inc, act):
     for f in FYS[::-1]:
         n = sum(1 for r in inc if r["fy"] == f)
         cls = " cur" if f == "FY26/27" else ""
-        note = "running year — from 1 Apr 2026" if f == "FY26/27" else ("contract year before" if f == "FY25/26" else "summary year")
-        tiles.append(f'<a class="fyt{cls}" href="/raw/{MK}/{FY_PAGE[f]}"><div class="y">{FY_LABEL[f]}</div><div class="n">{n}</div><div class="s">{note}</div></a>')
-    fys_html = f'<div class="h2row"><h2>By financial year</h2><span class="note">years run 1 April – 31 March</span></div><div class="fytiles">{"".join(tiles)}</div>'
+        note = "running year — from 1 Apr 2026" if f == "FY26/27" else ("contract year before" if f == "FY25/26" else "earlier year")
+        yp = year_pages(f)
+        sub_links = (f'<div class="s" style="margin-top:8px"><a href="/raw/{MK}/{yp["dash"]}">Dashboard</a> · '
+                     f'<a href="/raw/{MK}/{yp["incidents"]}">Incidents</a> · '
+                     f'<a href="/raw/{MK}/{yp["actions"]}">Actions</a> · '
+                     f'<a href="/raw/{MK}/{yp["insights"]}">Insights</a></div>')
+        tiles.append(f'<div class="fyt{cls}"><a href="/raw/{MK}/{FY_PAGE[f]}" style="text-decoration:none;color:inherit"><div class="y">{FY_LABEL[f]}</div><div class="n">{n}</div><div class="s">{note}</div></a>{sub_links}</div>')
+    fys_html = f'<div class="h2row"><h2>By financial year</h2><span class="note">years run 1 April – 31 March — each year has its own dashboard, incidents, actions and insights</span></div><div class="fytiles">{"".join(tiles)}</div>'
     mser = monthly_series(inc, "FY26/27")
     pser = monthly_series(inc, "FY25/26")
     trend = (f'<div class="card"><div class="h2row"><h2>This year against last, month by month</h2></div>'
              + vbar_months(mser, pser, label="FY 2026/27", prior_label="FY 2025/26")
              + '<div class="legend"><span class="lg"><i style="background:#2f5fd0"></i>FY 2026/27</span><span class="lg"><i style="background:#b6c3e8"></i>FY 2025/26</span></div></div>')
-    quick = f"""<div class="grid c3" style="margin-top:16px">
-<a class="fyt" href="/raw/{MK}/incidents.html"><div class="y">All incidents</div><div class="n">{len(inc)}</div><div class="s">one searchable register, every year</div></a>
-<a class="fyt" href="/raw/{MK}/actions.html"><div class="y">Actions centre</div><div class="n">{len(act)}</div><div class="s">{overdue} overdue — who owes what</div></a>
-<a class="fyt" href="/raw/{MK}/insights.html"><div class="y">Insights</div><div class="n">{today.strftime('%b %Y')}</div><div class="s">trends, improvements and capture gaps</div></a>
-</div>"""
     sub = "Every Clancy service damage on Depotnet, group-wide, with Sygma's analysis on top — plus the Genny & CAT data dive."
-    return shell("Depotnet Damages", kpis_html(cards) + doors + fys_html + trend + quick, "index.html", sub)
+    return shell("Depotnet Damages", kpis_html(cards) + doors + fys_html + trend, "index.html", sub)
 
-def incidents_page(inc, act):
+def fy_incidents_page(inc, act, fykey):
+    rows = [r for r in inc if r["fy"] == fykey]
+    label = FY_LABEL[fykey]
     act_by_inc = defaultdict(list)
     for a in act:
         act_by_inc[a["incident_id"]].append(a)
-    body = [f'<div class="h2row"><h2>The full register</h2><span class="note">{len(inc)} service damages, April 2023 to today — filter by year, contract, utility, severity or status</span></div>']
-    body.append(incident_table(inc, act_by_inc, "tall"))
-    return shell("All incidents", "\n".join(body), "incidents.html",
-                 f"{len(inc)} service damages · every Depotnet Incident Register row, captured in full")
+    body = [f'<div class="h2row"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — filter by contract, utility, severity or status; click a row to expand</span></div>']
+    body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False))
+    return shell(f"Incidents — {label}", "\n".join(body), FY_PAGE[fykey],
+                 f"{label} · every Depotnet Incident Register row for the year, captured in full",
+                 fykey=fykey, subactive="incidents")
 
-def actions_page(inc, act):
+def all_incidents_page(inc, act):
+    # Not in the nav — the landing page's cross-year cards (total / still open) deep-link here.
+    act_by_inc = defaultdict(list)
+    for a in act:
+        act_by_inc[a["incident_id"]].append(a)
+    body = [f'<div class="h2row"><h2>The full register, all years</h2><span class="note">{len(inc)} service damages, April 2023 to today — reached from the Overview cards; each year also has its own register</span></div>']
+    body.append(incident_table(inc, act_by_inc, "tall"))
+    return shell("All incidents — every year", "\n".join(body), "index.html",
+                 f"{len(inc)} service damages · the whole register in one table")
+
+def actions_page(inc, act, fykey=None):
+    """Actions centre — year-scoped when fykey given (actions on that year's incidents),
+    else the all-years view reached only from the Overview cards."""
     inc_by_id = {r["id"]: r for r in inc}
+    if fykey:
+        year_ids = {r["id"] for r in inc if r["fy"] == fykey}
+        act = [a for a in act if a["incident_id"] in year_ids]
+        n_dam = len(year_ids)
+    else:
+        n_dam = len(inc)
     overdue = [a for a in act if a["status"] == "Overdue"]
     closed = [a for a in act if a["status"] == "Closed"]
     today = datetime.date.today()
@@ -627,12 +659,11 @@ def actions_page(inc, act):
     med_lag = lag[len(lag) // 2] if lag else 0
     p90 = lag[int(len(lag) * .9)] if lag else 0
     cards = [
-        dict(n=len(act), l=f"corrective actions raised ({len({a['incident_id'] for a in act})} of {len(inc)} damages have at least one)"),
+        dict(n=len(act), l=f"corrective actions raised ({len({a['incident_id'] for a in act})} of {n_dam} damages have at least one)"),
         dict(n=len(closed), cls="green", l="closed", href="?status=Closed"),
         dict(n=len(overdue), cls="red", l="overdue right now", href="?status=Overdue"),
-        dict(n=f"{max(ages) if ages else 0}d", cls="red", l="oldest overdue action (days past due)", href="?status=Overdue"),
-        dict(n=f"{med_lag}d", l=f"median time from incident to action raised (slowest 10%: {p90}+ days)",
-             href=f"/raw/{MK}/insights.html"),
+        dict(n=f"{max(ages) if ages else 0}d", cls="red" if ages else "", l="oldest overdue action (days past due)", href="?status=Overdue"),
+        dict(n=f"{med_lag}d", l=f"median time from incident to action raised (slowest 10%: {p90}+ days)"),
     ]
     byass = Counter((a["assigned_to"] or "Unassigned").split(" (")[0] for a in act).most_common(10)
     od_fam = Counter((a["contract_family"] or a["contract"] or "Unstated") for a in overdue).most_common(10)
@@ -672,73 +703,98 @@ def actions_page(inc, act):
                 f'<th data-col="4">Incident location <span class="arr">↕</span></th><th data-col="5">Status <span class="arr">↕</span></th>'
                 f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>')
     body.append(f'<script>{TABLE_JS}initTable("tact");</script>')
-    return shell("Actions centre", "\n".join(body), "actions.html",
-                 f"{len(act)} corrective actions across {len({a['incident_id'] for a in act})} damages · {len(overdue)} overdue")
+    if fykey:
+        return shell(f"Actions — {FY_LABEL[fykey]}", "\n".join(body), FY_PAGE[fykey],
+                     f"{FY_LABEL[fykey]} · {len(act)} corrective actions on the year's damages · {len(overdue)} overdue",
+                     fykey=fykey, subactive="actions")
+    return shell("Actions — every year", "\n".join(body), "index.html",
+                 f"{len(act)} corrective actions across all years · {len(overdue)} overdue · reached from the Overview cards")
 
-def insights_page(inc, act):
+def fy_insights_page(inc, act, fykey):
     today = datetime.date.today()
-    cur = [r for r in inc if r["fy"] == "FY26/27"]
-    prior = [r for r in inc if r["fy"] == "FY25/26"]
-    months_elapsed = [m for m in FY_MONTHS["FY26/27"] if m <= today.strftime("%Y-%m")]
-    same = sum(Counter(r["month"] for r in prior).get(m.replace("2026", "2025").replace("2027", "2026"), 0) for m in months_elapsed)
-    curn = len([r for r in cur if r["month"] in months_elapsed])
-    open_no_action = [r for r in inc if r["status"] == "Open" and r["id"] not in {a["incident_id"] for a in act}]
-    lag = []
-    for a in act:
-        if a["date_raised"] and a["incident_date"]:
-            lag.append((datetime.date.fromisoformat(a["date_raised"][:10]) - datetime.date.fromisoformat(a["incident_date"][:10])).days)
-    lag.sort()
-    late_lag = [l for l in lag if l > 90]
-    jon = sum(1 for a in act if (a["assigned_to"] or "").startswith("Jon Cole"))
-    jon_raised = sum(1 for r in inc if (r["raised_by"] or "").startswith("Jon Cole"))
-    short_desc = sum(1 for r in inc if r["description"] and len(r["description"]) < 25)
-    uncl = sum(1 for r in inc if (r["utility_class"] or "Unclassified") == "Unclassified")
-    sl = sum(1 for r in inc if r["utility_class"] == "Electric — street lighting")
-    fy_tot = {f: sum(1 for r in inc if r["fy"] == f) for f in FYS}
-    sev2526 = Counter(r["sev"] for r in prior)
-    sev2425 = Counter(r["sev"] for r in inc if r["fy"] == "FY24/25")
-    ws_empty = sum(1 for r in inc if not r["workstream"])
+    label = FY_LABEL[fykey]
+    yp = year_pages(fykey)
+    rows = [r for r in inc if r["fy"] == fykey]
+    prior_key = FYS[FYS.index(fykey) - 1] if FYS.index(fykey) > 0 else None
+    prior = [r for r in inc if r["fy"] == prior_key] if prior_key else []
+    year_ids = {r["id"] for r in rows}
+    yact = [a for a in act if a["incident_id"] in year_ids]
+    open_rows = [r for r in rows if r["status"] == "Open"]
+    open_no_action = [r for r in open_rows if r["id"] not in {a["incident_id"] for a in yact}]
+    overdue = [a for a in yact if a["status"] == "Overdue"]
+    lag = sorted((datetime.date.fromisoformat(a["date_raised"][:10]) -
+                  datetime.date.fromisoformat(a["incident_date"][:10])).days
+                 for a in yact if a["date_raised"] and a["incident_date"])
+    short_desc = sum(1 for r in rows if r["description"] and len(str(r["description"])) < 25)
+    uncl = sum(1 for r in rows if (r["utility_class"] or "Unclassified") == "Unclassified")
+    sl = sum(1 for r in rows if r["utility_class"] == "Electric — street lighting")
+    fams = fam_split(rows)
+    utils = [u for u in util_split(rows) if u[1]]
+    sevs = Counter(r["sev"] for r in rows)
     ins = []
     def I(kind, h, p, ev=""):
         ins.append(f'<div class="insight {kind}"><h3>{h}</h3><p>{p}</p>' + (f'<div class="ev">{ev}</div>' if ev else "") + "</div>")
 
-    I("good", "The trend this contract year is genuinely down",
-      f"April to {today.strftime('%B')} this year: <b>{curn} damages</b> against <b>{same}</b> in the same months last year — "
-      f"{abs((curn-same)/same*100):.0f}% lower. Full-year totals run {fy_tot['FY23/24']} → {fy_tot['FY24/25']} → {fy_tot['FY25/26']} → {fy_tot['FY26/27']} (4 months in).",
-      "Counted from Incident Date on the register. FY23/24 (97) may reflect Depotnet adoption ramping up rather than genuinely fewer damages — treat the 226 → 164 → now trajectory as the honest read.")
-    I("warn", f"{len(open_no_action)} open damages have no corrective action at all",
-      f"Of {sum(1 for r in inc if r['status']=='Open')} open incidents, <b>{len(open_no_action)}</b> have nothing in the Action Report. "
-      f"Only 173 of 534 damages ({173/534*100:.0f}%) have ever had an action raised. If the process is 'every damage produces a learning action', the register says it isn't happening.",
-      "Join of Incident Register to Action Report on Incident ID.")
-    I("warn", "Action paperwork often arrives months after the incident",
-      f"Half of all actions are raised within {lag[len(lag)//2]} days — good. But the slowest 10% take <b>{lag[int(len(lag)*.9)]}+ days</b>, "
-      f"{len(late_lag)} actions arrived more than 90 days after the incident, and the worst was <b>{lag[-1]} days</b>. Actions raised that late look like retrofitted paperwork, not learning.",
-      "Date Raised (action) minus Incident Date.")
-    I("warn", "52 actions are overdue right now — and they cluster",
-      "Anglian Water (24) and SE Water R&M (16) hold 40 of the 52 overdue actions between them. "
-      "The overdue list is on the <a href='/raw/" + MK + "/actions.html'>Actions centre</a>, oldest first, with owners.",
-      "Status = Overdue in the Action Report at export time.")
-    I("", "One person is the incident system",
-      f"Jon Cole raised <b>{jon_raised} of 534</b> incidents ({jon_raised/534*100:.0f}%) and holds <b>{jon} of {len(act)}</b> actions ({jon/len(act)*100:.0f}%). "
-      "That is dedication — and a single point of failure. If he is away, does the register stop?",
-      "Raised By / Assigned To fields.")
-    I("", "Street lighting is a repeat offender worth owning",
-      f"<b>{sl} damages</b> read as street-lighting cables — the exact failure mode of Hollow Lane and the pattern Sygma keeps seeing "
-      "(outlier columns that never get hooked up to). A focused toolbox talk + the genny guidance could take a visible bite out of a named number.",
-      "Auto-classified from descriptions; the register has no utility field of its own.")
-    I("warn", "The capture itself has gaps Depotnet could close",
-      f"No utility field (we auto-read it — {uncl} of 534 still unclassifiable) · {short_desc} descriptions are under 25 characters ('PE Gas strike') · "
-      f"workstream is empty on {ws_empty} of 534 rows · the Action Report carries no closure date, so closure speed can't be measured · "
-      f"severity mix flipped in FY25/26 (Medium {sev2526.get('Medium (Cat 2)',0)} v Low {sev2526.get('Low (Cat 3)',0)}; the year before was Low-dominant "
-      f"{sev2425.get('Low (Cat 3)',0)} v {sev2425.get('Medium (Cat 2)',0)}) — worth asking whether grading practice changed or damages got worse.",
-      "These are the fields Sygma's own layer will carry per damage: utility (confirmed), root cause, panel findings, training response, documents.")
-    I("", "The register and the STRIVE headline count differently",
-      "STRIVE 2030's published trajectory (171 baseline, target ≤85 by 2029/30) does not match register totals (226 in FY24/25), so they are measuring different things. "
-      "Before this dashboard is shared as 'the number', it's worth agreeing with Clancy which count is the metric of record.",
-      "Register counts shown here are Depotnet Incident Register rows, Category = Service Damage, by Incident Date.")
-    body = [f'<div class="h2row"><h2>What the data actually says</h2><span class="note">generated {today.strftime("%-d %b %Y")} from the full register + action report</span></div>', "\n".join(ins)]
-    return shell("Insights", "\n".join(body), "insights.html",
-                 "Trends, improvements, and the places the record flatters itself — read before quoting numbers onward.")
+    # Year-on-year movement
+    if fykey == "FY26/27" and prior_key:
+        months_elapsed = [m for m in FY_MONTHS[fykey] if m <= today.strftime("%Y-%m")]
+        same = sum(Counter(r["month"] for r in prior).get(m.replace("2026", "2025").replace("2027", "2026"), 0) for m in months_elapsed)
+        curn = len([r for r in rows if r["month"] in months_elapsed])
+        if same:
+            pct = (curn - same) / same * 100
+            I("good" if pct < 0 else "warn",
+              f"The running year is {abs(pct):.0f}% {'below' if pct < 0 else 'above'} last year's pace",
+              f"April to {today.strftime('%B')}: <b>{curn} damages</b> against <b>{same}</b> in the same months of {FY_LABEL[prior_key]}.",
+              "Counted from Incident Date; the year has months to run, so this is pace, not a final score.")
+    elif prior_key and prior:
+        pct = (len(rows) - len(prior)) / len(prior) * 100
+        I("good" if pct < 0 else "warn",
+          f"{label} finished {abs(pct):.0f}% {'below' if pct < 0 else 'above'} {FY_LABEL[prior_key]}",
+          f"<b>{len(rows)} damages</b> against <b>{len(prior)}</b> the year before.",
+          "FY23/24 may partly reflect Depotnet adoption ramping up rather than genuinely fewer damages." if prior_key == "FY23/24" else "")
+    # Actions discipline for the year
+    if rows:
+        with_a = len({a["incident_id"] for a in yact})
+        I("warn" if with_a < len(rows) * 0.5 else "",
+          f"{with_a} of {len(rows)} damages produced a corrective action",
+          f"{len(yact)} actions were raised on {label}'s damages{f'; <b>{len(overdue)} are overdue right now</b>' if overdue else ''}"
+          f"{f'; <b>{len(open_no_action)} open damages have no action at all</b>' if open_no_action else ''}.",
+          f"<a href='/raw/{MK}/{yp['actions']}'>The year's actions centre</a> has the full list, overdue first.")
+    if lag:
+        I("warn" if lag[int(len(lag)*.9)] > 90 else "",
+          "How fast the paperwork followed the incident",
+          f"Half of {label}'s actions were raised within <b>{lag[len(lag)//2]} days</b> of the incident; the slowest 10% took "
+          f"<b>{lag[int(len(lag)*.9)]}+ days</b>, the worst <b>{lag[-1]} days</b>." +
+          (" Actions raised that late look like retrofitted paperwork, not learning." if lag[-1] > 90 else ""),
+          "Date Raised (action) minus Incident Date.")
+    # Where the year's damages concentrated
+    if fams:
+        top_f = fams[0]
+        I("", f"{top_f[0]} took the biggest share of {label}",
+          f"{top_f[1]} of {len(rows)} damages ({top_f[1]/len(rows)*100:.0f}%). Utilities: " +
+          ", ".join(f"{u} {v}" for u, v in utils) + ".",
+          f"Severity mix: " + " · ".join(f"{s.split(' ')[0]} {sevs.get(s,0)}" for s in ["High (Cat 1)", "Medium (Cat 2)", "Low (Cat 3)"]) + ".")
+    if sl:
+        I("", f"{sl} street-lighting cable damages in {label}",
+          "The exact failure mode Sygma keeps seeing at panel reviews — outlier columns that never get hooked up to. "
+          "A focused toolbox talk plus the genny guidance could take a visible bite out of a named number.",
+          "Auto-classified from descriptions; the register has no utility field of its own.")
+    # Capture quality for the year
+    I("warn" if (short_desc or uncl) else "good",
+      f"Capture quality in {label}",
+      f"{short_desc} descriptions under 25 characters · {uncl} damages whose utility can't be read from the description · "
+      "the Action Report carries no closure dates, so closure speed can't be measured in any year.",
+      "These are the gaps Sygma's own per-damage layer (utility confirmed, root cause, panel findings, training response) will close.")
+    if fykey == "FY26/27":
+        I("", "The register and the STRIVE headline count differently",
+          "STRIVE 2030's published trajectory (171 baseline, target ≤85 by 2029/30) does not match register totals "
+          "(226 in FY24/25), so they measure different things. Worth agreeing with Clancy which count is the metric of record "
+          "before these pages are quoted as 'the number'.",
+          "Register counts here are Depotnet Incident Register rows, Category = Service Damage, by Incident Date.")
+    body = [f'<div class="h2row"><h2>What {label} actually says</h2><span class="note">generated {today.strftime("%-d %b %Y")} from the year\'s register + actions</span></div>', "\n".join(ins)]
+    return shell(f"Insights — {label}", "\n".join(body), FY_PAGE[fykey],
+                 f"{label} · trends, improvements, and the places the record flatters itself",
+                 fykey=fykey, subactive="insights")
 
 # ---------------------------------------------------------------- publish
 
@@ -749,16 +805,15 @@ def main():
     args = ap.parse_args()
     inc, act = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions")
-    pages = {
-        "index.html": hub(inc, act),
-        "fy-2026-27.html": fy_dashboard(inc, act, "FY26/27", full=True),
-        "fy-2025-26.html": fy_dashboard(inc, act, "FY25/26", full=True),
-        "fy-2024-25.html": fy_dashboard(inc, act, "FY24/25", full=False),
-        "fy-2023-24.html": fy_dashboard(inc, act, "FY23/24", full=False),
-        "incidents.html": incidents_page(inc, act),
-        "actions.html": actions_page(inc, act),
-        "insights.html": insights_page(inc, act),
-    }
+    pages = {"index.html": hub(inc, act),
+             "all-incidents.html": all_incidents_page(inc, act),
+             "all-actions.html": actions_page(inc, act, fykey=None)}
+    for f in FYS:
+        yp = year_pages(f)
+        pages[yp["dash"]] = fy_dashboard(inc, act, f, full=True)
+        pages[yp["incidents"]] = fy_incidents_page(inc, act, f)
+        pages[yp["actions"]] = actions_page(inc, act, fykey=f)
+        pages[yp["insights"]] = fy_insights_page(inc, act, f)
     if args.local:
         os.makedirs(args.local, exist_ok=True)
         for name, htm in pages.items():
@@ -796,6 +851,12 @@ def main():
                 f"('{key}', $dn${htm}$dn$, '{now}') "
                 f"ON CONFLICT (module_key) DO UPDATE SET html=EXCLUDED.html, updated_at=EXCLUDED.updated_at;")
             print(f"  published {key}")
+        # prune sub-pages this generator no longer produces (renamed/retired paths)
+        keep = ",".join(f"'{MK}/{n}'" for n in pages if n != "index.html")
+        gone = sql(f"DELETE FROM module_content WHERE module_key LIKE '{MK}/%' "
+                   f"AND module_key NOT IN ({keep}) RETURNING module_key;")
+        if gone and gone != "[]":
+            print(f"  pruned stale pages: {gone}")
         print(f"published module {MK} + {len(pages)} content pages (passcode strive2030)")
 
 if __name__ == "__main__":
