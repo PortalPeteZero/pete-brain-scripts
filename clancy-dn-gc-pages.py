@@ -262,7 +262,10 @@ def publish(key, htmlpage, local, do_publish):
     # Every page in this section goes through here, so this is where the shared section chrome
     # (navbar + breadcrumbs) is retrofitted onto shells that predate the design system. The
     # injector is idempotent, so re-running the generator cannot stack two navbars.
-    htmlpage = ui.inject(htmlpage, "reviews")
+    # Reskin first, then inject: the chrome is already on brand, so reskinning after would be
+    # scanning colours that were never navy. reskin() is a no-op once nothing navy is left, so
+    # re-running the generator is safe.
+    htmlpage = ui.inject(ui.reskin(htmlpage), "reviews")
     if local:
         fn = os.path.join(local, key.replace("/", "__") + (".html" if not key.endswith(".html") else ""))
         open(fn, "w").write(htmlpage)

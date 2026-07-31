@@ -35,7 +35,7 @@ BOT = "clancy-bot"
 
 A_SYGMA = "/clancy/sygma-white.png"
 A_CLANCY = "/clancy/clancy-white.png"
-A_GENNY = "/clancy/genny.png"
+A_GENNY = "/clancy/genny.png?v=hivis1"
 A_HERO = "/clancy/hero-works.jpg"
 
 # ── the shared stylesheet ────────────────────────────────────────────────────────────────────
@@ -282,7 +282,49 @@ def foot(when, note="Prepared by Sygma Solutions."):
             f"<span>{note}</span></div>")
 
 
-TAIL = '<script src="/clancy/genny-widget.js?v=20260731b" defer></script>\n</body></html>'
+TAIL = '<script src="/clancy/genny-widget.js?v=20260731c" defer></script>\n</body></html>'
+
+
+# ── reskin ───────────────────────────────────────────────────────────────────────────────────
+# The Genny & CAT section was written before this design system, in a navy palette of its own.
+# Pete, 31 Jul 2026: "reskin". These maps move it onto Clancy's colours WITHOUT touching anything
+# that carries meaning: status green, amber and the pale-red "hot" stat all stay exactly as they
+# were, because there the colour IS the information.
+#
+# SVG_RESKIN runs FIRST and is deliberately narrower than SKIN: the same navy was used both for
+# headings and for chart marks, and those need to go different ways. Headings become charcoal so
+# they stay readable; single-series chart marks become chartreuse, matching the damages register.
+SVG_RESKIN = {
+    'fill="#1c2a6e"': 'fill="#97D700"',
+    'stroke="#1c2a6e"': 'stroke="#97D700"',
+    'fill="#26328f"': 'fill="#5f8b00"',
+    'stroke="#26328f"': 'stroke="#5f8b00"',
+}
+SKIN = {
+    "#1c2a6e": "#353E47",   # --navy: headings, mastheads, emphasis
+    "#26328f": "#2f3841",   # hero gradient, middle stop
+    "#31408f": "#454f5a",   # hero gradient, end stop
+    "#f3f6fd": "#f6faf0",   # --tint: the pale panel background
+    "#cdd8f0": "#dbe4c9",   # the border that goes with --tint
+    "#dfe6ff": "#d3dae2",   # body text on the dark hero
+    "#9fc0ff": "#97D700",   # hero kicker -> brand chartreuse
+    "#c9d6ff": "#b9c1ca",   # stat labels on the dark hero
+    "#c0281e": "#D50032",   # --red -> Clancy's own red
+}
+
+
+def reskin(html):
+    """Move a page written in the old navy palette onto Clancy's colours.
+
+    Case-insensitive on the hex, because the shells mix `#1C2A6E` and `#1c2a6e`. Status colours
+    (#1e7a46 green, #b45309 amber, #ffb3ab) are deliberately absent from the maps: they encode
+    state, not brand, and repainting them would change what the page says.
+    """
+    for old, new in SVG_RESKIN.items():
+        html = re.sub(re.escape(old), new, html, flags=re.I)
+    for old, new in SKIN.items():
+        html = re.sub(re.escape(old), new, html, flags=re.I)
+    return html
 
 
 def inject(page, active="", trail=None):

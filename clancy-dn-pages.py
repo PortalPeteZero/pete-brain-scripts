@@ -476,7 +476,7 @@ def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
 {body}
 <div class="foot"><span>Source: Depotnet Incident Manager exports (Incident Register + Action Report), imported {datetime.date.today().strftime('%-d %b %Y')}.</span><span>Prepared by Sygma Solutions.</span></div>
 </div>
-<script src="/clancy/genny-widget.js?v=20260731b" defer></script>
+<script src="/clancy/genny-widget.js?v=20260731c" defer></script>
 </body></html>"""
 
 # ---------------------------------------------------------------- aggregations
