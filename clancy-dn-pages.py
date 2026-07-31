@@ -184,6 +184,7 @@ html{scroll-behavior:smooth}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
 background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:1180px;margin:0 auto;padding:0 22px 70px}
+.wrap.wide{max-width:1760px}
 .mast{background:linear-gradient(135deg,#16215c 0%,#1c2a6e 55%,#27358a 100%);color:#fff;margin:0 0 26px}
 .mast .wrap{padding:26px 22px 24px}
 .mast .brand{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#c6cdf0}
@@ -255,6 +256,15 @@ text.blabel{font-size:12px;fill:#44506
 .filters select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--ink);cursor:pointer}
 .filters .count{font-size:12.5px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
+td .clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.b{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.b.yes{background:#ecf7f0;color:#15803d}.b.no{background:#f1f3f6;color:#8b95a3}
+.b.warn{background:#fdecea;color:#b91c1c}
+.ol .fl{margin-bottom:1px}
+.ol .t{font-size:12.5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ol .t.muted{color:#9aa3ad}
+tbody tr.row:nth-child(even) td{background:#fafbfd}
+tbody tr.row:hover td{background:#f2f6fc}
 th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#7b8694;text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
 th .arr{opacity:.45;font-size:9px}
 td{padding:9px 10px;border-bottom:1px solid #edf0f4;vertical-align:top}
@@ -282,6 +292,9 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .insight p{font-size:13.5px;color:#3c4757;max-width:96ch}
 .insight .ev{font-size:12.5px;color:var(--muted);margin-top:5px}
 .foot{margin-top:34px;font-size:12px;color:#8b95a3;border-top:1px solid var(--border);padding-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.backbar{margin-bottom:14px}
+.backbar a{display:inline-block;font-size:14px;font-weight:700;color:#fff;background:var(--navy);padding:10px 18px;border-radius:10px;text-decoration:none;box-shadow:var(--shadow);transition:background .15s}
+.backbar a:hover{background:var(--navy2)}
 .searchrow{display:flex;gap:8px}
 .searchrow input{flex:1;font:inherit;font-size:14px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#fff}
 .sem-btn{font:inherit;font-size:13.5px;font-weight:700;padding:10px 18px;border:0;border-radius:10px;background:var(--navy);color:#fff;cursor:pointer;transition:background .15s}
@@ -355,7 +368,7 @@ def year_pages(fykey):
     return {"dash": f"{stem}.html", "incidents": f"{stem}-incidents.html",
             "actions": f"{stem}-actions.html", "insights": f"{stem}-insights.html"}
 
-def shell(title, body, active, sub="", fykey=None, subactive=None):
+def shell(title, body, active, sub="", fykey=None, subactive=None, wide=False):
     nav = [
         ("fy-2026-27.html", "This year"),
         ("fy-2025-26.html", "FY 2025/26"),
@@ -375,6 +388,7 @@ def shell(title, body, active, sub="", fykey=None, subactive=None):
         links += '</div><div class="nav subnav">' + "".join(
             f'<a href="/raw/{MK}/{h}"{" class=\"on\"" if k == subactive else ""}>{t}</a>'
             for (h, t), k in zip(sub_items, ["dash", "incidents", "actions", "insights"]))
+    wrapcls = "wrap wide" if wide else "wrap"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -390,7 +404,7 @@ def shell(title, body, active, sub="", fykey=None, subactive=None):
 <div class="sub">{sub}</div>
 <div class="nav">{links}</div>
 </div></div>
-<div class="wrap">
+<div class="{wrapcls}">
 {body}
 <div class="foot"><span>Source: Depotnet Incident Manager exports (Incident Register + Action Report), imported {datetime.date.today().strftime('%-d %b %Y')}.</span><span>Prepared by Sygma Solutions.</span></div>
 </div>
@@ -444,7 +458,8 @@ def status_pill(s):
 
 # ---------------------------------------------------------------- incident table
 
-def incident_table(inc, act_by_inc, tid, fy_filter=True):
+def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
+    enrich = enrich or {}
     fams = sorted({fam(r) for r in inc})
     utils = [u for u in UTIL_ORDER if any(r["ugroup"] == u for r in inc)]
     sevs = ["High (Cat 1)", "Medium (Cat 2)", "Low (Cat 3)"]
@@ -467,25 +482,47 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True):
         overdue = sum(1 for a in acts if a["status"] == "Overdue")
         act_h = (f'{len(acts)}' + (f' <span class="pill st-over">{overdue} overdue</span>' if overdue else "")) if acts else '<span class="muted">0</span>'
         detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
+        en = enrich.get(r["id"])
+        overdue_n = sum(1 for a in acts if a["status"] == "Overdue")
+        if acts:
+            act_b = (f'<span class="b warn">{len(acts)} · {overdue_n} overdue</span>' if overdue_n
+                     else f'<span class="b yes">Yes · {len(acts)}</span>')
+        else:
+            act_b = '<span class="b no">None</span>'
+        syg_b = '<span class="b yes">Yes</span>' if en else '<span class="b no">—</span>'
+        # Outcome: Sygma summary first, else the latest corrective measure, else honest status
+        if en and en.get("summary"):
+            outcome = en["summary"]
+        else:
+            cms = [a["corrective_measure"] for a in acts if a.get("corrective_measure")]
+            outcome = cms[-1] if cms else None
+        learning = (en.get("key_findings") or [None])[0] if en else None
+        ol = (f'<div class="ol"><div class="fl">Outcome</div><div class="t{"" if outcome else " muted"}">{esc(outcome) if outcome else "None recorded"}</div>'
+              f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
         rows_html.append(
             f'<tr class="row" data-href="{detail}" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
             f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}">'
-            f'<td class="mono">{r["id"]}</td>{date_h}'
+            f'<td class="mono" data-v="{r["id"]}">{r["id"]}<div class="small muted" data-v="{r["d"] or ""}">{r["d"] or "—"}</div></td>'
             f'<td>{esc(fam(r))}<div class="small muted">{esc(r["contract"] or "")}</div></td>'
-            f'<td>{esc((r["location"] or "—")[:60])}<div class="small muted">{esc((r["description"] or "")[:90])}</div></td>'
+            f'<td style="min-width:150px">{esc((r["location"] or "—")[:70])}</td>'
+            f'<td style="min-width:200px"><div class="clamp2 small" style="font-size:13px">{esc((r["description"] or "—")[:220])}</div></td>'
             f'<td><span class="pill uc">{esc(r["ugroup"])}</span></td>'
             f'<td data-v="{["High","Medium","Low"].index(r["sev"].split(" ")[0]) if r["sev"].split(" ")[0] in ["High","Medium","Low"] else 3}">{sev_pill(r["sev"])}</td>'
             f'<td>{status_pill(r["status"] or "—")}</td>'
-            f'<td class="mono" data-v="{len(acts)}">{act_h}</td></tr>')
+            f'<td data-v="{len(acts)}">{act_b}</td>'
+            f'<td data-v="{1 if en else 0}">{syg_b}</td>'
+            f'<td style="min-width:230px">{ol}</td></tr>')
     return f"""
 <div class="filters"><input type="search" id="{tid}-q" placeholder="Search location, description, ID…">{selects}<span class="count" id="{tid}-count"></span></div>
 <div class="card" style="padding:6px 10px;overflow-x:auto"><table id="{tid}"><thead><tr>
-<th data-col="0" data-num="1">ID <span class="arr">↕</span></th><th data-col="1">Date <span class="arr">↕</span></th>
-<th data-col="2">Contract <span class="arr">↕</span></th><th data-col="3">Location <span class="arr">↕</span></th>
+<th data-col="0" data-num="1">ID / Date <span class="arr">↕</span></th>
+<th data-col="1">Contract <span class="arr">↕</span></th><th data-col="2">Location <span class="arr">↕</span></th>
+<th data-col="3">What happened <span class="arr">↕</span></th>
 <th data-col="4">Utility <span class="arr">↕</span></th><th data-col="5" data-num="1">Severity <span class="arr">↕</span></th>
-<th data-col="6">Status <span class="arr">↕</span></th><th data-col="7" data-num="1">Actions <span class="arr">↕</span></th>
+<th data-col="6">Status <span class="arr">↕</span></th><th data-col="7" data-num="1">Action? <span class="arr">↕</span></th>
+<th data-col="8" data-num="1">Sygma? <span class="arr">↕</span></th><th data-col="9">Outcome &amp; learning</th>
 </tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>
-<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material.</p>
+<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material. "None recorded" is honest: it means neither Depotnet nor Sygma holds an outcome or learning for that damage yet.</p>
 <script>{TABLE_JS}initTable("{tid}");</script>"""
 
 # ---------------------------------------------------------------- semantic search partial
@@ -550,8 +587,16 @@ def fy_detail_page(inc, act, enrich, fykey):
     data["actions"] = dict(data["actions"])
     payload = json.dumps(data, default=str).replace("</", "<\\/")
     body = f"""
+<div class="backbar"><a href="/raw/{MK}/{yp["incidents"]}" id="backbtn">&larr; Back to the {label} list</a></div>
 {search_box(fykey)}
 <div id="dmg"></div>
+<script>
+(function(){{const b=document.getElementById('backbtn');
+ if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){{
+  b.addEventListener('click',e=>{{e.preventDefault();history.back();}});
+  b.innerHTML='&larr; Back to your place in the list';}}
+}})();
+</script>
 <script>
 const D={payload};
 const FLD=[["id","Depotnet ID"],["incident_date","Incident date"],["date_raised","Logged on Depotnet"],
@@ -614,7 +659,7 @@ function render(){{
   if(links.length)h+='<div class="legend" style="margin-top:10px">'+links.map(l=>'<span class="lg">'+l+'</span>').join('')+'</div>';
   h+='<p class="small muted" style="margin-top:8px">Sygma status: '+(en.status||'—')+(en.stage_note?' · '+en.stage_note:'')+'</p>';
  }} else h+='<p class="small muted">Nothing linked yet — panel reviews, findings and documents appear here once Sygma material is tied to this damage.</p>';
- h+='</div><p style="margin-top:14px"><a href="/raw/{MK}/{yp["incidents"]}">&larr; back to the {label} register</a></p>';
+ h+='</div>';
  el.innerHTML=h;
 }}
 render();
@@ -752,7 +797,7 @@ def hub(inc, act):
     sub = "The whole register across every year — the per-year sections are where the detail lives."
     return shell("Depotnet Damages — all years", search_box(None) + kpis_html(cards) + doors + fys_html + trend, "overview.html", sub)
 
-def fy_incidents_page(inc, act, fykey):
+def fy_incidents_page(inc, act, fykey, enrich=None):
     rows = [r for r in inc if r["fy"] == fykey]
     label = FY_LABEL[fykey]
     act_by_inc = defaultdict(list)
@@ -760,20 +805,20 @@ def fy_incidents_page(inc, act, fykey):
         act_by_inc[a["incident_id"]].append(a)
     body = [search_box(fykey)]
     body.append(f'<div class="h2row"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — filter by contract, utility, severity or status; click a row to open it in full</span></div>')
-    body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False))
+    body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False, enrich=enrich))
     return shell(f"Incidents — {label}", "\n".join(body), FY_PAGE[fykey],
                  f"{label} · every Depotnet Incident Register row for the year, captured in full",
-                 fykey=fykey, subactive="incidents")
+                 fykey=fykey, subactive="incidents", wide=True)
 
-def all_incidents_page(inc, act):
+def all_incidents_page(inc, act, enrich=None):
     # Not in the nav — the landing page's cross-year cards (total / still open) deep-link here.
     act_by_inc = defaultdict(list)
     for a in act:
         act_by_inc[a["incident_id"]].append(a)
     body = [search_box(None), f'<div class="h2row"><h2>The full register, all years</h2><span class="note">{len(inc)} service damages, April 2023 to today — reached from the Overview cards; each year also has its own register</span></div>']
-    body.append(incident_table(inc, act_by_inc, "tall"))
+    body.append(incident_table(inc, act_by_inc, "tall", enrich=enrich))
     return shell("All incidents — every year", "\n".join(body), "overview.html",
-                 f"{len(inc)} service damages · the whole register in one table")
+                 f"{len(inc)} service damages · the whole register in one table", wide=True)
 
 def actions_page(inc, act, fykey=None):
     """Actions centre — year-scoped when fykey given (actions on that year's incidents),
@@ -948,14 +993,14 @@ def main():
     inc, act, enrich = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
     pages = {"overview.html": hub(inc, act),
-             "all-incidents.html": all_incidents_page(inc, act),
+             "all-incidents.html": all_incidents_page(inc, act, enrich),
              "all-actions.html": actions_page(inc, act, fykey=None)}
     # this year IS the landing: the module index serves the current-FY dashboard
     pages["index.html"] = fy_dashboard(inc, act, "FY26/27", full=True)
     for f in FYS:
         yp = year_pages(f)
         pages[yp["dash"]] = fy_dashboard(inc, act, f, full=True)
-        pages[yp["incidents"]] = fy_incidents_page(inc, act, f)
+        pages[yp["incidents"]] = fy_incidents_page(inc, act, f, enrich)
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
         pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, f)
