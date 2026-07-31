@@ -236,6 +236,51 @@ def main():
     for i in range(0, len(act_rows), 200):
         rest("clancy_dn_actions", "POST", act_rows[i:i+200], H)
     print("written.")
+    embed_dirty()
+
+
+# ---- semantic embeddings (voyage-3.5-lite / 1024, same as the brain) ------
+# Embedded here, not in cc-embedder, so a Depotnet import is self-contained: import → embed →
+# regenerate pages. Dirty-row detection via embedded_hash, so re-runs cost nothing.
+
+def _voyage(texts):
+    vkey = open(f"{VAULT}/Library/processes/secrets/voyage-api-key").read().strip()
+    req = urllib.request.Request("https://api.voyageai.com/v1/embeddings",
+        data=json.dumps({"input": texts, "model": "voyage-3.5-lite",
+                         "input_type": "document", "output_dimension": 1024}).encode(),
+        headers={"Authorization": f"Bearer {vkey}", "Content-Type": "application/json"})
+    return [d["embedding"] for d in
+            json.loads(urllib.request.urlopen(req, timeout=300).read().decode())["data"]]
+
+def _embed_input_incident(r):
+    return " | ".join(str(r.get(k) or "") for k in
+                      ["contract", "location", "utility_class", "severity", "description"])
+
+def _embed_input_action(r):
+    return (f"{r.get('contract') or ''} | asked: {r.get('description') or ''} | "
+            f"done: {r.get('corrective_measure') or ''} | assigned {r.get('assigned_to') or ''}")
+
+def embed_dirty():
+    import hashlib
+    for table, mk in (("clancy_dn_incidents", _embed_input_incident),
+                      ("clancy_dn_actions", _embed_input_action)):
+        rows = rest(f"{table}?select=*&limit=10000")
+        dirty = []
+        for r in rows:
+            txt = mk(r)
+            h = hashlib.md5(txt.encode()).hexdigest()
+            if r.get("embedded_hash") != h:
+                dirty.append((r["id"], txt, h))
+        if not dirty:
+            print(f"embeddings: {table} clean")
+            continue
+        for i in range(0, len(dirty), 128):
+            chunk = dirty[i:i+128]
+            vecs = _voyage([t for _, t, _ in chunk])
+            for (rid, _, h), v in zip(chunk, vecs):
+                rest(f"{table}?id=eq.{rid}", "PATCH",
+                     {"embedding": "[" + ",".join(f"{x:.6f}" for x in v) + "]", "embedded_hash": h})
+        print(f"embeddings: {table} embedded {len(dirty)} row(s)")
 
 if __name__ == "__main__":
     main()

@@ -46,6 +46,10 @@ def load():
     inc = rest("clancy_dn_incidents?select=*&order=incident_date.desc&limit=10000")
     act = rest("clancy_dn_actions?select=*&order=date_raised.desc&limit=10000")
     for r in inc:
+        r.pop("embedding", None)
+    for a in act:
+        a.pop("embedding", None)
+    for r in inc:
         r["d"] = r["incident_date"][:10] if r["incident_date"] else None
         r["month"] = r["d"][:7] if r["d"] else None
         r["sev"] = {"HIGH - Category 1": "High (Cat 1)", "MEDIUM - Category 2": "Medium (Cat 2)",
@@ -57,7 +61,9 @@ def load():
                        "Comms / fibre" if u.startswith("Comms") else "Other")
     for a in act:
         a["due"] = a["due_date"][:10] if a["due_date"] else None
-    return inc, act
+    enr = rest("clancy_damages?select=dn_id,job_ref,status,stage_note,summary,key_findings,next_actions,drive_folder,report_url&dn_id=not.is.null")
+    enrich = {e["dn_id"]: e for e in enr}
+    return inc, act, enrich
 
 FAM_ORDER = ["Southern Water", "Anglian Water", "South East Water", "Scottish Water", "UKPN", "SGN"]
 FAM_COLORS = {"Southern Water": "#2f5fd0", "Anglian Water": "#d97706", "South East Water": "#0e9594",
@@ -276,6 +282,24 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .insight p{font-size:13.5px;color:#3c4757;max-width:96ch}
 .insight .ev{font-size:12.5px;color:var(--muted);margin-top:5px}
 .foot{margin-top:34px;font-size:12px;color:#8b95a3;border-top:1px solid var(--border);padding-top:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.searchrow{display:flex;gap:8px}
+.searchrow input{flex:1;font:inherit;font-size:14px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#fff}
+.sem-btn{font:inherit;font-size:13.5px;font-weight:700;padding:10px 18px;border:0;border-radius:10px;background:var(--navy);color:#fff;cursor:pointer;transition:background .15s}
+.sem-btn:hover{background:var(--navy2)}
+.sem-list{margin-top:12px;display:flex;flex-direction:column}
+.sem-hit{display:block;padding:9px 6px;border-bottom:1px solid #edf0f4;font-size:13.5px;color:var(--ink);text-decoration:none;border-radius:6px}
+.sem-hit:hover{background:#f7f9fc}
+.sem-hit:last-child{border-bottom:0}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 18px}
+.f .fl,.fl{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#7b8694;font-weight:700}
+.f .fv{font-size:13.5px;margin-top:2px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tl{border-left:2px solid var(--border);margin-left:6px;padding-left:18px}
+.tle{position:relative;padding:7px 0;font-size:13.5px}
+.tle::before{content:"";position:absolute;left:-24px;top:14px;width:9px;height:9px;border-radius:50%;background:var(--accent);border:2px solid #fff}
+.tle .tld{display:inline-block;min-width:126px;color:var(--muted)}
+.acard{border:1px solid var(--border);border-radius:11px;padding:14px 16px;margin-top:12px;background:#fafbfd}
+ul.kf{margin:6px 0 0 18px;font-size:13.5px}
+ul.kf li{margin-bottom:5px}
 @media print{.mast{background:#1c2a6e}.nav{display:none}}
 """
 # fix accidental typos in CSS custom prop above
@@ -309,10 +333,7 @@ function initTable(tid){
   if(q) q.addEventListener('input',apply);
   sels.forEach(s=>s.addEventListener('change',apply));
   rows().forEach(r=>{r.addEventListener('click',()=>{
-    const d=r.nextElementSibling;
-    if(d&&d.classList.contains('det')){const open=d.style.display!=='none'&&d.style.display!=='';
-      d.style.display=(d.style.display===''||d.style.display==='none')?'table-row':'none';
-      r.classList.toggle('openrow');}
+    if(r.dataset.href) location.href=r.dataset.href;
   });});
   t.querySelectorAll('th[data-col]').forEach((th,i)=>{th.addEventListener('click',()=>{
     const idx=+th.dataset.col, num=th.dataset.num==='1', asc=th.dataset.asc!=='1';
@@ -445,33 +466,17 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True):
         date_h = f'<td class="mono" data-v="{r["d"] or ""}">{r["d"] or "—"}</td>'
         overdue = sum(1 for a in acts if a["status"] == "Overdue")
         act_h = (f'{len(acts)}' + (f' <span class="pill st-over">{overdue} overdue</span>' if overdue else "")) if acts else '<span class="muted">0</span>'
+        detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
         rows_html.append(
-            f'<tr class="row" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
+            f'<tr class="row" data-href="{detail}" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
             f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}">'
             f'<td class="mono">{r["id"]}</td>{date_h}'
             f'<td>{esc(fam(r))}<div class="small muted">{esc(r["contract"] or "")}</div></td>'
-            f'<td>{esc((r["location"] or "—")[:60])}</td>'
+            f'<td>{esc((r["location"] or "—")[:60])}<div class="small muted">{esc((r["description"] or "")[:90])}</div></td>'
             f'<td><span class="pill uc">{esc(r["ugroup"])}</span></td>'
             f'<td data-v="{["High","Medium","Low"].index(r["sev"].split(" ")[0]) if r["sev"].split(" ")[0] in ["High","Medium","Low"] else 3}">{sev_pill(r["sev"])}</td>'
             f'<td>{status_pill(r["status"] or "—")}</td>'
             f'<td class="mono" data-v="{len(acts)}">{act_h}</td></tr>')
-        acts_html = ""
-        if acts:
-            lis = "".join(
-                f'<div class="act"><b>{esc(a["assigned_to"] or "Unassigned")}</b> — {status_pill(a["status"] or "")} '
-                f'{("due " + a["due"]) if a["due"] else ""}<div class="small">{esc((a["description"] or "")[:400])}</div>'
-                + (f'<div class="small muted">Done: {esc((a["corrective_measure"] or "")[:400])}</div>' if a["corrective_measure"] else "")
-                + '</div>'
-                for a in acts)
-            acts_html = f'<div class="acts"><h4>Corrective actions ({len(acts)})</h4>{lis}</div>'
-        meta = (f'<span>Raised by {esc(r["raised_by"] or "—")}</span>'
-                f'<span>Job {esc(r["job_ref"] or r["job_id"] or "—")}</span>'
-                f'<span>Contract ref {esc(r["contract_number"] or "—")}</span>'
-                f'<span>Subcontractor {esc(r["subcontractor"] or "—")}</span>'
-                f'<span>Utility class: {esc(r["utility_class"] or "—")}{" (auto)" if not r["utility_confirmed"] else ""}</span>')
-        rows_html.append(f'<tr class="det" style="display:none"><td colspan="8"><div class="det">'
-                         f'<div class="desc">{esc(r["description"] or "No description recorded.")}</div>'
-                         f'<div class="meta">{meta}</div>{acts_html}</div></td></tr>')
     return f"""
 <div class="filters"><input type="search" id="{tid}-q" placeholder="Search location, description, ID…">{selects}<span class="count" id="{tid}-count"></span></div>
 <div class="card" style="padding:6px 10px;overflow-x:auto"><table id="{tid}"><thead><tr>
@@ -480,8 +485,143 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True):
 <th data-col="4">Utility <span class="arr">↕</span></th><th data-col="5" data-num="1">Severity <span class="arr">↕</span></th>
 <th data-col="6">Status <span class="arr">↕</span></th><th data-col="7" data-num="1">Actions <span class="arr">↕</span></th>
 </tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>
-<p class="small muted" style="margin-top:8px">Click any row for the full description, job detail and its corrective actions.</p>
+<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material.</p>
 <script>{TABLE_JS}initTable("{tid}");</script>"""
+
+# ---------------------------------------------------------------- semantic search partial
+
+FY_STEM_JS = json.dumps({f: FY_PAGE[f][:-5] for f in FYS})
+
+def search_box(fy=None):
+    """Semantic search over the whole store (or one FY), calling the gated CC API."""
+    fyq = f",fy:{json.dumps(fy)}" if fy else ""
+    scope = f"this year's damages" if fy else "every damage, every year"
+    return f"""
+<div class="card" style="padding:14px 18px;margin-bottom:18px">
+ <div class="searchrow">
+  <input type="search" id="sem-q" placeholder="Search {scope} by meaning — e.g. 'hit a gas main while breaking out concrete'">
+  <button id="sem-go" class="sem-btn">Search</button>
+ </div>
+ <div id="sem-res"></div>
+</div>
+<script>
+(function(){{
+ const STEM={FY_STEM_JS};
+ const box=document.getElementById('sem-res'), inp=document.getElementById('sem-q');
+ async function go(){{
+  const q=inp.value.trim(); if(!q){{box.innerHTML='';return;}}
+  box.innerHTML='<p class="small muted" style="margin-top:10px">Searching…</p>';
+  try{{
+   const r=await fetch('/api/clancy-dn-search',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{q:q{fyq}}})}});
+   if(!r.ok) throw 0;
+   const d=await r.json();
+   if(!d.results||!d.results.length){{box.innerHTML='<p class="small muted" style="margin-top:10px">Nothing close — try different words.</p>';return;}}
+   box.innerHTML='<div class="sem-list">'+d.results.map(x=>{{
+    const stem=STEM[x.fy]||'fy-2026-27';
+    const badge=x.kind==='action'?'<span class="pill st-out">action</span> ':'';
+    return '<a class="sem-hit" href="/raw/{MK}/'+stem+'-damage.html?id='+x.incident_id+'">'
+      +'<span class="mono">'+x.incident_id+'</span> · '+(x.incident_date||'')+' · <b>'+(x.contract||'')+'</b> · '
+      +(x.location||'').slice(0,50)+' '+badge+'<span class="small muted">'+(x.snippet||'').slice(0,130)+'…</span></a>';
+   }}).join('')+'</div>';
+  }}catch(e){{box.innerHTML='<p class="small muted" style="margin-top:10px">Search is unavailable right now.</p>';}}
+ }}
+ document.getElementById('sem-go').addEventListener('click',go);
+ inp.addEventListener('keydown',e=>{{if(e.key==='Enter')go();}});
+}})();
+</script>"""
+
+# ---------------------------------------------------------------- per-damage detail page
+
+def fy_detail_page(inc, act, enrich, fykey):
+    """One page per year that renders ANY of the year's damages in full from embedded JSON
+    (?id=N): every register field, every action in full, the timeline, and the Sygma layer."""
+    label = FY_LABEL[fykey]
+    yp = year_pages(fykey)
+    rows = [r for r in inc if r["fy"] == fykey]
+    year_ids = {r["id"] for r in rows}
+    acts = [a for a in act if a["incident_id"] in year_ids]
+    data = {
+        "incidents": {str(r["id"]): r for r in rows},
+        "actions": defaultdict(list),
+        "enrich": {str(k): v for k, v in enrich.items() if k in year_ids},
+    }
+    for a in acts:
+        data["actions"][str(a["incident_id"])].append(a)
+    data["actions"] = dict(data["actions"])
+    payload = json.dumps(data, default=str).replace("</", "<\\/")
+    body = f"""
+{search_box(fykey)}
+<div id="dmg"></div>
+<script>
+const D={payload};
+const FLD=[["id","Depotnet ID"],["incident_date","Incident date"],["date_raised","Logged on Depotnet"],
+ ["category","Category"],["contract","Contract"],["contract_family","Contract group"],
+ ["contract_number","Contract number"],["workstream","Workstream"],["business_unit","Business unit"],
+ ["job_id","Job ID"],["job_ref","Job ref"],["location","Location"],["severity","Severity"],
+ ["status","Status"],["raised_by","Raised by"],["subcontractor","Subcontractor"]];
+const AFLD=[["id","Action ID"],["date_raised","Raised"],["raised_by","Raised by"],["due_date","Due"],
+ ["assigned_to","Assigned to"],["status","Status"],["incident_status","Incident status at export"],
+ ["severity","Severity"],["action_classification","Classification"],["question","Question"]];
+function fmtTs(v){{if(!v)return null;const s=String(v);return s.slice(0,10)+(s.length>10?' '+s.slice(11,16):'');}}
+function pill(t,cls){{return '<span class="pill '+cls+'">'+t+'</span>';}}
+function statusPill(s){{const m={{Open:'st-open',Closed:'st-closed',Overdue:'st-over'}};return pill(s||'—',m[s]||'st-out');}}
+function render(){{
+ const id=new URLSearchParams(location.search).get('id');
+ const el=document.getElementById('dmg');
+ const r=D.incidents[id];
+ if(!r){{el.innerHTML='<div class="card"><p>Pick a damage from <a href="/raw/{MK}/{yp["incidents"]}">the {label} register</a> — or search above.</p></div>';return;}}
+ document.title='Damage '+id+' — '+(r.location||'')+' | Depotnet Damages';
+ const acts=D.actions[id]||[], en=D.enrich[id];
+ let h='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Damage '+id+' — '+(r.location||'location not stated')+'</h2>'
+   +'<span>'+statusPill(r.status)+' '+pill(r.severity||'—',(r.severity||'').startsWith('HIGH')?'sev-h':(r.severity||'').startsWith('MEDIUM')?'sev-m':'sev-l')+'</span></div>'
+   +'<p class="det desc" style="white-space:pre-wrap;max-width:96ch">'+(r.description||'No description recorded.')+'</p>'
+   +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.utility_class||'Unclassified')+'</b>'+(r.utility_confirmed?'':' (auto-read)')+'</span></div></div>';
+ // every register field, verbatim
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Everything Depotnet holds</h2><span class="note">Incident Register row, in full</span></div><div class="fgrid">'
+   +FLD.map(([k,l])=>'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+((k.includes('date')?fmtTs(r[k]):r[k])||'—')+'</div></div>').join('')+'</div></div>';
+ // timeline across both sheets
+ const ev=[];
+ if(r.incident_date)ev.push([r.incident_date,'Damage occurred','']);
+ if(r.date_raised)ev.push([r.date_raised,'Logged on Depotnet','by '+(r.raised_by||'—')]);
+ acts.forEach(a=>{{
+  if(a.date_raised)ev.push([a.date_raised,'Action '+a.id+' raised','assigned to '+((a.assigned_to||'—').split(' (')[0])]);
+  if(a.due_date)ev.push([a.due_date,'Action '+a.id+' due',a.status==='Overdue'?'STILL OVERDUE':(a.status||'')]);
+ }});
+ ev.sort((x,y)=>String(x[0]).localeCompare(String(y[0])));
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Timeline</h2><span class="note">every date across both sheets</span></div><div class="tl">'
+   +ev.map(e=>'<div class="tle"><span class="mono tld">'+fmtTs(e[0])+'</span><b>'+e[1]+'</b> <span class="muted small">'+e[2]+'</span></div>').join('')+'</div></div>';
+ // actions in full
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Corrective actions'+(acts.length?' ('+acts.length+')':'')+'</h2>'
+   +'<span class="note">'+(acts.length?'Action Report rows, in full':'')+'</span></div>';
+ if(!acts.length){{h+='<p class="small muted">None — no row in the Action Report references this damage.</p>';}}
+ else acts.forEach(a=>{{
+  h+='<div class="acard"><div class="h2row"><b>'+((a.assigned_to||'Unassigned').split(' (')[0])+'</b><span>'+statusPill(a.status)+'</span></div>'
+    +'<div class="fgrid">'+AFLD.map(([k,l])=>{{const v=k.includes('date')?fmtTs(a[k]):a[k];return v?'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+v+'</div></div>':'';}}).join('')+'</div>'
+    +(a.description?'<div class="fl" style="margin-top:8px">What was asked</div><div class="det desc">'+a.description+'</div>':'')
+    +(a.corrective_measure?'<div class="fl" style="margin-top:8px">What was done</div><div class="det desc">'+a.corrective_measure+'</div>':'<div class="small muted" style="margin-top:8px">No corrective measure recorded.</div>')
+    +'</div>';
+ }});
+ h+='</div>';
+ // Sygma layer
+ h+='<div class="card"><div class="h2row"><h2>Sygma material</h2><span class="note">panel reviews, findings, documents</span></div>';
+ if(en){{
+  h+=(en.summary?'<p class="det desc">'+en.summary+'</p>':'');
+  if(en.key_findings&&en.key_findings.length)h+='<div class="fl" style="margin-top:10px">Key findings</div><ul class="kf">'+en.key_findings.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
+  if(en.next_actions&&en.next_actions.length)h+='<div class="fl" style="margin-top:10px">Agreed next actions</div><ul class="kf">'+en.next_actions.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
+  const links=[];
+  if(en.drive_folder)links.push('<a href="'+en.drive_folder+'">Drive folder — documents & transcripts</a>');
+  if(en.report_url)links.push('<a href="'+en.report_url+'">Report</a>');
+  if(links.length)h+='<div class="legend" style="margin-top:10px">'+links.map(l=>'<span class="lg">'+l+'</span>').join('')+'</div>';
+  h+='<p class="small muted" style="margin-top:8px">Sygma status: '+(en.status||'—')+(en.stage_note?' · '+en.stage_note:'')+'</p>';
+ }} else h+='<p class="small muted">Nothing linked yet — panel reviews, findings and documents appear here once Sygma material is tied to this damage.</p>';
+ h+='</div><p style="margin-top:14px"><a href="/raw/{MK}/{yp["incidents"]}">&larr; back to the {label} register</a></p>';
+ el.innerHTML=h;
+}}
+render();
+</script>"""
+    return shell(f"Damage detail — {label}", body, FY_PAGE[fykey],
+                 f"{label} · click-through detail: the full Depotnet record, timeline, actions and Sygma material",
+                 fykey=fykey, subactive="incidents")
 
 # ---------------------------------------------------------------- pages
 
@@ -523,7 +663,7 @@ def fy_dashboard(inc, act, fykey, full=True):
              href=f"/raw/{MK}/{yp['actions']}?status=Overdue"),
     ]
     label = FY_LABEL[fykey]
-    body = [kpis_html(cards)]
+    body = [search_box(fykey), kpis_html(cards)]
     prior_leg = f'<div class="legend"><span class="lg"><i style="background:#2f5fd0"></i>{label}</span>' + \
                 (f'<span class="lg"><i style="background:#b6c3e8"></i>{FY_LABEL[prior_key]} (same month)</span>' if prior_key else "") + "</div>"
     body.append(f'<div class="card"><div class="h2row"><h2>Damages by month</h2><span class="note">financial year, April to March</span></div>'
@@ -610,7 +750,7 @@ def hub(inc, act):
              + vbar_months(mser, pser, label="FY 2026/27", prior_label="FY 2025/26")
              + '<div class="legend"><span class="lg"><i style="background:#2f5fd0"></i>FY 2026/27</span><span class="lg"><i style="background:#b6c3e8"></i>FY 2025/26</span></div></div>')
     sub = "The whole register across every year — the per-year sections are where the detail lives."
-    return shell("Depotnet Damages — all years", kpis_html(cards) + doors + fys_html + trend, "overview.html", sub)
+    return shell("Depotnet Damages — all years", search_box(None) + kpis_html(cards) + doors + fys_html + trend, "overview.html", sub)
 
 def fy_incidents_page(inc, act, fykey):
     rows = [r for r in inc if r["fy"] == fykey]
@@ -618,7 +758,8 @@ def fy_incidents_page(inc, act, fykey):
     act_by_inc = defaultdict(list)
     for a in act:
         act_by_inc[a["incident_id"]].append(a)
-    body = [f'<div class="h2row"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — filter by contract, utility, severity or status; click a row to expand</span></div>']
+    body = [search_box(fykey)]
+    body.append(f'<div class="h2row"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — filter by contract, utility, severity or status; click a row to open it in full</span></div>')
     body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False))
     return shell(f"Incidents — {label}", "\n".join(body), FY_PAGE[fykey],
                  f"{label} · every Depotnet Incident Register row for the year, captured in full",
@@ -629,7 +770,7 @@ def all_incidents_page(inc, act):
     act_by_inc = defaultdict(list)
     for a in act:
         act_by_inc[a["incident_id"]].append(a)
-    body = [f'<div class="h2row"><h2>The full register, all years</h2><span class="note">{len(inc)} service damages, April 2023 to today — reached from the Overview cards; each year also has its own register</span></div>']
+    body = [search_box(None), f'<div class="h2row"><h2>The full register, all years</h2><span class="note">{len(inc)} service damages, April 2023 to today — reached from the Overview cards; each year also has its own register</span></div>']
     body.append(incident_table(inc, act_by_inc, "tall"))
     return shell("All incidents — every year", "\n".join(body), "overview.html",
                  f"{len(inc)} service damages · the whole register in one table")
@@ -668,7 +809,7 @@ def actions_page(inc, act, fykey=None):
     ]
     byass = Counter((a["assigned_to"] or "Unassigned").split(" (")[0] for a in act).most_common(10)
     od_fam = Counter((a["contract_family"] or a["contract"] or "Unstated") for a in overdue).most_common(10)
-    body = [kpis_html(cards), '<div class="grid c2">']
+    body = [search_box(fykey), kpis_html(cards), '<div class="grid c2">']
     body.append(f'<div class="card"><div class="h2row"><h2>Who holds the actions</h2><span class="note">all {len(act)} actions</span></div>{hbar(byass, color="#2f5fd0")}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>Overdue, by contract</h2><span class="note">{len(overdue)} overdue</span></div>{hbar(od_fam, color="#dc2626")}</div>')
     body.append('</div>')
@@ -804,8 +945,8 @@ def main():
     ap.add_argument("--local")
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
-    inc, act = load()
-    print(f"loaded {len(inc)} incidents, {len(act)} actions")
+    inc, act, enrich = load()
+    print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
     pages = {"overview.html": hub(inc, act),
              "all-incidents.html": all_incidents_page(inc, act),
              "all-actions.html": actions_page(inc, act, fykey=None)}
@@ -817,6 +958,7 @@ def main():
         pages[yp["incidents"]] = fy_incidents_page(inc, act, f)
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
+        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, f)
     if args.local:
         os.makedirs(args.local, exist_ok=True)
         for name, htm in pages.items():
