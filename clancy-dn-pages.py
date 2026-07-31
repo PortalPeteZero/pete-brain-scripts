@@ -68,10 +68,18 @@ def load():
     # folder as the Sygma panel-review material, so a page that renders only the review folder shows
     # none of them.
     files = rest("clancy_dn_files?select=incident_id,kind,name,drive_id,drive_folder&order=kind,name&limit=20000")
+    # The full investigation Q&A. 2,404 rows were being captured and then never shown anywhere —
+    # the richest material we hold, invisible on the page. (Pete, 31 Jul: ensure everything the
+    # agent pulled in is actually there.)
+    answers = rest("clancy_dn_answers?select=incident_id,section,q_no,question,answer&order=incident_id,section,q_no&limit=20000")
+    aby = defaultdict(list)
+    for x in answers:
+        if (x.get("answer") or "").strip():
+            aby[x["incident_id"]].append(x)
     fby = defaultdict(list)
     for f in files:
         fby[f["incident_id"]].append(f)
-    return inc, act, enrich, dict(fby)
+    return inc, act, enrich, dict(fby), dict(aby)
 
 FAM_ORDER = ["Southern Water", "Anglian Water", "South East Water", "Scottish Water", "UKPN", "SGN"]
 FAM_COLORS = {"Southern Water": "#2f5fd0", "Anglian Water": "#d97706", "South East Water": "#0e9594",
@@ -290,7 +298,22 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .pill.sev-h{background:#fdecea;color:#b91c1c}.pill.sev-m{background:#fdf3e7;color:#b45309}.pill.sev-l{background:#ecf7f0;color:#15803d}
 .pill.st-open{background:#fdf3e7;color:#b45309}.pill.st-closed{background:#ecf7f0;color:#15803d}
-.pill.st-out{background:#eef1f5;color:#5b6774}.pill.st-over{background:#fdecea;color:#b91c1c}
+.pill.st-out{background:#eef1f5;color:#5b6774}.qa{margin-top:6px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.qarow{display:grid;grid-template-columns:minmax(200px,42%) 1fr;gap:0;border-top:1px solid #eef1f5}
+.qarow:first-child{border-top:0}
+.qaq{padding:8px 12px;background:#f7f8fa;font-size:12.5px;color:#4a5561}
+.qaa{padding:8px 12px;font-size:13.5px;color:#22303f;white-space:pre-wrap}
+@media(max-width:640px){.qarow{grid-template-columns:1fr}.qaq{border-bottom:1px solid #eef1f5}}
+.invbox{border:1px solid var(--line);border-left:4px solid #2f5fd0;border-radius:0 10px 10px 0;padding:12px 16px;margin-top:10px;background:#fbfcfd}
+.invbox.invnone{border-left-color:#c7ccd3;background:#f7f8fa}
+.invbox.invthin{border-left-color:#b45309;background:#fff9f0}
+.invl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7784}
+.invv{margin-top:5px;font-size:14.5px;line-height:1.55;color:#22303f;white-space:pre-wrap}
+.invnote{margin-top:6px;font-size:12px;color:#a35f00}
+.pill.act-yes{background:#eef7dc;color:#4a6b00;border-color:#cfe39a}
+.pill.act-no{background:#f4f6f9;color:#7b8694;border-color:#e2e6ec}
+.pill.act-unk{background:#fff6e8;color:#a35f00;border-color:#f0d9b5}
+.pill.st-over{background:#fdecea;color:#b91c1c}
 .pill.uc{background:#eef2fb;color:#2f5fd0}
 .mono{font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)}
@@ -485,6 +508,11 @@ def status_pill(s):
 
 def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
     enrich = enrich or {}
+    # The damage register and the actions register come from separate exports and drift apart. Any
+    # damage newer than the newest action we hold simply is not covered, which is a different thing
+    # from having no actions. ACT_CUTOFF is that boundary.
+    _dates = [a.get("date_raised") for acts in act_by_inc.values() for a in acts if a.get("date_raised")]
+    ACT_CUTOFF = max(_dates)[:10] if _dates else None
     fams = sorted({fam(r) for r in inc})
     utils = [u for u in UTIL_ORDER if any(r["ugroup"] == u for r in inc)]
     sevs = ["High (Cat 1)", "Medium (Cat 2)", "Low (Cat 3)"]
@@ -496,12 +524,15 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
     sel += [('fam', 'Contract', fams), ('ugroup', 'Utility', utils), ('sev', 'Severity', sevs), ('status', 'Status', stats)]
     CAPOPTS = [("todo", "not captured yet"), ("part", "part captured"),
                ("missing", "tried — missing"), ("done", "fully captured")]
+    ACTOPTS = [("yes", "has actions"), ("no", "none raised"), ("unk", "not covered by the export")]
     selects = "".join(
         f'<select data-filter-for="{tid}" data-key="{key}"><option value="">{lab}: all</option>' +
         "".join(f'<option>{esc(o)}</option>' for o in opts) + "</select>"
         for key, lab, opts in sel)
     selects += ('<select data-filter-for="' + tid + '" data-key="cap"><option value="">Captured: all</option>'
                 + "".join(f'<option value="{v}">{esc(l)}</option>' for v, l in CAPOPTS) + "</select>")
+    selects += ('<select data-filter-for="' + tid + '" data-key="acts"><option value="">Actions: all</option>'
+                + "".join(f'<option value="{v}">{esc(l)}</option>' for v, l in ACTOPTS) + "</select>")
     rows_html = []
     for r in sorted(inc, key=lambda x: (x["d"] or ""), reverse=True):
         acts = act_by_inc.get(r["id"], [])
@@ -509,7 +540,17 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
                           ["id", "location", "description", "contract", "raised_by", "subcontractor", "job_ref"])
         date_h = f'<td class="mono" data-v="{r["d"] or ""}">{r["d"] or "—"}</td>'
         overdue = sum(1 for a in acts if a["status"] == "Overdue")
-        act_h = (f'{len(acts)}' + (f' <span class="pill st-over">{overdue} overdue</span>' if overdue else "")) if acts else '<span class="muted">0</span>'
+        # "0" on its own is ambiguous — it could mean none were raised, or that our actions export
+        # does not reach this damage. Say which. (Pete, 31 Jul: mark clearly which have and which
+        # do not.) ACT_CUTOFF is the high-water mark of the actions export.
+        act_key = "yes" if acts else ("unk" if (ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF) else "no")
+        if acts:
+            act_h = (f'<span class="pill act-yes">{len(acts)} action{"s" if len(acts)!=1 else ""}</span>'
+                     + (f' <span class="pill st-over">{overdue} overdue</span>' if overdue else ""))
+        elif ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF:
+            act_h = '<span class="pill act-unk" title="This damage is more recent than the corrective-actions export we hold, so we cannot see whether any were raised">not covered yet</span>'
+        else:
+            act_h = '<span class="pill act-no" title="No corrective action has been raised against this damage in Depotnet">none raised</span>'
         detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
         ci, ca = r.get("capture_incident"), r.get("capture_actions")
         CI = {"full": ("cap-ok", "Incident PDF + investigation captured"),
@@ -543,7 +584,7 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
               f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
         rows_html.append(
             f'<tr class="row" data-href="{detail}" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
-            f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}" data-cap="{cap_key}">'
+            f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}" data-cap="{cap_key}" data-acts="{act_key}">'
             f'<td class="mono" data-v="{r["id"]}">{r["id"]}<div class="small muted" data-v="{r["d"] or ""}">{r["d"] or "—"}</div></td>'
             f'<td>{esc(fam(r))}<div class="small muted">{esc(r["contract"] or "")}</div></td>'
             f'<td style="min-width:150px">{esc((r["location"] or "—")[:70])}</td>'
@@ -628,7 +669,7 @@ def search_box(fy=None):
 
 # ---------------------------------------------------------------- per-damage detail page
 
-def fy_detail_page(inc, act, enrich, files_by_inc, fykey):
+def fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, fykey):
     """One page per year that renders ANY of the year's damages in full from embedded JSON
     (?id=N): every register field, every action in full, the timeline, and the Sygma layer."""
     label = FY_LABEL[fykey]
@@ -641,6 +682,7 @@ def fy_detail_page(inc, act, enrich, files_by_inc, fykey):
         "actions": defaultdict(list),
         "enrich": {str(k): v for k, v in enrich.items() if k in year_ids},
         "files": {str(k): v for k, v in files_by_inc.items() if k in year_ids},
+        "answers": {str(k): v for k, v in answers_by_inc.items() if k in year_ids},
         "capfolder": {str(r["id"]): r.get("capture_drive_folder") for r in rows
                       if r.get("capture_drive_folder")},
     }
@@ -686,6 +728,50 @@ function render(){{
  // every register field, verbatim
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Everything Depotnet holds</h2><span class="note">Incident Register row, in full</span></div><div class="fgrid">'
    +FLD.map(([k,l])=>'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+((k.includes('date')?fmtTs(r[k]):r[k])||'—')+'</div></div>').join('')+'</div></div>';
+ // The investigation, one box per area. Pete, 31 Jul: these are the fields the whole damage
+ // argument turns on, so they get their own section rather than a line in a field grid — and an
+ // ABSENCE has to be as visible as a value, because on 45% of this year's damages there is none.
+ const INV=[
+   ["Root cause","root_cause"],
+   ["Underlying cause","underlying_cause"],
+   ["Investigation summary","incident_summary"],
+   ["Lessons learnt","lessons_learnt"]
+ ];
+ const blank = r.capture_incident==='no-investigation';
+ const anyInv = INV.some(([,k])=>r[k]);
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Conclusions and lessons</h2>'
+   +'<span class="note">'+(blank?'Depotnet investigation is BLANK':(anyInv?'from the Depotnet investigation':'nothing recorded'))+'</span></div>';
+ if(blank){{
+   h+='<div class="invbox invnone"><b>No investigation has been done.</b> The incident PDF is captured and Depotnet&rsquo;s investigation section is empty. That is a recorded gap, not a capture failure.</div>';
+ }}
+ INV.forEach(([lab,k])=>{{
+   const v=(r[k]||'').toString().trim();
+   const thin = v && v.length<=25;
+   h+='<div class="invbox'+(v?(thin?' invthin':''):' invnone')+'">'
+     +'<div class="invl">'+lab+'</div>'
+     +(v?'<div class="invv">'+v.replace(/,/g,', ')+'</div>'
+        +(thin?'<div class="invnote">Recorded, but that is all of it &mdash; '+v.length+' characters.</div>':'')
+       :'<div class="invv muted">Not recorded on Depotnet.</div>')
+     +'</div>';
+ }});
+ h+='</div>';
+ // The full investigation, question by question — captured since the deep-capture began and never
+ // shown until now. Grouped by section, blank answers dropped at load.
+ const ans=(D.answers||{{}})[id]||[];
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>The investigation in full</h2>'
+   +'<span class="note">'+(ans.length?ans.length+' answered question'+(ans.length==1?'':'s')+' from the Depotnet form':'nothing captured')+'</span></div>';
+ if(!ans.length){{
+   h+='<p class="small muted">No investigation answers captured for this damage'
+     +(r.capture_incident==='no-investigation'?' — Depotnet\'s investigation is blank.':'.')+'</p>';
+ }} else {{
+   const secs={{}}; ans.forEach(a=>{{(secs[a.section]=secs[a.section]||[]).push(a);}});
+   Object.keys(secs).forEach(sec=>{{
+     h+='<div class="fl" style="margin-top:14px">'+(sec==='questions'?'Incident questions':'Investigation')+'</div>';
+     h+='<div class="qa">'+secs[sec].map(a=>
+        '<div class="qarow"><div class="qaq">'+a.question+'</div><div class="qaa">'+a.answer+'</div></div>').join('')+'</div>';
+   }});
+ }}
+ h+='</div>';
  // timeline across both sheets
  const ev=[];
  if(r.incident_date)ev.push([r.incident_date,'Damage occurred','']);
@@ -1079,7 +1165,7 @@ def main():
     ap.add_argument("--local")
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
-    inc, act, enrich, files_by_inc = load()
+    inc, act, enrich, files_by_inc, answers_by_inc = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
     pages = {"overview.html": hub(inc, act)}
     # this year IS the landing: the module index serves the current-FY dashboard
@@ -1090,7 +1176,7 @@ def main():
         pages[yp["incidents"]] = fy_incidents_page(inc, act, f, enrich)
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
-        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, f)
+        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, f)
     if args.local:
         os.makedirs(args.local, exist_ok=True)
         for name, htm in pages.items():
