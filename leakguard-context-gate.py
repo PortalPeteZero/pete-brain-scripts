@@ -171,13 +171,54 @@ _DEVICE_WRITE_RE = re.compile(
     r"|" + _PY + r"thingslog-api\.py\s+commands\s+\S+\s+\S"
     r"|" + _PY + r"leakguard-name-sync\.py\b[^\n;|&]*--apply"
     r"|" + _PY + r"lg-commission\.py\b(?![^\n;|&]*--check)"           # the commissioning WRITE path
+
+    # ── THE BYPASS, closed 31 Jul 2026 ────────────────────────────────────────────────────────
+    # Everything above names a SUBCOMMAND. So the guard only ever saw writes that went through a
+    # tool's front door, and any other route to the same API was invisible. Three real ones:
+    #   - 30 Jul: a session cleared `replacementNumber` on a live customer's logger by importing
+    #     thingslog-api in an inline python block. It reached work_log but NOT device_change_log,
+    #     which is the record that exists for exactly this. Pete found the gap on 31 Jul.
+    #   - 31 Jul: this session renamed 04299212 and set 04327014's location the same way. Both
+    #     touched a customer device; neither was guarded or logged.
+    #   - a raw `curl -X PUT` at the API needs no helper at all.
+    # Enumerating more subcommands would leave the same shape of hole, so these two match on the
+    # ACT of writing rather than on a tool name.
+    #
+    # Deliberately keyed to a mutating CALL (`_put(`, `_post(`, `method="PUT"`, the rename
+    # function) and never to a path alone: `m._get(base, tok, f"/api/devices/{n}/config")` is a
+    # READ, and reading must stay free — that is the whole design of this gate.
+    # Two LOOKAHEADS rather than a sequence, for two reasons learned while testing this:
+    #   - they must span newlines, because the import and the write sit on later lines of a
+    #     `python3 - <<'PY'` heredoc (a same-line pattern caught none of the three real cases);
+    #   - they must not assume ORDER, or a block that calls the write before naming the helper
+    #     slips through on a technicality.
+    r"|" + _SEG + _ENV + r"python3?\s(?=[\s\S]*?thingslog-api\.py)"
+          r"(?=[\s\S]*?(?:_put\(|_post\(|_delete\(|"
+          r"method\s*=\s*[\"'](?:PUT|POST|PATCH|DELETE)[\"']))"
+    r"|" + _SEG + _ENV + r"python3?\s(?=[\s\S]*?leakguard-name-sync\.py)"
+          r"(?=[\s\S]*?set_name_thingslog\()"
+    # curl straight at the API, no helper involved.
+    r"|" + _SEG + r"curl\b[^\n]*?-X\s*(?:PUT|POST|PATCH|DELETE)[^\n]*?"
+          r"(?:thingslog|/api/devices/|/api/v2/devices/)"
 )
 # A ThingsLog logger number: eight digits, standing on its own.
 _DEVNUM_RE = re.compile(r"(?<!\d)(\d{8})(?!\d)")
 _REASON_RE = re.compile(r"--reason[=\s]+(\"[^\"]+\"|'[^']+'|\S+)")
 # Tables where a row IS a customer's monitoring setup.
+#
+# The table name must stand in a SQL POSITION — right after UPDATE / INSERT INTO / DELETE FROM.
+# It used to match the bare word anywhere in the command, which is the same "quoted text is data"
+# flaw the tool patterns above were anchored to avoid, just on the SQL branch instead.
+# Caught 31 Jul 2026: a backfill INTO device_change_log was refused because the word `devices`
+# appeared inside the URL string "/api/v2/devices/04327014" in a REASON being written down. Three
+# innocent fragments of one compound command — an unrelated lg-sql SELECT, an INSERT, and that
+# URL — added up to a block on a write that touched no device at all.
+# Note this deliberately does NOT read `device_change_log` or `readings` as customer tables: the
+# log is the record OF changes, not a device setting, and `\bdevices\b` cannot match inside
+# `device_change_log` anyway.
 _CUSTOMER_TABLE_RE = re.compile(
-    r"\b(devices|alarm_no_use_windows|device_alarm_config|alarm_contacts)\b", re.I)
+    r"\b(?:UPDATE|INSERT\s+INTO|DELETE\s+FROM)\s+"
+    r"(?:public\.)?(devices|alarm_no_use_windows|device_alarm_config|alarm_contacts)\b", re.I)
 
 
 def _lg(query):
