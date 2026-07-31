@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-clancy-damages-sync — ON-DEMAND reconcile of Clancy damage emails ↔ the CC Damage section
-(`public.clancy_damages`). NOT a cron — run it when you want the damages table brought
-current from the inbox.
+clancy-damages-sync — ON-DEMAND reconcile of Clancy damage EMAILS against the Depotnet register.
+NOT a cron. Read-only.
 
-Sweeps recent Clancy threads that look like a damage/strike/close-out, extracts what is
-verifiable (subject, date, an 8-digit job ref, a location), and matches each against the
-table. Reports what is already recorded vs what is NEW. With --apply it inserts the genuinely
-new ones as THIN rows flagged "AWAITING DETAIL" (it never fabricates operatives/depth/cause —
-those come from the actual close-out data when Clancy shares it).
+Sweeps recent Clancy threads that look like a damage/strike/close-out, extracts what is verifiable
+(subject, date, an 8-digit job ref, a location), and matches each against public.clancy_dn_incidents
+plus public.clancy_unmapped_damages. It tells you which damages the inbox is talking about that the
+Depotnet register does not hold — which is a finding worth having, because a damage discussed by
+email and never logged on Depotnet is exactly the gap this partnership is about.
+
+IT NO LONGER WRITES. Until 31 Jul 2026 --apply inserted thin rows into `clancy_damages`, a Sygma
+register that ran in parallel to Depotnet. That table has been retired: its records were merged
+onto clancy_dn_incidents, and the SIX that turned out to have no Depotnet counterpart at all had
+to be moved to clancy_unmapped_damages because there was nowhere else for them to go. Hand-created
+damage rows are how that happened. Damages come from the Depotnet import; this tool reports the
+discrepancy and a human decides what to do about it.
 
 Usage:
-  VAULT=/tmp/pbs python3 /tmp/pbs/clancy-damages-sync.py            # report only (default)
+  VAULT=/tmp/pbs python3 /tmp/pbs/clancy-damages-sync.py            # report
   VAULT=/tmp/pbs python3 /tmp/pbs/clancy-damages-sync.py --days 90  # widen the window
-  VAULT=/tmp/pbs python3 /tmp/pbs/clancy-damages-sync.py --apply    # add the new thin rows
 """
 import sys, os, re, json, argparse, importlib.util, urllib.request
 
@@ -49,13 +54,19 @@ NOISE_RE = re.compile(r"(?i)(^(out of office|automatic reply|accepted:|declined:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--days", type=int, default=60)
-    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--apply", action="store_true",
+                    help="retired — this tool no longer writes; see the module docstring")
     args = ap.parse_args()
 
     g = gmail()
-    existing = _cc("GET", "clancy_damages?select=id,job_ref,town,location,damage_date")
-    refs = {(r.get("job_ref") or "").lower() for r in existing}
-    locwords = " ".join((r.get("town") or "") + " " + (r.get("location") or "") for r in existing).lower()
+    # Match against the Depotnet register AND the unmapped store, so a damage we already know
+    # about in either place is not reported as new.
+    existing = _cc("GET", "clancy_dn_incidents?select=id,job_ref,location,incident_date")
+    unmapped = _cc("GET", "clancy_unmapped_damages?select=id,job_ref,town,location,damage_date")
+    refs = {(r.get("job_ref") or "").lower() for r in existing + unmapped}
+    refs |= {str(r.get("id")) for r in existing}          # the Depotnet number is a ref too
+    locwords = " ".join((r.get("location") or "") for r in existing).lower() + " " + \
+               " ".join((r.get("town") or "") + " " + (r.get("location") or "") for r in unmapped).lower()
 
     seen, candidates = set(), []
     for q in (f'from:theclancygroup.co.uk newer_than:{args.days}d',
@@ -70,16 +81,26 @@ def main():
             subj = hdr.get("subject", "")
             if NOISE_RE.search(subj) or not DAMAGE_RE.search(subj):
                 continue
+            # Two ref shapes matter: Clancy's 8-digit job number and Depotnet's own 5-6 digit
+            # incident id. Matching only the 8-digit one reported damages as "new" that were
+            # sitting on the register under the number quoted in the subject line.
             jobref = (re.search(r"\b(\d{8})\b", subj) or [None, None])[1]
+            dnid = None
+            for cand in re.findall(r"\b(\d{5,6})\b", subj):
+                if cand in refs:
+                    dnid = cand
+                    break
             # a rough location: words before a date or after 'at'
             loc = re.sub(r"(?i)(cable strike|close ?out|service (strike|damage)|strike|damage|-|\d{1,2}/\d{1,2}/\d{2,4}|fw:|re:|fwd:)", " ", subj)
             loc = re.sub(r"\s+", " ", loc).strip(" -,·")
-            known = (jobref and jobref.lower() in refs) or (loc and len(loc) > 4 and loc.lower() in locwords)
-            candidates.append({"subject": subj[:70], "date": hdr.get("date", "")[:16], "jobref": jobref, "loc": loc, "known": bool(known)})
+            known = bool(dnid) or (jobref and jobref.lower() in refs) \
+                or (loc and len(loc) > 4 and loc.lower() in locwords)
+            candidates.append({"subject": subj[:70], "date": hdr.get("date", "")[:16],
+                               "jobref": jobref or dnid, "loc": loc, "known": bool(known)})
 
     new = [c for c in candidates if not c["known"]]
     print(f"clancy-damages-sync — {len(candidates)} damage-shaped Clancy threads in {args.days}d · "
-          f"{len(existing)} incidents in table\n")
+          f"{len(existing)} damages on the Depotnet register, {len(unmapped)} unmapped\n")
     print("ALREADY RECORDED:")
     for c in candidates:
         if c["known"]:
@@ -88,32 +109,17 @@ def main():
     for c in new:
         print(f"  + {c['date']}  {c['subject']}  [ref={c['jobref'] or '—'} loc='{c['loc']}']")
     if not new:
-        print("  (none — table is current with the inbox)")
+        print("  (none — the register is current with the inbox)")
+    print("\nRead this as a prompt, not a verdict: matching is by reference number and by an exact")
+    print("location string, so a thread that writes an address differently from Depotnet will show")
+    print("as new when it is not. Check each one before concluding a damage went unlogged.")
 
-    if args.apply and new:
-        added = 0
-        # --apply only auto-adds incidents that carry a job ref (safe); location-only candidates
-        # are surfaced for a manual add so we never create junk rows from discussion threads.
-        applicable = [c for c in new if c["jobref"]]
-        skipped = [c for c in new if not c["jobref"]]
-        for c in applicable:
-            row = {"customer": "Clancy", "job_ref": c["jobref"] or ("email-" + re.sub(r"[^a-z0-9]+", "-", c["loc"].lower())[:30] or "unknown"),
-                   "location": c["loc"] or c["subject"], "status": "From inbox — awaiting detail",
-                   "summary": f"Auto-captured from Clancy email '{c['subject']}' ({c['date']}). AWAITING DETAIL — no CAT data / operatives / depth yet.",
-                   "next_actions": ["Get the CAT/strike data from Clancy", "Decide if it warrants a Sygma data review"]}
-            if row["job_ref"].lower() in refs:
-                continue
-            _cc("POST", "clancy_damages", row, prefer="return=minimal")
-            refs.add(row["job_ref"].lower()); added += 1
-            print(f"  added: {row['job_ref']}")
-        print(f"\napplied: {added} new thin row(s) (job-ref incidents) — enrich once Clancy shares the data.")
-        if skipped:
-            print(f"NOT auto-added ({len(skipped)} location-only, no job ref — add manually if a real incident):")
-            for c in skipped:
-                print(f"  · {c['date']}  {c['subject']}")
-    elif new:
-        print("\n(run with --apply to add the new ones as thin rows flagged awaiting-detail)")
-    return 0
+    if args.apply:
+        print("\n--apply is retired. This tool does not create damage records any more.")
+        print("A damage reaches the register by being captured from Depotnet — run:")
+        print("  VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-capture.py")
+        print("If a thread above is a real damage with NO Depotnet record, that is the finding:")
+        print("raise it with Clancy rather than inventing a row for it here.")
 
 
 if __name__ == "__main__":

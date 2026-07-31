@@ -18,7 +18,7 @@ Usage:
   --list       show current rules
 
 Ties to the Damage section: pass --damage <job_ref> to attach the rule's provenance to a
-clancy_damages incident (which review taught us this).
+damage on the Depotnet register (which review taught us this).
 """
 import sys, os, re, json, argparse, urllib.request, urllib.parse
 
@@ -57,7 +57,7 @@ def main():
     # applies to every Clancy report (terminology / partner tone / integrity).
     ap.add_argument("--severity", default="warn", choices=["block", "warn"])
     ap.add_argument("--from", dest="frm", help="provenance note (which review taught this)")
-    ap.add_argument("--damage", help="clancy_damages job_ref this correction came from")
+    ap.add_argument("--damage", help="Depotnet damage id, or job_ref, this correction came from")
     ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
 
@@ -89,12 +89,17 @@ def main():
 
     # provenance on the damage incident too, so the Damage section shows what a review taught
     if args.damage:
-        d = _req("GET", f"clancy_damages?job_ref=eq.{urllib.parse.quote(args.damage)}&select=id,next_actions")
+        # Sygma's review layer lives ON the damage now (clancy_dn_incidents.sygma_*), not in a
+        # parallel table. Accept the Depotnet id directly as well as a job_ref.
+        key = "id" if str(args.damage).isdigit() else "job_ref"
+        d = _req("GET", f"clancy_dn_incidents?{key}=eq.{urllib.parse.quote(str(args.damage))}"
+                        "&select=id,sygma_next_actions")
         if d:
             na = d[0].get("next_actions") or []
             note = f"Wording rule learned: {args.say}"
             if note not in na:
-                _req("PATCH", f"clancy_damages?id=eq.{d[0]['id']}", {"next_actions": na + [note]}, prefer="return=minimal")
+                _req("PATCH", f"clancy_dn_incidents?id=eq.{d[0]['id']}",
+                     {"sygma_next_actions": na + [note]}, prefer="return=minimal")
                 print(f"  + noted on damage {args.damage}")
     if args.severity == "warn":
         print("→ banked as ADVISORY: damage-review-lint will FLAG this for review on future reports "

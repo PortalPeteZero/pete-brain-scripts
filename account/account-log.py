@@ -4,7 +4,8 @@
 The "log clancy ..." session verb and the Command Centre quick-add both write
 through here, so anything Pete (or a session) does with a customer lands in the
 live record without waiting for a cron. Actions write to public.tasks (SY-Clancy)
-and incidents to clancy_damages; deliverables/risks/documents to the account_* store.
+deliverables/risks/documents to the account_* store. Damages are NOT logged here — they
+come from the Depotnet capture (see the incident branch).
 
 Examples:
   account-log.py deliverable --title "Reviewed Wayne's Q2 damage data" --workstream "Cable damage investigations" --contract UKPN
@@ -85,11 +86,16 @@ def main():
                "phone": a.phone, "contract": a.contract, "is_key": a.key}
         st = store.insert("account_people", [row])
     elif a.kind == "incident":
-        # Damages are the first-class clancy_damages table now — account_incidents retired.
-        row = {"customer": C, "job_ref": a.title, "damage_date": a.date or today, "contract": a.contract,
-               "location": a.location, "status": a.status or "New",
-               "summary": " · ".join(x for x in (a.investigation, a.sygma_role) if x) or None}
-        st = store.insert("clancy_damages", [row])
+        # Logging a damage BY HAND is how the parallel Sygma register came about, and six of those
+        # records ended up with no Depotnet counterpart and nowhere to live (retired 31 Jul 2026).
+        # Damages reach the register by being captured from Depotnet; Sygma's review is then added
+        # to the damage that is already there.
+        print("account-log: damages are not logged by hand any more.")
+        print("  Capture from Depotnet:  VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-capture.py")
+        print("  Then add Sygma's review to that damage on the register (its sygma_* fields).")
+        print("  If a damage genuinely is not on Depotnet, that is the finding — raise it, do not")
+        print("  create a record for it here.")
+        raise SystemExit(2)
 
     store.set_state(C, "last_log", datetime.datetime.now(datetime.timezone.utc).isoformat())
     print(f"account-log: {a.kind} -> {C} (HTTP {st})")

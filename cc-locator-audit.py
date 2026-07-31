@@ -90,7 +90,15 @@ INFRA_ALLOW = {
     "ee_public_courses",                                                       # EE (anchor: enquiry_touches)
     "garmin_weekly_recovery",                                                  # Garmin view (anchor: garmin_daily)
     "triage_cases", "triage_templates",                                        # triage engine internals
-    "damage_review_rules",                                                     # clancy (anchor: clancy_damages)
+    "damage_review_rules",                                                     # clancy reviews (anchor: clancy_reports)
+    # Damage Depot — the Depotnet register subsystem (anchor: clancy_dn_incidents)
+    "clancy_dn_actions", "clancy_dn_answers", "clancy_dn_files", "clancy_dn_index",
+    "clancy_dn_rollup", "clancy_unmapped_damages", "clancy_dn_baseline_pre_enrichment",
+    "clancy_damages_snapshot_20260731",
+    # Genny & CAT usage inspections (anchor: clancy_dn_gc_inspections). clancy_dn_inspections is
+    # the superseded early partial export, kept only as the record of what was first pulled.
+    "clancy_dn_gc_actions", "clancy_dn_gc_coverage", "clancy_dn_gc_findings",
+    "clancy_dn_inspections",
     "bank_account_history",                                                    # banking (anchor: bank_accounts)
     "training_rep", "training_session_code_map", "training_weekly_totals", "training_weekly_volume",  # training (anchor: training_session)
     "health_config", "health_planned_session", "health_weekly",               # PF (anchors: health_journal/feedback)

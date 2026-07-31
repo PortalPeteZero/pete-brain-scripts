@@ -58,7 +58,12 @@ def main():
     acts = [{"title": t.get("name"), "due": t.get("due_on"), "status": t.get("status"),
              "owner_side": "clancy" if "side:clancy" in (t.get("tags") or []) else "sygma"} for t in _tasks]
     kpis = store.select("account_obligations", f"customer=eq.{C}&type=eq.kpi&select=label,deadline,status")
-    damages = store.select("clancy_damages", "customer=eq.clancy&select=job_ref,town,contract,status,damage_date&order=damage_date.desc")
+    # The Depotnet register replaced the parallel clancy_damages table (31 Jul 2026). Only the
+    # damages Sygma has actually reviewed belong in an account review, which is the same set the
+    # old customer filter produced.
+    damages = store.select("clancy_dn_incidents",
+                           "sygma_reviewed_at=not.is.null&select=id,job_ref,location,contract_family,status,incident_date"
+                           "&order=incident_date.desc")
 
     new_deliv = [d for d in deliv if (d.get("created_at") or "")[:10] >= wk_ago or (d.get("date") or "") >= wk_ago]
     overdue = [a for a in acts if a.get("due") and a["due"] < today.isoformat()]
@@ -72,7 +77,7 @@ def main():
     html = f"""<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:640px">
 <h2 style="color:#d97706">Clancy weekly review</h2>
 <p style="color:#555">Week to {today.strftime('%d %b %Y')}. Live record: <a href="https://commandcentre.info/m/clancy-cockpit">Cockpit</a> · <a href="https://commandcentre.info/m/clancy-cockpit?tab=delivery">Delivery</a>.</p>
-<h3>Open damages ({len(open_dmg)} of {len(damages)})</h3>{ul([f"{d.get('town') or d['job_ref']} — {d.get('contract')} — <b>{d.get('status')}</b>" for d in open_dmg[:12]])}
+<h3>Open damages ({len(open_dmg)} of {len(damages)})</h3>{ul([f"Damage {d['id']} — {d.get('location') or 'location n/k'} — {d.get('contract_family') or 'contract n/k'} — <b>{d.get('status')}</b>" for d in open_dmg[:12]])}
 <h3>Delivered this week ({len(new_deliv)})</h3>{ul([d['title'] for d in new_deliv])}
 <h3>Overdue actions ({len(overdue)})</h3>{ul([f"{a['title']} (due {a.get('due')})" for a in overdue])}
 <h3>Waiting on Clancy ({len(waiting_clancy)})</h3>{ul([a['title'] for a in waiting_clancy])}
