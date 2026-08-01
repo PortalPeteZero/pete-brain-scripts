@@ -312,6 +312,10 @@ def gather():
            WHEN i.service_interrupted ILIKE 'NO'  THEN 'N' ELSE '' END supply,
       CASE WHEN i.root_cause    IS NOT NULL AND btrim(i.root_cause)<>''    THEN 'Y' ELSE 'N' END cause,
       CASE WHEN i.lessons_learnt IS NOT NULL AND btrim(i.lessons_learnt)<>'' THEN 'Y' ELSE 'N' END lesson,
+      (SELECT count(*) FROM clancy_dn_actions x
+        WHERE x.incident_id=i.id AND x.status<>'Closed') acts_out,
+      (SELECT count(*) FROM clancy_dn_actions x
+        WHERE x.incident_id=i.id AND x.status='Closed') acts_closed,
       (SELECT count(*) FROM clancy_dn_actions x WHERE x.incident_id=i.id) acts,
       (SELECT count(*) FROM clancy_dn_files  z WHERE z.incident_id=i.id) files,
       (SELECT count(*) FROM clancy_dn_answers a
@@ -483,6 +487,7 @@ table.reg td.n{font-variant-numeric:tabular-nums;text-align:right}
  font-size:12px;font-weight:800;text-align:center}
 .mk.y{background:#eaf6d9;color:#3f6212}
 .mk.n{background:#fde8ec;color:#a4133c}
+.mk.n2{background:#f3f5f8;color:#5b6672}
 .mk.b{background:#eef1f5;color:#9aa4b0}
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
  background:#eef1f5;color:var(--muted)}
@@ -518,6 +523,15 @@ def mark(v, allow_no=True):
     return '<span class="mk b" title="Not answered on Depotnet">&ndash;</span>'
 
 
+def yn(count, captured):
+    """Yes / No / not looked at. A damage we have never captured gets a dash, never a No —
+    we would be reporting our own backlog as an absence on Depotnet."""
+    if not captured:
+        return '<span class="mk b" title="Not captured yet">&ndash;</span>'
+    return ('<span class="mk y" title="Yes">Y</span>' if count
+            else '<span class="mk n2" title="No">N</span>')
+
+
 def damage_table(d):
     rows, n = d["rows"], len(d["rows"])
     INV = {"YES": ("Complete", "closed"), "NO": ("Not complete", "open")}
@@ -546,7 +560,7 @@ def damage_table(d):
         tr.append(
             f'<tr data-inc="{inc_key}" data-c="{esc(r["contract"])}" data-s="{esc(r["service"])}" data-st="{esc(st)}" '
             f'data-inv="{inv_key}" data-cause="{r["cause"]}" data-lesson="{r["lesson"]}" '
-            f'data-acts="{r["acts"]}" data-cat="{r["cat"] or ""}" data-genny="{r["genny"] or ""}" '
+            f'data-acts="{r["acts"]}" data-aout="{r["acts_out"]}" data-acls="{r["acts_closed"]}" data-cat="{r["cat"] or ""}" data-genny="{r["genny"] or ""}" '
             f'data-hay="{esc(hay)}">'
             f'<td class="id"><a href="{DAMAGE_URL.format(r["id"])}">{r["id"]}</a></td>'
             f'<td>{nice}</td><td>{esc(r["contract"])}</td><td>{esc(r["service"])}</td>'
@@ -558,7 +572,9 @@ def damage_table(d):
             f'<td class="c">{mark(r["lesson"], allow_no=False)}</td>'
             f'<td class="c">{mark(r["genny"])}</td><td class="c">{mark(r["cat"])}</td>'
             f'<td class="c">{mark(r["permit"])}</td>'
-            f'<td class="n">{r["acts"] or "&ndash;"}</td><td class="n">{r["files"] or "&ndash;"}</td>'
+            f'<td class="c">{yn(r["acts_out"], r["captured"])}</td>'
+            f'<td class="c">{yn(r["acts_closed"], r["captured"])}</td>'
+            f'<td class="n">{r["files"] or "&ndash;"}</td>'
             "</tr>")
 
     def opts(key, label):
@@ -593,7 +609,7 @@ list is right there with the Depotnet numbers to quote.</p>
 <div class="chips">
   <button class="chip" data-t="cause" aria-pressed="false">No cause recorded</button>
   <button class="chip" data-t="lesson" aria-pressed="false">No lesson recorded</button>
-  <button class="chip" data-t="acts" aria-pressed="false">No corrective action</button>
+  <button class="chip" data-t="acts" aria-pressed="false">No actions at all</button>
   <button class="chip" data-t="genny" aria-pressed="false">Genny not used</button>
   <button class="chip" data-t="cat" aria-pressed="false">CAT not used</button>
   <span class="fcount" id="fcount">{n} of {n} damages</span>
@@ -603,7 +619,7 @@ list is right there with the Depotnet numbers to quote.</p>
 <th>Damage</th><th>Date</th><th>Contract</th><th>Service</th><th>Status</th>
 <th>Incident<br>report</th><th>Investigation<br>report</th><th class="c">Cause</th><th class="c">Lesson</th>
 <th class="c">Genny</th><th class="c">CAT</th><th class="c">Permit</th>
-<th class="n">Actions</th><th class="n">Evidence</th>
+<th class="c">Outstanding<br>actions</th><th class="c">Closed<br>actions</th><th class="n">Evidence</th>
 </tr></thead><tbody id="rtb">{"".join(tr)}</tbody></table>
 <div class="nores" id="nores" hidden>No damages match those filters.</div></div>
 
