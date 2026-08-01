@@ -72,12 +72,18 @@ PAGES = [
 #   - state of play -> "Sygma SEO -- State of Play (single source of truth; update IN PLACE)"
 
 # URLs with locked/restricted decisions. Flagging anything against these URLs requires reading the linked decision first.
-NO_WORK_URLS = {
-    "/knowledge-hub/hsg47-explained":
-        "No RANKING/CTR pitches (non-intent page; traffic doesn't convert) — but normal technical "
-        "hygiene (title length, broken links, audit errors) IS fine, rule relaxed 7 Jul 2026. "
-        "See vault_notes 'No Active Work on /knowledge-hub/hsg47-explained' + feedback_hsg47_explained_no_ranking_pitches.",
-}
+# LOCK OPENED 1 Aug 2026 by Pete: "just open the lock, the lock was mis interpreted, no work meant we
+# shouldnt try and optimise that for the term or try to make it better".
+# /knowledge-hub/hsg47-explained is no longer a locked page. The original 7 May 2026 decision meant
+# ONE thing: do not chase rankings or CTR on the EXPLAINER for its own informational terms, because
+# that traffic does not convert. It never meant the page could not be touched — and read as a blanket
+# block it stopped the real problem being fixed: every HSG47 COMMERCIAL term
+# (`hsg47 training`, `hsg47 course`, `hsg 47 training`, `hsg47 cat and genny training`) ranks via the
+# explainer instead of /courses/hsg47-training. Routing commercial intent to the course page is not
+# "making the explainer better", which is why the lock should never have blocked it.
+# The surviving guidance (advisory, NOT a block): do not optimise the explainer to rank for its own
+# informational terms. Everything else is normal work.
+NO_WORK_URLS = {}
 
 # Residue threshold — landing pages with no paid click in this window are pre-fix residue ageing out of the 30d rolling window.
 RESIDUE_DAYS = 14
