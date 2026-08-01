@@ -255,7 +255,15 @@ def evaluate(reply, tool_text):
 COMPARISON = re.compile(
     r"(?:\b(?:position|ranks?|ranking|outranks?|above (?:us|you|me)|beating (?:us|you)|"
     r"median DR|DR \d|domain rating)\b)", re.I)
-NUMERIC = re.compile(r"\d")
+# A positional CLAIM -- a number attached to a rank word -- not merely a digit somewhere in a
+# paragraph that happens to mention ranking. Tightened 1 Aug 2026 after three false positives in a
+# row: the gate blocked a paragraph DESCRIBING the tooling ("reliable position per term ... 484
+# terms"), a fully-attributed page comparison, and a capability list. A gate that blocks correct
+# writing gets switched off, and this hook's own docstring says exactly that.
+NUMERIC = re.compile(
+    r"(?:\b(?:position|pos|rank(?:s|ed|ing)?|DR|domain rating)\b[^.\n]{0,12}?\d"
+    r"|\d[^.\n]{0,12}?\b(?:st|nd|rd|th)\b"
+    r"|\bDR\s*\d)", re.I)
 QUOTED = re.compile(r"[\"'`“‘]([^\"'`”’\n]{3,60})[\"'`”’]")
 
 def _is_search_phrase(q):
@@ -271,6 +279,13 @@ def _is_search_phrase(q):
     ordinals and identifiers are not terms.
     """
     q = q.strip()
+    # A PAGE PATH names the subject just as well as a search term does. Added after the gate blocked
+    # a fully-attributed paragraph comparing `/courses/gpr-training` with
+    # `/knowledge-hub/aml-pro-ssi-locators` on named GA4 28-day figures (1 Aug 2026). The rule is
+    # "name what it is FOR" -- a URL path does that. A noisy gate gets switched off, and this hook's
+    # own history says so.
+    if re.fullmatch(r"/[A-Za-z0-9/-]{3,80}", q):
+        return True
     if len(q.split()) < 2:
         return False                                   # "3rd", "sygma", "position"
     if re.search(r"[=_/\\<>{}()\[\]]|\.py\b|--", q):
