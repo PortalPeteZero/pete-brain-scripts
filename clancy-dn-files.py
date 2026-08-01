@@ -139,24 +139,50 @@ def subfolder(parent, name):
 
 
 def files_in_payload(raw):
-    """Every distinct attachment the payload references, with its action when it has one."""
+    """Every distinct attachment, keyed on the BLOB not the filename.
+
+    Two genuinely different files can share a name. Damage 133852 holds
+    "Service avoidance - Gary Dowling.xlsx" twice — uploaded 13 minutes apart, different
+    documentIds, different blobs. Keying on the name dropped the second one silently and
+    permanently. One case in FY26/27; at 164 damages it would quietly lose files.
+
+    Where a name collides, the second and later copies get a disambiguating suffix taken from
+    the storage path's timestamp, so both reach Drive and neither overwrites the other.
+    """
     out = {}
     def walk(o, depth=0, action=None):
         if depth > 7 or o is None:
             return
         if isinstance(o, dict):
             aid = o.get("imIncidentActionId", action)
-            if o.get("fileName") and o.get("path"):
-                out.setdefault(o["fileName"], {"name": o["fileName"], "path": o["path"],
-                                               "action_id": aid,
-                                               "kind": kind_of(o["fileName"])})
+            path = o.get("path")
+            if path:
+                stem = path.split("?")[0]
+                if stem not in out:
+                    name = o.get("fileName") or stem.rsplit("/", 1)[-1]
+                    out[stem] = {"name": name, "path": path, "action_id": aid,
+                                 "kind": kind_of(name), "stem": stem}
+                elif aid and not out[stem]["action_id"]:
+                    out[stem]["action_id"] = aid
             for v in o.values():
                 walk(v, depth + 1, aid)
         elif isinstance(o, list):
             for v in o:
                 walk(v, depth + 1, action)
     walk(raw)
-    return list(out.values())
+
+    files, seen = [], {}
+    for f in sorted(out.values(), key=lambda x: x["stem"]):
+        n = f["name"]
+        if n in seen:
+            # 2026-07-08-09-50-20-782_Service avoidance….xlsx -> "…(2026-07-08-09-50-20).xlsx"
+            tail = f["stem"].rsplit("/", 1)[-1]
+            stamp = tail[:19] if tail[:4].isdigit() else str(seen[n] + 1)
+            base, dot, ext = n.rpartition(".")
+            f = {**f, "name": f"{base or n} ({stamp}){dot}{ext}"}
+        seen[n] = seen.get(n, 0) + 1
+        files.append(f)
+    return files
 
 
 def fetch(url, tries=3):
@@ -186,6 +212,20 @@ def run(rows, audit=False):
         todo = [f for f in want if f["name"] not in have]
         print(f"  {inc['id']}  {len(want):3} on Depotnet · {len(have):3} in Drive · "
               f"{len(todo):3} to fetch")
+        # A file already in Drive still needs its row LINKED. Filing used to set drive_id only
+        # on upload, so anything skipped stayed unlinked for ever and looked like a gap.
+        if not audit:
+            url = f"https://drive.google.com/drive/folders/{folder}"
+            for f in want:
+                did = have.get(f["name"])
+                if not did:
+                    continue
+                got = rest(f"clancy_dn_files?select=id,drive_id&incident_id=eq.{inc['id']}"
+                           f"&storage_path=eq.{urllib.request.quote(f['stem'], safe='')}")
+                if got and not got[0]["drive_id"]:
+                    rest(f"clancy_dn_files?id=eq.{got[0]['id']}", "PATCH",
+                         {"drive_id": did, "drive_folder": url, "name": f["name"]},
+                         {"Prefer": "return=minimal"})
         if audit or not todo:
             tot["skipped"] += len(want) - len(todo)
             continue
@@ -213,19 +253,23 @@ def run(rows, audit=False):
                 did = drive("upload", p, target, f["name"])
             tot["uploaded"] += 1
             tot["bytes"] += len(blob)
-            # the row records what Depotnet holds; drive_id records where OUR copy is
-            q = (f"clancy_dn_files?select=id&incident_id=eq.{inc['id']}"
-                 f"&name=eq.{urllib.request.quote(f['name'])}")
-            got = rest(q)
+            # The row records what Depotnet holds; drive_id records where OUR copy is. Match on
+            # the STORAGE PATH, never the name — the ingest row carries Depotnet's own filename
+            # while a disambiguated upload carries a suffixed one, and matching on the name made
+            # a third row instead of updating the second.
             body = {"drive_id": did,
-                    "drive_folder": f"https://drive.google.com/drive/folders/{folder}"}
+                    "drive_folder": f"https://drive.google.com/drive/folders/{folder}",
+                    "name": f["name"]}     # keep the row's name in step with the Drive copy
+            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{inc['id']}"
+                       f"&storage_path=eq.{urllib.request.quote(f['stem'], safe='')}")
             if got:
                 rest(f"clancy_dn_files?id=eq.{got[0]['id']}", "PATCH", body,
                      {"Prefer": "return=minimal"})
             else:
                 rest("clancy_dn_files", "POST",
                      [{"incident_id": inc["id"], "action_id": f["action_id"],
-                       "kind": f["kind"], "name": f["name"], "source": "depotnet-api", **body}],
+                       "kind": f["kind"], "storage_path": f["stem"],
+                       "source": "depotnet-api", **body}],
                      {"Prefer": "return=minimal"})
     return tot, failures
 

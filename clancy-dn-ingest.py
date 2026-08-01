@@ -229,36 +229,21 @@ def write(parsed):
     if parsed["answers"]:
         rest("clancy_dn_answers?on_conflict=incident_id,section,q_no", "POST", parsed["answers"],
              {"Prefer": "resolution=merge-duplicates,return=minimal"})
-    for a in parsed["actions"]:
-        got = rest(f"clancy_dn_actions?select=id&id=eq.{a['id']}")
-        if got:
-            rest(f"clancy_dn_actions?id=eq.{a['id']}", "PATCH",
-                 {k: v for k, v in a.items() if k != "id"}, {"Prefer": "return=minimal"})
-        else:
-            rest("clancy_dn_actions", "POST", [a], {"Prefer": "return=minimal"})
-    # files: the row records WHAT exists on Depotnet. The Drive upload is a separate step, so
-    # drive_id is left alone here and never blanked by a re-ingest.
-    for f in parsed["files"]:
-        # match on Depotnet's id first, then the storage path, and only then the name — so a
-        # file that arrives under two names is ONE row, and a re-run updates rather than adds.
-        row = {k: v for k, v in f.items() if k != "path"} | {"source": "depotnet-api"}
-        got = None
-        if f.get("depotnet_file_id"):
-            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
-                       f"&depotnet_file_id=eq.{f['depotnet_file_id']}")
-        if not got:
-            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
-                       f"&storage_path=eq.{urllib.request.quote(f['storage_path'], safe='')}")
-        if not got:
-            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
-                       f"&name=eq.{urllib.request.quote(f['name'])}")
-        if got:
-            # never blank a drive_id a filing run has set
-            rest(f"clancy_dn_files?id=eq.{got[0]['id']}", "PATCH",
-                 {k: v for k, v in row.items() if k not in ("drive_id", "drive_folder")},
-                 {"Prefer": "return=minimal"})
-        else:
-            rest("clancy_dn_files", "POST", [row], {"Prefer": "return=minimal"})
+    if parsed["actions"]:
+        # one upsert, not a lookup-then-write per action
+        rest("clancy_dn_actions?on_conflict=id", "POST", parsed["actions"],
+             {"Prefer": "resolution=merge-duplicates,return=minimal"})
+    # files: ONE batched upsert on (incident_id, storage_path) — the physical identity of the
+    # blob. This used to be up to three lookups plus a write PER FILE, ~2,000 round-trips for
+    # 486 files, and it is why the 1 Aug re-runs took so long.
+    #
+    # drive_id / drive_folder are deliberately NOT in the payload: filing sets them, and a
+    # re-ingest must never blank them. Postgres only overwrites the columns supplied.
+    if parsed["files"]:
+        rows = [{k: v for k, v in f.items() if k != "path"} | {"source": "depotnet-api"}
+                for f in parsed["files"]]
+        rest("clancy_dn_files?on_conflict=incident_id,storage_path", "POST", rows,
+             {"Prefer": "resolution=merge-duplicates,return=minimal"})
     return True
 
 
