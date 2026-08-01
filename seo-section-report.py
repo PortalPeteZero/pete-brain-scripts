@@ -71,7 +71,7 @@ def fetch(section, days):
     LEFT JOIN cur  c ON c.k = lower(m.keyword)
     LEFT JOIN prev p ON p.k = lower(m.keyword)
     LEFT JOIN ranks r ON r.k = lower(m.keyword)
-    WHERE m.property_key='{PROP}' AND m.cluster='{section}'
+    WHERE m.property_key='{PROP}' AND m.cluster='{section}' AND m.intent='commercial'
     ORDER BY COALESCE(c.impr,0) DESC"""
     return sql(q)
 
