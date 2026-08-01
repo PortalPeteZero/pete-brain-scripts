@@ -115,16 +115,20 @@ def queue(limit, fy=None, oldest=False, with_actions_only=False):
         # actions export, so a blank was really "we do not know". Pete, 31 Jul: he should never
         # have to ask whether the actions were done. The queue says it every time.
         n_act = sum(1 for a in have_actions if a == r["id"])
+        # Three DISTINCT states — "none outstanding" and "none recorded in Depotnet" are not the
+        # same thing and must never share wording (Pete, 31 Jul).
         if r["id"] in have_actions:
-            acts = f" ·  HAS ACTIONS"
-            todo_line = "      ACTIONS: open BOTH tabs (Outstanding + Closed). Scrape Closed/Closed By, then click View on EVERY action and take its Photos, Videos and Documents."
+            acts = " ·  ACTIONS RECORDED"
+            todo_line = ("      ACTIONS: open BOTH tabs (Outstanding + Closed). Scrape Closed/Closed By, then click View on\n"
+                         "               EVERY action and take its Photos, Videos, Documents and Timeline.")
         elif ACT_CUTOFF and (r["incident_date"] or "")[:10] > ACT_CUTOFF:
             acts = " ·  ACTIONS UNKNOWN"
-            todo_line = (f"      ACTIONS: this damage is newer than our actions export ({ACT_CUTOFF}), so we CANNOT see whether any exist."
-                         "\n               Open both tabs and check — do not assume none.")
+            todo_line = (f"      ACTIONS: this damage post-dates our actions export ({ACT_CUTOFF}). We CANNOT see whether\n"
+                         "               Depotnet holds any. That is NOT the same as none existing. Open both tabs and check.")
         else:
-            acts = " ·  no actions in the export"
-            todo_line = "      ACTIONS: none in the export. Open both tabs to confirm, then record capture_actions='none'."
+            acts = " ·  NONE recorded in our export"
+            todo_line = ("      ACTIONS: our export holds no action record for this damage — meaning none was ever RAISED,\n"
+                         "               not that none is outstanding. Open both tabs to confirm, then set capture_actions='none'.")
         print(f"  {r['id']}  {(r['incident_date'] or '')[:10]}  {r['fy']}  "
               f"{(r['contract_family'] or '')[:18]:18s} {(r['location'] or '')[:40]:40s} {r['status']}{acts}")
         print(f"      https://clancy.depotnet.co.uk/#/incidentmanager/imincident/{r['id']}")
