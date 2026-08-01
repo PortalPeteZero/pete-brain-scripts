@@ -73,7 +73,13 @@ def doc_updated_at(vault_path):
 
 
 def read_transcript(path):
-    """Session start, and every tool call made in it."""
+    """Session start, and every tool call WITH ITS TIMESTAMP.
+
+    The timestamp matters. The first version of this gate asked "was the doc written since the
+    session began", which is useless in a long session: this one ran 39 hours, the docs were
+    written at hour 13, and the gate then passed for ever no matter how much changed afterwards.
+    It is now "was the doc written since the last change IN THAT DOMAIN".
+    """
     start, calls = None, []
     try:
         with open(path) as f:
@@ -82,41 +88,36 @@ def read_transcript(path):
                     e = json.loads(line)
                 except Exception:
                     continue
-                if start is None and e.get("timestamp"):
-                    start = e["timestamp"]
+                ts = e.get("timestamp")
+                if start is None and ts:
+                    start = ts
                 m = e.get("message") or {}
                 if m.get("role") == "assistant" and isinstance(m.get("content"), list):
                     for c in m["content"]:
                         if c.get("type") == "tool_use":
-                            calls.append(c.get("name", "") + " " +
-                                         json.dumps(c.get("input", ""))[:4000])
+                            calls.append((ts, c.get("name", "") + " " +
+                                          json.dumps(c.get("input", ""))[:4000]))
     except Exception:
         pass
     return start, calls
 
 
 def evaluate(start, calls):
-    """Which guarded domains did this session CHANGE without touching their doc?"""
-    blob = "\n".join(calls)
+    """Which guarded domains were CHANGED more recently than their doc was written?"""
     out = []
     for d in DOMAINS:
-        hits = [c for c in calls if re.search(d["changed"], c)]
-        if not hits or not any(MUTATING.search(c) for c in hits):
+        hits = [(ts, c) for ts, c in calls
+                if re.search(d["changed"], c) and MUTATING.search(c)]
+        if not hits:
             continue                      # read-only in this domain, or untouched
-        # was the doc itself written this session?
-        if re.search(re.escape(d["doc"]), blob) or re.search(
-                re.escape(d["doc"].rsplit("/", 1)[-1]), blob):
-            # the path appearing in a WRITE, not just a SELECT
-            wrote = [c for c in calls if d["doc"].rsplit("/", 1)[-1] in c
-                     and MUTATING.search(c)]
-            if wrote:
-                continue
+        last_change = max(ts for ts, _ in hits if ts) if any(ts for ts, _ in hits) else start
         upd = doc_updated_at(d["doc"])
         if upd == "UNCHECKABLE":
             continue                      # never block on our own inability to check
-        if upd and start and upd >= start:
-            continue                      # written since the session began — fine
-        out.append({**d, "updated": upd or "never", "example": hits[0][:120]})
+        if upd and last_change and upd >= last_change:
+            continue                      # the doc is newer than the last change — fine
+        out.append({**d, "updated": upd or "never", "changed_at": last_change,
+                    "example": hits[-1][1][:120]})
     return out
 
 
@@ -135,7 +136,8 @@ def main():
     sys.stderr.write(
         f"BLOCKED by process-doc-currency: this session changed **{d['name']}** but its process "
         f"doc has not been written to since the session began.\n"
-        f"  Doc:  {d['doc']}   (last updated {d['updated']})\n"
+        f"  Doc:  {d['doc']}\n"
+        f"        last written {d['updated']} · domain last changed {d.get('changed_at')}\n"
         f"  It records {d['records']}.\n"
         f"  What triggered this: {d['example']}\n\n"
         f"  Update it now — edit, add, amend or delete, whatever the session actually learned — "
