@@ -66,6 +66,53 @@ def drive(*args):
     return m.group(1) if m else None
 
 
+def _children(parent):
+    """(name, id) of everything directly under a Drive folder."""
+    r = subprocess.run(["python3", DRIVE, "ls", parent], capture_output=True, text=True,
+                       env={**os.environ, "VAULT": VAULT})
+    out = []
+    for line in r.stdout.splitlines():
+        m = re.match(r"^(DIR|FILE)\s+\S+\s+\S+\s+([\w-]{20,})\s+(.*)$", line.strip())
+        if m:
+            out.append((m.group(3).strip(), m.group(2)))
+    return out
+
+
+def incident_folder(inc):
+    """A damage's Drive home — created ONCE, reused for ever after.
+
+    This used to be a bare `create-folder`, which makes a NEW folder every run. Drive allows
+    duplicate names, so nothing complained: on 1 Aug 2026 damage 133852 ended up with THREE
+    folders, and `capture_drive_folder` pointed at an empty one while the real files sat in the
+    first. Matching on the full name would not have saved it either — the name embeds location
+    and utility_class, and both had changed between runs.
+
+    So the match is on the ID PREFIX (`"133852 "`), which is the only stable part.
+    """
+    want = f"{inc['id']} "
+    hits = [(n, f) for n, f in _children(DAMAGES_FOLDER) if n.startswith(want)]
+    if len(hits) > 1:
+        # Duplicates already exist from before this fix. Take the one that actually holds the
+        # files — the empty shells sort no differently by name, so content is the only tiebreak.
+        hits.sort(key=lambda h: -sum(1 for _ in _children(h[1])))
+        print(f"  !! {len(hits)} Drive folders exist for damage {inc['id']} — using the fullest "
+              f"({hits[0][0][:60]}). Merge and bin the empties.")
+    if hits:
+        print(f"  drive folder: reusing {hits[0][0]}")
+        return hits[0][1]
+    fid = drive("create-folder", folder_name(inc), DAMAGES_FOLDER)
+    print(f"  drive folder: created {folder_name(inc)}")
+    return fid
+
+
+def subfolder(parent, name):
+    """documents/ or photos/ under a damage's home — reused, never re-created."""
+    for n, fid in _children(parent):
+        if n == name:
+            return fid
+    return drive("create-folder", name, parent)
+
+
 def folder_name(inc):
     town = (inc.get("location") or "location not stated")[:48]
     util = (inc.get("utility_class") or "utility not classified").replace("Electric — ", "Electric ")
@@ -185,9 +232,9 @@ def main():
         return
 
     # ---- Drive ----------------------------------------------------------
-    root = drive("create-folder", folder_name(inc), DAMAGES_FOLDER)
-    dsub = drive("create-folder", "documents", root)
-    psub = drive("create-folder", "photos", root)
+    root = incident_folder(inc)
+    dsub = subfolder(root, "documents")
+    psub = subfolder(root, "photos")
     idx = []
     for f in files:
         target = psub if f in photos else (root if f in pdfs else dsub)

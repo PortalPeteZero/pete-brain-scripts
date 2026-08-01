@@ -41,11 +41,46 @@ def rest(path, method="GET", body=None, headers=None):
         t = r.read().decode()
         return json.loads(t) if t else None
 
+def rest_all(path, page=1000):
+    """Every row, not the first 1,000.
+
+    PostgREST enforces a server-side max-rows (1,000 here) and SILENTLY ignores a larger `limit`
+    in the query string. Found 1 Aug 2026: the answers query asked for 20,000, got 1,000, and the
+    per-damage pages had been rendering the Q&A for only the first 13 incidents of 535 — with no
+    error anywhere. Anything that can exceed 1,000 rows must come through here.
+    """
+    out = []
+    while True:
+        lo = len(out)
+        got = rest(path, headers={"Range-Unit": "items", "Range": f"{lo}-{lo + page - 1}"})
+        if not got:
+            break
+        out.extend(got)
+        if len(got) < page:
+            break
+    return out
+
+
 # ---------------------------------------------------------------- data
 
 def load():
-    inc = rest("clancy_dn_incidents?select=*&order=incident_date.desc&limit=10000")
-    act = rest("clancy_dn_actions?select=*&order=date_raised.desc&limit=10000")
+    # NOT select=* any more. raw_api holds the whole Depotnet payload (4.3MB across the year)
+    # and would be serialised into every page. PostgREST has no "exclude", so the wanted columns
+    # are listed. A column added later is simply absent here until it is added — deliberate, so
+    # nothing new reaches a customer page without somebody deciding it should.
+    INC_COLS = ("id,date_raised,incident_date,category,subcategory,raised_by,job_id,job_ref,"
+                "contract,contract_family,contract_number,workstream,business_unit,location,"
+                "severity,subcontractor,description,status,fy,utility_class,utility_keyword,"
+                "utility_confirmed,pdf_captured_at,capture_drive_folder,strike_category,"
+                "strike_subcategory,depth_mm,lat,lon,environment,caused_by_person,caused_by_plant,"
+                "service_interrupted,reported_to_owner_at,root_cause,underlying_cause,"
+                "lessons_learnt,incident_summary,capture_incident,capture_actions,capture_note,"
+                "actions_captured_at,sygma_summary,sygma_findings,sygma_next_actions,"
+                "sygma_reviewed_at,sygma_narrative,sygma_report_url,sygma_operatives,"
+                "sygma_supervisor,sygma_stage_note,sygma_cause,sygma_shareable,sygma_drive_folder,"
+                "timeline,report_submitted_at,report_submitted_by,include_investigation")
+    inc = rest_all(f"clancy_dn_incidents?select={INC_COLS}&order=incident_date.desc")
+    act = rest_all("clancy_dn_actions?select=*&order=date_raised.desc")
     for r in inc:
         r.pop("embedding", None)
     for a in act:
@@ -76,15 +111,18 @@ def load():
     # any documents attached to it. These live in their own Drive folder, which is NOT the same
     # folder as the Sygma panel-review material, so a page that renders only the review folder shows
     # none of them.
-    files = rest("clancy_dn_files?select=incident_id,kind,name,drive_id,drive_folder&order=kind,name&limit=20000")
+    files = rest_all("clancy_dn_files?select=incident_id,action_id,kind,name,drive_id,drive_folder&order=incident_id,kind,name")
     # The full investigation Q&A. 2,404 rows were being captured and then never shown anywhere —
     # the richest material we hold, invisible on the page. (Pete, 31 Jul: ensure everything the
     # agent pulled in is actually there.)
-    answers = rest("clancy_dn_answers?select=incident_id,section,q_no,question,answer&order=incident_id,section,q_no&limit=20000")
+    # Unanswered rows are now KEPT. The API returns the full question set with answer:null,
+    # so "this mandatory question is blank" is recordable for the first time — that is the
+    # difference between "no investigation" (which we cannot know) and "the investigation
+    # report section has not been completed" (which we can).
+    answers = rest_all("clancy_dn_answers?select=incident_id,section,q_no,question,answer,mandatory,answered&order=incident_id,section,q_no")
     aby = defaultdict(list)
     for x in answers:
-        if (x.get("answer") or "").strip():
-            aby[x["incident_id"]].append(x)
+        aby[x["incident_id"]].append(x)
     fby = defaultdict(list)
     for f in files:
         fby[f["incident_id"]].append(f)
@@ -749,8 +787,12 @@ const FLD=[["id","Depotnet ID"],["incident_date","Incident date"],["date_raised"
  ["contract_number","Contract number"],["workstream","Workstream"],["business_unit","Business unit"],
  ["job_id","Job ID"],["job_ref","Job ref"],["location","Location"],["severity","Severity"],
  ["status","Status"],["raised_by","Raised by"],["subcontractor","Subcontractor"]];
+// closed_at / closed_by / location exist ONLY behind the action's View modal on Depotnet —
+// never in the Action Report export. Seven of this year's nine actions read "Closed" with no
+// closure detail at all until they were captured on 1 Aug 2026.
 const AFLD=[["id","Action ID"],["date_raised","Raised"],["raised_by","Raised by"],["due_date","Due"],
- ["assigned_to","Assigned to"],["status","Status"],["incident_status","Incident status at export"],
+ ["assigned_to","Assigned to"],["status","Status"],["closed_at","Closed"],["closed_by","Closed by"],
+ ["location","Location"],["incident_status","Incident status at export"],
  ["severity","Severity"],["action_classification","Classification"],["question","Question"]];
 function fmtTs(v){{if(!v)return null;const s=String(v);return s.slice(0,10)+(s.length>10?' '+s.slice(11,16):'');}}
 function pill(t,cls){{return '<span class="pill '+cls+'">'+t+'</span>';}}
@@ -781,9 +823,12 @@ function render(){{
  const blank = r.capture_incident==='no-investigation';
  const anyInv = INV.some(([,k])=>r[k]);
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Conclusions and lessons</h2>'
-   +'<span class="note">'+(blank?'Depotnet investigation is BLANK':(anyInv?'from the Depotnet investigation':'nothing recorded'))+'</span></div>';
+   +'<span class="note">'+(blank?'investigation report section not completed'
+       :(anyInv?'from the investigation report section':'nothing recorded'))+'</span></div>';
  if(blank){{
-   h+='<div class="invbox invnone"><b>No investigation has been done.</b> The incident PDF is captured and Depotnet&rsquo;s investigation section is empty. That is a recorded gap, not a capture failure.</div>';
+   h+='<div class="invbox invnone"><b>The investigation report section has not been completed.</b> '
+     +'The incident report is complete; the Report tab on Depotnet is empty. That is what the '
+     +'record shows &mdash; it does not tell us whether anyone looked into the damage.</div>';
  }}
  INV.forEach(([lab,k])=>{{
    const v=(r[k]||'').toString().trim();
@@ -798,41 +843,99 @@ function render(){{
  h+='</div>';
  // The full investigation, question by question — captured since the deep-capture began and never
  // shown until now. Grouped by section, blank answers dropped at load.
+ // We now hold the FULL question set, including the ones nobody answered — the API returns
+ // answer:null where the PDF simply omitted the row. So a blank required field is visible as a
+ // blank required field, instead of being indistinguishable from a question never asked.
  const ans=(D.answers||{{}})[id]||[];
+ const nAns=ans.filter(a=>a.answered).length, nBlank=ans.length-nAns;
+ const nReqBlank=ans.filter(a=>a.mandatory&&!a.answered).length;
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>The investigation in full</h2>'
-   +'<span class="note">'+(ans.length?ans.length+' answered question'+(ans.length==1?'':'s')+' from the Depotnet form':'nothing captured')+'</span></div>';
+   +'<span class="note">'+(ans.length
+      ? nAns+' of '+ans.length+' questions answered'+(nReqBlank?' \u00b7 '+nReqBlank+' required field'+(nReqBlank==1?'':'s')+' blank':'')
+      : 'nothing captured')+'</span></div>';
  if(!ans.length){{
-   h+='<p class="small muted">No investigation answers captured for this damage'
-     +(r.capture_incident==='no-investigation'?' — Depotnet\'s investigation is blank.':'.')+'</p>';
+   h+='<p class="small muted">Nothing captured for this damage yet.</p>';
  }} else {{
+   const SEC={{questions:'Incident report',investigation:'Investigation report section'}};
    const secs={{}}; ans.forEach(a=>{{(secs[a.section]=secs[a.section]||[]).push(a);}});
-   Object.keys(secs).forEach(sec=>{{
-     h+='<div class="fl" style="margin-top:14px">'+(sec==='questions'?'Incident questions':'Investigation')+'</div>';
-     h+='<div class="qa">'+secs[sec].map(a=>
-        '<div class="qarow"><div class="qaq">'+a.question+'</div><div class="qaa">'+a.answer+'</div></div>').join('')+'</div>';
+   ['questions','investigation'].forEach(sec=>{{
+     const rows=secs[sec]; if(!rows||!rows.length) return;
+     const ok=rows.filter(a=>a.answered).length;
+     h+='<div class="fl" style="margin-top:14px">'+(SEC[sec]||sec)
+       +' <span class="muted" style="font-weight:400">'+ok+' of '+rows.length+' answered</span></div>';
+     if(!ok){{
+       h+='<p class="small muted">Every one of these '+rows.length+' questions is blank on Depotnet.'
+         +' Listed below so you can see exactly what was asked and never filled in.</p>';
+     }}
+     h+='<div class="qa">'+rows.map(a=>
+        '<div class="qarow"><div class="qaq">'+a.question
+          +(a.mandatory?' <span class="muted" title="Depotnet marks this required">*</span>':'')+'</div>'
+        +'<div class="qaa'+(a.answered?'':' muted')+'">'
+          +(a.answered?a.answer:'<i>blank'+(a.mandatory?' \u2014 required':'')+'</i>')+'</div></div>').join('')
+       +'</div>';
    }});
  }}
  h+='</div>';
- // timeline across both sheets
- const ev=[];
- if(r.incident_date)ev.push([r.incident_date,'Damage occurred','']);
- if(r.date_raised)ev.push([r.date_raised,'Logged on Depotnet','by '+(r.raised_by||'—')]);
- acts.forEach(a=>{{
-  if(a.date_raised)ev.push([a.date_raised,'Action '+a.id+' raised','assigned to '+((a.assigned_to||'—').split(' (')[0])]);
-  if(a.due_date)ev.push([a.due_date,'Action '+a.id+' due',a.status==='Overdue'?'STILL OVERDUE':(a.status||'')]);
- }});
- ev.sort((x,y)=>String(x[0]).localeCompare(String(y[0])));
- h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Timeline</h2><span class="note">every date across both sheets</span></div><div class="tl">'
-   +ev.map(e=>'<div class="tle"><span class="mono tld">'+fmtTs(e[0])+'</span><b>'+e[1]+'</b> <span class="muted small">'+e[2]+'</span></div>').join('')+'</div></div>';
+ // ── Timeline ────────────────────────────────────────────────────────────────────────
+ // Depotnet's OWN audit trail, not our reconstruction from date fields. It is the only record
+ // of amendments, reopenings, uploads and chasers — e.g. "Is the investigation complete?:
+ // changed from 'No' to 'Yes'". Falls back to the derived version where we have not captured it.
+ const dtl=r.timeline||[];
+ if(dtl.length){{
+  const ICON={{'Action Created':'+','Action Closed':'\u2713','Action Reopened':'\u21ba',
+    'Action Amended':'\u270e','Report Amended':'\u270e','Report Submitted':'\u2713',
+    'Document Uploaded':'\u2191','Photo Uploaded':'\u2191','Video Uploaded':'\u2191',
+    'Photo Deleted':'\u2717','Action Reminder Email Sent':'\u2709','Action Assigned Email Sent':'\u2709'}};
+  const KEY=['Action Reopened','Report Submitted','Action Closed','Action Created'];
+  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Timeline</h2>'
+    +'<span class="note">Depotnet\u2019s own audit trail \u00b7 '+dtl.length+' entries</span></div>'
+    +'<div class="tl">'+dtl.map(function(e){{
+      const k=KEY.indexOf(e.what)>=0?' style="font-weight:700"':'';
+      return '<div class="tle"><span class="mono tld">'+fmtTs(e.at)+'</span>'
+        +'<b'+k+'>'+(ICON[e.what]||'\u00b7')+' '+(e.what||'\u2014')+'</b> '
+        +'<span class="muted small">'+(e.by||'')+'</span>'
+        +(e.detail?'<div class="small muted" style="margin:2px 0 0 96px;white-space:pre-wrap">'
+            +e.detail.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>':'')
+        +(e.file?'<div class="small muted" style="margin:2px 0 0 96px">file: '+e.file+'</div>':'')
+        +'</div>';}}).join('')+'</div></div>';
+ }} else {{
+  const ev=[];
+  if(r.incident_date)ev.push([r.incident_date,'Damage occurred','']);
+  if(r.date_raised)ev.push([r.date_raised,'Logged on Depotnet','by '+(r.raised_by||'\u2014')]);
+  acts.forEach(a=>{{
+   if(a.date_raised)ev.push([a.date_raised,'Action '+a.id+' raised','assigned to '+((a.assigned_to||'\u2014').split(' (')[0])]);
+   if(a.due_date)ev.push([a.due_date,'Action '+a.id+' due',a.status==='Overdue'?'STILL OVERDUE':(a.status||'')]);
+  }});
+  ev.sort((x,y)=>String(x[0]).localeCompare(String(y[0])));
+  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Timeline</h2>'
+    +'<span class="note">derived from the dates we hold \u2014 Depotnet\u2019s own trail not captured for this damage</span></div><div class="tl">'
+    +ev.map(e=>'<div class="tle"><span class="mono tld">'+fmtTs(e[0])+'</span><b>'+e[1]+'</b> <span class="muted small">'+e[2]+'</span></div>').join('')+'</div></div>';
+ }}
  // actions in full
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Corrective actions'+(acts.length?' ('+acts.length+')':'')+'</h2>'
    +'<span class="note">'+(acts.length?'Action Report rows, in full':'')+'</span></div>';
  if(!acts.length){{h+='<p class="small muted">None — no row in the Action Report references this damage.</p>';}}
  else acts.forEach(a=>{{
   h+='<div class="acard"><div class="h2row"><b>'+((a.assigned_to||'Unassigned').split(' (')[0])+'</b><span>'+statusPill(a.status)+'</span></div>'
-    +'<div class="fgrid">'+AFLD.map(([k,l])=>{{const v=k.includes('date')?fmtTs(a[k]):a[k];return v?'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+v+'</div></div>':'';}}).join('')+'</div>'
+    +'<div class="fgrid">'+AFLD.map(([k,l])=>{{
+        // closed_at has no 'date' in its name but is very much a timestamp — matching on the
+        // field NAME printed a raw 2026-07-08T12:29:59.191378+00:00 on every closed action.
+        const raw=a[k];
+        const v=(k.includes('date')||k.includes('_at'))?fmtTs(raw):raw;
+        return v?'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+v+'</div></div>':'';}}).join('')+'</div>'
     +(a.description?'<div class="fl" style="margin-top:8px">What was asked</div><div class="det desc">'+a.description+'</div>':'')
     +(a.corrective_measure?'<div class="fl" style="margin-top:8px">What was done</div><div class="det desc">'+a.corrective_measure+'</div>':'<div class="small muted" style="margin-top:8px">No corrective measure recorded.</div>')
+    // The evidence an action was CLOSED on — permits, briefings, RAMS. It used to fall into the
+    // general incident file pile, where a permit that closed one specific action read as a loose
+    // incident document.
+    +(function(){{
+      const af=((D.files||{{}})[id]||[]).filter(f=>String(f.action_id)===String(a.id));
+      if(!af.length) return '';
+      return '<div class="fl" style="margin-top:10px">Evidence attached to this action ('+af.length+')</div>'
+        +'<div class="small">'+af.map(f=>f.drive_id
+          ?'<a href="https://drive.google.com/file/d/'+f.drive_id+'/view" target="_blank" rel="noopener">'+f.name+'</a>'
+          :'<span class="muted">'+f.name+' <span style="opacity:.7">(on Depotnet, not yet in Drive)</span></span>').join(' &middot; ')+'</div>';
+    }})()
     +'</div>';
  }});
  h+='</div>';
@@ -1266,6 +1369,23 @@ def fy_insights_page(inc, act, fykey):
 
 # ---------------------------------------------------------------- publish
 
+
+def vocab_gate(pages):
+    """Refuse to publish a page that names Depotnet wrongly or claims an absence the data cannot
+    support. clancy-dn-pages.py was NOT gated when the gate was built on 1 Aug 2026, which is
+    exactly how "No investigation has been done." survived on the per-damage page. Fail closed."""
+    import subprocess, sys as _s
+    bad = 0
+    for name, htm in pages.items():
+        r = subprocess.run([_s.executable, f"{VAULT}/clancy-vocab-check.py", "-"],
+                           input=htm, capture_output=True, text=True)
+        if r.returncode:
+            bad += 1
+            print(f"\n### {name}\n{r.stdout}")
+    if bad:
+        raise SystemExit(f"REFUSED to publish — {bad} page(s) need rewording (see above).")
+    print(f"vocab: {len(pages)} pages clean")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--local")
@@ -1283,6 +1403,7 @@ def main():
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
         pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, f)
+    vocab_gate(pages)
     if args.local:
         os.makedirs(args.local, exist_ok=True)
         for name, htm in pages.items():
