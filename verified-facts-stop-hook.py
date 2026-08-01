@@ -237,12 +237,66 @@ def evaluate(reply, tool_text):
     return out
 
 
+
+# --- UNQUALIFIED COMPARISON (added 1 Aug 2026) --------------------------------------------
+# Pete: "when you give me a comparison or analysis i need you to tell me specifically and exactly
+# for fucking what!" -- after I wrote "the sites above you sitting at DR 8 and DR 1 ... against your
+# DR 20" WITHOUT naming the search term. His words: "does it sit above me for fucking ice creams?"
+#
+# A ranking, a position or a DR comparison is MEANINGLESS without the exact thing it is for. The
+# seo-report skill's RULE ONE has said so since 23 Jul ("Every time you give me stats and a
+# position, I need to know for what") and there is a conduct memory saying it too. Both were text.
+# Text did not stop it happening again on 1 Aug, in the same session that built a gate for a
+# neighbouring version of the same fault. So it becomes a gate.
+#
+# NARROW BY DESIGN: fires only when the reply makes a rank/position/authority COMPARISON and the
+# same paragraph contains no quoted term (" ", ' ', ` `) and no explicit `for the term/query ...`.
+# Naming the term anywhere in that paragraph satisfies it -- this polices attribution, not style.
+COMPARISON = re.compile(
+    r"(?:\b(?:position|ranks?|ranking|outranks?|above (?:us|you|me)|beating (?:us|you)|"
+    r"median DR|DR \d|domain rating)\b)", re.I)
+NUMERIC = re.compile(r"\d")
+QUOTED = re.compile(r"[\"'`“‘]([^\"'`”’\n]{3,60})[\"'`”’]")
+FOR_TERM = re.compile(r"\bfor the (?:term|query|keyword|search)\b", re.I)
+
+def comparison_finding(reply):
+    """Return the offending paragraph, or None. Attribution check, not a correctness check."""
+    for para in re.split(r"\n\s*\n", reply or ""):
+        if not COMPARISON.search(para) or not NUMERIC.search(para):
+            continue
+        if QUOTED.search(para) or FOR_TERM.search(para):
+            continue
+        # a markdown table row carrying the term in its own cell is fine
+        if para.lstrip().startswith("|"):
+            continue
+        return para.strip()[:220]
+    return None
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except Exception:
         sys.exit(0)                                   # fail open
     reply, tools = read_transcript(payload.get("transcript_path", ""))
+
+    comp = comparison_finding(reply)
+    if comp:
+        sys.stderr.write(
+            "BLOCKED by verified-facts: you are giving Pete a ranking/authority comparison without "
+            "naming EXACTLY what it is for.\n"
+            f"  The paragraph: {comp}\n"
+            "  Every position, rank or DR comparison carries FOUR things:\n"
+            "    1. the exact search term, in quotes -- \"cat and genny training\", not \"the biggest term\"\n"
+            "    2. the measure  (impression-weighted position, Google UK)\n"
+            "    3. the window   (real dates, equal lengths when comparing)\n"
+            "    4. the source   (GSC or Ahrefs, never blended)\n"
+            "  1 Aug 2026: I wrote 'the sites above you sitting at DR 8 and DR 1 ... against your DR 20'\n"
+            "  with no term named. Pete: \"does it sit above me for fucking ice creams?\" -- and the claim\n"
+            "  was ALSO cherry-picked: the full SERP for \"cat and genny training\" has a median DR of 23\n"
+            "  against Sygma's 20, which is EVEN, not the weak field I described.\n"
+            "  Name the term, or do not make the comparison.\n")
+        sys.exit(2)
 
     cap = capability_finding(reply, tools)
     if cap:
