@@ -132,16 +132,6 @@ def build():
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
          AND i.pdf_captured_at IS NULL) AS inv_uncaptured,
-      (SELECT min(n) FROM (SELECT count(*) n FROM clancy_dn_answers x
-         JOIN clancy_dn_incidents i ON i.id=x.incident_id WHERE i.fy='FY26/27'
-         AND x.section='questions'
-         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
-         AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_lo,
-      (SELECT max(n) FROM (SELECT count(*) n FROM clancy_dn_answers x
-         JOIN clancy_dn_incidents i ON i.id=x.incident_id WHERE i.fy='FY26/27'
-         AND x.section='questions'
-         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
-         AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_hi,
       (SELECT count(*) FROM clancy_reports) AS reports,
       (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
          AND root_cause IS NOT NULL AND btrim(root_cause)<>'') AS analysed,
@@ -339,7 +329,7 @@ analysis with its evidence attached, sitting on {d['inspections']:,} usage inspe
 lessons learnt.</b> It is worth being precise about what sits behind that. Depotnet gives every
 damage a <b>Questions</b> tab, filled in at the time, and a <b>Report</b> tab, which is where the
 investigation gets written down. Of the {d['no_inv']}, <b>{d['inv_form']} have their Questions
-filled in</b> ({d['inv_lo']} to {d['inv_hi']} answers each) and <b>{rep_phrase}</b>. {uncap_phrase}<br><br>
+filled in</b> and <b>{rep_phrase}</b>. {uncap_phrase}<br><br>
 Two of them were opened on Depotnet directly rather than read from our copy: the Report loads in
 full, mandatory-field markers showing, and not one field has been answered. That tells us the
 Report is empty. It does not tell us whether anyone looked into the damage, and this page does not
