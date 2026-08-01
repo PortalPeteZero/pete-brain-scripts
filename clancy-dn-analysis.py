@@ -427,6 +427,9 @@ blockquote.q .src{display:block;margin-top:7px;font-size:11.5px;color:var(--fain
  padding:14px 18px;margin:14px 0;font-size:13.5px;color:var(--mid)}
 .flag b{color:var(--ink)}
 .none{font-size:13.5px;color:var(--faint);font-style:italic}
+ul.plain{margin:0 0 14px;padding-left:20px;max-width:78ch}
+ul.plain li{font-size:14.5px;color:var(--mid);margin-bottom:7px;line-height:1.55}
+ul.plain li b{color:var(--ink)}
 .dmgs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0 4px}
 @media(max-width:820px){.dmgs{grid-template-columns:1fr}}
 .dmg{border:1px solid var(--line);border-radius:12px;padding:15px 17px;background:#fbfcfd}
@@ -846,60 +849,56 @@ def build(edition, label):
 forms, its own words. Nothing here is Sygma&#8217;s opinion of what happened. Where the record does
 not say, this report says so rather than filling the gap.</p>
 
-<div class="sec"><h2>Why some damages have an investigation and some do not</h2>
-<div class="why">Checked on Depotnet directly, because the answer was not visible from the data
-alone.</div>
-<p>Every service damage on Depotnet carries the same set of tabs. One is <b>Questions</b>, the
-first-response report: what was hit, by whom, in what conditions, at what depth. Another is
-<b>Report</b>, which is the investigation: {ib['questions']} questions covering a named lead
-investigator, a named senior manager, the investigation team, the CAT and genny download review,
-the causes and the lessons. Many of its fields are marked mandatory.</p>
-<p><b>Every damage has the Report tab. It is the same form on all of them.</b> The difference is
-not that some damages lack an investigation section. It is that on <b>{blank_ok} of {n}</b> the
-form is <b>sitting blank</b> — every question present, every answer empty, the mandatory-field
-markers still showing. A further {blank_unk} ({bs['uncaptured']}) was raised in the last few days
-and we have not pulled its record down yet, so we do not know either way and it is counted
-separately rather than lumped in.</p>
-<p>Two of the {blank_ok} were opened directly on Depotnet to check this rather than inferring it
-from our own copy: <b>damage 117327</b> (Southern Water, 20 April) and <b>damage 119372</b> (UKPN,
-28 April). Both are more than three months old. On both, the Report tab loads in full and not one
-field has been answered. So this is not a gap in what we captured: our records match what is on
-screen.</p>
-<p>What we have <b>not</b> established is why. We checked two of the {blank_ok}, not all of them,
-and we do not know Clancy&#8217;s rule for when the Report has to be completed, who is meant to
-complete it, or whether anything prompts them. That is the question worth putting to Clancy, and
-it is a more useful one than any count on this page.</p></div>
+<div class="sec"><h2>The investigation, and what we can honestly say about it</h2>
+<div class="why">Written out in full because every other number on this page depends on it, and
+because two of these damages were opened on Depotnet directly to check it rather than trusting
+our own copy.</div>
 
-<div class="flag"><b>What &ldquo;has an investigation&rdquo; is based on, and what it is not.</b>
-Where this report says a damage carries an investigation, it means one specific thing: the Depotnet
-record contains the <b>Investigation section</b> — {ib['questions']} questions covering a named lead
-investigator, a named senior manager, an incident summary, root and underlying cause, a
-lessons-learnt entry, and the CAT and genny download review. <b>{ib['has_section']} of {n} carry
-it.</b><br><br>
-<b>Nobody starts it and abandons it.</b> A damage either holds none of that section at all, or
-holds between {shape['lo']} and {shape['hi']} of its {ib['questions']} questions answered. Nothing
-sits in between. The {shape['lo']}-to-{shape['hi']} spread is not part-completion either:
-{universal} of the {ib['questions']} questions are answered on every one of the
-{ib['has_section']}, and the rest are follow-ups that only appear when they apply &mdash; the
-second, third, fourth and fifth investigation team member show up on {team} damages
-respectively, which is what a repeating optional field looks like, not an unfinished form.<br><br>
-Whether it is <i>finished</i> is a separate question, and Depotnet answers it itself. Its own field
-&ldquo;Is the investigation complete?&rdquo; is asked of every damage that carries the section, and
-all {ib['has_section']} give an answer: <b>yes on {ib['complete']}</b>, <b>no on
-{ib['not_complete']}</b>, none left blank. The remaining <b>{no_section}</b> of {n} hold none of
-it ({blank_ok} confirmed blank on Depotnet, {blank_unk} we have not captured yet), so the question
-is never put to them. That accounts for all {n}. This report
-never calls all {ib['has_section']} complete: it reports the section as present, and
-Depotnet&#8217;s own verdict separately.<br><br>
-Of the {ib['not_complete']} marked not complete, {not_complete_closed} is on a damage that has
-been <b>closed</b> ({not_complete_closed_ids}). We do not know whether that is an oversight, a
-sequencing quirk of the form, or normal for Clancy.<br><br>
-<b>How to read a blank.</b> A field with nothing in it is not evidence that the work did not
-happen. The investigation is filled in as part of closing an incident, so a missing cause almost
-always means the damage is still open rather than that nobody looked into it. The same caution
-applies to corrective actions: one we cannot see may not have been raised, or may simply not be in
-the export we hold. Nothing below is put forward as a failure unless the record can carry that
-weight.</div>
+<p>Every service damage on Depotnet has two forms behind it. The <b>first-response report</b> is
+filled in at the time: what was hit, by whom, in what conditions, at what depth. Every damage this
+year has one. The <b>investigation</b> is the serious one: a named lead investigator, a named
+senior manager, the investigation team, the CAT and genny download review, the causes, and the
+lessons. It is the same form on every damage, and many of its fields are marked as required.</p>
+
+<p>Where this report says a damage &ldquo;has an investigation&rdquo;, it means somebody has filled
+that second form in. As it stands:</p>
+<ul class="plain">
+ <li><b>{ib['has_section']} of the {n} have been filled in.</b></li>
+ <li><b>{blank_ok} are completely empty.</b> The form is sitting there, every field untouched.</li>
+ <li><b>{blank_unk} we have not looked at yet</b> ({bs['uncaptured']}, raised on 30 July). We have
+     not pulled its record down, so we cannot say either way, and it is counted on its own rather
+     than lumped in with the empty ones.</li>
+</ul>
+
+<p><b>There are no half-done ones.</b> Every investigation on the system is either untouched or
+worked all the way through. Nothing is sitting part-finished, waiting on somebody to come back
+to it.</p>
+
+<p><b>The empty ones are empty on Depotnet, not just in our copy.</b> We opened two of them on the
+system itself: <b>damage 117327</b> (Southern Water, 20 April) and <b>damage 119372</b> (UKPN, 28
+April), both more than three months old. On both, the investigation form loads in full and not a
+single field has been answered. So this is not something we failed to collect.</p>
+
+<p><b>Filled in is not the same as finished</b>, and Depotnet asks that itself. On every damage
+that has an investigation it puts the question &ldquo;Is the investigation complete?&rdquo; Of the
+{ib['has_section']}, it says <b>yes on {ib['complete']}</b> and <b>no on {ib['not_complete']}</b>.
+Nobody left it blank. So this report never treats all {ib['has_section']} as complete: it reports
+the form as filled in, and Depotnet&#8217;s own verdict separately. Of the {ib['not_complete']} marked not complete,
+{not_complete_closed} sits on a damage that has already been <b>closed</b>
+({not_complete_closed_ids}), and we do not know whether that is an oversight, a quirk of the form,
+or normal here.</p>
+
+<p><b>What we cannot tell you is why the {blank_ok} are empty.</b> We looked at two of them, not
+all {blank_ok}, and we do not know Clancy&#8217;s own rule for when an investigation has to be
+done, who is meant to do it, or whether anything chases it. That is the question worth asking, and
+it is a better one than any number on this page.</p></div>
+
+<div class="flag"><b>A blank is not proof that nothing happened.</b> A field with nothing in it is
+not evidence that the work was skipped. The investigation is filled in as part of closing a damage,
+so a missing cause usually means the damage is still open rather than that nobody looked into it.
+The same caution applies to corrective actions: one we cannot see may not have been raised, or may
+simply not be in the export we hold. Nothing on this page is put forward as a failure unless the
+record can carry that weight.</div>
 
 <div class="kpis">
  <div class="kpi"><div class="n">{n}</div><div class="l">service damages<br>this financial year</div></div>
@@ -908,7 +907,7 @@ weight.</div>
  <div class="kpi warn"><div class="n">{h['supply_lost']}</div><div class="l">interrupted a<br>customer&#8217;s supply</div></div>
  <div class="kpi warn"><div class="n">{h['still_open']}</div><div class="l">still open<br>on Depotnet</div></div>
  <div class="kpi"><div class="n">{ib['has_section']}</div>
-  <div class="l">carry the Depotnet<br>investigation section</div></div>
+  <div class="l">investigations<br>filled in</div></div>
 </div>
 
 <div class="kpis">
@@ -962,10 +961,10 @@ other of the two fields and are set aside below. That leaves {usable_line}</p>
 <div class="sec"><h2>5. Where the process holds, and where it stops</h2>
 <div class="why">Split by whether the incident is closed, because that is what decides whether an
 investigation exists yet.</div>
-<table class="t"><tr><th>Status</th><th>Damages</th><th>Investigation section present</th>
+<table class="t"><tr><th>Status</th><th>Damages</th><th>Investigation filled in</th>
 <th>Depotnet says complete</th><th>Depotnet says not complete</th></tr>
 {status_rows}</table>
-<p style="margin-top:16px"><b>Every damage closed this year carries the investigation section.
+<p style="margin-top:16px"><b>Every damage closed this year has its investigation filled in.
 {d['closed_n']} of {d['closed_n']}.</b> That is worth saying plainly, because it means the
 investigation process itself is not the problem: when a damage reaches closure, the section gets
 filled in. Depotnet marks {closed_complete} of those {d['closed_n']} as complete and
@@ -994,13 +993,13 @@ on this page to fix.</p>
 {dupe_note}
 
 <div class="sec"><h2>7. By contract, and a question we cannot answer</h2>
-<div class="why">Shown with age, open count and the investigation section side by side, because
+<div class="why">Shown with age, open count and the filled-in investigations side by side, because
 any one of those columns on its own would be misleading.</div>
 <table class="t"><tr><th>Contract</th><th>Damages</th><th>Average age</th><th>Still open</th>
-<th>Investigation section present</th></tr>{contract_rows}</table>
+<th>Investigation filled in</th></tr>{contract_rows}</table>
 <p style="margin-top:16px">There is real variation here and we cannot tell you what causes it.
 Age does not account for it: Anglian&#8217;s damages are the youngest of any contract at an average
-of {anglian_age} days, yet 7 of their 8 already carry the investigation section, while Scottish
+of {anglian_age} days, yet 7 of their 8 already have their investigation filled in, while Scottish
 Water&#8217;s average {scottish_age} days and carry it on 2 of 4.</p>
 <p>What we do <b>not</b> know is how Clancy work Depotnet in practice: whether an investigation is
 required at a fixed point, what triggers closure, whether different contracts are administered by
