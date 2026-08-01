@@ -32,6 +32,18 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 PROP = "sygma-solutions-website"
 SECTIONS = {"avoidance": "Avoidance", "mapping": "Utility Mapping"}
 
+# VOLUME FLOOR -- monthly searches below this cannot be presented as an opportunity.
+# WHY (1 Aug 2026): "eusr superuser training" was recommended to Pete as a priority because it showed
+# 376 impressions at position 4.5. Divided back out that is ~2 searches a DAY, and Ahrefs puts the term
+# at 10/month -- it is a course Sygma invented, so almost nobody searches for it by name. Going 5 -> 1
+# on it would win a handful of clicks a month. Pete caught it: "i cant see people searching that much
+# for eusr superuser, its a very specific course we designed".
+# THE TRAP: a 90-day impression TOTAL flatters a low-volume term. 376 reads big; 2/day does not.
+# THE RULE, enforced below and not merely written down: volume first, position second. Every
+# opportunity line prints monthly volume AND impressions-per-day, and anything under the floor is
+# labelled LOW VOLUME so it can never again be dressed up as a priority.
+LOW_VOLUME_FLOOR = 20
+
 
 def sql(q):
     r = subprocess.run(["python3", "cc-sql.py", q], cwd=VAULT, capture_output=True, text=True,
@@ -144,7 +156,9 @@ def report(section_key, days):
         c = classify(r)
         if c:
             work.append((c[1], c[0], r))
-    work.sort(key=lambda x: (x[0], -(x[2]["impr"] or 0)))
+    # Rank by monthly VOLUME, never by impressions. Sorting by impressions is what pushed a
+    # 10/month term to the top of a priority list on 1 Aug 2026 (see LOW_VOLUME_FLOOR above).
+    work.sort(key=lambda x: (x[0], -(x[2].get("vol") or 0), -(x[2]["impr"] or 0)))
     if not work:
         print("  nothing crosses the thresholds.")
     # Show a slice of EVERY category. A flat top-N sorted by priority let the largest category fill
@@ -159,17 +173,19 @@ def report(section_key, days):
             continue
         shown[label] = shown.get(label, 0) + 1
         display.append((rank, label, r))
+    print(f"  {'':<19}{'keyword':<40}{'vol/mo':>8}{'impr/day':>10}{'pos':>7}   detail")
     for rank, label, r in display:
-        extra = ""
+        vol = r.get("vol") or 0
+        perday = (r["impr"] or 0) / float(days)
+        lowvol = " ⚠LOW VOLUME" if vol < LOW_VOLUME_FLOOR else ""
         if label == "WRONG PAGE":
-            extra = f"  ranks via {r['ranks_via']} not {r['target_page']}"
-        elif label == "STRIKING DISTANCE":
-            extra = f"  pos {r['wpos']} on {r['impr']} impr -> {r['target_page']}"
+            extra = f"ranks via {r['ranks_via']} not {r['target_page']}"
         elif label == "SLIPPED":
-            extra = f"  {r['prev_wpos']} -> {r['wpos']} on {r['impr']} impr"
+            extra = f"was {r['prev_wpos']}"
         else:
-            extra = f"  {r['impr']} impr -> {r['target_page']}"
-        print(f"  [{label:<17}] {r['keyword'][:40]:<42}{extra}")
+            extra = f"-> {r['target_page']}"
+        print(f"  [{label:<17}]{r['keyword'][:39]:<40}{vol:>8}{perday:>10.1f}"
+              f"{(r['wpos'] if r['wpos'] is not None else '-'):>7}   {extra}{lowvol}")
     counts = {}
     for _, l, _ in work:
         counts[l] = counts.get(l, 0) + 1
@@ -177,6 +193,9 @@ def report(section_key, days):
         if n > PER_CAT:
             print(f"  ... {l}: showing {PER_CAT} of {n}")
     print(f"\n  totals: " + " | ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    print(f"  VOLUME FIRST, POSITION SECOND. vol/mo is monthly searches (Ahrefs); anything under "
+          f"{LOW_VOLUME_FLOOR}/mo is flagged LOW VOLUME and is not a priority however good its position. "
+          f"A 90-day impression total flatters a low-volume term -- impr/day is the honest read.")
     return rows
 
 
