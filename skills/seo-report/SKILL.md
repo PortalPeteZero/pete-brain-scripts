@@ -140,6 +140,69 @@ correct you."
 - **No registry?** Say so, and treat creating one (with Pete) as the first recommendation — never
   freelance page jobs on a property that has no recorded strategy.
 
+
+## ⛑ SYGMA: THE STANDING SETUP — READ THIS BEFORE ANY SYGMA SEO WORK
+
+Built 1 Aug 2026 in a session that started as "run the health check" and became a rebuild, because
+every previous Sygma session went round the same circles. **If you follow this section you do not
+have to re-derive any of it.** Everything below is live and verified.
+
+### The one rule that resolves most arguments
+`public.seo_keyword_map` is the **SSOT for what Sygma targets**. 484 commercial keywords, 43 pages,
+two sections (Avoidance 334 / Utility Mapping 150). Nothing may be reported that is not in it, and
+Ahrefs does not decide the list — the map does, and `ahrefs-api.py sync_project_to_map()` makes the
+Rank Tracker mirror it. Changes are audited in `seo_keyword_map_history`.
+Rules the map enforces: every term carries a buying qualifier (no bare topics); every concept has
+BOTH its `training` and `course` variant; no brands Sygma does not teach (Leica out, Vivax/MALA/
+Radiodetection in — those are real Sygma courses).
+
+### The commands, in the order you will want them
+| question | command |
+|---|---|
+| "how are we doing for **one term**?" | `seo-term.py "<term>"` — deterministic, identical every run |
+| "how is **Avoidance / Mapping** doing, and what needs work?" | `seo-section-report.py avoidance\|mapping` |
+| "did anything actually **move**?" | `seo-movement.py --write` |
+| capture the week (rolling 4-week board) | `seo-week-snapshot.py` |
+| the whole picture, four sources | `skills/sygma-health-report/scripts/build_report.py` |
+| who is above us on a term | `ahrefs-api.py` → `tracked_serp(9613452, "<term>")` — **FREE** |
+
+**The CC home: `/m/sygma-keyword-board`** (Sygma → Keyword Board). Reads
+`seo_keyword_map` + `seo_term_weekly` + `seo_term_movement` LIVE. Every mapped keyword, a column per
+week, sortable, with the movement verdict. **Do not build a second view of this.**
+
+### The four numbers traps, all of which cost a session before being closed
+1. **Clicks come from `seo_gsc_page_daily`, NEVER by summing `seo_gsc_daily`.** The latter is
+   query-grain and Google withholds low-volume queries, so summing it lost **73% of clicks**
+   (125 vs 464 site clicks/28d, measured 1 Aug). Per-term position and impressions still come from
+   `seo_gsc_daily` — that is what it is valid for.
+2. **Never renumber SERP rows.** Ahrefs returns duplicate positions (an AI overview and its
+   sitelinks all at 1). Filtering to organic and counting 1..N invents a flattering number — it
+   produced "Sygma is 3rd" when Ahrefs' own field said 5.
+3. **Volume first, position second.** A 90-day impression TOTAL flatters a low-volume term:
+   "eusr superuser training" showed 376 impressions at position 4.5, which is ~2 searches a day on a
+   10/mo term for a course Sygma invented. `seo-section-report` enforces this and flags anything
+   under 20/mo as ⚠LOW VOLUME.
+4. **GSC position ≠ organic position.** For the search term "cat and genny training" Sygma is 5th
+   (Ahrefs, desktop snapshot) and 12.9 (GSC, impression-weighted, 28d). Both true. Say which.
+
+### Judging whether work worked
+`seo-movement.py` compares **28-day windows, not weeks** — weekly was tried first and called 2 of 133
+terms real, which is useless at Sygma's impression volumes. A change counts only if it beats **half
+the term's own daily spread**, where that spread is impression-weighted per day and excludes days
+under 3 impressions (raw min/max let single 1-impression rows from OTHER pages set the band).
+Verdicts: `IMPROVED` · `DECLINED` · **`INVISIBLE`** (real demand, under a quarter of it arriving as
+impressions — we rank too low to be shown; this is a finding, not missing data) · `NOISE` ·
+`LOW TRAFFIC` (genuinely small, nothing to judge).
+
+### Current state, 1 Aug 2026 (re-run the commands rather than quoting these forward)
+IMPROVED 21 · DECLINED 5 · INVISIBLE 15 · NOISE 107 · LOW TRAFFIC 336.
+The **INVISIBLE 15 are the work list** — real demand Sygma is not being shown for, e.g. the
+safe-digging cluster (230 searches/mo drawing 14 impressions).
+Open, site-side, not started: strip ZSI + OSCA off the Utility Mapping hub · the hub's nav placement
+· its title carrying PAS128 against its own course page · the HSG47 lane split (the explainer
+outranks the course page on every HSG47 commercial term — the lock that blocked this was OPENED
+1 Aug, `locked_pages` is now empty).
+
 ## The five principles (never break these)
 
 1. **GSC is the scoreboard, Ahrefs is the map.** Judge our own rank/traffic on GSC (Google's own data,
