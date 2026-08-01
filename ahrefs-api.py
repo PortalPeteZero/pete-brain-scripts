@@ -257,6 +257,35 @@ class AhrefsAPI:
                 out.append({**r, "organic_position": len(out) + 1})
         return out
 
+    def tracked_serp(self, project_id, keyword, country="gb", device="desktop", organic_only=True,
+                     select="position,url,type,domain_rating,url_rating,backlinks,refdomains,traffic"):
+        """The SERP for a keyword IN A RANK TRACKER PROJECT -- and it is FREE (0 units).
+
+        USE THIS, NOT serp_overview(), for anything in the tracker (which since 1 Aug 2026 is
+        exactly seo_keyword_map). Measured 1 Aug 2026:
+          · serp-overview/serp-overview  -- ~1,094 units for a populated SERP, and it returned
+            `{"positions": []}` for many real terms ("gpr training", "rd8000 training", …)
+          · rank-tracker/serp-overview   -- **0 units**, 36 rows on the same terms, carries DR /
+            refdomains / traffic, AND includes OUR OWN row so the comparison is direct
+        I had defaulted a winnability view to OFF to protect a budget it never needed to spend.
+        Requires device AND country AND keyword AND project_id -- all four, or it 400s.
+
+        Same SERP-feature trap as serp_overview: `type` is a LIST and the response mixes AI
+        overviews / sitelinks in with organic. organic_only=True renumbers real organic 1..N.
+        """
+        rows = self.call("rank-tracker/serp-overview",
+                         {"project_id": project_id, "keyword": keyword, "country": country,
+                          "device": device, "select": select}).get("positions", [])
+        if not organic_only:
+            return rows
+        out = []
+        for r in rows:
+            t = r.get("type")
+            t = t if isinstance(t, list) else ([t] if t else [])
+            if any("organic" in str(x) for x in t):
+                out.append({**r, "organic_position": len(out) + 1})
+        return out
+
     def competitors_overview(self, project_id, select="competitor_domain,keywords_count"):
         return self.call("rank-tracker/competitors-overview",
                          {"project_id": project_id, "select": select}).get("competitors", [])

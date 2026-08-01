@@ -25,7 +25,8 @@ for that and only that.
 
 Usage:
   VAULT=/tmp/pbs python3 seo-section-report.py avoidance|mapping|both [--days 28] [--json]
-                                              [--winnability N]   # PAID: SERP check on the top N opportunities
+                        [--winnability N]     # SERP check depth (default 10, paid ~572 units/term)
+                        [--no-winnability]    # skip the paid SERP check entirely
 """
 import os, sys, json, subprocess
 
@@ -200,41 +201,51 @@ def report(section_key, days):
     return rows
 
 
-def winnability(rows, top_n, days):
-    """For the top opportunities, WHO is above us and on what authority.
+def winnability(rows, top_n, days, project_id="9613452"):
+    """For the top opportunities: where WE sit organically, and who is above us on what authority.
 
-    Why this is worth units (added 1 Aug 2026): "striking distance" on its own only says a term is
-    CLOSE. It does not say whether the page above us is weak. On `hsg47 training` the pages at 4, 5
-    and 6 are DR 11, DR 0 and DR 8 with 0-1 referring domains each, against Sygma's DR 20 -- we
-    out-authority half of page one and sit at 21. That is a different instruction from "you are at
-    21". Ahrefs charges ~572 units per SERP, so this is OPT-IN (--winnability N), never automatic:
-    a cron may never spend money, and a routine report must stay free.
+    FREE. Uses rank-tracker/serp-overview (0 units) rather than serp-overview/serp-overview
+    (~1,094 units and empty for many real terms). Pete, 1 Aug 2026: "a routine report doesnt have
+    to stay free if its worth it its worth it" -- and having actually measured it, this one IS
+    free, so the opt-in I had built was protecting a budget that was never at risk.
     """
     import importlib.util
     spec = importlib.util.spec_from_file_location("ahrefs_api", f"{VAULT}/ahrefs-api.py")
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
     api = m.AhrefsAPI(caller="seo-section-report:winnability")
-    cand = [r for r in rows if r["wpos"] is not None and 4 <= float(r["wpos"]) <= 25
-            and (r.get("vol") or 0) >= LOW_VOLUME_FLOOR]
+    cand = [r for r in rows if (r.get("vol") or 0) >= LOW_VOLUME_FLOOR]
     cand.sort(key=lambda r: -(r.get("vol") or 0))
     cand = cand[:top_n]
-    print(f"\n--- 3. WINNABILITY (paid: ~572 Ahrefs units per term, {len(cand)} terms) ---")
-    print("    Who is ABOVE us organically, and on what authority. Sygma's own DR is the yardstick.")
+    print(f"\n--- 3. WINNABILITY ({len(cand)} terms, FREE via rank-tracker/serp-overview) ---")
+    print("    Where Sygma sits ORGANICALLY on each term, and the authority of everyone above it.")
+    print(f"    {'term':<40}{'vol':>5}{'ours':>6}{'ourDR':>7}{'aboveDR':>9}  field")
     for r in cand:
         try:
-            serp = api.serp_overview(r["keyword"])
+            serp = api.tracked_serp(project_id, r["keyword"])
         except Exception as e:
-            print(f"  {r['keyword'][:44]:<46} SERP pull FAILED: {str(e)[:60]}")
+            print(f"    {r['keyword'][:39]:<40}  SERP pull FAILED: {str(e)[:50]}")
             continue
-        drs = [float(x["domain_rating"]) for x in serp[:10] if x.get("domain_rating") is not None]
-        if not drs:
-            print(f"  {r['keyword'][:44]:<46} no organic DR data returned — cannot judge, say so")
+        if not serp:
+            print(f"    {r['keyword'][:39]:<40}  no SERP rows returned — cannot judge, say so")
             continue
-        med = sorted(drs)[len(drs)//2]
-        weak = sum(1 for d in drs if d < 20)
-        verdict = "WEAK field" if med < 20 else ("EVEN" if med < 35 else "STRONG field")
-        print(f"  {r['keyword'][:44]:<46} vol {r.get('vol') or 0:>4}  pos {r['wpos']:>5}  "
-              f"median DR above {med:>5.0f}  ({weak}/{len(drs)} under DR20)  {verdict}")
+        ours = next((x for x in serp if "sygma-solutions.com" in str(x.get("url") or "")), None)
+        above = [x for x in serp if ours and x["organic_position"] < ours["organic_position"]]
+        drs = [float(x["domain_rating"]) for x in (above or serp)[:10]
+               if x.get("domain_rating") is not None]
+        med = sorted(drs)[len(drs)//2] if drs else None
+        our_dr = ours.get("domain_rating") if ours else None
+        pos = ours["organic_position"] if ours else None
+        if med is None:
+            verdict = "no DR data"
+        elif our_dr is not None and med < float(our_dr):
+            verdict = "WEAKER than us — winnable on authority"
+        elif med is not None and our_dr is not None and med < float(our_dr) + 10:
+            verdict = "EVEN"
+        else:
+            verdict = "STRONGER than us"
+        print(f"    {r['keyword'][:39]:<40}{r.get('vol') or 0:>5}"
+              f"{(pos if pos else '-'):>6}{(our_dr if our_dr is not None else '-'):>7}"
+              f"{(round(med) if med is not None else '-'):>9}  {verdict}")
 
 
 def main():
@@ -243,7 +254,9 @@ def main():
         raise SystemExit(__doc__)
     days = int(args[args.index("--days")+1]) if "--days" in args else 28
     which = ["avoidance", "mapping"] if args[0] == "both" else [args[0]]
-    win = int(args[args.index("--winnability")+1]) if "--winnability" in args else 0
+    # ON by default -- see winnability() for the budget maths and why the old default was wrong.
+    win = 0 if "--no-winnability" in args else (
+        int(args[args.index("--winnability")+1]) if "--winnability" in args else 8)
     out = {}
     for s in which:
         out[s] = report(s, days)
