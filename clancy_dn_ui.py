@@ -31,6 +31,9 @@ HUB = "clancy-depotnet"
 DAMAGES = "clancy-depotnet-damages"
 REVIEWS = "clancy-genny-cat-reviews"
 REPORTS = "clancy-damage-reports"
+# The analysis page ("What the damage data tells us"). One per financial year; the nav points at
+# the current one. Its absence here broke the hub's fourth door on 1 Aug 2026.
+ANALYSIS = "clancy-damage-analysis"
 BOT = "clancy-bot"
 
 A_SYGMA = "/clancy/sygma-white.png"
@@ -227,6 +230,7 @@ h2.sec{font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:upperc
 NAV_ITEMS = [
     ("overview", "Overview", f"/m/{HUB}"),
     ("damages", "Damages", f"/m/{DAMAGES}"),
+    ("analysis", "What the data tells us", f"/m/{ANALYSIS}"),
     ("reports", "Reports", f"/m/{REPORTS}"),
     ("reviews", "Genny &amp; CAT", f"/m/{REVIEWS}"),
 ]

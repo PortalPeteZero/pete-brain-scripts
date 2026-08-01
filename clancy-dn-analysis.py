@@ -42,8 +42,16 @@ if not os.path.exists(f"{SEC}/command-centre-supabase-keys.json"):
     SEC = f"{VAULT}/Library/processes/secrets"
 k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = k["url"], k["service_role_key"]
-MK = "clancy-damage-analysis"
-FY = "FY26/27"
+# One script, one page per financial year. FY26/27 is the live analysis; earlier years are
+# scaffolds until their capture runs — the page says so plainly rather than looking thin.
+FY_PAGES = {
+    "FY26/27": {"mk": "clancy-damage-analysis",         "label": "FY 2026/27"},
+    "FY25/26": {"mk": "clancy-damage-analysis-2025-26", "label": "FY 2025/26"},
+    "FY24/25": {"mk": "clancy-damage-analysis-2024-25", "label": "FY 2024/25"},
+    "FY23/24": {"mk": "clancy-damage-analysis-2023-24", "label": "FY 2023/24"},
+}
+FY = os.environ.get("CLANCY_FY", "FY26/27")
+MK = FY_PAGES[FY]["mk"]
 
 
 def sql(q):
@@ -535,6 +543,7 @@ def yn(count, captured):
 
 def damage_table(d):
     rows, n = d["rows"], len(d["rows"])
+    n_notcomplete = sum(1 for r in rows if (r.get("inv_done") or "") == "NO")
     INV = {"YES": ("Complete", "closed"), "NO": ("Not complete", "open")}
     tr = []
     for r in rows:
@@ -548,10 +557,6 @@ def damage_table(d):
         else:
             inv_lab, inv_cls = INV.get(iv, ("Started", ""))
             inv_key = {"YES": "complete", "NO": "incomplete"}.get(iv, "started")
-        # the incident report (Depotnet's Questions section). Complete on every damage we
-        # hold; the only empty field across all of them is the photo-upload prompt.
-        inc_lab = "Complete" if r["inc_answers"] else "Not captured yet"
-        inc_key = "done" if r["inc_answers"] else "uncaptured"
         st = r["status"] or "Not stated"
         st_cls = "closed" if st.startswith("Closed") else ("open" if st == "Open" else "")
         dt = str(r["dt"])
@@ -559,15 +564,13 @@ def damage_table(d):
         hay = " ".join(str(x or "") for x in
                        (r["id"], r["contract"], r["service"], st, inv_lab)).lower()
         tr.append(
-            f'<tr data-inc="{inc_key}" data-c="{esc(r["contract"])}" data-s="{esc(r["service"])}" data-st="{esc(st)}" '
+            f'<tr data-c="{esc(r["contract"])}" data-s="{esc(r["service"])}" data-st="{esc(st)}" '
             f'data-inv="{inv_key}" data-cause="{r["cause"]}" data-lesson="{r["lesson"]}" '
             f'data-acts="{r["acts"]}" data-aout="{r["acts_out"]}" data-acls="{r["acts_closed"]}" data-cat="{r["cat"] or ""}" data-genny="{r["genny"] or ""}" '
             f'data-hay="{esc(hay)}">'
             f'<td class="id"><a href="{DAMAGE_URL.format(r["id"])}">{r["id"]}</a></td>'
             f'<td>{nice}</td><td>{esc(r["contract"])}</td><td>{esc(r["service"])}</td>'
             f'<td class="st"><span class="pill {st_cls}">{esc(st)}</span></td>'
-            f'<td><span class="pill {"closed" if r["inc_answers"] else ""}">'
-            f'{inc_lab}</span></td>'
             f'<td><span class="pill {inv_cls}">{inv_lab}</span></td>'
             f'<td class="c">{mark(r["cause"], allow_no=False)}</td>'
             f'<td class="c">{mark(r["lesson"], allow_no=False)}</td>'
@@ -618,7 +621,7 @@ list is right there with the Depotnet numbers to quote.</p>
 
 <div class="tscroll"><table class="reg"><thead><tr>
 <th>Damage</th><th>Date</th><th>Contract</th><th>Service</th><th>Status</th>
-<th>Incident<br>report</th><th>Investigation<br>report</th><th class="c">Cause</th><th class="c">Lesson</th>
+<th>Investigation<br>report</th><th class="c">Cause</th><th class="c">Lesson</th>
 <th class="c">Genny</th><th class="c">CAT</th><th class="c">Permit</th>
 <th class="c">Outstanding<br>actions</th><th class="c">Closed<br>actions</th><th class="n">Evidence</th>
 </tr></thead><tbody id="rtb">{"".join(tr)}</tbody></table>
@@ -629,6 +632,16 @@ list is right there with the Depotnet numbers to quote.</p>
   <span><span class="mk n">&#10007;</span> Depotnet records an explicit no</span>
   <span><span class="mk b">&ndash;</span> nothing recorded &mdash; not the same as a no</span>
 </div>
+<div class="flag"><b>What the three investigation states mean.</b> Every damage carries the
+same investigation report section, and it is never half-filled.
+<b>Complete</b> and <b>Not complete</b> are Depotnet&#8217;s own verdict &mdash; the last question
+on the form is &ldquo;Is the investigation complete?&rdquo; and Clancy answer it themselves. The
+{n_notcomplete} marked <b>Not complete</b> are <i>fully worked</i> forms; Clancy are saying the
+investigation is still running, not that the form is part-done. <b>Not started</b> means all 63 questions sit blank. There is no fourth state: no
+damage this year holds a partly-filled form.<br><br>
+The <b>Incident report</b> column has been removed. All 48 have one, so it distinguished nothing
+&mdash; a damage cannot reach the register without it.</div>
+
 <div class="flag"><b>Read the dash carefully.</b> A grey dash means the field is empty on Depotnet.
 It does not mean the answer was no, and it does not mean the thing did not happen. Genny, CAT and
 Permit are only asked inside the investigation report section, so on the damages where that
@@ -682,6 +695,10 @@ not recorded.</div>
 def build(edition, label):
     d = gather()
     dmg_table = damage_table(d)
+    # A year with no deep capture has NO investigation data, so every "not started / no cause /
+    # no lessons" count on this page would be OUR backlog wearing Clancy's name. The page says
+    # that at the top and the reader is told which sections are waiting on the capture.
+    d["scaffold"] = d["headline"]["captured"] == 0
     h, m = d["headline"], metrics_of(d)
     prior = sql("SELECT edition, label, published_at::date d, metrics FROM clancy_analysis_editions "
                 f"WHERE edition < {edition} ORDER BY edition DESC LIMIT 1")
@@ -863,7 +880,7 @@ def build(edition, label):
                        f"<td class='n'>{r['n']}</td></tr>" for r in d["by_severity"])
     supply_rows = "".join(f"<tr><td>{esc(r['v'])}</td><td class='n'>{r['inv']}</td>"
                           f"<td class='n'>{r['n']}</td></tr>" for r in d["by_supply"])
-    fylabel = "FY 2026/27"
+    fylabel = FY_PAGES[FY]["label"]
 
     return f"""{ui.head("What the damage data tells us | Genny&#8217;s Damage Depot", PAGE_CSS)}
 {ui.navbar("analysis")}
@@ -874,6 +891,16 @@ def build(edition, label):
 <div class="wrap body">
 {eds}
 
+{"" if not d["scaffold"] else (
+  '<div class="flag" style="border-left-color:#b45309"><b>This page is a scaffold. '
+  f'None of {fylabel}&#8217;s {n} damages has been captured yet.</b><br><br>'
+  'Everything below comes from the Incident Register alone &mdash; the date, the contract, the '
+  'location, the severity and the description. That is all the register carries.<br><br>'
+  '<b>Nothing on this page should be read as a finding about how Clancy investigate.</b> The '
+  'investigation report sections, the corrective actions, the causes, the lessons and the '
+  'attachments all sit behind the per-damage capture, which has not been run for this year. '
+  'Where a count below reads zero it means <b>we have not looked</b>, not that Depotnet is '
+  'empty. Run the capture and this page fills itself in.</div>')}
 <p class="lead">This is built only from what is on Depotnet: its own fields, its own
 forms, its own words. Nothing here is Sygma&#8217;s opinion of what happened. Where the record does
 not say, this page says so rather than filling the gap.</p>
