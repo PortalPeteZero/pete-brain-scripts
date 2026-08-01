@@ -190,8 +190,9 @@ def build():
 
     # read live, so both the zero case and the plural case have to read properly
     _r, _u = d["inv_report"], d["inv_uncaptured"]
-    rep_phrase = ("none has anything at all in its Report" if _r == 0 else
-                  f"{_r} ha{'s' if _r == 1 else 've'} something in the Report")
+    rep_phrase = ("none has started its investigation report section" if _r == 0 else
+                  f"{_r} ha{'s' if _r == 1 else 've'} started the investigation "
+                  f"report section")
     uncap_phrase = ("" if _u == 0 else
                     f"The remaining {'one' if _u == 1 else _u} we have not captured yet, so we "
                     f"cannot say either way.")
@@ -326,14 +327,16 @@ analysis with its evidence attached, sitting on {d['inspections']:,} usage inspe
 {d['gc_actions']:,} inspection actions in the database.</div>
 
 <div class="dnote"><b>{d['no_inv']} of this year&#39;s {d['cur']} damages carry no root cause and no
-lessons learnt.</b> It is worth being precise about what sits behind that. Depotnet gives every
-damage a <b>Questions</b> tab, filled in at the time, and a <b>Report</b> tab, which is where the
-investigation gets written down. Of the {d['no_inv']}, <b>{d['inv_form']} have their Questions
-filled in</b> and <b>{rep_phrase}</b>. {uncap_phrase}<br><br>
-Two of them were opened on Depotnet directly rather than read from our copy: the Report loads in
-full, mandatory-field markers showing, and not one field has been answered. That tells us the
-Report is empty. It does not tell us whether anyone looked into the damage, and this page does not
-claim it does.</div>
+lessons learnt.</b> It is worth being precise about what sits behind that. Every damage on
+Depotnet carries two sections: the <b>incident report</b>, filled in at the time, and the
+<b>investigation report section</b> (the <b>Report</b> tab), which is where a named lead
+investigator, the causes and the lessons are recorded. Of the {d['no_inv']},
+<b>{d['inv_form']} have a completed incident report</b> and <b>{rep_phrase}</b>.
+{uncap_phrase}<br><br>
+Two of them were opened on Depotnet directly rather than read from our copy: the section loads in
+full, mandatory-field markers showing, and not one field has been filled in. That tells us the
+investigation report section has not been completed. It does not tell us whether anyone looked
+into the damage, and this page does not claim it does.</div>
 
 <div class="dnote"><b>No corrective action has been raised on a service damage since
 {d['act_latest']}.</b> We hold <b>{d['actions']}</b> Service Damage actions, running back to
