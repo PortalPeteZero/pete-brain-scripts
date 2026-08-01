@@ -51,20 +51,44 @@ AHREFS_PROJECT = "9613452"
 # A single term's position is not a page's performance and must never be presented as one.
 # The headline now reports the SET (clicks + impressions + impression-weighted position). If you are
 # about to print one term as a page's number, you are re-entering the trap this comment exists to close.
-PAGES = [
-    {"path": "/courses/eusr-cat1", "kw": "eusr cat 1 training", "label": "EUSR CAT1",
-     "terms": ["eusr cat and genny training", "eusr cat 1 training", "eusr cat 1",
-               "eusr category 1", "locate utility services training"]},
-    {"path": "/courses/cat-and-genny-training", "kw": "cat and genny training", "label": "Cat & Genny",
-     "terms": ["cat and genny training", "cat and genny training near me", "cat and genny training online",
-               "cat scanner training", "cat and genny training courses"]},
-    {"path": "/courses/cable-avoidance-training", "kw": "cable avoidance training", "label": "Cable Avoidance",
-     "terms": ["cable avoidance training", "cable avoidance course", "online cable avoidance training",
-               "cable avoidance tool training", "cable avoidance courses uk"]},
-    {"path": "/courses/hsg47-training", "kw": "hsg47 training", "label": "HSG47",
-     "terms": ["hsg47 training", "hsg47 training near me", "hsg47 training course",
-               "hsg 47 training", "hsg47"]},
-]
+PAGES = []   # populated at run time from seo_keyword_map -- see _load_pages_from_map()
+
+
+def _load_pages_from_map(property_key="sygma-solutions-website"):
+    """THE deep-dive pages and their terms, read from seo_keyword_map (the SSOT).
+
+    WHY (1 Aug 2026, Pete: "make this map SSot everywhere, be through"): these four pages and their
+    term lists used to be hand-typed here. That is how a banned vanity term ("hsg47") and two bare
+    topics ("eusr cat 1", "eusr category 1") ended up being tracked and reported for months -- the
+    list nobody owned drifted from the list Pete had agreed. The map is now the only place a term
+    can enter a report, so a hand edit here cannot reintroduce one.
+
+    Head term per page = the highest-volume mapped keyword. Terms = the page's top mapped keywords
+    by monthly volume, commercial intent only.
+    """
+    import subprocess as _sp
+    q = ("SELECT target_page, cluster, keyword, COALESCE(priority,0) AS vol FROM seo_keyword_map "
+         "WHERE property_key='%s' AND intent='commercial' ORDER BY target_page, vol DESC" % property_key)
+    r = _sp.run(["python3", "cc-sql.py", q], cwd=VAULT, capture_output=True, text=True,
+                env={**os.environ, "VAULT": VAULT}, timeout=60)
+    if r.returncode != 0:
+        raise SystemExit("FAIL: could not read seo_keyword_map -- the report will NOT fall back to a "
+                         "hand-typed list. Fix the DB call. " + (r.stderr or r.stdout)[:200])
+    rows = json.loads(r.stdout or "[]")
+    if not rows:
+        raise SystemExit("FAIL: seo_keyword_map returned zero rows for %s. Refusing to report on an "
+                         "empty SSOT rather than inventing terms." % property_key)
+    by = {}
+    for row in rows:
+        by.setdefault(row["target_page"], []).append(row)
+    # the deep-dive set = the highest-volume pages, which is what "recently worked on" actually means
+    ranked = sorted(by.items(), key=lambda kv: -sum(r["vol"] for r in kv[1]))[:4]
+    out = []
+    for path, rs in ranked:
+        label = path.rstrip("/").split("/")[-1].replace("-", " ").title()
+        out.append({"path": path, "kw": rs[0]["keyword"], "label": label,
+                    "terms": [r["keyword"] for r in rs[:5]]})
+    return out
 
 # Authoritative state docs live in CC vault_notes and are read LIVE via _vault_note_body():
 #   - ads ledger    -> "Sygma Google Ads -- Account State" (## Recent changes ledger)
@@ -604,7 +628,9 @@ def build_md(A, G, GA, ADS):
 
 # ----------------------------- main -----------------------------------------
 def main():
-    print("[0/4] intent guard — every tracked term must carry a commercial qualifier…", flush=True)
+    print("[0/4] loading pages + terms from seo_keyword_map (the SSOT)…", flush=True)
+    PAGES[:] = _load_pages_from_map()
+    print(f"      {len(PAGES)} deep-dive pages: " + ", ".join(p["label"] for p in PAGES))
     _enforce_intent(PAGES)
     print("[1/4] Ahrefs (DR + 7-day rank tracker)…", flush=True); A = pull_ahrefs()
     print("[2/4] GSC (site + per-page)…", flush=True);             G = pull_gsc()

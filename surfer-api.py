@@ -184,6 +184,39 @@ class SurferAPI:
     def content_editors(self, limit=25):
         return self.call("GET", f"content_editors?page_size={limit}").get("data", [])
 
+    def keywords_for_page(self, page_path, property_key="sygma-solutions-website"):
+        """The page's target keywords, read from seo_keyword_map -- the SSOT.
+
+        WHY (1 Aug 2026, Pete: "make this map SSot everywhere, be through"): Surfer holds no
+        persistent keyword list of its own -- keywords are passed per audit. So the only way the map
+        can be authoritative for Surfer is if the audit READS it instead of someone hand-typing a
+        list. A hand-typed list is how the old health report ended up optimising toward terms nobody
+        had agreed, including a banned vanity term.
+        """
+        import subprocess as _sp, json as _j, os as _os
+        v = _os.environ.get("VAULT", "/tmp/pbs")
+        q = ("SELECT keyword FROM seo_keyword_map WHERE property_key='%s' AND target_page='%s' "
+             "AND intent='commercial' ORDER BY priority DESC NULLS LAST" % (property_key, page_path))
+        r = _sp.run(["python3", "cc-sql.py", q], cwd=v, capture_output=True, text=True,
+                    env={**_os.environ, "VAULT": v}, timeout=60)
+        if r.returncode != 0:
+            raise RuntimeError("cc-sql FAILED reading seo_keyword_map: " + (r.stderr or r.stdout)[:200])
+        return [row["keyword"] for row in _j.loads(r.stdout or "[]")]
+
+    def audit_from_map(self, url, page_path=None, top=5, location="United Kingdom", device="desktop"):
+        """Audit a live page against ITS OWN mapped keywords. Refuses if the map has none.
+
+        Surfer bills per Content Editor create, so this takes the top `top` keywords by monthly
+        volume rather than the whole set.
+        """
+        page_path = page_path or ("/" + url.split("/", 3)[-1] if url.count("/") > 2 else "/")
+        kws = self.keywords_for_page(page_path)
+        if not kws:
+            raise RuntimeError(f"REFUSING to audit {page_path}: it has no keywords in seo_keyword_map. "
+                               f"Add them to the map first -- the map decides what a page targets, "
+                               f"not whoever is running the audit.")
+        return self.audit_page(url, kws[:top], location=location, device=device)
+
     def audit_page(self, url, keywords, location="United Kingdom", device="desktop"):
         """Content audit of a LIVE page: 1 credit. Returns the created editor (poll for state=completed)."""
         body = {"keywords": keywords if isinstance(keywords, list) else [keywords],
