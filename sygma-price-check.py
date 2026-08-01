@@ -9,11 +9,12 @@ while reading a report about something else. Nothing checked it.
 
 THE RULE IT ENFORCES (Pete, 1 Aug 2026). Sygma charges two ways and only ONE may be published:
   · ON SITE      = a fixed day rate for the group.  NEVER publishable, in any form.
-  · OPEN COURSE  = a genuine per-delegate rate.     A "from £x" figure here is fine.
+  · OPEN COURSE  = a per-delegate rate.  "From £121 per delegate" IS the published price.
 
-And the trap that made the first fix insufficient: a per-person figure printed beside
-"day rate for up to 8" hands the day rate to anyone who multiplies. 121 x 8 = 968.
-So a per-person price and a group divisor must never appear on the same page.
+⚠ "From £121 per delegate" is NOT a finding. Pete ruled on it directly, twice, on 1 Aug 2026:
+keep it. I raised that 121 x 8 lands near the day rate; he decided, and his decision stands.
+A gate that fires on Pete's own approved output is worse than no gate. Do not re-add it.
+What must never be public is the DAY RATE ITSELF, in figures or by name.
 
 Certificate fees (EUSR £34, ProQual £35) are awarding-body pass-through, labelled as such
 on the page, and are explicitly ALLOWED.
@@ -36,7 +37,6 @@ BASE = "https://sygma-solutions.com"
 
 BANNED = [
     (r"\b965\b",                                   "the on-site group day rate figure"),
-    (r"£\s*121\b",                                 "the per-person figure derived from the day rate"),
     (r"day\s*rate",                                "names the day-rate model on a public page"),
     (r"not\s+per\s+(person|head)\b",               "'per course, not per person' stated as the model"),
     (r"per\s+course,\s*not\s+per",                 "'per course, not per person' stated as the model"),
@@ -78,13 +78,6 @@ def scan(url, body):
         for pat, why in BANNED:
             for m in re.finditer(pat, txt, re.I):
                 out.append((url, where, why, txt[max(0, m.start() - 75):m.start() + 75].strip()))
-    pp = [m.group(0).strip() for m in PER_PERSON.finditer(vis)
-          if m.group(0).split()[0].replace(" ", "") not in ALLOWED_MONEY
-          and not re.match(r"£\s*3[45]\b", m.group(0))]
-    if pp and DIVISOR.search(vis):
-        out.append((url, "page text", "DERIVABLE: a per-person price sits on the same page as a "
-                    "group-of-8 divisor, so the day rate can be multiplied back out",
-                    " / ".join(pp[:3])))
     return out
 
 
