@@ -283,8 +283,15 @@ class AhrefsAPI:
             t = r.get("type")
             t = t if isinstance(t, list) else ([t] if t else [])
             if any("organic" in str(x) for x in t):
-                out.append({**r, "organic_position": len(out) + 1})
+                out.append(r)      # keep Ahrefs' OWN `position`. See the warning below.
         return out
+
+    # ⛔ DO NOT RENUMBER SERP ROWS. I did, on 1 Aug 2026, and reported the renumber to Pete as a
+    # ranking: "Sygma is 3rd organic on cat and genny training". It is position 5, which is what
+    # Ahrefs' own `position` field says and what rank-tracker/overview independently reports.
+    # The rows arrive with duplicate positions (three rows at position 1: an AI overview and two of
+    # its sitelinks) because Ahrefs models the PAGE, not a list. Filtering to organic and counting
+    # 1..N therefore invents a better number than reality. Trust `position`; filter, never renumber.
 
     def competitors_overview(self, project_id, select="competitor_domain,keywords_count"):
         return self.call("rank-tracker/competitors-overview",

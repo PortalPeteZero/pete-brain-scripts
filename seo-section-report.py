@@ -229,12 +229,12 @@ def winnability(rows, top_n, days, project_id="9613452"):
             print(f"    {r['keyword'][:39]:<40}  no SERP rows returned — cannot judge, say so")
             continue
         ours = next((x for x in serp if "sygma-solutions.com" in str(x.get("url") or "")), None)
-        above = [x for x in serp if ours and x["organic_position"] < ours["organic_position"]]
+        above = [x for x in serp if ours and (x.get("position") or 99) < (ours.get("position") or 0)]
         drs = [float(x["domain_rating"]) for x in (above or serp)[:10]
                if x.get("domain_rating") is not None]
         med = sorted(drs)[len(drs)//2] if drs else None
         our_dr = ours.get("domain_rating") if ours else None
-        pos = ours["organic_position"] if ours else None
+        pos = ours.get("position") if ours else None
         if med is None:
             verdict = "no DR data"
         elif our_dr is not None and med < float(our_dr):

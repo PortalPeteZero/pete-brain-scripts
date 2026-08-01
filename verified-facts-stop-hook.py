@@ -257,6 +257,25 @@ COMPARISON = re.compile(
     r"median DR|DR \d|domain rating)\b)", re.I)
 NUMERIC = re.compile(r"\d")
 QUOTED = re.compile(r"[\"'`“‘]([^\"'`”’\n]{3,60})[\"'`”’]")
+
+def _is_search_phrase(q):
+    """Is this quoted string plausibly a SEARCH TERM, or just any old quoted text?
+
+    THE HOLE THIS CLOSES (found within two hours of the gate shipping, 1 Aug 2026): the first
+    version accepted ANY quoted string. I then wrote "Sygma is at Ahrefs position 5" in a paragraph
+    that happened to contain `"3rd"` and `` `ahrefs_pos=5` `` -- both matched, the gate passed, and
+    Pete got the fifth unattributed position of the day. His reply: "number 5 for what? the word
+    sygma?"
+    A search term is words a human types into Google: two or more of them, letters and spaces only
+    (& and digits allowed -- "cat & genny", "hsg47 training", "pas 128 training"). Code tokens,
+    ordinals and identifiers are not terms.
+    """
+    q = q.strip()
+    if len(q.split()) < 2:
+        return False                                   # "3rd", "sygma", "position"
+    if re.search(r"[=_/\\<>{}()\[\]]|\.py\b|--", q):
+        return False                                   # ahrefs_pos=5, seo-report.py, --days
+    return bool(re.fullmatch(r"[A-Za-z0-9&' ]+", q))
 FOR_TERM = re.compile(r"\bfor the (?:term|query|keyword|search)\b", re.I)
 
 def comparison_finding(reply):
@@ -264,7 +283,7 @@ def comparison_finding(reply):
     for para in re.split(r"\n\s*\n", reply or ""):
         if not COMPARISON.search(para) or not NUMERIC.search(para):
             continue
-        if QUOTED.search(para) or FOR_TERM.search(para):
+        if any(_is_search_phrase(q) for q in QUOTED.findall(para)) or FOR_TERM.search(para):
             continue
         # a markdown table row carrying the term in its own cell is fine
         if para.lstrip().startswith("|"):
