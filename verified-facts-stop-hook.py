@@ -254,7 +254,18 @@ def evaluate(reply, tool_text):
 # Naming the term anywhere in that paragraph satisfies it -- this polices attribution, not style.
 COMPARISON = re.compile(
     r"(?:\b(?:position|ranks?|ranking|outranks?|above (?:us|you|me)|beating (?:us|you)|"
-    r"median DR|DR \d|domain rating)\b)", re.I)
+    r"median DR|DR \d|domain rating)\b"
+    # HOLE 1, found 1 Aug 2026 by testing the gate against my own message after Pete asked
+    # "3 times now you told me you had a gate for that". The pattern above only knew the LITERAL
+    # words position/rank/DR. I had written "top 10", "11 to 20", "below 20", "page one",
+    # "outside the top 10" -- every one of them a ranking claim, none of them matched, so the
+    # gate never even reached the numeric test. Ranking language is not one vocabulary.
+    r"|\btop[- ]?(?:3|5|10|20|100)\b"
+    r"|\b(?:outside|inside|within|below|above|into|beyond) the top\b"
+    r"|\bpage (?:one|two|1|2)\b"
+    r"|\b(?:11|21)\s*(?:to|-|–)\s*(?:20|30)\b"
+    r"|\bbelow\s+(?:10|20|30)\b"
+    r")", re.I)
 # A positional CLAIM -- a number attached to a rank word -- not merely a digit somewhere in a
 # paragraph that happens to mention ranking. Tightened 1 Aug 2026 after three false positives in a
 # row: the gate blocked a paragraph DESCRIBING the tooling ("reliable position per term ... 484
@@ -263,7 +274,16 @@ COMPARISON = re.compile(
 NUMERIC = re.compile(
     r"(?:\b(?:position|pos|rank(?:s|ed|ing)?|DR|domain rating)\b[^.\n]{0,12}?\d"
     r"|\d[^.\n]{0,12}?\b(?:st|nd|rd|th)\b"
-    r"|\bDR\s*\d)", re.I)
+    r"|\bDR\s*\d"
+    # The bucket phrases ARE the number. "top 10" carries its own digit, so requiring a
+    # SEPARATE rank-word-plus-digit meant COMPARISON matched and NUMERIC still said no --
+    # which is why the first attempt at this fix still let my own message through.
+    r"|\btop[- ]?(?:3|5|10|20|100)\b"
+    r"|\b(?:outside|inside|within|below|above|into|beyond) the top\b"
+    r"|\bpage (?:one|two|1|2)\b"
+    r"|\bbelow\s+(?:10|20|30)\b"
+    r"|\b(?:11|21)\s*(?:to|-|–)\s*(?:20|30)\b"
+    r")", re.I)
 QUOTED = re.compile(r"[\"'`“‘]([^\"'`”’\n]{3,60})[\"'`”’]")
 
 def _is_search_phrase(q):
@@ -300,9 +320,21 @@ def comparison_finding(reply):
             continue
         if any(_is_search_phrase(q) for q in QUOTED.findall(para)) or FOR_TERM.search(para):
             continue
-        # a markdown table row carrying the term in its own cell is fine
+        # A markdown table is fine ONLY if the table actually names a search term in a cell.
+        # HOLE 2, found 1 Aug 2026: this used to skip EVERY paragraph starting with "|", on the
+        # assumption that a table row carries its own term. Mine did not -- rows like
+        # "| top 10 | 30 | 3% |" and "| 11 to 20 | 590 | 52% |" name nothing, and the blanket
+        # skip meant the whole table was invisible to the gate. Putting numbers in a table was
+        # all it took to walk straight past it. An exemption that broad is not an exemption,
+        # it is an off switch.
         if para.lstrip().startswith("|"):
-            continue
+            cells = [c.strip() for row in para.splitlines() for c in row.split("|")]
+            # A cell that is itself ranking language ("top 10", "11 to 20") is NOT the term the
+            # table is about -- it is the thing being reported. Counting it as a named term was
+            # the last hole: my own table exempted itself because "top 10" reads as two words.
+            if any(_is_search_phrase(c) for c in cells
+                   if c and not set(c) <= set("-: ") and not COMPARISON.search(c)):
+                continue
         return para.strip()[:220]
     return None
 
