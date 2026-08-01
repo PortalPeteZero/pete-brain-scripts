@@ -523,7 +523,7 @@ def damage_table(d):
             # saying "blank" here would report our own backlog as Clancy's.
             inv_lab, inv_cls, inv_key = "Not captured yet", "", "uncaptured"
         elif r["inv_answers"] == 0:
-            inv_lab, inv_cls, inv_key = "Form blank", "", "blank"
+            inv_lab, inv_cls, inv_key = "Empty", "", "blank"
         else:
             inv_lab, inv_cls = INV.get(iv, ("Started", ""))
             inv_key = {"YES": "complete", "NO": "incomplete"}.get(iv, "started")
@@ -562,19 +562,19 @@ def damage_table(d):
 <div class="sec"><h2>Every damage this year, one line each</h2>
 <div class="why">The register behind everything above. Each column is a value Depotnet holds, read
 live, so this table changes as Clancy update their own records.</div>
-<p>The point of it is to let you take any statement in this report and see exactly which damages
-sit behind it. Filter to a contract, to gas, to the ones whose investigation form is blank, and the
+<p>The point of it is to let you take any statement on this page and see exactly which damages
+sit behind it. Filter to a contract, to gas, to the ones whose Report is empty, and the
 list is right there with the Depotnet numbers to quote.</p>
 
 <div class="fbar">
   <input type="search" id="q" placeholder="Search a damage number, contract or service">
   {opts('contract', 'Contract')}{opts('service', 'Service')}{st_sel}
-  <select data-f="inv" aria-label="Investigation form">
-    <option value="">Investigation: all</option>
+  <select data-f="inv" aria-label="Report">
+    <option value="">Report: all</option>
     <option value="complete">Depotnet says complete</option>
     <option value="incomplete">Depotnet says not complete</option>
     <option value="started">Started, not answered</option>
-    <option value="blank">Form blank</option>
+    <option value="blank">Report empty</option>
     <option value="uncaptured">Not captured yet</option>
   </select>
 </div>
@@ -589,7 +589,7 @@ list is right there with the Depotnet numbers to quote.</p>
 
 <div class="tscroll"><table class="reg"><thead><tr>
 <th>Damage</th><th>Date</th><th>Contract</th><th>Service</th><th>Status</th>
-<th>Investigation</th><th class="c">Cause</th><th class="c">Lesson</th>
+<th>Report</th><th class="c">Cause</th><th class="c">Lesson</th>
 <th class="c">Genny</th><th class="c">CAT</th><th class="c">Permit</th>
 <th class="n">Actions</th><th class="n">Evidence</th>
 </tr></thead><tbody id="rtb">{"".join(tr)}</tbody></table>
@@ -602,8 +602,8 @@ list is right there with the Depotnet numbers to quote.</p>
 </div>
 <div class="flag"><b>Read the dash carefully.</b> A grey dash means the field is empty on Depotnet.
 It does not mean the answer was no, and it does not mean the thing did not happen. Genny, CAT and
-Permit are only asked inside the investigation form, so on the damages where that form is blank
-they are all dashes for one reason: nobody has been asked yet. A row marked <b>Not captured
+Permit are only asked inside the Report, so on the damages where the Report is empty they are all
+dashes for one reason: the question has not been put. A row marked <b>Not captured
 yet</b> is ours, not Clancy&#8217;s &mdash; the damage was raised in the last few days and we have
 not pulled its record down, so every dash on that line means we have not looked. Cause and Lesson never show a cross,
 because Depotnet has no way to say &ldquo;there was no cause&rdquo; &mdash; only recorded, or
@@ -694,7 +694,7 @@ def build(edition, label):
                        f"<td class='n'>{r['rc'] or 0}</td><td class='n'>{r['uc'] or 0}</td></tr>"
                        for r in d["blanket"])
         blanket_note = (
-            f'<div class="flag"><b>{len(d["blanket"])} investigations tick almost every option on '
+            f'<div class="flag"><b>{len(d["blanket"])} Reports tick almost every option on '
             'the form.</b> The cause fields allow more than one box. These records select up to nine '
             'of the nine root causes and seventeen of the seventeen underlying causes, which says '
             'nothing about what happened. They are excluded from the counts above, because leaving '
@@ -845,56 +845,68 @@ def build(edition, label):
 <div class="wrap body">
 {eds}
 
-<p class="lead">This is built only from what is on Depotnet: its own fields, its own investigation
-forms, its own words. Nothing here is Sygma&#8217;s opinion of what happened. Where the record does
-not say, this report says so rather than filling the gap.</p>
+<p class="lead">This is built only from what is on Depotnet: its own fields, its own
+Reports, its own words. Nothing here is Sygma&#8217;s opinion of what happened. Where the record does
+not say, this page says so rather than filling the gap.</p>
 
-<div class="sec"><h2>The investigation, and what we can honestly say about it</h2>
+<div class="sec"><h2>The Report, and what we can honestly say about it</h2>
 <div class="why">Written out in full because every other number on this page depends on it, and
 because two of these damages were opened on Depotnet directly to check it rather than trusting
 our own copy.</div>
 
-<p>Every service damage on Depotnet has two forms behind it. The <b>first-response report</b> is
-filled in at the time: what was hit, by whom, in what conditions, at what depth. Every damage this
-year has one. The <b>investigation</b> is the serious one: a named lead investigator, a named
-senior manager, the investigation team, the CAT and genny download review, the causes, and the
-lessons. It is the same form on every damage, and many of its fields are marked as required.</p>
+<p>Every service damage on Depotnet has two forms behind it, and they are worth naming properly
+because this page keeps referring to them. Open any damage and you get its tabs:
+<b>Incident Details</b>, <b>Questions</b>, <b>Report</b>, <b>Outstanding Actions</b>,
+<b>Closed Actions</b>, <b>Witnesses</b>, <b>Injuries</b>.</p>
 
-<p>Where this report says a damage &ldquo;has an investigation&rdquo;, it means somebody has filled
-that second form in. As it stands:</p>
+<p><b>Questions</b> is filled in at the time: what was hit, by whom, in what conditions, at what
+depth. Every damage this year has one.</p>
+
+<p><b>Report</b> is the long one, and it is where the investigation gets written down: a named
+lead investigator, a named senior manager, the investigation team, the CAT and genny download
+review, the causes, the lessons, and a closing question of its own, &ldquo;Is the investigation
+complete?&rdquo; It is the same form on every damage and most of its fields are marked as
+required.</p>
+
+<p>So this page talks about <b>the Report</b> throughout, because that is what Depotnet calls it.
+It does not say a damage &ldquo;has no investigation&rdquo;, because that is not something the
+system can tell us. It says whether the Report has been filled in.</p>
+
+<p>As it stands:</p>
 <ul class="plain">
- <li><b>{ib['has_section']} of the {n} have been filled in.</b></li>
- <li><b>{blank_ok} are completely empty.</b> The form is sitting there, every field untouched.</li>
+ <li><b>{ib['has_section']} of the {n} Reports have been filled in.</b></li>
+ <li><b>{blank_ok} are completely empty.</b> The Report tab is sitting there, every field
+     untouched.</li>
  <li><b>{blank_unk} we have not looked at yet</b> ({bs['uncaptured']}, raised on 30 July). We have
      not pulled its record down, so we cannot say either way, and it is counted on its own rather
      than lumped in with the empty ones.</li>
 </ul>
 
-<p><b>There are no half-done ones.</b> Every investigation on the system is either untouched or
-worked all the way through. Nothing is sitting part-finished, waiting on somebody to come back
-to it.</p>
-
 <p><b>The empty ones are empty on Depotnet, not just in our copy.</b> We opened two of them on the
 system itself: <b>damage 117327</b> (Southern Water, 20 April) and <b>damage 119372</b> (UKPN, 28
-April), both more than three months old. On both, the investigation form loads in full and not a
-single field has been answered. So this is not something we failed to collect.</p>
+April), both more than three months old. On both, the Report tab loads in full and not a single
+field has been answered. So this is not something we failed to collect.</p>
 
-<p><b>Filled in is not the same as finished</b>, and Depotnet asks that itself. On every damage
-that has an investigation it puts the question &ldquo;Is the investigation complete?&rdquo; Of the
+<p><b>Filled in is not the same as finished</b>, and Depotnet asks that itself. On every Report
+that has been filled in it asks, as its last question, &ldquo;Is the investigation
+complete?&rdquo; Of the
 {ib['has_section']}, it says <b>yes on {ib['complete']}</b> and <b>no on {ib['not_complete']}</b>.
-Nobody left it blank. So this report never treats all {ib['has_section']} as complete: it reports
-the form as filled in, and Depotnet&#8217;s own verdict separately. Of the {ib['not_complete']} marked not complete,
+Nobody left it blank. So this page never treats all {ib['has_section']} as complete: it reports the
+Report tab as filled in, and Depotnet&#8217;s own verdict separately. Of the {ib['not_complete']} marked not complete,
 {not_complete_closed} sits on a damage that has already been <b>closed</b>
 ({not_complete_closed_ids}), and we do not know whether that is an oversight, a quirk of the form,
 or normal here.</p>
 
+<p><b>An empty Report does not mean nobody investigated.</b> It means the Report is empty. The
+damage may have been looked into thoroughly and never written up, or written up somewhere that
+is not Depotnet. Nothing on this page claims otherwise, and neither should anyone quoting it.</p>
+
 <p><b>What we cannot tell you is why the {blank_ok} are empty.</b> We looked at two of them, not
-all {blank_ok}, and we do not know Clancy&#8217;s own rule for when an investigation has to be
-done, who is meant to do it, or whether anything chases it. That is the question worth asking, and
+all {blank_ok}, and we do not know Clancy&#8217;s own rule for when the Report has to be filled in, who is meant to do it, or whether anything chases it. That is the question worth asking, and
 it is a better one than any number on this page.</p></div>
 
 <div class="flag"><b>A blank is not proof that nothing happened.</b> A field with nothing in it is
-not evidence that the work was skipped. The investigation is filled in as part of closing a damage,
+not evidence that the work was skipped. The Report tab is filled in as part of closing a damage,
 so a missing cause usually means the damage is still open rather than that nobody looked into it.
 The same caution applies to corrective actions: one we cannot see may not have been raised, or may
 simply not be in the export we hold. Nothing on this page is put forward as a failure unless the
@@ -907,7 +919,7 @@ record can carry that weight.</div>
  <div class="kpi warn"><div class="n">{h['supply_lost']}</div><div class="l">interrupted a<br>customer&#8217;s supply</div></div>
  <div class="kpi warn"><div class="n">{h['still_open']}</div><div class="l">still open<br>on Depotnet</div></div>
  <div class="kpi"><div class="n">{ib['has_section']}</div>
-  <div class="l">investigations<br>filled in</div></div>
+  <div class="l">Reports<br>filled in</div></div>
 </div>
 
 <div class="kpis">
@@ -926,11 +938,11 @@ record can carry that weight.</div>
 {movement}
 
 <div class="sec"><h2>1. The year</h2>
-<div class="why">Month by month, and how many of each month&#8217;s damages carry an investigation.</div>
+<div class="why">Month by month, and how many of each month&#8217;s damages have a Report filled in.</div>
 {cols(d['months'], 'm', 'n', 'investigated')}
 <p style="margin-top:16px">{n} damages in four months, {delta:+d}% against the same period last
 year ({py}). {h['still_open']} are still open. The small figure under each month is how many carry
-a recorded cause, which is the number this report can actually reason from.</p></div>
+a recorded cause, which is the number this page can actually reason from.</p></div>
 
 <div class="sec"><h2>2. What was struck</h2>
 <div class="why">Depotnet&#8217;s own strike category and recorded depth. Held for
@@ -949,7 +961,7 @@ where it should have been from one that was not.</p>
 <div>{hbar(d['environment'], total=n, tone='grey')}</div></div></div>
 
 <div class="sec"><h2>4. What Depotnet says caused it</h2>
-<div class="why">Root and underlying cause, counted only from the investigations that made a real
+<div class="why">Root and underlying cause, counted only from the Reports that made a real
 selection in that field.</div>
 <p>Of {n} damages this year, <b>{h['with_cause']} carry a cause</b> and {n - h['with_cause']} carry
 none at all. Of those {h['with_cause']}, {len(d['blanket'])} tick nearly every option on one or
@@ -959,15 +971,15 @@ other of the two fields and are set aside below. That leaves {usable_line}</p>
 {blanket_note}</div>
 
 <div class="sec"><h2>5. Where the process holds, and where it stops</h2>
-<div class="why">Split by whether the incident is closed, because that is what decides whether an
-investigation exists yet.</div>
-<table class="t"><tr><th>Status</th><th>Damages</th><th>Investigation filled in</th>
+<div class="why">Split by whether the damage is closed, because closed damages are where the
+Reports are.</div>
+<table class="t"><tr><th>Status</th><th>Damages</th><th>Report filled in</th>
 <th>Depotnet says complete</th><th>Depotnet says not complete</th></tr>
 {status_rows}</table>
-<p style="margin-top:16px"><b>Every damage closed this year has its investigation filled in.
-{d['closed_n']} of {d['closed_n']}.</b> That is worth saying plainly, because it means the
-investigation process itself is not the problem: when a damage reaches closure, the section gets
-filled in. Depotnet marks {closed_complete} of those {d['closed_n']} as complete and
+<p style="margin-top:16px"><b>Every damage closed this year has its Report filled in.
+{d['closed_n']} of {d['closed_n']}.</b> That is worth saying plainly: a filled-in Report and a
+closed damage go together without exception this year. Which of the two drives the other, we
+cannot see from here. Depotnet marks {closed_complete} of those {d['closed_n']} as complete and
 {closed_not} as not complete, which is its own view rather than ours.</p>
 <p>What is slow is getting there. {h['still_open']} of {n} are still open, and the older ones have
 been open a long time.</p>
@@ -978,14 +990,14 @@ available to anyone yet. That is a different problem with a different fix.</p></
 
 <div class="sec"><h2>6. The learning gap, measured where it can be measured</h2>
 <div class="why">Judged only on the {d['closed_n']} damages that are closed, because those are the
-ones whose investigation is finished. Rules are stated so you can disagree with them.</div>
+ones whose Report Depotnet marks complete. Rules are stated so you can disagree with them.</div>
 <table class="t"><tr><th>What the lessons field holds</th><th>Closed damages</th><th>Share</th></tr>
 {closed_tier_rows}</table>
 <p style="margin-top:16px">This is the finding that survives scrutiny. All {d['closed_n']} closed
 damages were investigated and every one has a cause. But of those {d['closed_n']}, only
 <b>{cf['distinct_briefable']}</b> produced a lesson that runs to more than a phrase. The rest are
 a few words: enough to close a field, not enough to brief a team on.</p>
-<p><b>The investigation is being completed. The lesson is not.</b> That is a gap in the last step
+<p><b>The Report is being filled in. The lesson field is not.</b> That is a gap in the last step
 of the form rather than in the diligence of the people filling it in, and it is the cheapest thing
 on this page to fix.</p>
 {trunc_note}</div>
@@ -993,13 +1005,13 @@ on this page to fix.</p>
 {dupe_note}
 
 <div class="sec"><h2>7. By contract, and a question we cannot answer</h2>
-<div class="why">Shown with age, open count and the filled-in investigations side by side, because
+<div class="why">Shown with age, open count and the filled-in Reports side by side, because
 any one of those columns on its own would be misleading.</div>
 <table class="t"><tr><th>Contract</th><th>Damages</th><th>Average age</th><th>Still open</th>
-<th>Investigation filled in</th></tr>{contract_rows}</table>
+<th>Report filled in</th></tr>{contract_rows}</table>
 <p style="margin-top:16px">There is real variation here and we cannot tell you what causes it.
 Age does not account for it: Anglian&#8217;s damages are the youngest of any contract at an average
-of {anglian_age} days, yet 7 of their 8 already have their investigation filled in, while Scottish
+of {anglian_age} days, yet 7 of their 8 already have their Report filled in, while Scottish
 Water&#8217;s average {scottish_age} days and carry it on 2 of 4.</p>
 <p>What we do <b>not</b> know is how Clancy work Depotnet in practice: whether an investigation is
 required at a fixed point, what triggers closure, whether different contracts are administered by
@@ -1010,7 +1022,7 @@ Clancy.</b></p></div>
 <div class="sec"><h2>8. What was learned</h2>
 <div class="why">The lessons-learnt field, on the {h['with_lessons']} damages that carry one.</div>
 {hbar(d['lessons_quality'], total=h['with_lessons'])}
-<p style="margin-top:16px">Where the investigation is done properly it produces something a
+<p style="margin-top:16px">Where the Report is filled in properly it produces something a
 supervisor could brief out on Monday morning. Where it is not, it produces a word. Both are below,
 verbatim, because the difference between them is the whole argument.</p>
 <h2 style="font-size:15px;margin-top:18px">The thin ones, in full</h2><p>{thin_q}</p>
@@ -1024,7 +1036,7 @@ verbatim, because the difference between them is the whole argument.</p>
 <h2 style="font-size:15px;margin-top:20px">Gas is a mechanical-plant problem; electric is split</h2>
 <table class="t"><tr><th>Utility</th><th>Mechanical</th><th>Hand tool</th><th>Total</th></tr>
 {mech_rows}</table>
-<h2 style="font-size:15px;margin-top:20px">The investigation gap compounds</h2>{ev_line}</div>
+<h2 style="font-size:15px;margin-top:20px">The Report gap compounds</h2>{ev_line}</div>
 
 <div class="sec"><h2>10. What this cannot tell you</h2>
 <div class="why">Stated plainly, because a report that hides its own limits is worth less than one
@@ -1043,7 +1055,7 @@ anyone&#8217;s practice.</p>
 <p><b>We do not know how Clancy work Depotnet.</b> We can read what the fields contain. We cannot
 see the process behind them: when an investigation is required, who signs it off, what triggers a
 damage to close, whether an action is compulsory, or whether teams are briefed verbally in ways
-that never reach the system. Every count in this report should be read as what the record holds,
+that never reach the system. Every count on this page should be read as what the record holds,
 not as what people did or did not do.</p>
 <p>Nothing here says whether the service was successfully located before it was hit, how recently
 the crew had been trained, or what was on the plans against what was in the ground. Some of that
