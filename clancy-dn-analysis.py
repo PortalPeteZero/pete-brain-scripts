@@ -714,9 +714,9 @@ def build(edition, label):
     if len(ev) == 2:
         a_, b_ = ev["Cause recorded"], ev["No cause recorded"]
         ev_line = (f"<p>Damages with a cause recorded carry <b>{a_['avg_files']} files</b> each on "
-                   f"average. Those without carry <b>{b_['avg_files']}</b>. The damages nobody "
-                   "investigated are the same ones nobody photographed, so the gap compounds: there "
-                   "is less to go back to later, not more.</p>")
+                   f"average. Those without carry <b>{b_['avg_files']}</b>. The damages with no "
+                   "cause recorded are the same ones carrying the fewest photographs, so the two "
+                   "gaps sit on top of each other: less to go back to later, not more.</p>")
 
     good_q = "".join(
         f'<blockquote class="q">{esc(r["t"])}<span class="src">Damage {r["id"]} &middot; '
@@ -1070,6 +1070,17 @@ properly is the next piece of work.</p></div>
 {ui.TAIL}""", m
 
 
+def vocab_gate(html):
+    """Refuse to publish a page that names Depotnet wrongly or claims an absence the data
+    cannot support. See clancy-vocab-check.py for why. Fail closed: a publish that cannot
+    run the gate does not publish."""
+    import subprocess, sys as _s
+    r = subprocess.run([_s.executable, f"{VAULT}/clancy-vocab-check.py", "-"],
+                       input=html, capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip())
+    if r.returncode != 0:
+        raise SystemExit("REFUSED to publish — reword the phrases above and re-run.")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--local")
@@ -1082,6 +1093,7 @@ def main():
         open(a.local, "w").write(html)
         print(f"wrote {a.local} ({len(html):,} chars)")
     if a.publish:
+        vocab_gate(html)
         mod = {"module_key": MK, "slug": MK, "title": "What the data tells us",
                "section": "Customers", "subsection": "External", "area": "Clancy",
                "tier": "passcode", "passcode": "strive2030",

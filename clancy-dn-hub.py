@@ -114,21 +114,37 @@ def build():
       (SELECT count(*) FROM clancy_dn_gc_actions) AS gc_actions,
       (SELECT count(*) FROM clancy_dn_gc_coverage) AS gc_operatives,
       (SELECT min(date_raised)::date FROM clancy_dn_actions) AS act_first,
-      -- The 22 with no root cause are NOT uninvestigated: count how many of them carry a
-      -- completed Depotnet form, and the range of questions answered, so the page can say so.
+      -- Depotnet gives each damage a Questions tab (filled in at the time) and a Report tab
+      -- (where the investigation is written down). This counted ANY answer, so a filled-in
+      -- Questions form was reported as "a completed investigation form" — the exact opposite of
+      -- the truth, since NONE of these 22 has a single Report answer. Split, and named properly.
       (SELECT count(*) FROM clancy_dn_incidents i WHERE i.fy='FY26/27'
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
-         AND EXISTS (SELECT 1 FROM clancy_dn_answers x WHERE x.incident_id=i.id)) AS inv_form,
+         AND EXISTS (SELECT 1 FROM clancy_dn_answers x WHERE x.incident_id=i.id
+                     AND x.section='questions')) AS inv_form,
+      (SELECT count(*) FROM clancy_dn_incidents i WHERE i.fy='FY26/27'
+         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
+         AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
+         AND EXISTS (SELECT 1 FROM clancy_dn_answers x WHERE x.incident_id=i.id
+                     AND x.section='investigation')) AS inv_report,
+      (SELECT count(*) FROM clancy_dn_incidents i WHERE i.fy='FY26/27'
+         AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
+         AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
+         AND i.pdf_captured_at IS NULL) AS inv_uncaptured,
       (SELECT min(n) FROM (SELECT count(*) n FROM clancy_dn_answers x
          JOIN clancy_dn_incidents i ON i.id=x.incident_id WHERE i.fy='FY26/27'
+         AND x.section='questions'
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_lo,
       (SELECT max(n) FROM (SELECT count(*) n FROM clancy_dn_answers x
          JOIN clancy_dn_incidents i ON i.id=x.incident_id WHERE i.fy='FY26/27'
+         AND x.section='questions'
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='') GROUP BY x.incident_id) z) AS inv_hi,
       (SELECT count(*) FROM clancy_reports) AS reports,
+      (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
+         AND root_cause IS NOT NULL AND btrim(root_cause)<>'') AS analysed,
       (SELECT count(*) FROM clancy_unmapped_damages) AS unmapped,
       (SELECT count(*) FROM clancy_dn_incidents WHERE sygma_reviewed_at IS NOT NULL) AS sygma_rev,
       (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
@@ -181,6 +197,14 @@ def build():
     ch_utils = hbars([(r["u"], r["n"]) for r in utils])
     ch_conts = hbars([(r["c"], r["n"]) for r in conts])
     ch_fys = cols([(SHORT[r["fy"]], r["n"]) for r in known], dim_last=True)
+
+    # read live, so both the zero case and the plural case have to read properly
+    _r, _u = d["inv_report"], d["inv_uncaptured"]
+    rep_phrase = ("none has anything at all in its Report" if _r == 0 else
+                  f"{_r} ha{'s' if _r == 1 else 've'} something in the Report")
+    uncap_phrase = ("" if _u == 0 else
+                    f"The remaining {'one' if _u == 1 else _u} we have not captured yet, so we "
+                    f"cannot say either way.")
 
     return f"""{ui.head("Genny&#8217;s Damage Depot | Sygma Solutions &times; The Clancy Group", PAGE_CSS)}
 {ui.navbar("overview")}
@@ -236,6 +260,19 @@ def build():
    <div><div class="n">{d['files']}</div><div class="l">documents</div></div>
   </div>
   <div class="go">Open the register &rarr;</div>
+ </a>
+ <a class="door c" href="/m/{ui.ANALYSIS}">
+  <div class="kicker">The reading</div>
+  <div class="t">What the data tells us</div>
+  <div class="d">This year&#8217;s damages read from what Depotnet itself holds: what was struck,
+  at what depth, with what plant, and what its own investigations give as the cause. Including,
+  plainly, what the record cannot answer.</div>
+  <div class="figs">
+   <div><div class="n">{d['cur']}</div><div class="l">damages read</div></div>
+   <div><div class="n">{d['analysed']}</div><div class="l">carry a cause</div></div>
+   <div><div class="n">{d['cur'] - d['analysed']}</div><div class="l">carry none</div></div>
+  </div>
+  <div class="go">Read the analysis &rarr;</div>
  </a>
  <a class="door b" href="/m/{ui.REPORTS}">
   <div class="kicker">What Sygma produced</div>
@@ -298,12 +335,15 @@ register as a whole. The Genny &amp; CAT review is a written
 analysis with its evidence attached, sitting on {d['inspections']:,} usage inspections and
 {d['gc_actions']:,} inspection actions in the database.</div>
 
-<div class="dnote"><b>{d['no_inv']} of this year's {d['cur']} damages carry no root cause and no
-lessons learnt.</b> That is not the same as no investigation: {d['inv_form']} of those
-{d['no_inv']} do have a completed Depotnet investigation form against them, with
-{d['inv_lo']} to {d['inv_hi']} questions answered. What is missing on every one is the pair of
-fields that would say why it happened and what to do differently. The form is being filled in; the
-conclusion is being left blank.</div>
+<div class="dnote"><b>{d['no_inv']} of this year&#39;s {d['cur']} damages carry no root cause and no
+lessons learnt.</b> It is worth being precise about what sits behind that. Depotnet gives every
+damage a <b>Questions</b> tab, filled in at the time, and a <b>Report</b> tab, which is where the
+investigation gets written down. Of the {d['no_inv']}, <b>{d['inv_form']} have their Questions
+filled in</b> ({d['inv_lo']} to {d['inv_hi']} answers each) and <b>{rep_phrase}</b>. {uncap_phrase}<br><br>
+Two of them were opened on Depotnet directly rather than read from our copy: the Report loads in
+full, mandatory-field markers showing, and not one field has been answered. That tells us the
+Report is empty. It does not tell us whether anyone looked into the damage, and this page does not
+claim it does.</div>
 
 <div class="dnote"><b>No corrective action has been raised on a service damage since
 {d['act_latest']}.</b> We hold <b>{d['actions']}</b> Service Damage actions, running back to
@@ -324,6 +364,17 @@ Everything else updates itself.</span></div>
 {ui.TAIL}"""
 
 
+def vocab_gate(html):
+    """Refuse to publish a page that names Depotnet wrongly or claims an absence the data
+    cannot support. See clancy-vocab-check.py for why. Fail closed: a publish that cannot
+    run the gate does not publish."""
+    import subprocess, sys as _s
+    r = subprocess.run([_s.executable, f"{VAULT}/clancy-vocab-check.py", "-"],
+                       input=html, capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip())
+    if r.returncode != 0:
+        raise SystemExit("REFUSED to publish — reword the phrases above and re-run.")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--local")
@@ -334,6 +385,7 @@ def main():
         open(a.local, "w").write(html)
         print(f"wrote {a.local} ({len(html):,} chars)")
     if a.publish:
+        vocab_gate(html)
         mod = {"module_key": MK, "slug": MK, "title": "Genny's Damage Depot",
                "section": "Customers", "subsection": "External", "area": "Clancy",
                "tier": "passcode", "passcode": "strive2030",
