@@ -13,7 +13,15 @@ Usage:
 import json, time, base64, urllib.request, urllib.parse, urllib.error
 import tempfile, os, subprocess, sys
 
-KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+# The boot kernel materialises secrets to $VAULT/Library/processes/secrets/, NOT to a sibling
+# "../secrets" dir -- that path has not existed since the 24 Jun 2026 vault-tree cutover, so this
+# helper crashed on import for every session since. Fall back to the old path if it is ever there.
+VAULT = os.environ.get("VAULT", os.path.dirname(os.path.abspath(__file__)))
+_candidates = [
+    os.path.join(VAULT, "Library", "processes", "secrets", "google-seo-service-account.json"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json"),
+]
+KEY = next((c for c in _candidates if os.path.exists(c)), _candidates[0])
 SCOPE = "https://www.googleapis.com/auth/indexing"
 BASE = "https://indexing.googleapis.com/v3"
 

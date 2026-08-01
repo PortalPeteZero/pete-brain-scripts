@@ -13,9 +13,18 @@ term can look ten places better on noise alone. Storing only the average would m
 term in one evening. The weekly range is what lets a movement be tested against the term's own
 volatility rather than asserted.
 
+⛔ VOLUME (fixed 1 Aug 2026). This used to write `COALESCE(m.priority,0)` into the `volume`
+column -- i.e. it copied `seo_keyword_map.priority`, a number set once when the map was built, and
+labelled it "monthly searches". Confirmed on 1 Aug: 482 of 482 rows had priority == volume. When
+all 482 keywords were finally pulled live from Ahrefs, 268 had drifted >25% and the store was
+overstating total mapped demand by 67% (9,707 stored vs 5,804 live). That is the mechanical reason
+Pete kept getting a different demand number every time he asked. Volume is now REFRESHED FROM
+AHREFS on every snapshot, and the run FAILS LOUDLY rather than silently falling back to priority --
+a stale number wearing a fresh label is worse than no number.
+
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/seo-week-snapshot.py [--property KEY] [--week-ending YYYY-MM-DD]
-                                                       [--keep 4] [--dry-run]
+                                                       [--keep 4] [--dry-run] [--no-volume-refresh]
 """
 import os, sys, json, subprocess, datetime
 
@@ -34,6 +43,31 @@ def sql(q):
 
 def q(s):
     return "$x$" + (s or "") + "$x$"
+
+
+
+def live_volumes(keywords, prop):
+    """Live Ahrefs GB monthly volume for every mapped keyword. Raises rather than guessing.
+
+    NEVER fall back to seo_keyword_map.priority here. Priority is a hand-set ranking field; it was
+    being written into the volume column and read back as "searches per month" for weeks."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ahrefs", f"{VAULT}/ahrefs-api.py")
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    api = m.AhrefsAPI(caller="seo-week-snapshot")
+    out = {}
+    for i in range(0, len(keywords), 100):
+        chunk = keywords[i:i + 100]
+        for row in api.keywords_overview(chunk, country="gb"):
+            out[row["keyword"]] = row.get("volume_monthly")
+    got = sum(1 for v in out.values() if v is not None)
+    if got < len(keywords) * 0.8:
+        raise SystemExit(
+            f"FAIL: Ahrefs returned a volume for only {got}/{len(keywords)} keywords. Refusing to "
+            f"write the snapshot -- a partial volume refresh silently reintroduces stale numbers.")
+    print(f"  volume refreshed from Ahrefs: {got}/{len(keywords)} keywords")
+    return out
 
 
 def main():
@@ -66,7 +100,7 @@ def main():
         FROM seo_gsc_daily
         WHERE property_key='{prop}' AND date > date '{wk}' - 7 AND date <= date '{wk}'
         ORDER BY lower(query), impressions DESC)
-      SELECT m.keyword, m.target_page, m.cluster, COALESCE(m.priority,0) vol,
+      SELECT m.keyword, m.target_page, m.cluster, COALESCE(m.priority,0) vol,  -- REPLACED below by the live Ahrefs volume; see live_volumes()
              w.wpos, COALESCE(w.impr,0) impr, COALESCE(w.clicks,0) clicks,
              round(w.best,1) best, round(w.worst,1) worst, COALESCE(w.days,0) days, r.pg
       FROM seo_keyword_map m
@@ -76,6 +110,15 @@ def main():
 
     print(f"week ending {wk}: {len(rows)} mapped keywords, "
           f"{sum(1 for r in rows if (r['impr'] or 0) > 0)} with impressions")
+    # Overwrite the priority-derived placeholder with a LIVE volume before anything is written.
+    if "--no-volume-refresh" not in a:
+        vols = live_volumes([r["keyword"] for r in rows], prop)
+        for r in rows:
+            r["vol"] = vols.get(r["keyword"])
+    else:
+        print("  ⚠ --no-volume-refresh: `volume` will carry seo_keyword_map.priority, which is NOT "
+              "a monthly search figure. Do not quote a demand total off this run.")
+
     if dry:
         print("dry run - nothing written")
         return
