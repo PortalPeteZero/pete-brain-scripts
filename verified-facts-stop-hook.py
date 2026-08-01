@@ -307,12 +307,60 @@ def comparison_finding(reply):
     return None
 
 
+# --- SYGMA COURSE FACTS (added 1 Aug 2026) -------------------------------------------------------
+# Pete: "stop fucking guessing", then "you cant book that course on the fucking page you shoudl know
+# that you cant book any course", then "i thought we had a gate to stop you maknig shit up".
+#
+# We HAD two gates and neither covered this. One refuses ABSENCE claims ("no data for X") when the
+# source was never called. One refuses a ranking stated without naming its term. NEITHER refuses me
+# ASSERTING a fact I never checked. Within five minutes I asserted two:
+#   * "the 3-day combined course" - invented from a TRACKED KEYWORD ("eusr 3-day combined training",
+#     0 volume, 0 impressions). The catalogue says C009 is a 2-day course. That keyword described a
+#     product that does not exist and has been deleted from the map.
+#   * "a bookable product needs a bookable page" - the site has NO booking. The course page carries
+#     zero forms and every CTA points at /contact. Sygma is enquiry-driven end to end.
+# Both reasoned from something ADJACENT when the source was one query away.
+COURSE_CLAIM = re.compile(
+    r"(?:\b\d+\s*-?\s*day\b[^.\n]{0,30}\b(?:course|training)\b"
+    r"|\b(?:one|two|three|four|five)[ -]day\b[^.\n]{0,30}\b(?:course|training)\b"
+    r"|\bbookable\b|\bbook (?:it|the course|online|on the (?:page|site|website))\b"
+    r"|\badd to (?:cart|basket)\b|\bcheckout\b"
+    r"|\bcourse (?:price|cost|fee)s?\b[^.\n]{0,20}\b(?:is|are|\u00a3|\d)"
+    r")", re.I)
+COURSE_SOURCE = re.compile(r"ee_catalogue|ee-facts|ee_rates|ee_customer_rates|ee_public_courses"
+                           r"|sygma-solutions\.com/courses|firecrawl-api", re.I)
+
+
+def course_fact_finding(reply, tool_text):
+    """Refuse a Sygma course fact this session never went and checked."""
+    if not COURSE_CLAIM.search(reply or ""):
+        return None
+    if COURSE_SOURCE.search(tool_text or ""):
+        return None
+    m = COURSE_CLAIM.search(reply)
+    return reply[max(0, m.start() - 90):m.end() + 90].strip()
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except Exception:
         sys.exit(0)                                   # fail open
     reply, tools = read_transcript(payload.get("transcript_path", ""))
+
+    course = course_fact_finding(reply, tools)
+    if course:
+        sys.stderr.write(
+            "BLOCKED by verified-facts: you are stating a Sygma COURSE fact this session never checked.\n"
+            f"  The claim: ...{course}...\n"
+            "  Read the source first, it is one query away: ee_catalogue / the EE facts resolver /\n"
+            "  ee_rates / curl the live course page.\n"
+            "  1 Aug 2026: I told Pete about 'the 3-day combined course', invented from a tracked\n"
+            "  keyword with 0 volume; the catalogue says C009 is 2-day. Minutes later I said a\n"
+            "  bookable product needs a bookable page; the site has NO booking, every CTA goes to\n"
+            "  /contact. Course facts are Pete's business, never inferred from keywords or from how\n"
+            "  training sites usually work.\n")
+        sys.exit(2)
 
     comp = comparison_finding(reply)
     if comp:
