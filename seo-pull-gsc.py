@@ -100,13 +100,39 @@ def main():
                      " ON CONFLICT (property_key,date,query,page) DO UPDATE SET "
                      "clicks=EXCLUDED.clicks, impressions=EXCLUDED.impressions, position=EXCLUDED.position, "
                      "final=false, loaded_at=now()")
+        # PAGE-LEVEL pass -> public.seo_gsc_page_daily.
+        # WHY THIS EXISTS (1 Aug 2026): the [date,query,page] rows above are QUERY-grain, and Google
+        # withholds low-volume queries for privacy. Summing them therefore loses most clicks. Measured
+        # on sygma-solutions-website, same 28-day window: query-grain sum = 125 clicks, GSC's own
+        # page-level total = 464. Every click figure any report produced was understated by ~73%.
+        # Clicks must be read from THIS table; per-term work still reads seo_gsc_daily (valid for
+        # position/impressions per term, never for total clicks).
+        try:
+            prows = g.query_all(site, ["date", "page"], date_range=(start, end))
+        except Exception as e:
+            print(f"  {key}: GSC PAGE-level pull FAILED -- {str(e)[:120]}")   # loud, never silent
+            prows = []
+        pvals = []
+        for r in prows:
+            d, pg = r["keys"]
+            pvals.append(f"({_q(key)},'{d}',{_q(pg)},{int(r['clicks'])},{int(r['impressions'])},{round(r['position'],2)})")
+        if pvals:
+            for i in range(0, len(pvals), 500):
+                chunk = ",".join(pvals[i:i + 500])
+                _sql("INSERT INTO public.seo_gsc_page_daily (property_key,date,page,clicks,impressions,position) VALUES "
+                     + chunk +
+                     " ON CONFLICT (property_key,date,page) DO UPDATE SET "
+                     "clicks=EXCLUDED.clicks, impressions=EXCLUDED.impressions, position=EXCLUDED.position, "
+                     "final=false, loaded_at=now()")
         # finalise settled dates
         _sql(f"UPDATE public.seo_gsc_daily SET final=true WHERE property_key={_q(key)} "
+             f"AND date < current_date - {FINAL_AFTER} AND final=false")
+        _sql(f"UPDATE public.seo_gsc_page_daily SET final=true WHERE property_key={_q(key)} "
              f"AND date < current_date - {FINAL_AFTER} AND final=false")
         # free source -> log at 0 cost for a complete ledger
         _sql(f"INSERT INTO public.seo_api_usage (service,endpoint,units,cached,http_status,caller,property_key,note) "
              f"VALUES ('gsc','searchanalytics/query',0,false,200,'seo-pull-gsc',{_q(key)},$x$rows={len(rows)}$x$)")
-        print(f"  {key}: {len(rows)} rows upserted")
+        print(f"  {key}: {len(rows)} query-rows + {len(prows)} page-rows upserted")
         total += len(rows)
     print(f"done -- {total} rows across {len(props)} propert{'y' if len(props)==1 else 'ies'}")
 
