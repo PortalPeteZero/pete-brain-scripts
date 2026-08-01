@@ -25,6 +25,7 @@ for that and only that.
 
 Usage:
   VAULT=/tmp/pbs python3 seo-section-report.py avoidance|mapping|both [--days 28] [--json]
+                                              [--winnability N]   # PAID: SERP check on the top N opportunities
 """
 import os, sys, json, subprocess
 
@@ -199,15 +200,55 @@ def report(section_key, days):
     return rows
 
 
+def winnability(rows, top_n, days):
+    """For the top opportunities, WHO is above us and on what authority.
+
+    Why this is worth units (added 1 Aug 2026): "striking distance" on its own only says a term is
+    CLOSE. It does not say whether the page above us is weak. On `hsg47 training` the pages at 4, 5
+    and 6 are DR 11, DR 0 and DR 8 with 0-1 referring domains each, against Sygma's DR 20 -- we
+    out-authority half of page one and sit at 21. That is a different instruction from "you are at
+    21". Ahrefs charges ~572 units per SERP, so this is OPT-IN (--winnability N), never automatic:
+    a cron may never spend money, and a routine report must stay free.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ahrefs_api", f"{VAULT}/ahrefs-api.py")
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    api = m.AhrefsAPI(caller="seo-section-report:winnability")
+    cand = [r for r in rows if r["wpos"] is not None and 4 <= float(r["wpos"]) <= 25
+            and (r.get("vol") or 0) >= LOW_VOLUME_FLOOR]
+    cand.sort(key=lambda r: -(r.get("vol") or 0))
+    cand = cand[:top_n]
+    print(f"\n--- 3. WINNABILITY (paid: ~572 Ahrefs units per term, {len(cand)} terms) ---")
+    print("    Who is ABOVE us organically, and on what authority. Sygma's own DR is the yardstick.")
+    for r in cand:
+        try:
+            serp = api.serp_overview(r["keyword"])
+        except Exception as e:
+            print(f"  {r['keyword'][:44]:<46} SERP pull FAILED: {str(e)[:60]}")
+            continue
+        drs = [float(x["domain_rating"]) for x in serp[:10] if x.get("domain_rating") is not None]
+        if not drs:
+            print(f"  {r['keyword'][:44]:<46} no organic DR data returned — cannot judge, say so")
+            continue
+        med = sorted(drs)[len(drs)//2]
+        weak = sum(1 for d in drs if d < 20)
+        verdict = "WEAK field" if med < 20 else ("EVEN" if med < 35 else "STRONG field")
+        print(f"  {r['keyword'][:44]:<46} vol {r.get('vol') or 0:>4}  pos {r['wpos']:>5}  "
+              f"median DR above {med:>5.0f}  ({weak}/{len(drs)} under DR20)  {verdict}")
+
+
 def main():
     args = sys.argv[1:]
     if not args or args[0] not in ("avoidance", "mapping", "both"):
         raise SystemExit(__doc__)
     days = int(args[args.index("--days")+1]) if "--days" in args else 28
     which = ["avoidance", "mapping"] if args[0] == "both" else [args[0]]
+    win = int(args[args.index("--winnability")+1]) if "--winnability" in args else 0
     out = {}
     for s in which:
         out[s] = report(s, days)
+        if win:
+            winnability(out[s], win, days)
     if "--json" in args:
         print("\n" + json.dumps(out, default=str))
 
