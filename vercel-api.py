@@ -16,6 +16,12 @@ Commands:
   latest [project_id]             Get latest deployment status
   deploy-for-sha <sha> [proj_id]  Map a pushed commit SHA -> its deploy readyState
                                   (--json for machine output; exit 0=READY 2=not-ready 3=no-deploy)
+  env-list <project_id>           List env var names + targets (never prints values)
+  env-set <project_id> <KEY> <VALUE> [targets]
+                                  Create/update an encrypted env var. targets is comma-separated
+                                  (production,preview,development), default production only.
+                                  Scope is a security control: a write credential left off
+                                  `preview` cannot be reached by a preview deploy.
 
 Environment:
   Token fetched from the CC secrets table (name: vercel-token) via _cc_secret().
@@ -236,6 +242,45 @@ def cmd_deploy_for_sha(sha, project_id=None, as_json=False):
     sys.exit(0 if state == "READY" else 2)
 
 
+def cmd_env_list(project_id):
+    """List env var NAMES and their targets. Never prints values."""
+    rows = api(f"/v9/projects/{project_id}/env").get("envs", [])
+    if not rows:
+        print("(no environment variables)")
+        return
+    for e in rows:
+        print(f"{e.get('key'):32} {','.join(e.get('target') or []):28} {e.get('type')}  id={e.get('id')}")
+
+
+def cmd_env_set(project_id, key, value, targets="production"):
+    """Create or update an encrypted env var. `targets` is comma-separated:
+    production,preview,development. Scope matters -- a write credential set only on
+    `production` cannot be used by a preview deploy."""
+    target = [t.strip() for t in targets.split(",") if t.strip()]
+    body = {"key": key, "value": value, "type": "encrypted", "target": target}
+    existing = next((e for e in api(f"/v9/projects/{project_id}/env").get("envs", [])
+                     if e.get("key") == key), None)
+    if existing:
+        _write(f"/v9/projects/{project_id}/env/{existing['id']}",
+               {"value": value, "target": target}, method="PATCH")
+        print(f"updated {key} -> {','.join(target)}")
+    else:
+        _write(f"/v10/projects/{project_id}/env", body, method="POST")
+        print(f"created {key} -> {','.join(target)}")
+
+
+def _write(path, body, method="POST"):
+    url = f"{BASE}{path}?" + urllib.parse.urlencode({"teamId": TEAM_ID})
+    req = urllib.request.Request(url, data=json.dumps(body).encode(),
+        headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
+        method=method)
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=60).read() or b"{}")
+    except urllib.error.HTTPError as e:
+        print(f"ERROR {e.code}: {e.read().decode()[:400]}")
+        sys.exit(1)
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -255,6 +300,8 @@ def main():
         "status": lambda: cmd_status(pos[0]),
         "latest": lambda: cmd_latest(pos[0] if pos else None),
         "deploy-for-sha": lambda: cmd_deploy_for_sha(pos[0], pos[1] if len(pos) > 1 else None, as_json),
+        "env-list": lambda: cmd_env_list(pos[0]),
+        "env-set": lambda: cmd_env_set(pos[0], pos[1], pos[2], pos[3] if len(pos) > 3 else "production"),
     }
 
     if cmd not in commands:
