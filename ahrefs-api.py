@@ -114,7 +114,7 @@ class AhrefsAPI:
     # ---- low level -------------------------------------------------------
     NET_RETRIES = 3   # transient TLS/socket blips -- Ahrefs drops the odd connection
 
-    def _raw(self, path, params):
+    def _raw(self, path, params, method="GET", body=None):
         """One Ahrefs request, with retries on TRANSIENT network faults only.
 
         ⚠ A bare urlopen here used to let a one-off `SSLEOFError: UNEXPECTED_EOF_WHILE_READING`
@@ -124,8 +124,12 @@ class AhrefsAPI:
         a ONE-LINE AhrefsError. An HTTPError (400/401/403) is a real answer and is NEVER retried.
         """
         url = BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
-        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}",
-                                                   "User-Agent": UA, "Accept": "application/json"})
+        hdrs = {"Authorization": f"Bearer {self.token}", "User-Agent": UA, "Accept": "application/json"}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            hdrs["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, headers=hdrs, data=data, method=method)
         last = None
         for attempt in range(self.NET_RETRIES):
             try:
@@ -158,7 +162,7 @@ class AhrefsAPI:
     def _is_management(self, path):
         return path.startswith("management/") or path.startswith("subscription-info/")
 
-    def call(self, path, params=None, property_key=None, note=None):
+    def call(self, path, params=None, property_key=None, note=None, method="GET", body=None):
         """Metered, gated, logged Ahrefs call. management/* + subscription-info/* are unmetered and always pass."""
         params = params or {}
         metered = not self._is_management(path)
@@ -171,7 +175,7 @@ class AhrefsAPI:
                 raise BudgetRefused(f"Ahrefs units exhausted ({rem} left); refusing metered call {path}. "
                                     f"management/* is still callable. Resets monthly.")
         try:
-            body, cost, status = self._raw(path, params)
+            body, cost, status = self._raw(path, params, method=method, body=body)
         except AhrefsError as e:
             _log_usage("ahrefs", path, None, False, e.code, self.caller, property_key, e.reason[:120])
             raise
@@ -193,6 +197,128 @@ class AhrefsAPI:
         return self.call("rank-tracker/overview",
                          {"project_id": project_id, "device": device, "date": date or _yesterday(),
                           "select": select, "limit": limit}).get("overviews", [])
+
+
+    # ---- keywords explorer (volume / difficulty / discovery) --------------
+    # 25 units per keyword row. Used 1 Aug 2026 to fill 163 map keywords that had NO volume
+    # recorded; 22 of them had real demand (incl. "cat & genny training" at 161/mo) and were being
+    # ranked as worthless by the volume-first rule. If a keyword in seo_keyword_map has priority 0,
+    # it usually means nobody ever asked Ahrefs -- not that the term is dead.
+    def keywords_overview(self, keywords, country="gb", select="keyword,volume_monthly,difficulty"):
+        """Volume + difficulty for a list of keywords. Chunk large lists -- this is a GET."""
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self.call("keywords-explorer/overview",
+                         {"select": select, "country": country,
+                          "keywords": ",".join(keywords)}).get("keywords", [])
+
+    def matching_terms(self, keyword, country="gb", limit=50,
+                       select="keyword,volume_monthly,difficulty"):
+        """Terms CONTAINING the seed -- the honest way to find concepts the map is missing."""
+        return self.call("keywords-explorer/matching-terms",
+                         {"select": select, "country": country, "keywords": keyword,
+                          "limit": limit}).get("keywords", [])
+
+    def related_terms(self, keyword, country="gb", limit=50,
+                      select="keyword,volume_monthly,difficulty"):
+        return self.call("keywords-explorer/related-terms",
+                         {"select": select, "country": country, "keywords": keyword,
+                          "limit": limit}).get("keywords", [])
+
+    # ---- who is beating us ------------------------------------------------
+    def serp_overview(self, keyword, country="gb", organic_only=True,
+                      select="position,type,url,title,domain_rating,url_rating,refdomains,traffic"):
+        """The live SERP for a term: who outranks us and on what authority.
+
+        RULE TWO in the seo-report skill says test the obvious alternative FIRST -- read the page
+        beating us before theorising about Google. This is the call that makes that cheap.
+
+        ⚠ TWO TRAPS, both hit on the first live call (1 Aug 2026):
+        1. `type` is a **LIST**, not a string -- a row can be
+           `["ai_overview_sitelink","image_th"]`. Counting it with a Counter raises
+           `unhashable type: 'list'`.
+        2. The response mixes SERP FEATURES in with organic results. On "cat and genny training",
+           16 of 44 rows were AI overviews / sitelinks / images. Those rows carry `position: 1` and
+           NULL domain_rating / traffic. Read them naively and you report "every result is position 1
+           with no DR", which is nonsense -- and is exactly what I reported before checking.
+           `organic_only=True` (the default) keeps only rows whose type includes "organic", which DO
+           carry real DR, refdomains and traffic, and renumbers them 1..N as a human sees the page.
+        """
+        rows = self.call("serp-overview/serp-overview",
+                         {"select": select, "country": country,
+                          "keyword": keyword}).get("positions", [])
+        if not organic_only:
+            return rows
+        out = []
+        for r in rows:
+            t = r.get("type")
+            t = t if isinstance(t, list) else ([t] if t else [])
+            if any("organic" in str(x) for x in t):
+                out.append({**r, "organic_position": len(out) + 1})
+        return out
+
+    def competitors_overview(self, project_id, select="competitor_domain,keywords_count"):
+        return self.call("rank-tracker/competitors-overview",
+                         {"project_id": project_id, "select": select}).get("competitors", [])
+
+    def site_audit_issues(self, project_id, select="name,category,issues_count"):
+        return self.call("site-audit/issues",
+                         {"project_id": project_id, "select": select}).get("issues", [])
+
+    # ---- WRITES (Rank Tracker management) --------------------------------
+    # ⚠ CORRECTED 1 Aug 2026. The config note said the API could not delete keywords, and a blind
+    # probe of `DELETE /management/project-keywords` + `POST .../delete` seemed to confirm it. Both
+    # were the wrong shape. The OpenAPI spec (https://docs.ahrefs.com/openapi.json -- 129 endpoints,
+    # 30 of them writes) gives the real paths below. READ THE SPEC before declaring an operation
+    # unsupported: the wrong answer nearly sent Pete to delete 103 keywords by hand.
+    # project_id is a QUERY parameter on all of these, never a body field.
+    def add_project_keywords(self, project_id, keywords, tags=None, country="gb"):
+        """keywords: list of str, or list of {'keyword':..,'tags':[..]}."""
+        items = []
+        for k in keywords:
+            items.append(k if isinstance(k, dict)
+                         else {"keyword": k, **({"tags": tags} if tags else {})})
+        return self.call("management/project-keywords", {"project_id": project_id},
+                         method="PUT", body={"locations": [{"country": country}], "keywords": items},
+                         note=f"add {len(items)} keywords")
+
+    def delete_project_keywords(self, project_id, keywords, country="gb"):
+        items = [{"keyword": k, "country": country} for k in keywords]
+        return self.call("management/project-keywords-delete", {"project_id": project_id},
+                         method="PUT", body={"keywords": items},
+                         note=f"delete {len(items)} keywords")
+
+    def project_keywords(self, project_id, select="keyword,tags", limit=2000):
+        """What the tracker currently holds (free -- management/*)."""
+        return self.call("management/project-keywords",
+                         {"project_id": project_id, "select": select, "limit": limit}).get("keywords", [])
+
+    def sync_project_to_map(self, project_id, property_key, apply=False, country="gb"):
+        """Make the Ahrefs tracker MIRROR seo_keyword_map. The map decides; Ahrefs follows.
+
+        Pete, 1 Aug 2026: "we decide, ahref follows us". Returns the diff; only writes when
+        apply=True. Run it after any change to the map, and the tracker can never drift again.
+        """
+        import subprocess as _sp, os as _os
+        v = _os.environ.get("VAULT", "/tmp/pbs")
+        r = _sp.run(["python3", "cc-sql.py",
+                     "SELECT keyword, cluster FROM seo_keyword_map "
+                     f"WHERE property_key='{property_key}' AND intent='commercial'"],
+                    cwd=v, capture_output=True, text=True, env={**_os.environ, "VAULT": v}, timeout=60)
+        if r.returncode != 0:
+            raise RuntimeError("cc-sql FAILED reading seo_keyword_map: " + (r.stderr or r.stdout)[:200])
+        want = {row["keyword"].strip().lower(): row for row in json.loads(r.stdout or "[]")}
+        have = {k["keyword"].strip().lower() for k in self.project_keywords(project_id)}
+        add, remove = sorted(set(want) - have), sorted(have - set(want))
+        if apply:
+            if add:
+                self.add_project_keywords(project_id,
+                                          [{"keyword": want[k]["keyword"], "tags": [want[k]["cluster"]]}
+                                           for k in add], country=country)
+            if remove:
+                self.delete_project_keywords(project_id, remove, country=country)
+        return {"add": add, "remove": remove, "in_map": len(want), "in_tracker": len(have),
+                "applied": bool(apply)}
 
 
 def _cli():
