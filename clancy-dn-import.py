@@ -178,6 +178,42 @@ def verify(register, actions):
         sys.exit(1)
 
 
+
+def resolve_export(path):
+    """Resolve an export path to the file the user actually just downloaded.
+
+    THE TRAP THIS EXISTS FOR (found 1 Aug 2026 testing the workflow end to end): Chrome does not
+    overwrite. Export the Action Report a second time and it lands as "Action Report (1).xlsx",
+    then "(2)", while the original sits there from days ago. The SOP said to import
+    "~/Downloads/Action Report.xlsx", so following it re-imported a stale file and printed
+    "+0 new, ~0 changed" — a clean bill of health from yesterday's data, with nothing to hint at it.
+
+    So: if siblings matching "<stem>*.xlsx" exist and one is NEWER than the path given, use the
+    newest and SAY SO loudly. Never silently import an older file than the one available.
+    """
+    path = os.path.expanduser(path)
+    d = os.path.dirname(path) or "."
+    stem = os.path.splitext(os.path.basename(path))[0]
+    stem = re.sub(r"\s*\(\d+\)$", "", stem)          # "Action Report (2)" -> "Action Report"
+    import glob
+    cands = [f for f in glob.glob(os.path.join(d, stem + "*.xlsx"))
+             if not os.path.basename(f).startswith("~$")]
+    if not cands:
+        return path
+    newest = max(cands, key=os.path.getmtime)
+    if os.path.exists(path) and os.path.getmtime(newest) <= os.path.getmtime(path):
+        return path
+    if os.path.abspath(newest) != os.path.abspath(path):
+        import datetime as _dt
+        when = _dt.datetime.fromtimestamp(os.path.getmtime(newest)).strftime("%d %b %H:%M")
+        older = os.path.basename(path)
+        print(f"  NOTE: using the NEWEST matching export instead of the path given.")
+        print(f"        given : {older}")
+        print(f"        using : {os.path.basename(newest)}  ({when})")
+        print(f"        Chrome appends (1), (2)... rather than overwriting; the path you gave was older.")
+    return newest
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--register", required=True)
@@ -186,6 +222,10 @@ def main():
     ap.add_argument("--verify", action="store_true",
                     help="after import (or standalone), prove every sheet cell is in the DB")
     a = ap.parse_args()
+    # Resolve both inputs to the newest matching download BEFORE anything reads them, so a stale
+    # file can never be imported silently (see resolve_export).
+    a.register = resolve_export(a.register)
+    a.actions = resolve_export(a.actions)
     if a.verify:
         verify(a.register, a.actions)
         return
