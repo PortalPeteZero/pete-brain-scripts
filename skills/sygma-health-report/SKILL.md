@@ -20,9 +20,9 @@ trigger_phrases:
   - "how's sygma looking"
   - "pull all the data for sygma"
 created: 2026-05-20
-updated: 2026-07-14
+updated: 2026-08-01
 ---
-<!-- SUPERSEDED 23 Jul 2026 by the `seo-report` skill (SEO measurement platform). This skill was built on assumptions the platform disproved (Ahrefs-primary for rank, a plan-gated Surfer audit endpoint, no commercial-intent filter, no verdict provenance). Prefer `seo-report` for any per-site SEO health / positions / opportunity question. Pete removes this skill in the Claude app once seo-report is installed. Kept meanwhile for the on-demand Ahrefs/Surfer curl references it still carries. -->
+<!-- STATUS (corrected 1 Aug 2026): NOT superseded — both this skill and `seo-report` are live and serve different jobs. A 23 Jul 2026 banner here said `seo-report` replaced this skill; that was reversed the very next day when Pete asked for THIS report to be fixed, not dropped ("When I run a Sygma Health report in the future, I want a fucking honest one", 24 Jul 2026) — the honesty gate below is that fix. `seo-report`'s own SKILL.md was updated 25 Jul to say so explicitly: "It does NOT supersede sygma-health-report... Both are live; use this one for any property, that one for the Sygma four-source report." This file's banner was never updated to match, which is the actual bug — a one-sided fix, not a real supersession. Use `seo-report` for the property-agnostic six-step work-loop read (any property, store-only, free); use THIS skill for Sygma's four-source live deep pull (Ahrefs+GSC+GA4+Ads). Asked for "the sygma health check" — run both. -->
 
 
 <!-- external-service-routing pre-flight: before any Ahrefs / GSC / GA4 / Google Ads operation in this skill, see [[external-service-routing]]. Helper-first. -->
