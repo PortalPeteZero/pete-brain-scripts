@@ -102,7 +102,37 @@ def parse(doc):
                        or (e.get("video") or {}).get("fileName")),
         })
 
+    # ---- promote the answers onto the damage row -----------------------------------------
+    # Every page reads strike_category, depth_mm, root_cause, lessons_learnt and the rest off
+    # clancy_dn_incidents, NOT off clancy_dn_answers. The PDF parser used to do this; the API
+    # ingest did not, so FY25/26 landed with 164 damages and ZERO categories, depths, causes or
+    # lessons — every page would have read empty. (Audit finding, 2 Aug 2026.)
+    qa = {(q.get("question") or "").strip(): (q.get("answer") or "")
+          for q in (d.get("questions") or [])}
+    inv = {(q.get("question") or "").strip(): (q.get("answer") or "")
+           for q in (d.get("reportQuestions") or [])}
+    promoted = {}
+    def take(dst, src, src_map=None):
+        v = ((src_map if src_map is not None else qa).get(src) or "").strip()
+        if v:
+            promoted[dst] = v
+    take("strike_category", "Service Strike Category")
+    take("strike_subcategory", "Service Strike Sub-Category")
+    take("environment", "Environment Of Works")
+    take("caused_by_person", "Name of the person who caused the damage")
+    take("caused_by_plant", "Damage Caused By")
+    take("service_interrupted", "Service Interrupted")
+    take("reported_to_owner_at", "Date & Time Incident Was Reported To Asset Owner")
+    take("incident_summary", "Incident summary", inv)
+    take("underlying_cause", "Service Strike Underlying Cause", inv)
+    take("root_cause", "Service Strike Root Cause", inv)
+    take("lessons_learnt", "Preventative Outcomes/Actions/Lessons Learnt", inv)
+    dep = (qa.get("Depth Of Utility (Approx) - Unit In MM") or "").strip()
+    if dep.isdigit():
+        promoted["depth_mm"] = int(dep)
+
     row = {
+        **promoted,
         "id": iid,
         "report_submitted_at": iso(inc.get("reportSubmittedDate")),
         "report_submitted_by": _name(inc.get("reportSubmittedByName")),
