@@ -487,7 +487,6 @@ table.reg td.n{font-variant-numeric:tabular-nums;text-align:right}
  font-size:12px;font-weight:800;text-align:center}
 .mk.y{background:#eaf6d9;color:#3f6212}
 .mk.n{background:#fde8ec;color:#a4133c}
-.mk.n2{background:#f3f5f8;color:#5b6672}
 .mk.b{background:#eef1f5;color:#9aa4b0}
 .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;
  background:#eef1f5;color:var(--muted)}
@@ -524,12 +523,14 @@ def mark(v, allow_no=True):
 
 
 def yn(count, captured):
-    """Yes / No / not looked at. A damage we have never captured gets a dash, never a No —
-    we would be reporting our own backlog as an absence on Depotnet."""
+    """The count itself — 0 in red, anything above it in green. Pete, 1 Aug 2026: a number says
+    more than a yes. A damage we have never captured gets a dash, never a 0; we would be reporting
+    our own backlog as an absence on Depotnet."""
     if not captured:
         return '<span class="mk b" title="Not captured yet">&ndash;</span>'
-    return ('<span class="mk y" title="Yes">Y</span>' if count
-            else '<span class="mk n2" title="No">N</span>')
+    if count:
+        return f'<span class="mk y" title="{count} on Depotnet">{count}</span>'
+    return '<span class="mk n" title="None on Depotnet">0</span>'
 
 
 def damage_table(d):

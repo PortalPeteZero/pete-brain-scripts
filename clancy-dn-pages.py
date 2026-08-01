@@ -328,6 +328,18 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .pill.act-yes{background:#eef7dc;color:#4a6b00;border-color:#cfe39a}
 .pill.act-no{background:#f4f6f9;color:#7b8694;border-color:#e2e6ec}
 .pill.act-unk{background:#fff6e8;color:#a35f00;border-color:#f0d9b5}
+.dgrps{display:flex;flex-direction:column;gap:12px}
+.dgrp{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+ box-shadow:var(--sh-1)}
+.dgh{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+ padding:13px 16px;background:#f7f9fc;border-bottom:1px solid var(--line);font-size:14px}
+.dgh a{color:var(--green-d);font-weight:800;text-decoration:none}
+.dgh a:hover{text-decoration:underline}
+.dgl{list-style:none;margin:0;padding:4px 0}
+.dgl li{padding:10px 16px;border-bottom:1px solid #f0f3f6;font-size:13.5px;
+ display:flex;flex-wrap:wrap;gap:10px;align-items:baseline}
+.dgl li:last-child{border-bottom:0}
+.dgl li .small{flex-basis:100%;margin-top:2px}
 .pill.st-over{background:#fdecea;color:#b91c1c}
 .pill.uc{background:#f0f7e0;color:#4e7300}
 .mono{font-variant-numeric:tabular-nums}
@@ -537,11 +549,10 @@ def status_pill(s):
 
 def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
     enrich = enrich or {}
-    # The damage register and the actions register come from separate exports and drift apart. Any
-    # damage newer than the newest action we hold simply is not covered, which is a different thing
-    # from having no actions. ACT_CUTOFF is that boundary.
-    _dates = [a.get("date_raised") for acts in act_by_inc.values() for a in acts if a.get("date_raised")]
-    ACT_CUTOFF = max(_dates)[:10] if _dates else None
+    # There used to be an "unknown — not in our export" state here, on the theory that a damage
+    # newer than the newest action we hold might have actions we cannot see. It was wrong: Pete,
+    # 1 Aug 2026 — "there is no actions reports after this date on deponet, we are not missing
+    # info". Both registers are imported to the same day. So no actions means no actions.
     fams = sorted({fam(r) for r in inc})
     utils = [u for u in UTIL_ORDER if any(r["ugroup"] == u for r in inc)]
     sevs = ["High (Cat 1)", "Medium (Cat 2)", "Low (Cat 3)"]
@@ -554,7 +565,7 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
     CAPOPTS = [("todo", "not captured yet"), ("part", "part captured"),
                ("missing", "tried — missing"), ("done", "fully captured")]
     ACTOPTS = [("open", "some still outstanding"), ("closed", "recorded, all closed"),
-               ("no", "NONE recorded in Depotnet"), ("unk", "unknown — not in our export")]
+               ("no", "NONE recorded in Depotnet")]
     selects = "".join(
         f'<select data-filter-for="{tid}" data-key="{key}"><option value="">{lab}: all</option>' +
         "".join(f'<option>{esc(o)}</option>' for o in opts) + "</select>"
@@ -570,10 +581,7 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
                           ["id", "location", "description", "contract", "raised_by", "subcontractor", "job_ref"])
         date_h = f'<td class="mono" data-v="{r["d"] or ""}">{r["d"] or "—"}</td>'
         overdue = sum(1 for a in acts if a["status"] == "Overdue")
-        # "0" on its own is ambiguous — it could mean none were raised, or that our actions export
-        # does not reach this damage. Say which. (Pete, 31 Jul: mark clearly which have and which
-        # do not.) ACT_CUTOFF is the high-water mark of the actions export.
-        act_key = ("open" if overdue else "closed") if acts else ("unk" if (ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF) else "no")
+        act_key = ("open" if overdue else "closed") if acts else "no"
         # Four DISTINCT states. "None outstanding" and "none recorded in Depotnet" are completely
         # different things and must never share a label (Pete, 31 Jul).
         if acts and overdue:
@@ -582,8 +590,6 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
         elif acts:
             act_h = (f'<span class="pill act-yes" title="Depotnet holds {len(acts)} corrective action(s) for this damage and all are closed">'
                      f'{len(acts)} recorded, all closed</span>')
-        elif ACT_CUTOFF and (r["d"] or "") > ACT_CUTOFF:
-            act_h = '<span class="pill act-unk" title="This damage post-dates the corrective-actions export we hold, so we cannot see whether Depotnet has any. It is NOT a statement that none exist.">unknown — not in our export</span>'
         else:
             act_h = '<span class="pill act-no" title="Depotnet holds NO corrective action record for this damage at all. This is not the same as having none outstanding.">none recorded in Depotnet</span>'
         detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
@@ -961,7 +967,7 @@ def fy_dashboard(inc, act, fykey, full=True):
     body.append('</div>')
     body.append(f"""<div class="grid c3" style="margin-top:20px">
 <a class="fyt" href="/raw/{MK}/{yp['incidents']}"><div class="y">Incidents</div><div class="n">{len(rows)}</div><div class="s">every {label} damage — searchable, expandable</div></a>
-<a class="fyt" href="/raw/{MK}/{yp['actions']}"><div class="y">Actions</div><div class="n">{len(fy_act)}</div><div class="s">{overdue} overdue — who owes what</div></a>
+<a class="fyt" href="/raw/{MK}/{yp['actions']}"><div class="y">Actions</div><div class="n">{len({a['incident_id'] for a in fy_act})} of {len(rows)}</div><div class="s">damages with any action raised &middot; {len(fy_act)} action lines, {overdue} overdue</div></a>
 <a class="fyt" href="/raw/{MK}/{yp['insights']}"><div class="y">Insights</div><div class="n">{label.split()[-1]}</div><div class="s">trends, improvements, capture quality</div></a>
 </div>""")
     sub = f"{label} · {len(rows)} service damages across {len(fams)} contract groups"
@@ -1049,6 +1055,13 @@ def all_incidents_page(inc, act, enrich=None):
     return shell("All incidents — every year", "\n".join(body), "overview.html",
                  f"{len(inc)} service damages · the whole register in one table", wide=True)
 
+def dmg_href(r):
+    """Link to a damage's own record page, when its year has one."""
+    if not r or r.get("fy") not in FY_PAGE:
+        return ""
+    return f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}'
+
+
 def actions_page(inc, act, fykey=None):
     """Actions centre — year-scoped when fykey given (actions on that year's incidents),
     else the all-years view reached only from the Overview cards."""
@@ -1074,8 +1087,11 @@ def actions_page(inc, act, fykey=None):
     lag.sort()
     med_lag = lag[len(lag) // 2] if lag else 0
     p90 = lag[int(len(lag) * .9)] if lag else 0
+    n_with = len({a["incident_id"] for a in act})
     cards = [
-        dict(n=len(act), l=f"corrective actions raised ({len({a['incident_id'] for a in act})} of {n_dam} damages have at least one)"),
+        dict(n=f"{n_with} of {n_dam}", cls="red" if n_dam and n_with * 4 < n_dam else "",
+             l=f"damages with any corrective action raised &#8212; {len(act)} individual action "
+               f"lines in total, so a damage can carry several"),
         dict(n=len(closed), cls="green", l="closed", href="?status=Closed"),
         dict(n=len(overdue), cls="red", l="overdue right now", href="?status=Overdue"),
         dict(n=f"{max(ages) if ages else 0}d", cls="red" if ages else "", l="oldest overdue action (days past due)", href="?status=Overdue"),
@@ -1087,7 +1103,9 @@ def actions_page(inc, act, fykey=None):
     body.append(f'<div class="card"><div class="h2row"><h2>Who holds the actions</h2><span class="note">all {len(act)} actions</span></div>{hbar(byass)}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>Overdue, by contract</h2><span class="note">{len(overdue)} overdue</span></div>{hbar(od_fam, color="#dc2626")}</div>')
     body.append('</div>')
-    # actions table
+    # actions table — GROUPED BY DAMAGE (Pete, 1 Aug 2026: "we need to group them by incident
+    # report"). A flat list made 9 actions on 2 damages read as 9 separate pieces of work; the
+    # only on-screen clue that seven shared a damage was the location repeating.
     rows_html = []
     for a in sorted(act, key=lambda x: (x["status"] != "Overdue", x["due"] or "9999")):
         r = inc_by_id.get(a["incident_id"])
@@ -1096,8 +1114,10 @@ def actions_page(inc, act, fykey=None):
             age = f'<span class="pill st-over">{(today - datetime.date.fromisoformat(a["due"])).days}d late</span>'
         search = " ".join(str(x or "").lower() for x in [a["assigned_to"], a["description"], a["corrective_measure"], a["contract"], (r or {}).get("location")])
         rows_html.append(
-            f'<tr class="row" data-search="{esc(search)}" data-status="{esc(a["status"] or "")}" data-fam="{esc(a["contract_family"] or "")}">'
+            f'<tr class="row" data-search="{esc(search)}" data-status="{esc(a["status"] or "")}" data-fam="{esc(a["contract_family"] or "")}" data-dmg="{a["incident_id"]}">'
             f'<td class="mono">{a["id"]}</td>'
+            f'<td class="mono">' + (f'<a href="{dmg_href(r)}">{a["incident_id"]}</a>'
+                                    if r and dmg_href(r) else str(a["incident_id"])) + '</td>'
             f'<td class="mono" data-v="{a["due"] or ""}">{a["due"] or "—"} {age}</td>'
             f'<td>{esc((a["assigned_to"] or "Unassigned").split(" (")[0])}</td>'
             f'<td>{esc(a["contract_family"] or a["contract"] or "—")}</td>'
@@ -1106,17 +1126,49 @@ def actions_page(inc, act, fykey=None):
         det = (f'<div class="desc"><b>Asked:</b> {esc((a["description"] or "—"))}</div>'
                + (f'<div class="desc" style="margin-top:8px"><b>Done:</b> {esc(a["corrective_measure"])}</div>' if a["corrective_measure"] else '<div class="small muted" style="margin-top:8px">No corrective measure recorded.</div>')
                + f'<div class="meta"><span>Incident {a["incident_id"]}{(" — " + esc((r or {}).get("location") or "")) if r else ""}</span><span>Raised by {esc(a["raised_by"] or "—")}</span><span>Incident status: {esc(a["incident_status"] or "—")}</span></div>')
-        rows_html.append(f'<tr class="det" style="display:none"><td colspan="6"><div class="det">{det}</div></td></tr>')
+        rows_html.append(f'<tr class="det" style="display:none"><td colspan="7"><div class="det">{det}</div></td></tr>')
     fams_a = sorted({a["contract_family"] or "" for a in act if a["contract_family"]})
     selects = (f'<select data-filter-for="tact" data-key="status"><option value="">Status: all</option><option>Overdue</option><option>Closed</option></select>'
                f'<select data-filter-for="tact" data-key="fam"><option value="">Contract: all</option>' +
                "".join(f"<option>{esc(f)}</option>" for f in fams_a) + "</select>")
+    # ── by damage, because that is the unit that matters ────────────────────────────────────
+    by_dmg = {}
+    for a in act:
+        by_dmg.setdefault(a["incident_id"], []).append(a)
+    grp = []
+    for iid, ga in sorted(by_dmg.items(),
+                          key=lambda kv: (-sum(1 for a in kv[1] if a["status"] == "Overdue"),
+                                          -len(kv[1]), -kv[0])):
+        r = inc_by_id.get(iid)
+        od = sum(1 for a in ga if a["status"] == "Overdue")
+        href = dmg_href(r)
+        head = (f'<a href="{href}">Damage {iid}</a>' if href else f'Damage {iid}')
+        loc = esc(((r or {}).get("location") or "location not recorded"))
+        famn = esc((r or {}).get("contract_family") or (ga[0].get("contract_family") or "—"))
+        tally = (f'<span class="pill st-over">{od} outstanding</span> '
+                 if od else '') + f'<span class="pill act-yes">{len(ga)} action{"s" if len(ga) != 1 else ""}</span>'
+        lis = "".join(
+            f'<li><span class="mono">{a["id"]}</span> '
+            f'<span class="muted">due {a["due"] or "—"}</span> '
+            f'{esc((a["assigned_to"] or "Unassigned").split(" (")[0])} '
+            f'{status_pill(a["status"] or "—")}'
+            f'<div class="small muted">{esc((a["description"] or "")[:150])}</div></li>'
+            for a in sorted(ga, key=lambda x: (x["status"] != "Overdue", x["due"] or "9999")))
+        grp.append(f'<div class="dgrp"><div class="dgh"><div><b>{head}</b> '
+                   f'<span class="muted">{famn} &middot; {loc}</span></div><div>{tally}</div></div>'
+                   f'<ul class="dgl">{lis}</ul></div>')
+    body.append('<div class="h2row" style="margin-top:26px"><h2>By damage</h2>'
+                f'<span class="note">{len(act)} action{"s" if len(act) != 1 else ""} across '
+                f'{len(by_dmg)} damage{"s" if len(by_dmg) != 1 else ""} '
+                f'&mdash; the other {n_dam - len(by_dmg)} have none recorded</span></div>')
+    body.append('<div class="dgrps">' + "".join(grp) + '</div>')
+
     body.append(f'<div class="h2row" style="margin-top:26px"><h2>Every action</h2><span class="note">overdue first — click a row for what was asked and what was done</span></div>')
     body.append(f'<div class="filters"><input type="search" id="tact-q" placeholder="Search assignee, action text…">{selects}<span class="count" id="tact-count"></span></div>')
     body.append(f'<div class="card" style="padding:6px 10px;overflow-x:auto"><table id="tact"><thead><tr>'
-                f'<th data-col="0" data-num="1">ID <span class="arr">↕</span></th><th data-col="1">Due <span class="arr">↕</span></th>'
-                f'<th data-col="2">Assigned to <span class="arr">↕</span></th><th data-col="3">Contract <span class="arr">↕</span></th>'
-                f'<th data-col="4">Incident location <span class="arr">↕</span></th><th data-col="5">Status <span class="arr">↕</span></th>'
+                f'<th data-col="0" data-num="1">ID <span class="arr">↕</span></th><th data-col="1" data-num="1">Damage <span class="arr">↕</span></th><th data-col="2">Due <span class="arr">↕</span></th>'
+                f'<th data-col="3">Assigned to <span class="arr">↕</span></th><th data-col="4">Contract <span class="arr">↕</span></th>'
+                f'<th data-col="5">Incident location <span class="arr">↕</span></th><th data-col="6">Status <span class="arr">↕</span></th>'
                 f'</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>')
     body.append(f'<script>{TABLE_JS}initTable("tact");</script>')
     if fykey:
