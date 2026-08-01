@@ -95,9 +95,9 @@ def queue(limit, fy=None, oldest=False, with_actions_only=False):
     cap = rest("clancy_dn_incidents?select=id&pdf_captured_at=not.is.null&limit=10000")
     _acts = rest("clancy_dn_actions?select=incident_id,date_raised&limit=10000")
     have_actions = {a["incident_id"] for a in _acts}
-    # The high-water mark of the actions export. Anything newer is simply not covered by it.
-    _d = [a["date_raised"][:10] for a in _acts if a.get("date_raised")]
-    ACT_CUTOFF = max(_d) if _d else None
+    # There is no export "high-water mark" to worry about. Pete, 1 Aug 2026: there are no Service
+    # Damage actions on Depotnet after 23 Jun 2026 at all, and both registers import to the same
+    # day. So a damage with no action has no action — it is not a gap in what we can see.
     print(f"captured {len(cap)} of {len(tot)} incidents"
           + (f" · newest captured: {done[0]['id']} ({(done[0]['incident_date'] or '')[:10]})" if done else " · none captured yet"))
     if not todo:
@@ -119,12 +119,14 @@ def queue(limit, fy=None, oldest=False, with_actions_only=False):
         # same thing and must never share wording (Pete, 31 Jul).
         if r["id"] in have_actions:
             acts = " ·  ACTIONS RECORDED"
-            todo_line = ("      ACTIONS: open BOTH tabs (Outstanding + Closed). Scrape Closed/Closed By, then click View on\n"
-                         "               EVERY action and take its Photos, Videos, Documents and Timeline.")
-        elif ACT_CUTOFF and (r["incident_date"] or "")[:10] > ACT_CUTOFF:
-            acts = " ·  ACTIONS UNKNOWN"
-            todo_line = (f"      ACTIONS: this damage post-dates our actions export ({ACT_CUTOFF}). We CANNOT see whether\n"
-                         "               Depotnet holds any. That is NOT the same as none existing. Open both tabs and check.")
+            todo_line = (
+                f"      ACTIONS ({n_act} recorded): open BOTH tabs (Outstanding + Closed).\n"
+                "               From the Closed grid take Created, Assigned To, CLOSED and CLOSED BY —\n"
+                "               closed_at/closed_by exist ONLY here, never in the Action Report export.\n"
+                "               Then click View on EVERY action. The modal holds Location, and its own\n"
+                "               Photos / Videos / Documents / Timeline tabs. On damage 133852 that was 10\n"
+                "               documents and 57 timeline entries that nothing else in Depotnet exposes.\n"
+                "               Land it with:  --actions <json>  (see --actions-help)")
         else:
             acts = " ·  NONE recorded in our export"
             todo_line = ("      ACTIONS: our export holds no action record for this damage — meaning none was ever RAISED,\n"
@@ -139,7 +141,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("incident_id", nargs="?", type=int)
     ap.add_argument("--files", help="folder of everything downloaded for this incident")
-    ap.add_argument("--actions", help="JSON from the Closed Actions tab scrape")
+    ap.add_argument("--actions", help="JSON from the Closed Actions tab scrape: a list of {id|description, closed, closed_by, location, documents:[names], timeline:[rows]}")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--actions-none", action="store_true",
                     help="this damage genuinely has no actions in Depotnet (records 'none')")
@@ -158,8 +160,14 @@ def main():
     if a.queue:
         queue(a.limit, a.fy, a.oldest, a.with_actions)
         return
-    if not a.incident_id or not a.files:
-        sys.exit("give an incident id and --files, or use --queue to see where to start")
+    # --files is for the incident harvest. An ACTIONS-only run is legitimate and common: the
+    # closure detail, an action's Location, its documents and its Timeline all live behind the
+    # View modal and have nothing to do with the incident's own file folder. Requiring --files
+    # here made that run impossible, which is why the 1 Aug 2026 backfill had to be hand-written.
+    if not a.incident_id or not (a.files or a.actions or a.actions_none or a.actions_missing
+                                 or a.incident_missing):
+        sys.exit("give an incident id with --files (incident harvest) or --actions/--actions-none "
+                 "(action side), or use --queue to see where to start")
     iid = a.incident_id
 
     got = rest(f"clancy_dn_incidents?id=eq.{iid}&select=id,location,utility_class,incident_date,capture_drive_folder")
@@ -167,7 +175,7 @@ def main():
         sys.exit(f"incident {iid} is not in clancy_dn_incidents — run clancy-dn-import.py first")
     inc = got[0]
 
-    files = sorted(f for f in os.listdir(a.files) if not f.startswith("."))
+    files = sorted(f for f in os.listdir(a.files) if not f.startswith(".")) if a.files else []
     pdfs = [f for f in files if f.lower().endswith(".pdf") and re.search(r"(incident[- ])", f, re.I)]
     photos = [f for f in files if is_photo(f)]
     docs = [f for f in files if f not in photos and f not in pdfs]
@@ -235,7 +243,7 @@ def main():
             except ValueError:
                 return v  # unrecognised shape: pass through, let PostgREST reject it loudly
         acts = json.load(open(a.actions))
-        n = 0
+        n = docs_n = 0
         for act in acts:
             patch = {}
             if act.get("closed"):
@@ -244,15 +252,43 @@ def main():
                 patch["closed_by"] = act["closed_by"]
             if not patch:
                 continue
+            # An action's View modal also holds a Location and its OWN Photos / Videos /
+            # Documents / Timeline. Nothing else in Depotnet exposes them — not the Action Report
+            # export, not the incident PDF. On damage 133852 that was 10 documents and 57 timeline
+            # entries we had never seen (found 1 Aug 2026).
+            if act.get("location"):
+                patch["location"] = act["location"]
+            if act.get("timeline"):
+                # `timeline` is jsonb: hand PostgREST the LIST, not json.dumps() of it, or it
+                # stores a JSON *string* scalar and jsonb_array_length blows up on read.
+                tl = act["timeline"]
+                patch["timeline"] = tl if isinstance(tl, list) else [str(tl)]
+            patch["detail_captured_at"] = now_iso
+
             # match on action id when present, else on the description text for this incident
+            aid = None
             if act.get("id"):
-                rest(f"clancy_dn_actions?id=eq.{int(act['id'])}", "PATCH", patch)
+                aid = int(act["id"])
+                rest(f"clancy_dn_actions?id=eq.{aid}", "PATCH", patch)
                 n += 1
             elif act.get("description"):
                 key = urllib.request.quote(act["description"][:60])
                 rest(f"clancy_dn_actions?incident_id=eq.{iid}&description=like.{key}*", "PATCH", patch)
+                got = rest(f"clancy_dn_actions?select=id&incident_id=eq.{iid}"
+                           f"&description=like.{key}*")
+                aid = got[0]["id"] if got else None
                 n += 1
-        print(f"    action closures applied: {n}")
+            # the action's own documents, recorded against BOTH the damage and the action
+            for name in dict.fromkeys(act.get("documents") or []):
+                if not rest(f"clancy_dn_files?select=id&incident_id=eq.{iid}"
+                            f"&name=eq.{urllib.request.quote(name)}"
+                            + (f"&action_id=eq.{aid}" if aid else "")):
+                    rest("clancy_dn_files", "POST",
+                         [{"incident_id": iid, "action_id": aid, "kind": "document",
+                           "name": name, "source": "depotnet-action-tab",
+                           "captured_at": now_iso}])
+                    docs_n += 1
+        print(f"    action closures applied: {n} · action documents recorded: {docs_n}")
 
     rest(f"clancy_dn_incidents?id=eq.{iid}", "PATCH",
          {"capture_drive_folder": f"https://drive.google.com/drive/folders/{root}"})
