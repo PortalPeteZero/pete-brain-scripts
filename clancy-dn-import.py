@@ -357,6 +357,35 @@ def main():
         rest("clancy_dn_actions", "POST", act_rows[i:i+200], H)
     print("written.")
     embed_dirty()
+    uncaptured_report()
+
+
+def uncaptured_report():
+    """The handoff the process was missing.
+
+    Import and deep-capture are two separate steps. On 31 Jul 2026 the capture pass ran
+    12:37-15:37 and captured all 47 incidents that existed at that moment; an import at 18:16
+    then brought in a 48th (153523). Nothing told anyone, so it sat uncaptured and turned up
+    later as a hole in the analysis page. An import must now always end by saying what it has
+    left for capture to do.
+    """
+    rows = rest("clancy_dn_incidents?select=id,incident_date,contract_family,location"
+                "&pdf_captured_at=is.null&fy=eq." + urllib.request.quote(fy_of(datetime.datetime.now(datetime.timezone.utc)))
+                + "&order=incident_date.desc&limit=50")
+    if not rows:
+        print("\ncapture: nothing outstanding this financial year.")
+        return
+    print(f"\n!! CAPTURE OUTSTANDING — {len(rows)} damage(s) this year imported but NOT "
+          f"deep-captured.")
+    print("   Until each is captured we cannot say what its investigation form holds; it is "
+          "'not looked at', not 'blank'.")
+    for r in rows[:10]:
+        print(f"   {r['id']}  {str(r['incident_date'])[:10]}  "
+              f"{(r.get('contract_family') or '')[:22]:22}  {(r.get('location') or '')[:38]}")
+    if len(rows) > 10:
+        print(f"   ... and {len(rows) - 10} more")
+    print("   Next: VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-capture.py --queue --fy "
+          f"\"{fy_of(datetime.datetime.now(datetime.timezone.utc))}\"")
 
 
 # ---- semantic embeddings (voyage-3.5-lite / 1024, same as the brain) ------
