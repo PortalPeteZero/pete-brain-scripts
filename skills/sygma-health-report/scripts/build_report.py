@@ -129,6 +129,38 @@ def gbp(micros):
     return int(micros or 0) / 1e6
 
 # ----------------------------- state-doc readers ----------------------------
+def _intent_config():
+    """The property's intent rules, read live from seo_property_config.
+
+    Returns (commercial_patterns, vanity_terms). Two SEPARATE mechanisms and both are required:
+      * commercial_patterns = the WHITELIST. A term must CARRY one ("training", "course", …) to be
+        tracked at all. This is the rule Pete states as "every term we use should have training and
+        course" — a topic without a buying qualifier is not a term this business competes for.
+      * vanity_terms        = the BLACKLIST. Explicitly banned strings, even if they'd pass above.
+
+    WHY BOTH (1 Aug 2026 — the fix shipped hours earlier caught only half of it): applying the
+    blacklist alone still left "eusr cat 1" and "eusr category 1" in EUSR CAT1's tracked set. They are
+    bare topics with no buying intent, they are not on the blacklist, and they were dragging that
+    page's reported weighted position. Pete: "still not right … we need to get this right and stop
+    with the fucking about." A blacklist can only remove what someone thought to name; the whitelist
+    is what actually enforces the rule.
+    """
+    import subprocess
+    try:
+        out = subprocess.run([sys.executable, f"{VAULT}/cc-sql.py",
+            "SELECT intent_commercial_patterns, intent_vanity_terms FROM seo_property_config "
+            "WHERE property_key='sygma-solutions-website'"],
+            capture_output=True, text=True, timeout=30, env={**os.environ, "VAULT": VAULT})
+        rows = json.loads(out.stdout or "[]")
+        if not rows:
+            return [], set()
+        pats = [p.strip().lower() for p in (rows[0].get("intent_commercial_patterns") or [])]
+        van = {t.strip().lower() for t in (rows[0].get("intent_vanity_terms") or [])}
+        return pats, van
+    except Exception:
+        return [], set()
+
+
 def _vanity_terms():
     """The property's BANNED vanity terms, read live from seo_property_config.
 
@@ -150,25 +182,42 @@ def _vanity_terms():
         return set()
 
 
-def _strip_vanity(pages):
-    """Drop banned vanity terms from every tracked set, LOUDLY. Never silently.
+def _enforce_intent(pages):
+    """Keep ONLY terms that carry a commercial qualifier and are not blacklisted. LOUDLY, never silently.
 
-    A vanity term that is also a page's `kw` is a config fault, not a filtering job — it is reported
-    and left, because silently swapping a page's head term would hide the fault.
+    Order matters: whitelist first (must carry "training"/"course"/…), then blacklist. A term failing
+    either is dropped from the tracked set and named on stdout, so a shrinking set is always visible
+    rather than looking like missing data.
+
+    A page whose own `kw` fails is a CONFIG fault, not a filtering job — reported and left, because
+    silently swapping a page's head term would hide the fault.
     """
-    banned = _vanity_terms()
-    if not banned:
-        print("  ⚠ vanity-term list unreadable — tracked sets NOT filtered this run (say so when narrating)")
+    pats, banned = _intent_config()
+    if not pats:
+        print("  ⚠ intent config unreadable — tracked sets NOT filtered this run (say so when narrating)")
         return pages
-    dropped = []
+
+    def ok(term):
+        t = term.strip().lower()
+        if t in banned:
+            return False, "blacklisted vanity term"
+        if not any(pat in t for pat in pats):
+            return False, "no commercial qualifier (needs training/course/…)"
+        return True, ""
+
     for p in pages:
-        keep = [t for t in p["terms"] if t.strip().lower() not in banned]
-        dropped += [(p["label"], t) for t in p["terms"] if t.strip().lower() in banned]
-        p["terms"] = keep
-        if p["kw"].strip().lower() in banned:
-            print(f"  ⚠ CONFIG FAULT: {p['label']} head term '{p['kw']}' is a BANNED vanity term — fix PAGES/config")
-    for label, t in dropped:
-        print(f"  ✓ dropped banned vanity term from {label} tracked set: '{t}'")
+        keep, dropped = [], []
+        for t in p["terms"]:
+            good, why = ok(t)
+            (keep if good else dropped).append((t, why))
+        p["terms"] = [t for t, _ in keep]
+        for t, why in dropped:
+            print(f"  ✓ dropped from {p['label']} set: '{t}' — {why}")
+        good, why = ok(p["kw"])
+        if not good:
+            print(f"  ⚠ CONFIG FAULT: {p['label']} head term '{p['kw']}' — {why}. Fix PAGES/config.")
+        if not p["terms"]:
+            print(f"  ⚠ {p['label']} has NO qualifying terms left — its set-level number will be blank, not zero.")
     return pages
 
 
@@ -549,8 +598,8 @@ def build_md(A, G, GA, ADS):
 
 # ----------------------------- main -----------------------------------------
 def main():
-    print("[0/4] vanity-term guard (config-enforced, not hand-typed)…", flush=True)
-    _strip_vanity(PAGES)
+    print("[0/4] intent guard — every tracked term must carry a commercial qualifier…", flush=True)
+    _enforce_intent(PAGES)
     print("[1/4] Ahrefs (DR + 7-day rank tracker)…", flush=True); A = pull_ahrefs()
     print("[2/4] GSC (site + per-page)…", flush=True);             G = pull_gsc()
     print("[3/4] GA4 (traffic + conversions)…", flush=True);       GA = pull_ga4()
