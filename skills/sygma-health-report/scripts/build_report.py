@@ -42,6 +42,15 @@ AHREFS_PROJECT = "9613452"
 
 # Deep-dive cluster pages (the "recently worked on" set). Each tracks a curated
 # set of commercial terms day-by-day regardless of which URL they currently rank to.
+#
+# ⛔ THE `kw` FIELD IS *ONE MEMBER* OF THE SET — IT IS NOT THE PAGE'S SCORE.
+# Failure this guards (1 Aug 2026, Pete: "we dont look at bare terms", "i am fucking tired of you
+# doing this"): the headline printed `head '<kw>' pos N` per page, so a page whose assigned job is a
+# SET of keywords (Cat & Genny 16, Cable Avoidance 37, EUSR CAT1 30, HSG47 16 — per the targeting
+# registry at seo_property_config.targeting_registry) got judged on one term plucked out of that set.
+# A single term's position is not a page's performance and must never be presented as one.
+# The headline now reports the SET (clicks + impressions + impression-weighted position). If you are
+# about to print one term as a page's number, you are re-entering the trap this comment exists to close.
 PAGES = [
     {"path": "/courses/eusr-cat1", "kw": "eusr cat 1 training", "label": "EUSR CAT1",
      "terms": ["eusr cat and genny training", "eusr cat 1 training", "eusr cat 1",
@@ -120,6 +129,49 @@ def gbp(micros):
     return int(micros or 0) / 1e6
 
 # ----------------------------- state-doc readers ----------------------------
+def _vanity_terms():
+    """The property's BANNED vanity terms, read live from seo_property_config.
+
+    WHY THIS EXISTS (1 Aug 2026): the honesty gate promises "a vanity term (bare 'cat and genny')
+    can never reach a report" — but that filter is enforced in seo-report.py only. THIS generator
+    carried its own hand-typed PAGES['terms'] lists, which bypassed the filter entirely and had the
+    bare vanity term "hsg47" hard-coded into HSG47's tracked set (it is listed verbatim in
+    seo_property_config.intent_vanity_terms). It was being pulled from GSC and reported every run.
+    A promise enforced in one code path and not the other is not enforced. Now both read the config.
+    """
+    import subprocess
+    try:
+        out = subprocess.run([sys.executable, f"{VAULT}/cc-sql.py",
+            "SELECT intent_vanity_terms FROM seo_property_config WHERE property_key='sygma-solutions-website'"],
+            capture_output=True, text=True, timeout=30, env={**os.environ, "VAULT": VAULT})
+        rows = json.loads(out.stdout or "[]")
+        return {t.strip().lower() for t in (rows[0].get("intent_vanity_terms") or [])} if rows else set()
+    except Exception:
+        return set()
+
+
+def _strip_vanity(pages):
+    """Drop banned vanity terms from every tracked set, LOUDLY. Never silently.
+
+    A vanity term that is also a page's `kw` is a config fault, not a filtering job — it is reported
+    and left, because silently swapping a page's head term would hide the fault.
+    """
+    banned = _vanity_terms()
+    if not banned:
+        print("  ⚠ vanity-term list unreadable — tracked sets NOT filtered this run (say so when narrating)")
+        return pages
+    dropped = []
+    for p in pages:
+        keep = [t for t in p["terms"] if t.strip().lower() not in banned]
+        dropped += [(p["label"], t) for t in p["terms"] if t.strip().lower() in banned]
+        p["terms"] = keep
+        if p["kw"].strip().lower() in banned:
+            print(f"  ⚠ CONFIG FAULT: {p['label']} head term '{p['kw']}' is a BANNED vanity term — fix PAGES/config")
+    for label, t in dropped:
+        print(f"  ✓ dropped banned vanity term from {label} tracked set: '{t}'")
+    return pages
+
+
 def _vault_note_body(key):
     """Fetch a vault_notes body live (ledger/non-issues moved out of flat files 2026-06)."""
     import subprocess
@@ -238,6 +290,32 @@ def pull_gsc():
                 for r in rows or []]
         except Exception:
             out["kw_daily"][p["kw"]] = []
+    # SET-LEVEL read — the page judged on its WHOLE assigned term set, not one term.
+    # This is the number the headline reports. Impression-weighted, because a plain mean lets a
+    # 1-impression stray term outweigh the real demand (the banned avg(position) fault, same family).
+    out["set_totals"] = {}
+    for p in PAGES:
+        terms = [t for t in p["terms"] if t]
+        clicks = impr = 0
+        wpos = 0.0
+        got, missing = 0, []
+        for t in terms:
+            try:
+                fg = [{"filters": [{"dimension": "query", "operator": "equals", "expression": t}]}]
+                rows = gsc.query(GSC_PROP, ["date"], date_range=14, limit=31, filters=fg) or []
+            except Exception:
+                missing.append(t); continue
+            if not rows:
+                missing.append(t); continue
+            got += 1
+            for r in rows:
+                clicks += r["clicks"]; impr += r["impressions"]
+                wpos += r["position"] * r["impressions"]
+        out["set_totals"][p["label"]] = {
+            "terms_tracked": len(terms), "terms_with_data": got, "no_data": missing,
+            "clicks": clicks, "impressions": impr,
+            "wpos": round(wpos / impr, 1) if impr else None,
+        }
     out["latest_day"] = max((r["date"] for rows in out["kw_daily"].values() for r in rows), default=None)
     return out
 
@@ -471,6 +549,8 @@ def build_md(A, G, GA, ADS):
 
 # ----------------------------- main -----------------------------------------
 def main():
+    print("[0/4] vanity-term guard (config-enforced, not hand-typed)…", flush=True)
+    _strip_vanity(PAGES)
     print("[1/4] Ahrefs (DR + 7-day rank tracker)…", flush=True); A = pull_ahrefs()
     print("[2/4] GSC (site + per-page)…", flush=True);             G = pull_gsc()
     print("[3/4] GA4 (traffic + conversions)…", flush=True);       GA = pull_ga4()
@@ -544,17 +624,28 @@ def main():
             print(l)
 
     print()
+    print("--- PAGE vs ITS ASSIGNED TERM SET (GSC, 14d, impression-weighted) — this is the page's number ---")
+    print("    Each page's job is a SET of keywords (registry: seo_property_config.targeting_registry).")
+    print("    A single term is ONE MEMBER of that set and is NEVER the page's score. Clicks are the measure.")
+    for p in PAGES:
+        s = G.get("set_totals", {}).get(p["label"], {})
+        nodata = f"  [{len(s.get('no_data', []))} of {s.get('terms_tracked','?')} terms no GSC data]" if s.get("no_data") else ""
+        print(f"  {p['label']:16s} SET({s.get('terms_with_data','?')}/{s.get('terms_tracked','?')} terms)  "
+              f"clicks {s.get('clicks','—')}  impr {s.get('impressions','—')}  "
+              f"weighted pos {s.get('wpos') if s.get('wpos') is not None else '—'}{nodata}")
+    print("\n--- per-term detail (context ONLY — never quote one of these as the page's performance) ---")
     for p in PAGES:
         latest = A["perday"][A["days_desc"][0]].get(p["kw"].lower())
         days_asc = A["days_asc"]
         f0 = next((A["perday"][d].get(p["kw"].lower()) for d in days_asc if A["perday"][d].get(p["kw"].lower())), None)
         ln = A["perday"][days_asc[-1]].get(p["kw"].lower())
         d7 = (ln[0]-f0[0]) if (f0 and ln and f0[0] is not None and ln[0] is not None) else None
-        # GSC 3-day read for the same head term (the judge — see report Notes)
+        # GSC 3-day read for this ONE term (the judge — see report Notes)
         kwrows = G.get("kw_daily", {}).get(p["kw"], [])
         tail = [r for r in kwrows if r["impressions"]][-3:]
         gsc_str = " ".join(f"{r['date'][5:]}:{r['position']}" for r in tail) or "no GSC data"
-        print(f"  {p['label']:16s} head '{p['kw']}' pos {latest[0] if latest else '—'} "
+        n = G.get("set_totals", {}).get(p["label"], {}).get("terms_tracked", "?")
+        print(f"  {p['label']:16s} '{p['kw']}' (1 of {n} in set) pos {latest[0] if latest else '—'} "
               f"(Δ7d {('—' if d7 is None else ('+'+str(d7) if d7>0 else str(d7)))}) "
               f"via {slug(latest[1]) if latest else '—'}  ||  GSC daily: {gsc_str}")
     print(f"\n⚖️  JUDGE ON GSC, NEVER AHREFS ALONE. Latest GSC day: {G.get('latest_day')} (lags 2-3d).")
