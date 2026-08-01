@@ -164,20 +164,42 @@ def parse(doc):
         })
 
     # ---- every file the payload references ----------------------------------------------
-    # Files hang off timeline entries AND off individual questions. Both are collected; the
-    # signed `path` is what makes them downloadable.
-    files, fseen = [], set()
+    # Files hang off timeline entries AND off individual questions.
+    #
+    # IDENTITY IS THE ID, NOT THE NAME. The same attachment arrives twice: on a timeline entry
+    # with fileName "gallery_pogbzemlwvfpble.jpg", and on a question's photos[] with fileName
+    # **null**, where falling back to the storage path produced
+    # "2026-04-08-15-43-06-425_gallerypogbzemlwvfpble.jpg". Two rows, one file — 147 of them on
+    # 1 Aug 2026. Depotnet gives documentId / photoId / videoId; use them. Where there is no id,
+    # the blob path minus its SAS query string is stable across runs (the signature is not).
+    # Keyed on the STORAGE PATH, because that is the physical file. The same blob is described
+    # twice with different richness:
+    #   timeline photo  -> photoId 21524200, fileName "gallery_nxshqwcbnmkissf.jpg"
+    #   question photo  -> NO id, NO fileName, only the path
+    # Keying on the id alone made them two entries; letting the later one win wiped the good
+    # name and the id. So: one entry per path, MERGED — take the id and the display name from
+    # whichever source has them, never downgrade.
+    merged = {}
     def add_file(o, kind, action_id=None):
-        name, path = o.get("fileName"), o.get("path")
+        path = o.get("path")
         if not path:
             return
-        name = name or path.split("/")[-1].split("?")[0]
-        if (name, action_id) in fseen:
-            return
-        fseen.add((name, action_id))
-        files.append({"incident_id": iid, "action_id": action_id, "kind": kind,
-                      "name": name, "path": path,
-                      "uploaded_on_depotnet": iso(o.get("dateCreated"))})
+        stem = path.split("?")[0]
+        fid = o.get("documentId") or o.get("photoId") or o.get("videoId")
+        cur = merged.get(stem)
+        if cur is None:
+            cur = merged[stem] = {"incident_id": iid, "action_id": action_id, "kind": kind,
+                                  "name": None, "path": path, "storage_path": stem,
+                                  "depotnet_file_id": None,
+                                  "uploaded_on_depotnet": iso(o.get("dateCreated"))}
+        if fid and not cur["depotnet_file_id"]:
+            cur["depotnet_file_id"] = fid
+        if o.get("fileName") and not cur["name"]:
+            cur["name"] = o["fileName"]              # a real display name always beats the path
+        if action_id and not cur["action_id"]:
+            cur["action_id"] = action_id
+        if not cur["uploaded_on_depotnet"]:
+            cur["uploaded_on_depotnet"] = iso(o.get("dateCreated"))
 
     for e in d.get("timeline") or []:
         aid = e.get("imIncidentActionId")
@@ -185,8 +207,13 @@ def parse(doc):
         if e.get("photo"):    add_file(e["photo"], "photo", aid)
         if e.get("video"):    add_file(e["video"], "video", aid)
     for q in (d.get("questions") or []) + (d.get("reportQuestions") or []):
-        for p in q.get("photos") or []:
-            add_file(p, "photo")
+        for ph in q.get("photos") or []:
+            add_file(ph, "photo")
+
+    files = []
+    for stem, f in merged.items():
+        f["name"] = f["name"] or stem.rsplit("/", 1)[-1]   # only now fall back to the path
+        files.append(f)
 
     return {"incident": row, "answers": answers, "actions": actions, "files": files,
             "counts": {"timeline": len(tl), "questions": len(d.get("questions") or []),
@@ -212,13 +239,26 @@ def write(parsed):
     # files: the row records WHAT exists on Depotnet. The Drive upload is a separate step, so
     # drive_id is left alone here and never blanked by a re-ingest.
     for f in parsed["files"]:
-        q = (f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
-             f"&name=eq.{urllib.request.quote(f['name'])}")
-        q += f"&action_id=eq.{f['action_id']}" if f["action_id"] else "&action_id=is.null"
-        if not rest(q):
-            rest("clancy_dn_files", "POST",
-                 [{k: v for k, v in f.items() if k != "path"} | {"source": "depotnet-api"}],
+        # match on Depotnet's id first, then the storage path, and only then the name — so a
+        # file that arrives under two names is ONE row, and a re-run updates rather than adds.
+        row = {k: v for k, v in f.items() if k != "path"} | {"source": "depotnet-api"}
+        got = None
+        if f.get("depotnet_file_id"):
+            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
+                       f"&depotnet_file_id=eq.{f['depotnet_file_id']}")
+        if not got:
+            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
+                       f"&storage_path=eq.{urllib.request.quote(f['storage_path'], safe='')}")
+        if not got:
+            got = rest(f"clancy_dn_files?select=id&incident_id=eq.{f['incident_id']}"
+                       f"&name=eq.{urllib.request.quote(f['name'])}")
+        if got:
+            # never blank a drive_id a filing run has set
+            rest(f"clancy_dn_files?id=eq.{got[0]['id']}", "PATCH",
+                 {k: v for k, v in row.items() if k not in ("drive_id", "drive_folder")},
                  {"Prefer": "return=minimal"})
+        else:
+            rest("clancy_dn_files", "POST", [row], {"Prefer": "return=minimal"})
     return True
 
 

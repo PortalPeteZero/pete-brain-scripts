@@ -230,11 +230,42 @@ def run(rows, audit=False):
     return tot, failures
 
 
+def relink(rows):
+    """Point each file row at the copy already in Drive, without downloading anything.
+
+    Needed whenever the file rows are rebuilt (an ingest fix, a schema change) — the files are
+    already in Drive and re-uploading them would be the duplication we are trying to avoid. Match
+    is on filename within the damage's own folder.
+    """
+    linked = missing = 0
+    for inc in rows:
+        inc.pop("raw_api", None)
+        folder = incident_folder(inc, create=False)
+        if not folder:
+            continue
+        have = existing_names(folder)
+        url = f"https://drive.google.com/drive/folders/{folder}"
+        for f in rest(f"clancy_dn_files?select=id,name,drive_id&incident_id=eq.{inc['id']}"):
+            if f["drive_id"]:
+                continue
+            did = have.get(f["name"])
+            if did:
+                rest(f"clancy_dn_files?id=eq.{f['id']}", "PATCH",
+                     {"drive_id": did, "drive_folder": url}, {"Prefer": "return=minimal"})
+                linked += 1
+            else:
+                missing += 1
+        print(f"  {inc['id']}  linked, {missing} still unmatched")
+    return linked, missing
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fy")
     ap.add_argument("--id", type=int)
     ap.add_argument("--audit", action="store_true", help="report only, upload nothing")
+    ap.add_argument("--relink", action="store_true",
+                    help="match rows to the Drive copies that already exist; download nothing")
     a = ap.parse_args()
     sel = "select=id,location,utility_class,incident_date,raw_api"
     if a.id:
@@ -245,6 +276,10 @@ def main():
         sys.exit("give --fy or --id")
     rows = rest(q)
     print(f"{len(rows)} damage(s){' — AUDIT ONLY, nothing will be written' if a.audit else ''}\n")
+    if a.relink:
+        linked, missing = relink(rows)
+        print(f"\n{linked} row(s) linked to their Drive copy · {missing} with no match")
+        return 0 if not missing else 2
     tot, failures = run(rows, a.audit)
     print(f"\n{tot['seen']} attachment(s) on Depotnet · {tot['skipped']} already in Drive · "
           f"{tot['uploaded']} uploaded ({tot['bytes'] / 1e6:.1f} MB) · {tot['failed']} failed")
