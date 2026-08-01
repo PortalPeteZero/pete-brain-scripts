@@ -80,11 +80,25 @@ def _f(v, d=0.0):
         return d
 
 
+# A term with real monthly demand that Google barely SHOWS us for is not "insufficient data" --
+# it is a finding. Pete, 1 Aug 2026: "so assuming these 351 will always be insufficent?" Splitting
+# that bucket showed 15 terms with 30+ monthly searches drawing under a quarter of that in
+# impressions: "safe digging training" has 70/mo and drew 3 impressions in 28 days at position 36.7.
+# The term is not too small to judge; we are too far down to be seen. Calling that INSUFFICIENT
+# buried it next to genuinely tiny terms like "osca training" (50/mo, position 4.8), which is a
+# completely different situation and needs no work.
+INVISIBLE_MIN_VOL = 30      # below this the term really is too small to reason about
+INVISIBLE_SHARE  = 0.25     # impressions under this share of monthly volume = we are not being shown
+
+
 def judge(r, min_impr):
+    vol, impr = _f(r["vol"]), _f(r["inow"])
+    if vol >= INVISIBLE_MIN_VOL and impr < vol * INVISIBLE_SHARE:
+        return ("INVISIBLE", None)
     if r["wnow"] is None or r["wprev"] is None:
-        return ("INSUFFICIENT DATA", None)
-    if _f(r["inow"]) < min_impr or _f(r["iprev"]) < min_impr or _f(r["solid"]) < 3:
-        return ("INSUFFICIENT DATA", None)
+        return ("LOW TRAFFIC", None)
+    if impr < min_impr or _f(r["iprev"]) < min_impr or _f(r["solid"]) < 3:
+        return ("LOW TRAFFIC", None)
     band = _f(r["band"])
     delta = _f(r["wprev"]) - _f(r["wnow"])          # + = better
     if abs(delta) <= band / 2:
@@ -103,14 +117,14 @@ def main():
     for r in rows:
         v, d = judge(r, mi)
         out.append((v, d, r))
-    order = {"IMPROVED": 0, "DECLINED": 1, "NOISE": 2, "INSUFFICIENT DATA": 3}
+    order = {"IMPROVED": 0, "DECLINED": 1, "INVISIBLE": 2, "NOISE": 3, "LOW TRAFFIC": 4}
     out.sort(key=lambda x: (order.get(x[0], 9), -_f(x[2]["vol"])))
 
     print(f"\nMOVEMENT  ·  last {days} days vs the {days} before  ·  {prop}")
     print(f"  Real only if the change beats half the term's own daily spread (days under 3 impressions excluded).")
     print(f"\n  {'term':<42}{'vol':>5}{'now':>7}{'was':>7}{'move':>7}{'band':>7}  verdict")
     for v, d, r in out[:35]:
-        if v == "INSUFFICIENT DATA":
+        if v == "LOW TRAFFIC":
             continue
         print(f"  {r['keyword'][:41]:<42}{r['vol'] or 0:>5}{str(r['wnow']):>7}{str(r['wprev']):>7}"
               f"{(f'{d:+.1f}' if d is not None else '-'):>7}{str(r['band'] or '-'):>7}  {v}")
