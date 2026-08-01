@@ -226,6 +226,22 @@ def gather():
       JOIN clancy_dn_answers a ON a.incident_id=i.id
       WHERE i.fy='{FY}' AND a.question='Is the investigation complete?'
         AND upper(btrim(a.answer))='NO' AND i.status='Closed' ORDER BY i.id""")
+    d["inv_shape"] = sql(f"""WITH per AS (
+      SELECT i.id, (SELECT count(*) FROM clancy_dn_answers a
+        WHERE a.incident_id=i.id AND a.section='investigation') k
+      FROM clancy_dn_incidents i WHERE i.fy='{FY}')
+      SELECT min(k) lo, max(k) hi FROM per WHERE k > 0""")[0]
+    d["inv_universal"] = sql(f"""SELECT count(*) n FROM (
+      SELECT a.question FROM clancy_dn_answers a JOIN clancy_dn_incidents i ON i.id=a.incident_id
+      WHERE i.fy='{FY}' AND a.section='investigation'
+      GROUP BY 1 HAVING count(DISTINCT a.incident_id) =
+        (SELECT count(DISTINCT a2.incident_id) FROM clancy_dn_answers a2
+         JOIN clancy_dn_incidents i2 ON i2.id=a2.incident_id
+         WHERE i2.fy='{FY}' AND a2.section='investigation')) t""")[0]["n"]
+    d["team_members"] = sql(f"""SELECT a.question q, count(DISTINCT a.incident_id) n
+      FROM clancy_dn_answers a JOIN clancy_dn_incidents i ON i.id=a.incident_id
+      WHERE i.fy='{FY}' AND a.question LIKE 'Investigation Team Member%'
+      GROUP BY 1 ORDER BY 1""")
     d["blank_split"] = sql(f"""SELECT
       count(*) FILTER (WHERE pdf_captured_at IS NOT NULL) confirmed_blank,
       count(*) FILTER (WHERE pdf_captured_at IS NULL) not_captured,
@@ -796,6 +812,8 @@ def build(edition, label):
     no_section = n - ib["has_section"]
     bs = d["blank_split"]
     blank_ok, blank_unk = bs["confirmed_blank"], bs["not_captured"]
+    shape, universal = d["inv_shape"], d["inv_universal"]
+    team = ", ".join(str(r["n"]) for r in d["team_members"][1:])
     _ncc = [str(r["id"]) for r in d["not_complete_closed"]]
     not_complete_closed = len(_ncc) if len(_ncc) != 1 else "one"
     not_complete_closed_ids = "damage " + ", ".join(_ncc) if _ncc else "none"
@@ -856,13 +874,21 @@ it is a more useful one than any count on this page.</p></div>
 Where this report says a damage carries an investigation, it means one specific thing: the Depotnet
 record contains the <b>Investigation section</b> — {ib['questions']} questions covering a named lead
 investigator, a named senior manager, an incident summary, root and underlying cause, a
-lessons-learnt entry, and the CAT and genny download review. It is all or nothing: no damage this
-year holds part of that section. <b>{ib['has_section']} of {n} carry it.</b><br><br>
+lessons-learnt entry, and the CAT and genny download review. <b>{ib['has_section']} of {n} carry
+it.</b><br><br>
+<b>Nobody starts it and abandons it.</b> A damage either holds none of that section at all, or
+holds between {shape['lo']} and {shape['hi']} of its {ib['questions']} questions answered. Nothing
+sits in between. The {shape['lo']}-to-{shape['hi']} spread is not part-completion either:
+{universal} of the {ib['questions']} questions are answered on every one of the
+{ib['has_section']}, and the rest are follow-ups that only appear when they apply &mdash; the
+second, third, fourth and fifth investigation team member show up on {team} damages
+respectively, which is what a repeating optional field looks like, not an unfinished form.<br><br>
 Whether it is <i>finished</i> is a separate question, and Depotnet answers it itself. Its own field
 &ldquo;Is the investigation complete?&rdquo; is asked of every damage that carries the section, and
 all {ib['has_section']} give an answer: <b>yes on {ib['complete']}</b>, <b>no on
-{ib['not_complete']}</b>, none left blank. The remaining <b>{no_section}</b> of {n} carry no
-investigation section, so the question is never put to them. That accounts for all {n}. This report
+{ib['not_complete']}</b>, none left blank. The remaining <b>{no_section}</b> of {n} hold none of
+it ({blank_ok} confirmed blank on Depotnet, {blank_unk} we have not captured yet), so the question
+is never put to them. That accounts for all {n}. This report
 never calls all {ib['has_section']} complete: it reports the section as present, and
 Depotnet&#8217;s own verdict separately.<br><br>
 Of the {ib['not_complete']} marked not complete, {not_complete_closed} is on a damage that has
