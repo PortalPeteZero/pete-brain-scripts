@@ -111,6 +111,15 @@ def parse(doc):
         "timeline": tl,
         "raw_api": doc,
         "raw_api_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        # The pages key "has this damage been captured?" off pdf_captured_at, including the
+        # analysis page's scaffold banner. An API capture IS a capture — without this a fully
+        # captured year still publishes as a scaffold. (Caught by the December 2025 rehearsal.)
+        "pdf_captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "capture_incident": ("full" if any((q.get("answer") or "").strip()
+                                           for q in (d.get("reportQuestions") or []))
+                             else "no-investigation"),
+        "capture_actions": "captured" if (d.get("actions") or []) else "none",
+        "actions_captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
     # ---- answers: BOTH sections, and the UNANSWERED ones too ----------------------------
