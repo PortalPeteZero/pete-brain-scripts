@@ -52,13 +52,30 @@ def _week_ending(d=None):
 # target page our links point to, pull its GSC position now vs the prior 28d so a live link
 # visibly turns into a ranking gain. Degrades gracefully — a GSC outage must not break the report.
 GSC_SITE = "sc-domain:sygma-solutions.com"
-TARGET_PAGE_MAP = {
-    "/": "/", "homepage": "/",
-    "cat and genny training": "/courses/cat-and-genny-training",
-    "cable avoidance training": "/courses/cable-avoidance-training",
-    "eusr cat1": "/courses/eusr-cat1", "eusr cat 1": "/courses/eusr-cat1",
-    "hsg47 training": "/courses/hsg47-training", "hsg47": "/courses/hsg47-training",
-}
+# Keyword -> target page comes from seo_keyword_map, the SSOT (1 Aug 2026, Pete: "make this map
+# SSot everywhere"). This used to be a hand-typed dict, and it had drifted: it mapped the BARE
+# vanity term "hsg47" and the bare topic "eusr cat 1", both of which Pete has banned from the
+# targeting set. A second hand-maintained keyword->page list is a second version of the truth.
+_STATIC_TARGETS = {"/": "/", "homepage": "/"}   # labels that are not keywords
+
+def _target_page_map(property_key="sygma-solutions-website"):
+    import subprocess as _sp, json as _j, os as _os
+    v = _os.environ.get("VAULT", "/tmp/pbs")
+    try:
+        r = _sp.run(["python3", "cc-sql.py",
+                     "SELECT keyword, target_page FROM seo_keyword_map "
+                     f"WHERE property_key='{property_key}' AND intent='commercial'"],
+                    cwd=v, capture_output=True, text=True,
+                    env={**_os.environ, "VAULT": v}, timeout=60)
+        rows = _j.loads(r.stdout or "[]") if r.returncode == 0 else []
+    except Exception:
+        rows = []
+    m = dict(_STATIC_TARGETS)
+    for row in rows:
+        m[row["keyword"].strip().lower()] = row["target_page"]
+    return m
+
+TARGET_PAGE_MAP = _target_page_map()
 def _norm_target(tp):
     if not tp:
         return None
