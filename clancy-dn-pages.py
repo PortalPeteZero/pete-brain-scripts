@@ -767,7 +767,7 @@ def search_box(fy=None):
    if(!r.ok) throw 0;
    const d=await r.json();
    const res=d.results||[];
-   if(!res.length){{box.innerHTML='<div class="semhead"><b>No match for &ldquo;'+q.replace(/[<>]/g,'')+'&rdquo;</b><span class="small muted"> — nothing in {scope} matches by name or meaning</span><button class="semclear" onclick="this.closest(\'.card\').querySelector(\'#sem-res\').innerHTML=\'\';this.closest(\'.card\').classList.remove(\'searching\')">Clear</button></div>';box.parentElement.classList.add('searching');return;}}
+   if(!res.length){{box.innerHTML='<div class="semhead"><b>No match for &ldquo;'+q.replace(/[<>]/g,'')+'&rdquo;</b><span class="small muted"> — nothing in {scope} matches by name or meaning</span><button class="semclear" onclick="this.closest(\\'.card\\').querySelector(\\'#sem-res\\').innerHTML=\\'\\';this.closest(\\'.card\\').classList.remove(\\'searching\\')">Clear</button></div>';box.parentElement.classList.add('searching');return;}}
    const exact=res.filter(x=>x.match!=='meaning'), rel=res.filter(x=>x.match==='meaning');
    const row=x=>{{
     const stem=STEM[x.fy]||'fy-2026-27';
@@ -870,7 +870,7 @@ function render(){{
  let h='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Damage '+id+' — '+(r.location||'location not stated')+'</h2>'
    +'<span>'+statusPill(r.status)+' '+pill(r.severity||'—',(r.severity||'').startsWith('HIGH')?'sev-h':(r.severity||'').startsWith('MEDIUM')?'sev-m':'sev-l')+'</span></div>'
    +'<p class="det desc" style="white-space:pre-wrap;max-width:96ch">'+(r.description||'No description recorded.')+'</p>'
-   +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.strike_category||r.utility_class||'Unclassified')+'</b>'+(r.strike_category?' (Depotnet\'s own category)':(r.utility_confirmed?'':' (auto-read)'))+'</span></div></div>';
+   +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.strike_category||r.utility_class||'Unclassified')+'</b>'+(r.strike_category?' (Depotnet&#8217;s own category)':(r.utility_confirmed?'':' (auto-read)'))+'</span></div></div>';
  // every register field, verbatim
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Everything Depotnet holds</h2><span class="note">Incident Register row, in full</span></div><div class="fgrid">'
    +FLD.map(([k,l])=>'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+((k.includes('date')?fmtTs(r[k]):r[k])||'—')+'</div></div>').join('')+'</div></div>';

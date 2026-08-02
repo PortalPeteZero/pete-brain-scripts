@@ -91,13 +91,47 @@ def check(raw, label="page"):
     return 1
 
 
+def check_scripts(raw, label):
+    """Every <script> block must PARSE. A single raw apostrophe inside a JS string killed the
+    whole damage-page renderer on 2 Aug 2026 — the page published clean on wording and rendered
+    NOTHING, and a second, older break had left the search box dead on every page since it
+    shipped. Wording checks read the text; this reads the code. Node does the parsing (never
+    executes); if node is not installed the check warns and steps aside rather than blocking
+    a publish on a machine without it."""
+    import re as _re, subprocess as _sp, tempfile as _tf, shutil as _sh
+    node = _sh.which("node")
+    blocks = [b for b in _re.findall(r"<script[^>]*>(.*?)</script>", raw, _re.S) if b.strip()]
+    if not blocks:
+        return 0
+    if not node:
+        print(f"vocab: WARNING — node not found, {len(blocks)} script block(s) in {label} "
+              "NOT syntax-checked")
+        return 0
+    bad = 0
+    for n, b in enumerate(blocks):
+        with _tf.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+            f.write(b)
+        r = _sp.run([node, "--check", f.name], capture_output=True, text=True)
+        if r.returncode:
+            bad += 1
+            first = (r.stderr.strip().splitlines() or ["?"])[0]
+            print(f"SCRIPT CHECK FAILED — {label} block {n}: {first[-160:]}")
+    if bad:
+        print(f"\n{bad} script block(s) in {label} do not parse. A page whose script dies "
+              "renders nothing — fix before publishing.")
+    return 1 if bad else 0
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         return 2
     src = sys.argv[1]
     raw = sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read()
-    return check(raw, "stdin" if src == "-" else src)
+    label = "stdin" if src == "-" else src
+    rc = check(raw, label)
+    rc_js = check_scripts(raw, label)
+    return rc or rc_js
 
 
 if __name__ == "__main__":
