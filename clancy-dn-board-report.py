@@ -204,11 +204,22 @@ def donut(segs, centre_big, centre_small, size=190):
     legend = "".join(
         f'<div class="lg"><span class="sw" style="background:{col}"></span>'
         f'{esc(lab)} <b>{c}</b></div>' for lab, c, col in segs)
+    # the centre label must FIT THE HOLE (inner diameter ~98px): wrap to short lines
+    words, lines = centre_small.split(), []
+    for w_ in words:
+        if lines and len(lines[-1]) + 1 + len(w_) <= 11:
+            lines[-1] += " " + w_
+        else:
+            lines.append(w_)
+    lines = lines[:3]
+    y0 = cx + 12
+    small = "".join(
+        f'<text x="{cx}" y="{y0 + i*11}" text-anchor="middle" class="dl">{esc(l)}</text>'
+        for i, l in enumerate(lines))
     return (f'<div class="donut"><svg width="{size}" height="{size}" '
             f'viewBox="0 0 {size} {size}">{"".join(arcs)}'
-            f'<text x="{cx}" y="{cx-2}" text-anchor="middle" class="dn">{esc(centre_big)}</text>'
-            f'<text x="{cx}" y="{cx+20}" text-anchor="middle" class="dl">{esc(centre_small)}</text>'
-            f'</svg><div class="legend">{legend}</div></div>')
+            f'<text x="{cx}" y="{cx-6}" text-anchor="middle" class="dn">{esc(centre_big)}</text>'
+            f'{small}</svg><div class="legend">{legend}</div></div>')
 
 
 def stat(n, label, col=CHAR, tint="#fff"):
@@ -255,9 +266,9 @@ CSS = """
  font-variant-numeric:tabular-nums}
 .bigstat .bl{font-size:12.5px;color:#5a6572;margin-top:8px;line-height:1.4;font-weight:600}
 .donut{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
-.donut .dn{font-size:34px;font-weight:800;fill:#17202b;letter-spacing:-.02em}
-.donut .dl{font-size:11px;font-weight:700;fill:#6a7480;text-transform:uppercase;
- letter-spacing:.05em}
+.donut .dn{font-size:28px;font-weight:800;fill:#17202b;letter-spacing:-.02em}
+.donut .dl{font-size:9px;font-weight:800;fill:#6a7480;text-transform:uppercase;
+ letter-spacing:.03em}
 .legend .lg{font-size:13.5px;color:#3f4a55;margin:5px 0;font-weight:600}
 .legend .sw{display:inline-block;width:13px;height:13px;border-radius:4px;margin-right:8px;
  vertical-align:-1px}
@@ -550,7 +561,7 @@ for.</div>
         ("Known not found: genny and CAT not used", d["kit_no"], RED),
         ("Report says unable-to-detect", d["unable"], AMBER),
         ("The record cannot say", d["det_unknown"], "#c3cad2")],
-       f'{d["kit_no"]} of {n}', "known answers")}
+       str(d["kit_no"]), f"of {n} known answers")}
 <div>
 <div class="callout" style="border-left-color:{RED}"><b>Was the service found before it was
 hit?</b> Out of {n} damages to buried services, the record gives a definite answer on
