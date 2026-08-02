@@ -85,8 +85,21 @@ def gather():
       count(*) FILTER (WHERE pdf_captured_at IS NOT NULL) captured
       FROM clancy_dn_incidents WHERE fy='{FY}'""")[0]
 
-    d["prior_year_same_months"] = sql("""SELECT count(*) n FROM clancy_dn_incidents
-      WHERE fy='FY25/26' AND extract(month FROM incident_date) BETWEEN 4 AND 7""")[0]["n"]
+    # The PRECEDING financial year, over the SAME months this year covers. Both halves were
+    # hard-coded to FY25/26 April-July, so FY25/26's own page compared itself against itself and
+    # printed a nonsense percentage. (Found by auditing the finished work, 2 Aug 2026.)
+    _PRIOR = {"FY26/27": "FY25/26", "FY25/26": "FY24/25",
+              "FY24/25": "FY23/24", "FY23/24": None}
+    _prior_fy = _PRIOR.get(FY)
+    if _prior_fy:
+        _mons = sql(f"""SELECT DISTINCT extract(month FROM incident_date)::int m
+                        FROM clancy_dn_incidents WHERE fy='{FY}'""")
+        _list = ",".join(str(r["m"]) for r in _mons) or "0"
+        d["prior_year_same_months"] = sql(f"""SELECT count(*) n FROM clancy_dn_incidents
+          WHERE fy='{_prior_fy}' AND extract(month FROM incident_date) IN ({_list})""")[0]["n"]
+    else:
+        d["prior_year_same_months"] = 0
+    d["prior_fy"] = _prior_fy
 
     d["months"] = sql(f"""SELECT to_char(incident_date,'Mon') m, min(incident_date) o, count(*) n,
       count(*) FILTER (WHERE root_cause IS NOT NULL AND btrim(root_cause)<>'') investigated
@@ -190,18 +203,42 @@ def gather():
       FROM clancy_dn_lesson_quality WHERE fy='{FY}'""")[0]
     # Duplicated lessons, with enough of each damage to show whether the two events were actually
     # alike. Without that detail "the same lesson twice" is an accusation; with it, it is evidence.
-    d["dupes"] = sql(f"""SELECT btrim(i.lessons_learnt) lesson,
-        md5(btrim(i.lessons_learnt)) hash, length(btrim(i.lessons_learnt)) len,
-        json_agg(json_build_object('id', i.id, 'd', i.incident_date::date, 'loc', i.location,
-          'job', i.job_ref, 'plant', i.caused_by_plant, 'depth', i.depth_mm,
+    # "Word for word" ignores case, punctuation and runs of whitespace — the same words in the
+    # same order (the key is clancy_dn_lesson_quality.norm, on the face of the view). A byte-exact
+    # key is not good enough: on 2 Aug 2026 damages 121878 and 122362 carried the same lesson
+    # differing by exactly two spaces, and the byte test silently dropped it.
+    #
+    # Two different things get called "duplication" and they must not be added together:
+    #   · the same NON-ANSWER typed twice ("N/A" on eight damages) — a gap, not a copied lesson
+    #   · the same real LESSON reused — the finding Pete is after
+    # Only the second is quoted as a duplicated lesson. Groups are formed across ALL years, so
+    # reuse that crosses a year boundary shows up; a group is included if it touches this one.
+    d["dupes"] = sql(f"""WITH grp AS (
+        SELECT norm FROM clancy_dn_lesson_quality
+        WHERE lesson <> '' AND tier IN ('3 a single phrase','4 briefable')
+        GROUP BY norm HAVING count(*) > 1
+          AND count(*) FILTER (WHERE fy='{FY}') > 0)
+      SELECT max(q.lesson) lesson, max(q.len) len, count(*) n,
+        count(*) FILTER (WHERE q.fy='{FY}') n_this_year,
+        count(DISTINCT q.fy) n_years,
+        json_agg(json_build_object('id', i.id, 'fy', i.fy, 'd', i.incident_date::date,
+          'loc', i.location, 'job', i.job_ref, 'plant', i.caused_by_plant, 'depth', i.depth_mm,
           'who', i.caused_by_person, 'descr', i.description,
           'root', i.root_cause, 'under', i.underlying_cause) ORDER BY i.id) recs
-      FROM clancy_dn_incidents i WHERE i.fy='{FY}'
-        AND i.lessons_learnt IS NOT NULL AND btrim(i.lessons_learnt)<>''
-      GROUP BY 1,2,3 HAVING count(*) > 1""")
+      FROM clancy_dn_lesson_quality q
+      JOIN grp ON grp.norm = q.norm
+      JOIN clancy_dn_incidents i ON i.id = q.id
+      GROUP BY q.norm ORDER BY max(q.len) DESC""")
+    # The repeated NON-answers, counted separately and never quoted as lessons.
+    d["dupe_nonanswers"] = sql(f"""SELECT count(*) rows, count(DISTINCT norm) texts FROM (
+        SELECT norm FROM clancy_dn_lesson_quality
+        WHERE lesson <> '' AND tier IN ('1 a non-answer','2 a fragment')
+          AND norm IN (SELECT norm FROM clancy_dn_lesson_quality WHERE lesson<>''
+                       GROUP BY norm HAVING count(*) > 1)
+          AND fy='{FY}') z""")[0]
     # The honest denominator for any "only one in the register" claim.
-    d["lesson_pool"] = sql("""SELECT count(*) total, count(DISTINCT btrim(lessons_learnt)) distinct_texts
-      FROM clancy_dn_incidents WHERE lessons_learnt IS NOT NULL AND btrim(lessons_learnt)<>''""")[0]
+    d["lesson_pool"] = sql("""SELECT count(*) total, count(DISTINCT norm) distinct_texts
+      FROM clancy_dn_lesson_quality WHERE lesson <> ''""")[0]
     d["years_without_lessons"] = sql("""SELECT string_agg(fy, ', ' ORDER BY fy) fys FROM (
       SELECT fy FROM clancy_dn_incidents GROUP BY fy
       HAVING count(*) FILTER (WHERE lessons_learnt IS NOT NULL AND btrim(lessons_learnt)<>'') = 0) z""")[0]["fys"]
@@ -516,7 +553,13 @@ table.reg td.n{font-variant-numeric:tabular-nums;text-align:right}
 # The three-state marks matter: a grey dash means Depotnet was NOT ANSWERED, which is not the
 # same as a NO, and the legend says so on the page. Pete, 31 Jul 2026: "a tick box not ticked
 # might not mean it wasnt investigated".
-DAMAGE_URL = "/raw/clancy-depotnet-damages/fy-2026-27-damage.html?id={}"
+# The per-damage record lives on that YEAR's page. This was hard-coded to fy-2026-27, so every
+# one of FY25/26's 164 links pointed at a register that does not contain them — each one a dead
+# end. (Found by auditing the finished work, 2 Aug 2026.)
+_FY_SLUG = {"FY26/27": "fy-2026-27", "FY25/26": "fy-2025-26",
+            "FY24/25": "fy-2024-25", "FY23/24": "fy-2023-24"}
+DAMAGE_URL = ("/raw/clancy-depotnet-damages/" + _FY_SLUG.get(FY, "fy-2026-27")
+              + "-damage.html?id={}")
 
 
 def mark(v, allow_no=True):
@@ -793,34 +836,48 @@ def build(edition, label):
         f"<tr><td>{TIER_LABEL.get(r['tier'], r['tier'])}</td><td class='n'>{r['n']}</td>"
         f"<td class='n'>{round(100*r['n']/n)}%</td></tr>" for r in d["lesson_tiers"])
 
-    # ── the duplicated lesson, quoted in full with both damages beside it ──
+    # ── the reused lessons, each quoted in full with every damage that carries it ──
     dupe_note = ""
     pool = d["lesson_pool"]
-    for r in d["dupes"]:
-        recs = r["recs"]
-        cards = ""
-        for x in recs:
-            cards += (
-                f'<div class="dmg"><div class="dh">Damage {x["id"]} &middot; {x["d"]}</div>'
-                f'<div class="dl">{esc(x["loc"])}</div>'
-                f'<table class="t" style="margin-top:8px">'
-                f'<tr><td>Job reference</td><td>{esc(x["job"])}</td></tr>'
-                f'<tr><td>What was being used</td><td>{esc(x["plant"])}</td></tr>'
-                f'<tr><td>Depth of the service</td><td>{x["depth"]}mm</td></tr>'
-                f'<tr><td>Root cause recorded</td><td>{esc(x["root"])}</td></tr>'
-                f'<tr><td>Underlying cause</td><td>{esc(x["under"])}</td></tr></table>'
-                f'<div class="dq">{esc(x["descr"])}</div></div>')
-        ids = " and ".join(str(x["id"]) for x in recs)
-        dupe_note = (
-            f'<div class="sec"><h2>The same lesson, word for word, on two different damages</h2>'
-            f'<div class="why">Damages {ids}. Both on {recs[0]["d"]}, both Anglian Water, both '
-            f'raised by the same person. Different streets, different job numbers, different '
-            f'operatives, different tools, different depths.</div>'
-            f'<p>Each carries this in its lessons-learnt field. Not similar wording: the same '
-            f'{r["len"]} characters, identical to the byte (md5 <code>{r["hash"][:16]}</code>).</p>'
-            f'<blockquote class="q">{esc(r["lesson"])}</blockquote>'
-            f'<div class="dmgs">{cards}</div>'
-            '<p style="margin-top:16px">Read the two accounts against the lesson. The first team '
+    na = d["dupe_nonanswers"]
+    if d["dupes"]:
+        blocks = ""
+        for r in d["dupes"]:
+            recs = r["recs"]
+            cards = ""
+            for x in recs:
+                # A group can span years, so a card that is NOT this year's says which year it is.
+                yr = "" if x["fy"] == FY else f' &middot; {esc(x["fy"])}'
+                cards += (
+                    f'<div class="dmg"><div class="dh">Damage {x["id"]} &middot; {x["d"]}{yr}</div>'
+                    f'<div class="dl">{esc(x["loc"])}</div>'
+                    f'<table class="t" style="margin-top:8px">'
+                    f'<tr><td>Job reference</td><td>{esc(x["job"])}</td></tr>'
+                    f'<tr><td>What was being used</td><td>{esc(x["plant"])}</td></tr>'
+                    f'<tr><td>Depth of the service</td><td>{x["depth"]}mm</td></tr>'
+                    f'<tr><td>Root cause recorded</td><td>{esc(x["root"])}</td></tr>'
+                    f'<tr><td>Underlying cause</td><td>{esc(x["under"])}</td></tr></table>'
+                    f'<div class="dq">{esc(x["descr"])}</div></div>')
+            ids = ", ".join(str(x["id"]) for x in recs)
+            span = ("" if r["n_years"] < 2 else
+                    " The reuse crosses a financial year, so it was not one team on one job.")
+            blocks += (
+                f'<h3 style="margin-top:22px">On {r["n"]} damages &middot; {r["len"]} characters</h3>'
+                f'<div class="why">Damages {ids}.</div>'
+                f'<blockquote class="q">{esc(r["lesson"])}</blockquote>'
+                f'<p>Each of these carries that text in its lessons-learnt field.{span}</p>'
+                f'<div class="dmgs">{cards}</div>')
+
+        # The paragraphs below were written by hand about ONE SPECIFIC PAIR — 121878 and 122362
+        # ("both Anglian Water", the hard-ground reading, which team did what). Attached to any
+        # other group it fabricates: wrong contracts, wrong dates, a narrative about events that
+        # did not happen. So it is keyed to those two ids, not to a financial year — the earlier
+        # version keyed it to FY26/27 and would have mis-attached the moment a second FY26/27
+        # group appeared, which is exactly what happened once the matching was fixed.
+        _pair = {121878, 122362}
+        reading = ('' if not any({x["id"] for x in r["recs"]} == _pair for r in d["dupes"]) else
+            '<p style="margin-top:16px">Take the 312-character one. Read the two accounts against '
+            'the lesson. The first team '
             'had already stopped the excavator at the marked services and gone over to hand '
             'digging; they struck an <b>unmarked</b> gas service with a graft <b>in hard ground</b>. '
             'The second struck a gas service in the kerb line with a <b>mini digger bucket</b>, on a '
@@ -834,11 +891,27 @@ def build(edition, label):
             'pass. One team&#8217;s account describes people doing several things right and still '
             'being caught out by an unmarked service. That is genuinely worth briefing, and it is '
             'now sitting behind a paragraph that reads as though it were written for something '
-            'else.</p>'
-            f'<div class="flag"><b>How far this claim goes.</b> This is one repeated text out of '
-            f'the {pool["total"]} lessons the register holds, {pool["distinct_texts"]} of which are '
-            f'distinct. It is the only repeat among them, and normalising for punctuation and '
-            f'capitalisation finds no others. It is <b>not</b> a claim about the whole history: '
+            'else.</p>')
+        nonans = ('' if not na["rows"] else
+            f'<p style="margin-top:16px"><b>Repeated non-answers are counted separately and are '
+            f'not in the figures above.</b> A further {na["rows"]} damages this year share '
+            f'{na["texts"]} short texts of the &ldquo;N/A&rdquo;, &ldquo;TBC&rdquo;, '
+            f'&ldquo;AML&rdquo; kind. Two people both typing &ldquo;N/A&rdquo; is a gap in the '
+            f'record, not a lesson copied from one damage to another, so counting them together '
+            f'would overstate the reuse.</p>')
+        n_groups, n_dmg = len(d["dupes"]), sum(r["n"] for r in d["dupes"])
+        head = (
+            f'<div class="sec"><h2>The same lesson, word for word, on more than one damage</h2>'
+            f'<div class="why">{n_dmg} damages carrying {n_groups} '
+            f'text{"" if n_groups == 1 else "s"} between them.</div>')
+        dupe_note = (head + blocks + reading + nonans +
+            f'<div class="flag"><b>How far this claim goes, and what the test is.</b> '
+            f'&ldquo;Word for word&rdquo; here means the same words in the same order, ignoring '
+            f'capitalisation, punctuation and spacing &mdash; two of these differ only by a double '
+            f'space, and a stricter test misses them. Only texts long enough to be a lesson are '
+            f'counted; bare non-answers are held back above. Against the {pool["total"]} lessons '
+            f'the register holds, {pool["distinct_texts"]} of them distinct. It is '
+            f'<b>not</b> a claim about the whole history: '
             f'{esc(d["years_without_lessons"])} carry no lessons in what we hold, so there was '
             f'nothing from those years to compare against.</div></div>')
     trunc_note = ""
@@ -854,6 +927,22 @@ def build(edition, label):
         for r in d["by_contract"])
     _age = {r["c"]: r["avg_age"] for r in d["by_contract"]}
     anglian_age = _age.get("Anglian Water", "?")
+    # This worked example named Anglian and Scottish with hard-coded 7-of-8 and 2-of-4 counts,
+    # which are FY26/27 facts. On any other year it contradicted the table directly above it.
+    # Derived from the same rows the table is built from, or omitted if there is nothing to say.
+    _cr = [c for c in d["by_contract"] if c.get("n") and c.get("avg_age") is not None]
+    _age_example = ""
+    if len(_cr) >= 2:
+        _young = min(_cr, key=lambda c: c.get("avg_age") or 9e9)
+        _old = max(_cr, key=lambda c: c.get("avg_age") or -1)
+        if _young is not _old:
+            _age_example = (
+                f"Age does not account for it: {esc(_young['c'])}&#8217;s damages are the youngest "
+                f"at an average of {_young['avg_age']} days, with {_young['inv']} of "
+                f"{_young['n']} carrying a completed investigation report section, while "
+                f"{esc(_old['c'])} average {_old['avg_age']} days and carry it on "
+                f"{_old['inv']} of {_old['n']}.")
+    age_example = _age_example
     scottish_age = _age.get("Scottish Water", "?")
     status_rows = "".join(
         f"<tr><td>{esc(r['status'])}</td><td class='n'>{r['n']}</td>"
@@ -867,6 +956,9 @@ def build(edition, label):
     # FY-specific prose. These used to be hard-coded to FY26/27, so every other year's page
     # claimed "four months" and quoted two FY26/27 damages as its worked examples.
     n_months = len(d["months"])
+    compare = (f", {delta:+d}% against the same months of "
+               f"{d['prior_fy'].replace('FY', 'FY 20')} ({py})" if py else
+               " — no earlier year on the register to compare against")
     months_phrase = (f" in {n_months} month{'s' if n_months != 1 else ''}"
                      if n_months < 12 else " across the year")
     worked_examples = ("" if FY != "FY26/27" else
@@ -1000,8 +1092,7 @@ record can carry that weight.</div>
 <div class="sec"><h2>1. The year</h2>
 <div class="why">Month by month, and how many of each month&#8217;s damages have their investigation report section completed.</div>
 {cols(d['months'], 'm', 'n', 'investigated')}
-<p style="margin-top:16px">{n} damages{months_phrase}, {delta:+d}% against the same period last
-year ({py}). {h['still_open']} are still open. The small figure under each month is how many carry
+<p style="margin-top:16px">{n} damages{months_phrase}{compare}. {h['still_open']} are still open. The small figure under each month is how many carry
 a recorded cause, which is the number this page can actually reason from.</p></div>
 
 <div class="sec"><h2>2. What was struck</h2>
@@ -1070,9 +1161,7 @@ any one of those columns on its own would be misleading.</div>
 <table class="t"><tr><th>Contract</th><th>Damages</th><th>Average age</th><th>Still open</th>
 <th>Investigation report done</th></tr>{contract_rows}</table>
 <p style="margin-top:16px">There is real variation here and we cannot tell you what causes it.
-Age does not account for it: Anglian&#8217;s damages are the youngest of any contract at an average
-of {anglian_age} days, yet 7 of their 8 already have their investigation report section completed, while Scottish
-Water&#8217;s average {scottish_age} days and carry it on 2 of 4.</p>
+{age_example}</p>
 <p>What we do <b>not</b> know is how Clancy work Depotnet in practice: whether an investigation is
 required at a fixed point, what triggers closure, whether different contracts are administered by
 different people with different habits, or whether some of this is simply timing. Any of those
