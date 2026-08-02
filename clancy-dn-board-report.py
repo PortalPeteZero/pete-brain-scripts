@@ -27,9 +27,14 @@ _k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = _k["url"], _k["service_role_key"]
 H = {"apikey": SR, "Authorization": f"Bearer {SR}", "Content-Type": "application/json"}
 
-MK = "clancy-damage-board-report"
 FY = os.environ.get("CLANCY_FY", "FY26/27")
 FYLABEL = {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26"}.get(FY, FY)
+MKS = {"FY26/27": "clancy-damage-board-report",
+       "FY25/26": "clancy-damage-board-report-2025-26"}
+MK = MKS[FY]
+CURRENT = FY == "FY26/27"
+YEARWORD = "so far this year" if CURRENT else "across the year"
+
 
 # Clancy palette + tints (the report's design tokens — spec: colourful cards, never walls)
 GREEN, RED, CHAR = "#97D700", "#D50032", "#353E47"
@@ -141,23 +146,20 @@ def gather():
         f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
         f"WHERE a.question IN ('Genny used?','CAT used?') "
         f"AND lower(btrim(a.answer))='yes'")[0]["n"])
+    # exclusive by construction: a kit-No damage is already 'known not found', so the
+    # unable-to-detect claim count excludes them (FY25/26 has overlapping rows)
     d["unable"] = int(sql(
         f"SELECT count(DISTINCT a.incident_id) n FROM clancy_dn_answers a "
         f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
         f"WHERE a.question='Service Strike Underlying Cause' "
-        f"AND a.answer ILIKE '%unable to detect%'")[0]["n"])
-    overlap = int(sql(
-        f"SELECT count(*) n FROM ("
-        f"SELECT DISTINCT a.incident_id FROM clancy_dn_answers a "
-        f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
-        f"WHERE a.question IN ('Genny used?','CAT used?') AND lower(btrim(a.answer))='no'"
-        f") k WHERE k.incident_id IN ("
-        f"SELECT DISTINCT a.incident_id FROM clancy_dn_answers a "
-        f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
-        f"WHERE a.question='Service Strike Underlying Cause' "
-        f"AND a.answer ILIKE '%unable to detect%')")[0]["n"])
-    assert overlap == 0, "kit-no and unable-to-detect overlap — split the donut differently"
+        f"AND a.answer ILIKE '%unable to detect%' "
+        f"AND a.incident_id NOT IN ("
+        f"SELECT a2.incident_id FROM clancy_dn_answers a2 "
+        f"JOIN clancy_dn_incidents i2 ON i2.id=a2.incident_id AND i2.fy='{FY}' "
+        f"WHERE a2.question IN ('Genny used?','CAT used?') "
+        f"AND lower(btrim(a2.answer))='no')")[0]["n"])
     d["det_unknown"] = d["n"] - d["kit_no"] - d["unable"]
+    assert d["det_unknown"] >= 0
 
     # how many blame plans as the underlying cause — part five's companion stat
     d["plans_blamed"] = int(sql(
@@ -548,6 +550,66 @@ def build():
 
     ex = d["ex"]
 
+    if CURRENT:
+        part_six_band = f"""<div class="band"><div class="rwrap">
+<h2><span class="tag" style="background:{RED}">Part six</span> Those plans listings need scrutiny &mdash; here is the first one tested</h2>
+<div class="callout" style="border-left-color:{RED}">We are not convinced that plans are
+the cause, or the lesson, on <b>all</b> of those damages. Our involvement is recent: we
+have worked on only a few of this year&#8217;s damages, and we have only recently had
+access to Depotnet itself. Damage 152586 is one of the first where we have reviewed the
+detection data behind the form in full &mdash; and on that one the result is clear.
+<b>The cause listed is not the cause. What actually happened is totally different from
+what Depotnet holds.</b></div>
+<div class="sub">Side by side:</div>
+<div class="sbs">
+<div class="sb dn"><div class="sh">What Depotnet records &mdash; damage {ex["id"]}</div>
+<ul>
+<li>Investigation marked complete: <mark>{esc(ex["complete"])}</mark></li>
+<li>Root cause: <mark>ticks {ex["rc_n"]} boxes</mark> on one damage</li>
+<li>Underlying cause: <mark>&ldquo;{esc(ex["underlying"])}&rdquo;</mark></li>
+<li>Genny used? {esc(ex["genny"])} &middot; CAT used? {esc(ex["cat"])}</li>
+</ul></div>
+<div class="sb rv"><div class="sh">What the Sygma review and the panel meeting established</div>
+<ul>
+<li>The review of the genny and CAT download data confirmed the genny
+<mark>was not used</mark> and the cable <mark>was never traced</mark> &mdash; the
+form&#8217;s &ldquo;Genny used? Yes&rdquo; did not survive the data</li>
+<li>When the cable was exposed in a trial hole it was not connected to and re-traced
+&mdash; <mark>&ldquo;we haven&#8217;t got the clamps&rdquo;</mark>, in the team&#8217;s
+own words at the panel</li>
+<li>Clancy&#8217;s own procedure was not followed, in the Senior Contract
+Manager&#8217;s words at the panel: <mark>&ldquo;our procedure is scan it, mark it,
+expose it &mdash; and we haven&#8217;t done it&rdquo;</mark></li>
+<li>The review&#8217;s formal conclusion, on record: the findings and conclusions
+recorded for this damage are <mark>&ldquo;incorrect and need amending&rdquo;</mark></li>
+{"<li><b>Nothing has been amended.</b> The form still answers &ldquo;Genny used? Yes&rdquo;, the investigation is still marked complete &mdash; and the damage is now <mark>closed on Depotnet</mark>, closed within days of the review that found its record incorrect (as captured " + esc(ex["captured"]) + ")</li>" if ex["status"] == "Closed" else ""}
+</ul></div>
+</div>
+<div class="callout" style="border-left-color:{RED}"><b>One damage out of {n} has had this
+level of review, and the recorded cause did not hold.</b> How many of the other
+{n - 1} would survive the same review is exactly the further work this report is asking
+for.</div>
+</div></div>"""
+    else:
+        part_six_band = f"""<div class="band"><div class="rwrap">
+<h2><span class="tag" style="background:{RED}">Part six</span> Those plans listings need scrutiny</h2>
+<div class="callout" style="border-left-color:{RED}">We are not convinced that plans are
+the cause, or the lesson, on all of those damages &mdash; and no damage from this year has
+yet had its detection data reviewed in full against what the form says. The first damage
+tested anywhere on this register &mdash; 152586, in FY 2026/27 &mdash; failed that review:
+its recorded findings are on record as incorrect. Applying the same scrutiny to this
+year&#8217;s plans listings is exactly the further work this report is asking for.</div>
+</div></div>"""
+
+    _tabs = "".join(
+        f'<a class="{"on" if k == FY else ""}" href="/m/{MKS[k]}">{ {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26"}[k] }</a>'
+        for k in ("FY26/27", "FY25/26"))
+    yswitch = ('<div class="yswitch" style="max-width:1180px;margin:14px auto 0;padding:0 22px">'
+               '<span style="font-size:13px;color:#667">Edition:</span> ' + _tabs + "</div>"
+               "<style>.yswitch a{margin-left:10px;font-size:13px;text-decoration:none;"
+               "color:#446;padding:3px 10px;border:1px solid #dde;border-radius:20px}"
+               ".yswitch a.on{background:#97D700;border-color:#97D700;color:#222;font-weight:600}</style>")
+
     # the 48-square waffles: one square per damage, colour = verdict (Pete: each damage
     # a square you can count). Order: green, amber, red, grey.
     def waffle(cells):
@@ -693,9 +755,11 @@ cable.</mark>
     html = f"""{ui.head("This year&#8217;s damages: the report | Genny&#8217;s Damage Depot", CSS)}
 {ui.navbar("report")}
 {ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "The report")}
+{yswitch}
 {ui.mast_compact("The report &middot; " + FYLABEL,
-   "This year&#8217;s damages: what the record can tell us",
-   f"{n} service damages so far this year, read from Depotnet&#8217;s own fields.")}
+   ("This year&#8217;s damages: what the record can tell us" if CURRENT else
+    FYLABEL + " damages: what the record can tell us"),
+   f"{n} service damages {YEARWORD}, read from Depotnet&#8217;s own fields.")}
 
 <div class="band"><div class="rwrap">
 <div class="frame"><b>Where this comes from, and what it is not.</b> Everything on this page
@@ -842,45 +906,7 @@ year&#8217;s record, it is that one.</div>
 {cx_block}
 </div></div>
 
-<div class="band"><div class="rwrap">
-<h2><span class="tag" style="background:{RED}">Part six</span> Those plans listings need scrutiny &mdash; here is the first one tested</h2>
-<div class="callout" style="border-left-color:{RED}">We are not convinced that plans are
-the cause, or the lesson, on <b>all</b> of those damages. Our involvement is recent: we
-have worked on only a few of this year&#8217;s damages, and we have only recently had
-access to Depotnet itself. Damage 152586 is one of the first where we have reviewed the
-detection data behind the form in full &mdash; and on that one the result is clear.
-<b>The cause listed is not the cause. What actually happened is totally different from
-what Depotnet holds.</b></div>
-<div class="sub">Side by side:</div>
-<div class="sbs">
-<div class="sb dn"><div class="sh">What Depotnet records &mdash; damage {ex["id"]}</div>
-<ul>
-<li>Investigation marked complete: <mark>{esc(ex["complete"])}</mark></li>
-<li>Root cause: <mark>ticks {ex["rc_n"]} boxes</mark> on one damage</li>
-<li>Underlying cause: <mark>&ldquo;{esc(ex["underlying"])}&rdquo;</mark></li>
-<li>Genny used? {esc(ex["genny"])} &middot; CAT used? {esc(ex["cat"])}</li>
-</ul></div>
-<div class="sb rv"><div class="sh">What the Sygma review and the panel meeting established</div>
-<ul>
-<li>The review of the genny and CAT download data confirmed the genny
-<mark>was not used</mark> and the cable <mark>was never traced</mark> &mdash; the
-form&#8217;s &ldquo;Genny used? Yes&rdquo; did not survive the data</li>
-<li>When the cable was exposed in a trial hole it was not connected to and re-traced
-&mdash; <mark>&ldquo;we haven&#8217;t got the clamps&rdquo;</mark>, in the team&#8217;s
-own words at the panel</li>
-<li>Clancy&#8217;s own procedure was not followed, in the Senior Contract
-Manager&#8217;s words at the panel: <mark>&ldquo;our procedure is scan it, mark it,
-expose it &mdash; and we haven&#8217;t done it&rdquo;</mark></li>
-<li>The review&#8217;s formal conclusion, on record: the findings and conclusions
-recorded for this damage are <mark>&ldquo;incorrect and need amending&rdquo;</mark></li>
-{"<li><b>Nothing has been amended.</b> The form still answers &ldquo;Genny used? Yes&rdquo;, the investigation is still marked complete &mdash; and the damage is now <mark>closed on Depotnet</mark>, closed within days of the review that found its record incorrect (as captured " + esc(ex["captured"]) + ")</li>" if ex["status"] == "Closed" else ""}
-</ul></div>
-</div>
-<div class="callout" style="border-left-color:{RED}"><b>One damage out of {n} has had this
-level of review, and the recorded cause did not hold.</b> How many of the other
-{n - 1} would survive the same review is exactly the further work this report is asking
-for.</div>
-</div></div>
+{part_six_band}
 
 <div class="band" style="background:linear-gradient(180deg,{C_T},#fff)"><div class="rwrap">
 <h2><span class="tag" style="background:{CHAR}">The close</span> What your data is telling us</h2>
@@ -951,11 +977,13 @@ second report: what the documents say that the fields do not.</div>
 def publish(html):
     vocab_gate(html, "the board report page")
     mod = {"module_key": MK, "slug": MK,
-           "title": "This year&#8217;s damages: the report",
+           "title": ("This year&#8217;s damages: the report" if CURRENT
+                     else FYLABEL + " damages: the report"),
            "section": "Customers", "subsection": "External", "area": "Clancy",
            "tier": "passcode", "passcode": "strive2030",
            "unlock_group": "clancy-depotnet",
-           "icon": "📊", "accent": "#97D700", "status": "live", "enabled": True, "sort": 20,
+           "icon": "📊", "accent": "#97D700", "status": "live", "enabled": True,
+           "sort": 20 if CURRENT else 21,
            "groups": ["clancy", "clancy-external"], "tags": ["clancy", "customer", "report"]}
     rest("modules?on_conflict=module_key", "POST", [mod],
          {"Prefer": "resolution=merge-duplicates"})

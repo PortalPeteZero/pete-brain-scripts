@@ -52,7 +52,11 @@ STEPS = [
     ("the glossary — the section's terms, from clancy_glossary",
      ["clancy-dn-glossary.py", "--publish"], ["clancy-damage-glossary"]),
     ("the board report — this year's damages, what the record can tell us",
-     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report"]),
+     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report"],
+     {"CLANCY_FY": "FY26/27"}),
+    ("the board report, FY 2025/26 edition",
+     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report-2025-26"],
+     {"CLANCY_FY": "FY25/26"}),
 ]
 
 
