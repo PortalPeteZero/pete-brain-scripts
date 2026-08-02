@@ -104,8 +104,10 @@ SEEDS = [
      "Analysis table", "Depotnet", None, "register", 100, "supply_interrupted"),
     ("Captured", "Whether WE have pulled this damage's full record off Depotnet — every question, every action, every file. Uncaptured damages show dashes in capture-derived columns: a dash means we have not looked, never that Depotnet holds nothing.",
      "Register table badge; drives every dash rule", "ours", None, "register", 110, "captured"),
-    ("Outcome & learning", "The short answer to 'what came of this damage': Sygma's review summary where one exists, otherwise the damage's own captured Depotnet fields. 'None recorded' means neither source holds anything.",
-     "Register table", "ours", None, "register", 120, "outcome_learning"),
+    ("Lessons learnt (column)", "Depotnet's own field 'Preventative Outcomes/Actions/Lessons Learnt', shown word for word from the damage's investigation report. 'Nothing written' = Clancy left the field empty. A dash = the damage is not captured. What Sygma thinks sits in its own column — the two are never mixed.",
+     "Register table", "Depotnet", None, "register", 120, "outcome_learning"),
+    ("Sygma review", "What Sygma's own review of this damage found — our summary, in our words. A different thing from Depotnet's record: the Lessons learnt column is what Clancy wrote, this is what we found. A dash = no Sygma review yet.",
+     "Register table", "Sygma", None, "register", 125, "sygma_review"),
     ("Strike category", "Depotnet's own field naming which utility was struck. Captured per damage; the authority over any guess of ours.",
      "Utility columns and charts on captured years", "Depotnet", None, "register", 130, None),
 
@@ -114,14 +116,14 @@ SEEDS = [
      "The damage page's Questions section", "Depotnet", None, "report", 10, None),
     ("Investigation report section", "The second section, on Depotnet's Report tab: the follow-up investigation. Who investigated, root cause, underlying cause, lessons learnt — ending with Clancy's own verdict question. In one line: WHY it happened. There is no half-filled state: it is either worked in full or untouched.",
      "The Investigation report column; the damage page's Report section", "Depotnet", None, "report", 20, None),
-    ("Investigation report (column)", "Whether the investigation report section has been done. Done = every required question answered. Not done = untouched. A dash = the damage is not captured, so we cannot say.",
-     "Register and analysis tables", "ours", "Done / Not done / –", "report", 30, "investigation_report"),
+    ("Investigation report (column)", "Whether Depotnet's own investigation report section has been done. Done = every required question in it is answered. Not done = untouched. A dash = the damage is not captured, so we cannot say.",
+     "Register and analysis tables", "Depotnet", "Done / Not done / –", "report", 30, "investigation_report"),
     ("Marked complete by Clancy", "Clancy's own answer to the section's final question, 'Is the investigation complete?'. 'No' on a fully-worked section means they say the investigating itself is still going — the paperwork is done, the work is not. Empty when the section is not done: we never print a No that was not answered.",
      "Register and analysis tables", "Depotnet", "Yes / No / —", "report", 40, "marked_complete"),
-    ("Cause (spot-check)", "Did the investigation report section name a root cause? Tick = something is written; dash = nothing held.",
-     "The spot-check columns", "ours", None, "report", 50, "spotcheck_cause"),
-    ("Lesson (spot-check)", "Did the section record a lesson learnt? Tick = something is written.",
-     "The spot-check columns", "ours", None, "report", 60, "spotcheck_lesson"),
+    ("Root cause (spot-check)", "Our tick against Depotnet's own investigation-report field 'Service Strike Root Cause'. Tick = Clancy recorded a cause in that field. Dash = the damage is not captured, so we cannot say.",
+     "The spot-check columns", "Depotnet", None, "report", 50, "spotcheck_cause"),
+    ("Lessons learnt (spot-check)", "Our tick against Depotnet's own field 'Preventative Outcomes/Actions/Lessons Learnt' on the investigation report. Tick = Clancy wrote something there. Dash = the damage is not captured.",
+     "The spot-check columns", "Depotnet", None, "report", 60, "spotcheck_lesson"),
     ("Genny (spot-check)", "The section's own question 'Genny used?'. A genny is the signal generator used with a CAT to find buried services before digging. A cross is Clancy answering NO — they dug without it.",
      "The spot-check columns", "Depotnet", None, "report", 70, "spotcheck_genny"),
     ("CAT (spot-check)", "The section's own question 'CAT used?'. A CAT (cable avoidance tool) is the detector itself. A cross is Clancy answering no.",
@@ -135,9 +137,9 @@ SEEDS = [
     ("Lessons learnt", "The section's field for what should be taken from the damage. Quality ranges from a word to a briefable paragraph; the analysis page grades it and quotes it verbatim.",
      "The analysis page's lessons sections", "Depotnet", None, "report", 120, None),
     ("Genny", "The signal generator half of the locate kit: it puts a traceable signal on a buried service so the CAT can follow it. 'Genny's Damage Depot' is named after it.",
-     "Throughout — the section mascot", "ours", None, "report", 130, None),
+     "Throughout — the section mascot", "site", None, "report", 130, None),
     ("CAT", "Cable avoidance tool — the handheld detector swept over the ground to find buried services before digging.",
-     "Spot-checks; the Genny & CAT review pages", "ours", None, "report", 140, None),
+     "Spot-checks; the Genny & CAT review pages", "site", None, "report", 140, None),
     ("Permit to Dig", "The breaking-ground checklist Clancy complete and brief before excavation starts.",
      "The Permit spot-check", "Depotnet", None, "report", 150, None),
 
@@ -145,9 +147,9 @@ SEEDS = [
     ("Corrective action", "A tracked follow-up Depotnet holds against a damage — briefings, reviews, process changes. Comes from Depotnet's Action Report export, which is complete for every year whether or not the damage is captured: no actions means no actions.",
      "The three action columns; child rows; the actions tab", "Depotnet", None, "actions", 10, None),
     ("Actions raised", "How many corrective actions Depotnet holds for this damage. 'None' asserts a real absence in every year — the export covers them all. On a damage whose own status says outstanding actions while the export holds none, both sources are shown.",
-     "Register and analysis tables", "ours", "None / 7 / 2", "actions", 20, "actions_raised"),
+     "Register and analysis tables", "Depotnet", "None / 7 / 2", "actions", 20, "actions_raised"),
     ("Still open", "Of the raised actions, how many are not yet closed. Depotnet's word for that state is Overdue, and the cell says so. A 0 here genuinely means all dealt with — the cell is silent when nothing was raised.",
-     "Register and analysis tables", "ours", "1 overdue", "actions", 30, "actions_still_open"),
+     "Register and analysis tables", "Depotnet", "1 overdue", "actions", 30, "actions_still_open"),
     ("Closed (actions)", "Of the raised actions, how many Depotnet marks Closed. Silent when nothing was raised. Raised = still open + closed, visible on the row.",
      "Register and analysis tables", "Depotnet", None, "actions", 40, "actions_closed"),
     ("Overdue action", "Depotnet's own status for a raised action past its due date and not closed — the only non-closed action state that occurs in the data.",
@@ -245,11 +247,11 @@ def build():
     for r in rows:
         by.setdefault(r["grp"], []).append(r)
     WHO = {"Depotnet": ("d", "Depotnet&#8217;s word"), "Sygma": ("s", "Sygma&#8217;s word"),
-           "ours": ("o", "our word")}
+           "ours": ("o", "our word"), "site": ("o", "site term")}
     body = ['<div class="gwrap">',
             '<div class="gintro"><b>Every term this section uses, in plain English.</b> '
             'Each card says what the word means, where you will meet it, and whose word it is '
-            '&mdash; Depotnet&#8217;s own label, Sygma&#8217;s, or a name we coined and defined. '
+            '&mdash; Depotnet&#8217;s own label, Sygma&#8217;s, a site term the industry uses, or a name we coined and defined. '
             'The same cards feed the column explanations on the tables, so the wording here IS '
             'the wording there.</div>']
     for g in ("register", "report", "actions", "files", "sygma", "process"):

@@ -517,6 +517,9 @@ def cols(rows, lab, val, sub=None):
 
 
 PAGE_CSS = """
+.kidtog{border:0;cursor:pointer;background:#eaf6d3;color:#3f6d00;border-radius:20px;
+ padding:3px 12px;font-size:12px;font-weight:800;font-family:inherit}
+.kidtog:hover{background:#dcefbe}
 tr.achild td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
  padding-top:6px;padding-bottom:6px}
 tr.achild td:first-child{padding-left:26px;position:relative}
@@ -543,14 +546,14 @@ tr.achild td:first-child:before{content:"\\21B3";position:absolute;left:10px;col
 .kpi.warn .n{color:var(--red)}
 .kpi .l{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.35}
 .hbars{display:flex;flex-direction:column;gap:8px}
-.hb{display:grid;grid-template-columns:210px 1fr 82px;align-items:center;gap:10px}
-@media(max-width:640px){.hb{grid-template-columns:130px 1fr 70px}}
+.hb{display:grid;grid-template-columns:210px minmax(140px,320px) auto;align-items:center;gap:10px}
+@media(max-width:640px){.hb{grid-template-columns:130px minmax(90px,1fr) auto}}
 .hb .k{font-size:12.5px;color:var(--mid);text-align:right;overflow:hidden;text-overflow:ellipsis;
  white-space:nowrap}
 .hb .t{height:16px;background:#eef1f5;border-radius:4px;overflow:hidden}
 .hb .t i{display:block;height:100%;background:var(--green);border-radius:4px}
-.hb .t i.grey{background:#9aa4b0}
-.hb .v{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--mid)}
+.hb .t i.grey{background:#353E47}
+.hb .v{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
 .cols{display:flex;align-items:flex-end;gap:12px;height:150px;padding-top:6px}
 .cols .c{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;
  gap:5px;height:100%}
@@ -560,7 +563,7 @@ tr.achild td:first-child:before{content:"\\21B3";position:absolute;left:10px;col
 .cols .s2{font-size:10.5px;color:var(--faint)}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media(max-width:820px){.split{grid-template-columns:1fr}}
-table.t{width:100%;border-collapse:collapse;font-size:13.5px}
+table.t{width:auto;border-collapse:collapse;font-size:13.5px}
 table.t th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
  color:var(--faint);padding:0 10px 7px 0;border-bottom:1px solid var(--line)}
 table.t td{padding:8px 10px 8px 0;border-bottom:1px solid #f0f3f6;color:var(--mid);vertical-align:top}
@@ -719,7 +722,8 @@ def damage_table_v2(d):
         acts, aout, acls = r["acts"], r["acts_out"], r["acts_closed"]
         cwoa = (r["status"] == "Complete with Outstanding Actions" and acts == 0)
         if acts:
-            raised_h = f'{acts}'
+            raised_h = (f'<button class="kidtog" data-v="{acts}" aria-expanded="false" '
+                        f'title="Show this damage&#8217;s actions">&#9656; {acts}</button>')
             open_h = (f'<span class="pill open">{aout} overdue</span>' if aout else "0")
             closed_h = f'{acls}'
         else:
@@ -774,7 +778,7 @@ def damage_table_v2(d):
             # made the child rows unreadable (Pete, 2 Aug evening)
             _meas = esc(a.get("measure") or "")
             tr.append(
-                f'<tr class="achild" data-parent="{r["id"]}"><td colspan="16">'
+                f'<tr class="achild" data-parent="{r["id"]}" hidden><td colspan="16">'
                 f'<b>{" &middot; ".join(bits)}</b> &middot; {stat_h} &middot; '
                 f'<span style="white-space:nowrap">{when}</span>'
                 f'{" &mdash; " + _meas if _meas else ""}</td></tr>')
@@ -815,7 +819,7 @@ def damage_table_v2(d):
              + th("Actions<br>raised", "actions_raised", "c")
              + th("Still<br>open", "actions_still_open", "c")
              + th("Closed", "actions_closed", "c")
-             + th("Cause", "spotcheck_cause", "c") + th("Lesson", "spotcheck_lesson", "c")
+             + th("Root cause", "spotcheck_cause", "c") + th("Lessons", "spotcheck_lesson", "c")
              + th("Genny", "spotcheck_genny", "c") + th("CAT", "spotcheck_cat", "c")
              + th("Permit", "spotcheck_permit", "c") + th("Evidence", "evidence", "n"))
 
@@ -894,9 +898,9 @@ actions &mdash; both shown as Depotnet holds them.</div>
         if(t==='cat'    && r.dataset.cat  !=='NO') ok=false;
       }});
       r.hidden=!ok; if(ok) shown++;
-      // children follow their parent, and are never counted
+      // children are collapsed by default — visible only when the parent is shown AND expanded
       var d=r.nextElementSibling;
-      while(d && d.classList.contains('achild')){{ d.hidden=!ok; d=d.nextElementSibling; }}
+      while(d && d.classList.contains('achild')){{ d.hidden=!(ok && r.dataset.open==='1'); d=d.nextElementSibling; }}
     }});
     cnt.textContent=shown+' of {n} damages';
     nr.hidden=shown>0;
@@ -909,6 +913,16 @@ actions &mdash; both shown as Depotnet holds them.</div>
   }});}});
   // stage 3: a damage link opens the pop-up card instead of navigating away
   tb.addEventListener('click',function(e){{
+    var b=e.target.closest&&e.target.closest('.kidtog');
+    if(b){{
+      var r=b.closest('tr'), open=r.dataset.open==='1';
+      r.dataset.open=open?'0':'1';
+      b.setAttribute('aria-expanded',String(!open));
+      b.innerHTML=(open?'&#9656; ':'&#9662; ')+b.dataset.v;
+      var d=r.nextElementSibling;
+      while(d && d.classList.contains('achild')){{ d.hidden=open; d=d.nextElementSibling; }}
+      return;
+    }}
     var a=e.target.closest&&e.target.closest('a');
     if(a&&window.GennyCard){{e.preventDefault();GennyCard.open(a.getAttribute('href'));}}
   }});
@@ -1066,6 +1080,16 @@ not recorded.</div>
   }});}});
   // stage 3: a damage link opens the pop-up card instead of navigating away
   tb.addEventListener('click',function(e){{
+    var b=e.target.closest&&e.target.closest('.kidtog');
+    if(b){{
+      var r=b.closest('tr'), open=r.dataset.open==='1';
+      r.dataset.open=open?'0':'1';
+      b.setAttribute('aria-expanded',String(!open));
+      b.innerHTML=(open?'&#9656; ':'&#9662; ')+b.dataset.v;
+      var d=r.nextElementSibling;
+      while(d && d.classList.contains('achild')){{ d.hidden=open; d=d.nextElementSibling; }}
+      return;
+    }}
     var a=e.target.closest&&e.target.closest('a');
     if(a&&window.GennyCard){{e.preventDefault();GennyCard.open(a.getAttribute('href'));}}
   }});
@@ -1087,7 +1111,7 @@ STAGE4_CSS = """
 .tscroll{max-height:80vh;overflow:auto;border-radius:14px}
 table.reg thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
  padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
-table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.25;margin-bottom:4px;width:120px;min-height:26px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
+table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:136px;min-height:40px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 table.reg thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
 table.reg td{padding:8px 10px;font-size:13px;background:#fff}
@@ -1096,8 +1120,54 @@ table.reg tr.achild td{background:#f8f9fb}
 table.reg tr.achild:hover td{background:#f8f9fb}
 table.reg td.c{text-align:center;min-width:40px}
 table.reg td.n,table.reg th.n{font-variant-numeric:tabular-nums}
-/* bolder section headers, on brand */
-.sec>h2{border-left:4px solid #97D700;padding-left:12px}
+/* ── stage 4: the full visual system — charcoal + Clancy green (Pete: modern, slick) ── */
+/* the opener: charcoal panel, green keyline */
+.lead{font-size:16.5px;line-height:1.6;max-width:none;padding:20px 24px;color:#e4eaf0;
+ background:linear-gradient(135deg,#353E47 0%,#3e4954 100%);border-radius:16px;
+ border-left:5px solid #97D700;margin-bottom:22px;box-shadow:0 10px 30px -18px rgba(53,62,71,.5)}
+/* sections: layered cards, numbered green chips */
+.sec{border-radius:18px;padding:26px 30px;border:1px solid #e7eaf0;
+ box-shadow:0 1px 2px rgba(23,32,20,.05),0 12px 32px -20px rgba(53,62,71,.28)}
+.sec>h2{display:flex;align-items:center;gap:12px;font-size:21px;letter-spacing:-.022em;
+ border-left:0;padding-left:0}
+.sec>h2 .snum{flex:0 0 auto;width:34px;height:34px;border-radius:10px;background:#97D700;
+ color:#25320a;display:inline-flex;align-items:center;justify-content:center;font-size:16.5px;
+ font-weight:800}
+.sec>h2:has(.snum)+.why{padding-left:46px}
+.sec .why{font-size:13.5px;color:#6a7480;margin:6px 0 18px}
+/* KPI tiles: bigger numbers, gradient rail, lift on hover */
+.kpi{border-radius:15px;padding:17px 18px;transition:transform .15s ease,box-shadow .15s ease}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 10px 24px -14px rgba(53,62,71,.4)}
+.kpi::before{height:4px;background:linear-gradient(90deg,#97D700,#c9ea67)}
+.kpi.warn::before{background:linear-gradient(90deg,#D50032,#f4728f)}
+.kpi .n{font-size:33px;color:#353E47}
+.kpi.warn .n{color:#D50032}
+.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+ color:#8a94a0;margin-top:7px}
+/* stat tables: charcoal header band, zebra rows, content width */
+.sec table.t{border-collapse:separate;border-spacing:0;margin-top:4px}
+.sec table.t th{background:#353E47;color:#fff;font-size:11px;font-weight:800;
+ letter-spacing:.05em;text-transform:uppercase;padding:8px 12px;border-bottom:2px solid #97D700}
+.sec table.t th:first-child{border-radius:9px 0 0 0;text-align:left}
+.sec table.t th:last-child{border-radius:0 9px 0 0}
+.sec table.t td{padding:7px 12px;border-bottom:1px solid #eef1f5;font-size:13.5px}
+.sec table.t tr:nth-child(even) td{background:#fafbf7}
+.sec table.t td:first-child{font-weight:600;color:var(--ink)}
+/* bars: gradient fills, bold values beside the bar */
+.hb .t{height:18px;border-radius:6px}
+.hb .t i{background:linear-gradient(90deg,#85bc00,#97D700)}
+.hb .t i.grey{background:linear-gradient(90deg,#353E47,#4d5763)}
+.hb .k{font-size:13px;font-weight:600;color:#3a434d}
+.hb .v{font-size:13px}
+/* month columns */
+.cols .bar{background:linear-gradient(180deg,#a5e211,#8bc400);border-radius:7px 7px 0 0}
+.cols .v{font-size:16px;color:#353E47}
+/* verbatim lesson quotes: green-railed cards */
+blockquote.q{background:#fafcf3;border:1px solid #e8eedb;border-left:4px solid #97D700;
+ border-radius:0 12px 12px 0;padding:12px 16px;font-size:13.5px;margin:0 0 10px}
+blockquote.q .src{display:block;margin-top:7px;font-size:10.5px;text-transform:uppercase;
+ letter-spacing:.05em;color:#8a94a0;font-weight:700}
+.flag{border-radius:14px}
 """
 
 
@@ -1215,6 +1285,8 @@ def build(edition, label):
                    f"average. Those without carry <b>{b_['avg_files']}</b>. The damages with no "
                    "cause recorded are the same ones carrying the fewest photographs, so the two "
                    "gaps sit on top of each other: less to go back to later, not more.</p>")
+    ev_block = (f'<h2 style="font-size:15px;margin-top:20px">The gap compounds</h2>{ev_line}'
+                if ev_line else "")
 
     good_q = "".join(
         f'<blockquote class="q">{esc(r["t"])}<span class="src">Damage {r["id"]} &middot; '
@@ -1273,7 +1345,9 @@ def build(edition, label):
                     f'<tr><td>Depth of the service</td><td>{x["depth"]}mm</td></tr>'
                     f'<tr><td>Root cause recorded</td><td>{esc(x["root"])}</td></tr>'
                     f'<tr><td>Underlying cause</td><td>{esc(x["under"])}</td></tr></table>'
-                    f'<div class="fl" style="margin-top:8px">WHAT HAPPENED ON THIS DAMAGE, IN ITS OWN WORDS</div>'
+                    f'<div class="fl" style="margin-top:8px">LESSONS-LEARNT FIELD ON THIS DAMAGE</div>'
+                    f'<blockquote class="q" style="margin:6px 0 10px">{esc(r["lesson"])}</blockquote>'
+                    f'<div class="fl">WHAT HAPPENED ON THIS DAMAGE, IN ITS OWN WORDS</div>'
                     f'<div class="dq">{esc(x["descr"])}</div></div>')
             ids = ", ".join(str(x["id"]) for x in recs)
             span = ("" if r["n_years"] < 2 else
@@ -1281,12 +1355,8 @@ def build(edition, label):
             blocks += (
                 f'<h3 style="margin-top:22px">On {r["n"]} damages &middot; {r["len"]} characters</h3>'
                 f'<div class="why">Damages {ids}.</div>'
-                f'<div class="fl" style="margin-top:10px">THE LESSON TEXT BOTH CARRY, WORD FOR WORD</div>'
-                f'<blockquote class="q">{esc(r["lesson"])}</blockquote>'
-                f'<p>That exact text sits in the lessons-learnt field of each damage below. The '
-                f'descriptions underneath are each damage&#8217;s OWN account of what happened '
-                f'&mdash; different events, and that is the point: one lesson was written once '
-                f'and pasted onto both.{span}</p>'
+                f'<p>These damages carry an identical lessons-learnt text &mdash; shown on each '
+                f'card below, above that damage&#8217;s own account of what happened.{span}</p>'
                 f'<div class="dmgs">{cards}</div>')
 
         # The paragraphs below were written by hand about ONE SPECIFIC PAIR — 121878 and 122362
@@ -1573,7 +1643,7 @@ record can carry that weight.</div>
 
 {movement}
 
-<div class="sec"><h2>1. What is causing the damages</h2>
+<div class="sec"><h2><span class="snum">1</span> What is causing the damages</h2>
 <div class="why">The straight answer, from the {cs_n} damages whose investigation report section
 names a cause. That is {cs_n} of {n} &mdash; the picture will firm up as more sections are done,
 and this page says so rather than pretending.</div>
@@ -1587,22 +1657,20 @@ investigated damages record a &ldquo;no&rdquo; to using the CAT or the genny &md
 the crews say the detection kit was used and the strike happened anyway. That points the fix at
 better plans and deeper checks where plans are known to be poor, not at telling crews to be more
 careful.</p>
-<p><b>When it goes wrong, it is usually a machine that does the damage.</b> {cs['mech']} of the
-{cs_n} name mechanical plant &mdash; a digger, breaker or drill &mdash; against {cs['hand']} a
-hand tool. A machine strike is instant and total, which is why the checks before the bucket goes
-in matter more than anything done after.</p>
+<p><b>When it goes wrong, it is usually under a machine.</b> {cs['mech']} of the {cs_n} name
+mechanical plant; {cs['hand']} name a hand tool.</p>
 <p><b>What would make this analysis stronger is simple:</b> the {blank_ok} damages with no
 investigation report section yet. Every one completed adds a cause to this picture. Today the
 year&#8217;s cause analysis rests on {pct(cs_n, n)} of its damages.</p></div>
 
-<div class="sec"><h2>2. The year</h2>
+<div class="sec"><h2><span class="snum">2</span> The year</h2>
 <div class="why">Month by month, and how many of each month&#8217;s damages have their investigation report section completed.</div>
 {cols(d['months'], 'm', 'n', 'done')}
 <p style="margin-top:16px">{n} damages{months_phrase}{compare}. The small figure under each month
 is how many of that month&#8217;s damages have their investigation report section done &mdash; the
 only rows this page can read a cause or a lesson from.</p></div>
 
-<div class="sec"><h2>3. What was struck</h2>
+<div class="sec"><h2><span class="snum">3</span> What was struck</h2>
 <div class="why">Depotnet&#8217;s own strike category and recorded depth. Held for
 {h['with_struck']} of {n}.</div>
 <div class="split"><div>{hbar(d['utility'], total=n)}</div>
@@ -1611,20 +1679,23 @@ only rows this page can read a cause or a lesson from.</p></div>
 {h['with_depth']} of {n} and is the more useful of the two, because it separates a service that was
 where it should have been from one that was not.</p>
 {wrong_unit_note}
-<h2 style="font-size:15px;margin-top:20px">Sub-category</h2>{hbar(d['subcat'], total=n)}</div>
+<div class="split" style="margin-top:20px"><div>
+<h2 style="font-size:15px">Sub-category</h2>{hbar(d['subcat'], total=n)}</div>
+<div><h2 style="font-size:15px">{_shallow_head}</h2>
+<table class="t"><tr><th>Utility</th><th>Under 450mm</th><th>With a depth</th><th>Share</th></tr>
+{shallow_rows}</table></div></div></div>
 
-<div class="sec"><h2>4. How it happened</h2>
+<div class="sec"><h2><span class="snum">4</span> How it happened</h2>
 <div class="why">The plant or tool recorded as causing the damage, and the setting. Held for
 {h['with_plant']} of {n}.</div>
-<p><b>{_mech} of the {n} were machine strikes</b> &mdash; a digger, breaker, drill or saw &mdash;
-against {_hand} with a hand tool. A machine strike is instant and total: by the time anyone
-feels resistance the service is already cut. That is why everything on this page about plans,
-detection and permits matters &mdash; they are the only checks that happen before the bucket
-goes in.</p>
+<p>{_mech} of the {n} name mechanical plant &mdash; a digger, breaker, drill or saw. {_hand}
+name a hand tool.</p>
 <div class="split"><div>{hbar(d['plant'], total=n)}</div>
-<div></div></div></div>
+<div><h2 style="font-size:15px">{_mech_head}</h2>
+<table class="t"><tr><th>Utility</th><th>Mechanical</th><th>Hand tool</th><th>Total</th></tr>
+{mech_rows}</table></div></div></div>
 
-<div class="sec"><h2>5. What Depotnet says caused it</h2>
+<div class="sec"><h2><span class="snum">5</span> What Depotnet says caused it</h2>
 <div class="why">Root and underlying cause, counted only from the sections that made a real
 selection in that field.</div>
 <p>Of {n} damages this year, <b>{h['with_cause']} carry a cause</b> and {n - h['with_cause']} carry
@@ -1634,21 +1705,22 @@ other of the two fields and are set aside below. That leaves {usable_line}</p>
 <h2 style="font-size:15px;margin-top:20px">Underlying cause</h2>{hbar(d['underlying'], 'val', 'n', total=d['under_n'])}
 {blanket_note}</div>
 
-<div class="sec"><h2>6. The backlog</h2>
-<div class="why">Open, closed, and how long damages wait &mdash; handled here, once.</div>
+<div class="sec"><h2><span class="snum">6</span> The backlog</h2>
+<div class="why">A damage stays <b>open</b> until Clancy close the case on Depotnet. This is the
+one place on the page that deals with open and closed.</div>
 <table class="t"><tr><th>Status</th><th>Damages</th><th>Investigation report done</th>
 <th>Depotnet says complete</th><th>Depotnet says not complete</th></tr>
 {status_rows}</table>
-<p style="margin-top:16px"><b>The investigation happens when a damage closes.</b> All
-{d['closed_n']} closed damages are investigated; {_notdone_open} of the {h['still_open']} open
-ones are not yet. So the {blank_ok} missing investigations are mostly a queue, not a refusal
-&mdash; and until they are done, the causes and lessons from those damages do not exist for
-anyone.</p>
-<p><b>The queue is slow.</b> {oldest_open} of the open damages have been waiting more than 60
-days:</p>
-{open_rows_html}</div>
+<p style="margin-top:16px">{ib['has_section']} of the {n} are investigated, {blank_ok} are not.
+Investigations get done when a damage closes &mdash; every closed damage has one. Of the
+{blank_ok} without one: {_notdone_open} sit on damages Clancy has not yet closed{_notdone_odd}.
+Until those close, their causes and lessons are not available.</p>
+<p><b>Closing is slow.</b> {h['still_open']} damages are not yet closed. Counted from the day
+of the strike, {oldest_open} of them have now been open more than 60 days:</p>
+{open_rows_html}
+{ev_block}</div>
 
-<div class="sec"><h2>7. What the lessons are worth</h2>
+<div class="sec"><h2><span class="snum">7</span> What the lessons are worth</h2>
 <div class="why">Of the {d['closed_n']} damages Clancy has closed and investigated, only
 {cf['distinct_briefable']} produced a lesson you could brief a crew with. Graded below.</div>
 <table class="t"><tr><th>What the lessons field holds</th><th>Closed damages</th><th>Share</th></tr>
@@ -1656,14 +1728,14 @@ days:</p>
 <p style="margin-top:16px">Every closed damage was investigated and has a cause &mdash; the
 process is being followed. But the lesson field, the part that would stop the NEXT damage, gets a
 few words: enough to close the form, not enough to brief a team.</p>
-<p><b>The section is being completed. The lesson field is not.</b> That is a gap in the last step
-of the form rather than in the diligence of the people filling it in, and it is the cheapest thing
-on this page to fix.</p>
+<p>When the section does get done, the lesson line inside it is the weak part: the causes get
+filled in properly, the lesson gets a few words. That is the cheapest thing on this page to
+fix.</p>
 {trunc_note}</div>
 
 {dupe_note}
 
-<div class="sec"><h2>8. By contract, and a question we cannot answer</h2>
+<div class="sec"><h2><span class="snum">8</span> By contract, and a question we cannot answer</h2>
 <div class="why">Shown with age, open count and the completed sections side by side, because
 any one of those columns on its own would be misleading.</div>
 <table class="t"><tr><th>Contract</th><th>Damages</th><th>Average age</th><th>Still open</th>
@@ -1674,7 +1746,7 @@ any one of those columns on its own would be misleading.</div>
 likely it is about who administers Depotnet on each contract. <b>A question for Clancy, not a
 conclusion about any contract&#8217;s crews.</b></p></div>
 
-<div class="sec"><h2>9. What was learned</h2>
+<div class="sec"><h2><span class="snum">9</span> What was learned</h2>
 <div class="why">The lessons-learnt field, on the {h['with_lessons']} damages that carry one.</div>
 {hbar(d['lessons_quality'], total=h['with_lessons'])}
 <p style="margin-top:16px">Where the section is completed properly it produces something a
@@ -1683,17 +1755,7 @@ verbatim, because the difference between them is the whole argument.</p>
 <h2 style="font-size:15px;margin-top:18px">The thin ones, in full</h2><p>{thin_q}</p>
 <h2 style="font-size:15px;margin-top:18px">The substantial ones, in full</h2>{good_q}</div>
 
-<div class="sec"><h2>10. Three things visible only once it is all in one place</h2>
-<div class="why">Each of these is a count, not an interpretation.</div>
-<h2 style="font-size:15px">{_shallow_head}</h2>
-<table class="t"><tr><th>Utility</th><th>Under 450mm</th><th>With a depth</th><th>Share</th></tr>
-{shallow_rows}</table>
-<h2 style="font-size:15px;margin-top:20px">{_mech_head}</h2>
-<table class="t"><tr><th>Utility</th><th>Mechanical</th><th>Hand tool</th><th>Total</th></tr>
-{mech_rows}</table>
-<h2 style="font-size:15px;margin-top:20px">The investigation report gap compounds</h2>{ev_line}</div>
-
-<div class="sec"><h2>11. What this cannot tell you</h2>
+<div class="sec"><h2><span class="snum">10</span> What this cannot tell you</h2>
 <div class="why">Stated plainly, because a report that hides its own limits is worth less than one
 that does not.</div>
 <p><b>{n - h['with_cause']} of {n} damages have no cause recorded.</b> Not an unclear cause. None.

@@ -510,13 +510,13 @@ function initTable(tid){
       if(needle) ok=r.dataset.search.includes(needle);
       if(ok) for(const s of sels){const v=s.value; if(v && r.dataset[s.dataset.key]!==v){ok=false;break;}}
       r.style.display=ok?'':'none'; shown+=ok?1:0;
-      // companions follow their parent: the det expander AND any action child rows
-      // (tr.child[data-parent], stage 2). Children are never counted as damages —
-      // 'shown' counts tr.row only.
+      // companions follow their parent: the det expander AND any action child rows.
+      // Children are collapsed by default (Pete, 2 Aug) — visible only when their parent
+      // is shown AND expanded. Never counted as damages: 'shown' counts tr.row only.
       let d=r.nextElementSibling;
       while(d && !d.classList.contains('row')){
         if(d.classList.contains('det')) d.style.display='none';
-        else if(d.classList.contains('child')) d.style.display=ok?'':'none';
+        else if(d.classList.contains('child')) d.hidden=!(ok && r.dataset.open==='1');
         d=d.nextElementSibling;
       }
       r.classList.remove('openrow');
@@ -532,6 +532,19 @@ function initTable(tid){
     if(!r.dataset.href) return;
     if(window.GennyCard) GennyCard.open(r.dataset.href);   // stage 3: never lose your place
     else location.href=r.dataset.href;
+  });});
+  // expand/collapse a damage's action child rows — its own click target, never the card
+  t.querySelectorAll('.kidtog').forEach(b=>{b.addEventListener('click',e=>{
+    e.stopPropagation();
+    const r=b.closest('tr'), open=r.dataset.open==='1';
+    r.dataset.open=open?'0':'1';
+    b.setAttribute('aria-expanded',String(!open));
+    b.innerHTML=(open?'&#9656; ':'&#9662; ')+b.dataset.v;
+    let d=r.nextElementSibling;
+    while(d && !d.classList.contains('row')){
+      if(d.classList.contains('child')) d.hidden=open;
+      d=d.nextElementSibling;
+    }
   });});
   t.querySelectorAll('th[data-col]').forEach((th,i)=>{th.addEventListener('click',()=>{
     const idx=+th.dataset.col, num=th.dataset.num==='1', asc=th.dataset.asc!=='1';
@@ -744,7 +757,9 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
         n_closed = sum(1 for a in acts if a["status"] == "Closed")
         cwoa = (r["status"] == "Complete with Outstanding Actions" and not acts)
         if acts:
-            raised_h = f'<span class="b yes" data-v="{len(acts)}">{len(acts)}</span>'
+            raised_h = (f'<button class="kidtog" data-v="{len(acts)}" '
+                        f'aria-expanded="false" title="Show this damage&#8217;s actions">'
+                        f'&#9656; {len(acts)}</button>')
             open_h = (f'<span class="b warn">{n_open} overdue</span>' if n_open
                       else '<span class="b" data-v="0">0</span>')
             closed_h = f'{n_closed}'
@@ -771,16 +786,22 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
         syg_b = '<span class="b yes">Yes</span>' if en else '<span class="b no">—</span>'
         cap_b = ('<span class="b yes">Yes</span>' if captured
                  else '<span class="b no" title="Not captured yet">—</span>')
-        if en and en.get("summary"):
-            outcome = en["summary"]
+        # Two sources, two columns — NEVER merged (Pete, 2 Aug). Lessons learnt is Depotnet's
+        # own field, word for word; Sygma review is our finding, in our words.
+        ll = r.get("lessons_learnt")
+        if ll and len(ll) > 220:
+            ll = ll[:217] + "…"
+        if not captured:
+            ol = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+        elif ll:
+            ol = f'<div class="clamp2 small" style="font-size:12.5px">{esc(ll)}</div>'
         else:
-            cms = [a["corrective_measure"] for a in acts if a.get("corrective_measure")]
-            outcome = cms[-1] if cms else (r.get("incident_summary") or None)
-        learning = ((en.get("key_findings") or [None])[0] if en else None) or r.get("lessons_learnt")
-        if learning and len(learning) > 220:
-            learning = learning[:217] + "…"
-        ol = (f'<div class="ol"><div class="fl">Outcome</div><div class="t{"" if outcome else " muted"}">{esc(outcome) if outcome else "None recorded"}</div>'
-              f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
+            ol = '<span class="small muted" title="The field is empty on Depotnet">Nothing written</span>'
+        _rv = (en.get("summary") or (en.get("key_findings") or [None])[0]) if en else None
+        if _rv and len(_rv) > 220:
+            _rv = _rv[:217] + "…"
+        rv_h = (f'<div class="clamp2 small" style="font-size:12.5px">{esc(_rv)}</div>' if _rv
+                else '<span class="small muted" title="No Sygma review of this damage yet">&mdash;</span>')
         search = " ".join(str(r.get(f) or "").lower() for f in
                           ["id", "location", "description", "contract", "raised_by", "subcontractor", "job_ref"])
         detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
@@ -808,7 +829,8 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
             f'<td data-v="{len(held)}" class="c">{ev_h}</td>'
             f'<td data-v="{1 if en else 0}">{syg_b}</td>'
             f'<td data-v="{1 if captured else 0}">{cap_b}</td>'
-            f'<td style="min-width:230px">{ol}</td></tr>')
+            f'<td style="min-width:200px">{ol}</td>'
+            f'<td style="min-width:200px">{rv_h}</td></tr>')
         # child rows: one per action, indented, never click targets, fields when present
         for a in sorted(acts, key=lambda a: str(a.get("date_raised") or "")):
             bits = [f'Action {a["id"]}']
@@ -824,7 +846,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
             # ONE full-width cell per action — colspans across 21 unrelated columns made the
             # child rows unreadable (Pete, 2 Aug evening)
             rows_html.append(
-                f'<tr class="child" data-parent="{r["id"]}"><td colspan="21">'
+                f'<tr class="child" data-parent="{r["id"]}" hidden><td colspan="22">'
                 f'<b>{" &middot; ".join(bits)}</b> &middot; {st_h} &middot; '
                 f'<span style="white-space:nowrap">{when}</span>'
                 f'{" &mdash; " + meas if meas else ""}</td></tr>')
@@ -834,7 +856,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
                "status", "investigation_report", "marked_complete", "actions_raised",
                "actions_still_open", "actions_closed", "spotcheck_cause", "spotcheck_lesson",
                "spotcheck_genny", "spotcheck_cat", "spotcheck_permit", "evidence",
-               "sygma_layer", "captured", "outcome_learning"]
+               "sygma_layer", "captured", "outcome_learning", "sygma_review"]
     kes = "".join(
         f'<div class="ke"><b>{esc(gloss[k]["term"])}</b> — {esc(gloss[k]["plain_meaning"])}</div>'
         for k in KEYCOLS if k in gloss)
@@ -863,18 +885,20 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
              + th("Actions raised", 9, True, "actions_raised")
              + th("Still open", 10, True, "actions_still_open")
              + th("Closed", 11, True, "actions_closed")
-             + th("Cause", 12, key="spotcheck_cause") + th("Lesson", 13, key="spotcheck_lesson")
+             + th("Root cause", 12, key="spotcheck_cause") + th("Lessons", 13, key="spotcheck_lesson")
              + th("Genny", 14, key="spotcheck_genny") + th("CAT", 15, key="spotcheck_cat")
              + th("Permit", 16, key="spotcheck_permit")
              + th("Evidence", 17, True, "evidence") + th("Sygma?", 18, True, "sygma_layer")
-             + th("Captured", 19, True, "captured") + th("Outcome &amp; learning", 20, key="outcome_learning"))
+             + th("Captured", 19, True, "captured")
+             + th("Lessons learnt", 20, key="outcome_learning")
+             + th("Sygma review", 21, key="sygma_review"))
 
     stage4_css = "<style>" + """
 /* ── stage 4: the visual lift — charcoal header band, visible column notes, density ── */
 #%TID%{border-collapse:separate;border-spacing:0}
 #%TID% thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
  padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
-#%TID% thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.25;margin-bottom:4px;width:120px;min-height:26px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
+#%TID% thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:136px;min-height:40px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 #%TID% thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
 #%TID% thead th .arr{color:#97D700}
@@ -891,6 +915,9 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 #%TID% tr.child td:first-child{background:#f8f9fb}
 .card:has(#%TID%){max-height:80vh;overflow:auto;padding:0!important;border-radius:14px;
  box-shadow:0 2px 6px rgba(31,41,51,.06),0 12px 32px rgba(31,41,51,.08)}
+.kidtog{border:0;cursor:pointer;background:#eaf6d3;color:#3f6d00;border-radius:20px;
+ padding:3px 12px;font-size:12px;font-weight:800;font-family:inherit}
+.kidtog:hover{background:#dcefbe}
 .b{display:inline-block;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:800}
 .b.yes{background:#eaf6d3;color:#3f6d00}
 .b.no{background:#f0f2f5;color:#7a8593}
@@ -979,21 +1006,21 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None,
         else:
             act_b = '<span class="b no">None</span>'
         syg_b = '<span class="b yes">Yes</span>' if en else '<span class="b no">—</span>'
-        # Outcome: Sygma summary first, else the latest corrective measure, else Depotnet's own
-        # captured incident summary. Learning: Sygma finding first, else Depotnet's own captured
-        # lessons-learnt. Before the fallbacks, 138 of FY25/26's 164 rows said "None recorded"
-        # while the damage's own investigation report section held a lesson we had captured —
-        # the column ignored the two columns this capture exists to fill.
-        if en and en.get("summary"):
-            outcome = en["summary"]
+        # Two sources, two columns — NEVER merged (Pete, 2 Aug). Lessons learnt is Depotnet's
+        # own field 'Preventative Outcomes/Actions/Lessons Learnt', word for word; Sygma review
+        # is our own finding. What they wrote and what we found are different things.
+        ll = r.get("lessons_learnt")
+        if ll and len(ll) > 220:
+            ll = ll[:217] + "…"
+        if ll:
+            ol = f'<div class="clamp2 small" style="font-size:12.5px">{esc(ll)}</div>'
         else:
-            cms = [a["corrective_measure"] for a in acts if a.get("corrective_measure")]
-            outcome = cms[-1] if cms else (r.get("incident_summary") or None)
-        learning = ((en.get("key_findings") or [None])[0] if en else None) or r.get("lessons_learnt")
-        if learning and len(learning) > 220:
-            learning = learning[:217] + "…"
-        ol = (f'<div class="ol"><div class="fl">Outcome</div><div class="t{"" if outcome else " muted"}">{esc(outcome) if outcome else "None recorded"}</div>'
-              f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
+            ol = '<span class="small muted" title="The field is empty on Depotnet">Nothing written</span>'
+        _rv = (en.get("summary") or (en.get("key_findings") or [None])[0]) if en else None
+        if _rv and len(_rv) > 220:
+            _rv = _rv[:217] + "…"
+        rv_h = (f'<div class="clamp2 small" style="font-size:12.5px">{esc(_rv)}</div>' if _rv
+                else '<span class="small muted" title="No Sygma review of this damage yet">&mdash;</span>')
         rows_html.append(
             f'<tr class="row" data-href="{detail}" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
             f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}" data-cap="{cap_key}" data-acts="{act_key}">'
@@ -1007,7 +1034,8 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None,
             f'<td data-v="{len(acts)}">{act_b}</td>'
             f'<td data-v="{1 if en else 0}">{syg_b}</td>'
             f'<td data-v="{ {"done":0,"part":1,"missing":2,"todo":3}[cap_key] }">{cap_html}</td>'
-            f'<td style="min-width:230px">{ol}</td></tr>')
+            f'<td style="min-width:200px">{ol}</td>'
+            f'<td style="min-width:200px">{rv_h}</td></tr>')
     return f"""
 <div class="filters"><input type="search" id="{tid}-q" placeholder="Search location, description, ID…">{selects}<span class="count" id="{tid}-count"></span></div>
 <div class="card" style="padding:6px 10px;overflow-x:auto"><table id="{tid}"><thead><tr>
@@ -1017,9 +1045,10 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 <th data-col="4">Utility <span class="arr">↕</span></th><th data-col="5" data-num="1">Severity <span class="arr">↕</span></th>
 <th data-col="6">Status <span class="arr">↕</span></th><th data-col="7" data-num="1">Action? <span class="arr">↕</span></th>
 <th data-col="8" data-num="1">Sygma? <span class="arr">↕</span></th>
-<th data-col="9" data-num="1">Captured <span class="arr">↕</span></th><th data-col="10">Outcome &amp; learning</th>
+<th data-col="9" data-num="1">Captured <span class="arr">↕</span></th><th data-col="10">Lessons learnt</th>
+<th data-col="11">Sygma review</th>
 </tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>
-<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material. Outcome and learning are read from Sygma&#8217;s review where one exists, otherwise from the damage&#8217;s own captured Depotnet investigation report section. "None recorded" means neither holds anything for that damage.</p>
+<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material. <b>Lessons learnt</b> is Depotnet&#8217;s own field on the damage&#8217;s investigation report, word for word. <b>Sygma review</b> is what our own review found. The two are different things and are never mixed — a dash means that source holds nothing.</p>
 <script>{TABLE_JS}initTable("{tid}");</script>"""
 
 # ---------------------------------------------------------------- semantic search partial
