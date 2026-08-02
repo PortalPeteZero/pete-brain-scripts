@@ -218,6 +218,13 @@ def gather():
         f"AND a.answer ILIKE '%insufficient plans%' AND a.answer ILIKE '%unable to detect%' "
         f"AND a.answer ILIKE '%inclement weather%' AND a.answer ILIKE '%night working%'")
     d["cx_elec_both_weather"] = int(wx[0]["n"])
+    d["cat_stats"] = sql(
+        f"SELECT COALESCE(i.strike_category,'(unstated)') cat, count(*) total, "
+        f"count(*) FILTER (WHERE i.id IN (SELECT DISTINCT incident_id FROM clancy_dn_answers "
+        f"WHERE section='investigation' AND answered)) inv, "
+        f"count(*) FILTER (WHERE i.lessons_learnt IS NOT NULL AND btrim(i.lessons_learnt) <> '') lesson, "
+        f"count(*) FILTER (WHERE i.id IN (SELECT DISTINCT incident_id FROM clancy_dn_actions)) act "
+        f"FROM clancy_dn_incidents i WHERE i.fy='{FY}' GROUP BY 1 ORDER BY total DESC")
     # plans question, on the completed sections
     pq = sql(
         f"SELECT lower(btrim(a.answer)) a, count(*) n FROM clancy_dn_answers a "
@@ -393,6 +400,17 @@ CSS = """
 .ft .fx{color:#7a8490;font-weight:400}
 .asof{font-size:12px;color:#7a8490;font-weight:600;text-transform:uppercase;
  letter-spacing:.05em;margin-top:6px}
+.ptable{border-collapse:separate;border-spacing:0;margin:14px 0 4px;font-size:13.5px;width:100%}
+.ptable th{background:#353E47;color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.05em;
+ text-transform:uppercase;padding:8px 12px;text-align:right;border-bottom:2px solid #97D700}
+.ptable th:first-child{text-align:left;border-radius:9px 0 0 0}
+.ptable th:last-child{border-radius:0 9px 0 0}
+.ptable td{padding:8px 12px;border-bottom:1px solid #eef1f5;text-align:right;
+ font-variant-numeric:tabular-nums}
+.ptable td:first-child{text-align:left;font-weight:800}
+.ptable tr.hot td{background:#fdeef1}
+.usw{display:inline-block;width:11px;height:11px;border-radius:4px;margin-right:8px;
+ vertical-align:-1px}
 .pkey{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
 @media(max-width:860px){.pkey{grid-template-columns:1fr}}
 .pk-e{background:#fff;border:3px solid #D50032;border-radius:16px;padding:20px 24px;
@@ -516,6 +534,47 @@ def build():
 
     ex = d["ex"]
 
+    # the stated-priority card: Depotnet's own fields only, no Sygma verdicts (Pete, 2 Aug)
+    UCOL = {"Gas": "#F2A900", "Electric": "#D50032", "Water": "#1d70b8",
+            "Telecommunications": "#6a7480"}
+    def _pcell(a, b):
+        return f"{a} ({round(a / b * 100)}%)" if b else "0"
+    prow = []
+    for r in d["cat_stats"]:
+        cat, tot = r["cat"], int(r["total"])
+        nm = "Telecoms" if cat == "Telecommunications" else cat
+        hot = ' class="hot"' if cat == "Electric" else ""
+        sw = f'<span class="usw" style="background:{UCOL.get(cat, "#9aa4b0")}"></span>'
+        prow.append(
+            f'<tr{hot}><td>{sw}{esc(nm)}</td><td>{tot}</td>'
+            f'<td>{_pcell(int(r["inv"]), tot)}</td>'
+            f'<td>{_pcell(int(r["lesson"]), tot)}</td>'
+            f'<td>{_pcell(int(r["act"]), tot)}</td></tr>')
+    ce_row = next(r for r in d["cat_stats"] if r["cat"] == "Electric")
+    gas_row = next((r for r in d["cat_stats"] if r["cat"] == "Gas"), None)
+    _e_tot, _e_inv = int(ce_row["total"]), int(ce_row["inv"])
+    gas_zero = (f'<div class="strip" style="border-left-color:#F2A900;margin:14px 0 4px">'
+                f'And the biggest category has never had one: gas &mdash; '
+                f'{int(gas_row["total"])} damages, the most of any utility &mdash; has had '
+                f'<b>0 corrective actions</b> raised all year.</div>'
+                if gas_row is not None and int(gas_row["act"]) == 0 else "")
+    priority_card = f'''
+<div class="pk-e" style="margin-top:20px"><span class="pkh">The stated priority</span>
+<div style="font-size:16px;font-weight:800;color:#17202b;margin-bottom:10px">Electric comes
+first in the brief for this work, for the danger it carries. On Depotnet, it has the
+thinnest record.</div>
+Out of the <b>{_e_tot} electric damages</b> this year: <b>{_e_inv}</b> have a completed
+investigation report ({round(_e_inv/_e_tot*100)}%) and <b>{_e_tot - _e_inv} are blank</b>;
+<b>{int(ce_row["lesson"])}</b> have anything in the lessons field; and
+<b>{int(ce_row["act"])}</b> has ever had a corrective action raised against it.
+<table class="ptable"><tr><th>Utility</th><th>Damages</th><th>Investigation report done</th>
+<th>Lessons field filled</th><th>Any corrective action</th></tr>{"".join(prow)}</table>
+{gas_zero}
+<div style="font-style:italic;font-weight:700;color:#17202b;margin-top:10px">The category
+with the most danger in it gets the least attention after the strike: the lowest
+investigation rate of the major utilities, and one corrective action all year.</div></div>
+'''
+
     # who blames the plans, by what was struck — the electric cables are the scandal
     ps = d["plans_split"]
     elec = [r for r in ps if r["cat"] == "Electric"]
@@ -638,6 +697,7 @@ that holds who investigated, what caused the damage and what should change &mdas
 untouched on {d["nothing"]} damages. Not thin. Untouched. Whatever those {d["nothing"]}
 damages had to teach, the record does not hold it.</div>
 </div></div>
+{priority_card}
 </div></div>
 
 <div class="band"><div class="rwrap">
@@ -806,7 +866,7 @@ never once says a service was found. For {d["det_unknown"]} of the {n}, it canno
 anything at all.</div>
 </div></div>
 <div class="statrow" style="margin-top:22px">
-{stat(f'{d["nothing"]}', "investigation report blank &mdash; taught us nothing", RED, R_T)}
+{stat(f'{d["nothing"]}', "investigation report blank &mdash; taught us nothing we can use in a company-wide reduction strategy", RED, R_T)}
 {stat(f'{d["done"] - len(d["strategic"])}', "filled in, but gave no lesson the whole company can use", AMBER, A_T)}
 {stat(f'{len(d["strategic"])}', "gave a lesson the whole company can act on", GREEN, G_T)}
 </div>
