@@ -400,6 +400,20 @@ CSS = """
 .ft .fx{color:#7a8490;font-weight:400}
 .asof{font-size:12px;color:#7a8490;font-weight:600;text-transform:uppercase;
  letter-spacing:.05em;margin-top:6px}
+.waffle{display:grid;grid-template-columns:repeat(12,26px);gap:6px;margin:6px 0 10px}
+@media(max-width:640px){.waffle{grid-template-columns:repeat(8,26px)}}
+.waffle i{display:block;width:26px;height:26px;border-radius:7px}
+.waffle i.ring{box-shadow:0 0 0 3px #25320a inset,0 0 0 2px #fff}
+.wafflekey{display:flex;flex-wrap:wrap;gap:6px 20px;font-size:13px;font-weight:600;
+ color:#3f4a55;margin-bottom:4px}
+.sbar{display:flex;height:44px;border-radius:10px;overflow:hidden;margin:14px 0 6px;
+ box-shadow:0 8px 22px -14px rgba(53,62,71,.4)}
+.sbar i{display:block;height:100%}
+.sbarlab{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;font-weight:600;
+ color:#3f4a55;margin-bottom:6px}
+.sbarlab b{font-variant-numeric:tabular-nums}
+.zeroline{font-size:17px;font-weight:800;color:#17202b;margin:18px 0 4px}
+.zeroline .zn{color:#D50032}
 .ptable{border-collapse:separate;border-spacing:0;margin:14px 0 4px;font-size:13.5px;width:100%}
 .ptable th{background:#353E47;color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.05em;
  text-transform:uppercase;padding:8px 12px;text-align:right;border-bottom:2px solid #97D700}
@@ -533,6 +547,27 @@ def build():
         for r in d["strategic"])
 
     ex = d["ex"]
+
+    # the 48-square waffles: one square per damage, colour = verdict (Pete: each damage
+    # a square you can count). Order: green, amber, red, grey.
+    def waffle(cells):
+        out = []
+        for col, n_, ring, title in cells:
+            for i in range(n_):
+                cls = ' class="ring"' if ring else ""
+                out.append(f'<i{cls} style="background:{col}" title="{esc(title)}"></i>')
+        return f'<div class="waffle">{"".join(out)}</div>'
+    w3 = waffle([
+        (GREEN, len(d["strategic"]), True, "a concrete action the whole company could act on"),
+        (GREEN, d["b_concrete"] - len(d["strategic"]), False, "a concrete action"),
+        (AMBER, d["b_restate"], False, "restates a rule or a slogan"),
+        (RED, d["b_non"], False, "not an answer"),
+        ("#c3cad2", d["nothing"], False, "no lesson at all - the report is blank"),
+    ])
+    w1 = waffle([
+        (GREEN, d["done"], False, "investigation report filled in"),
+        (RED, d["nothing"], False, "investigation report blank"),
+    ])
 
     # the stated-priority card: Depotnet's own fields only, no Sygma verdicts (Pete, 2 Aug)
     UCOL = {"Gas": "#F2A900", "Electric": "#D50032", "Water": "#1d70b8",
@@ -687,16 +722,20 @@ This is how many of this year&#8217;s {n} gave us anything to work with.</div>
 <h2><span class="tag" style="background:{RED}">Part one</span> What is missing</h2>
 <div class="sub">Start with what is not there at all.</div>
 <div class="split2">
-{donut([("Investigation report filled in", d["done"], GREEN),
-        ("Investigation report blank", d["nothing"], RED)],
-       str(d["nothing"]), "left blank")}
 <div>
-<div class="callout" style="border-left-color:{RED}"><b>{d["nothing"]} of the {n} are blank
-where the learning should be.</b> The investigation report &mdash; the part of the record
-that holds who investigated, what caused the damage and what should change &mdash; is
-untouched on {d["nothing"]} damages. Not thin. Untouched. Whatever those {d["nothing"]}
-damages had to teach, the record does not hold it.</div>
-</div></div>
+<div class="wafflekey">
+<span><span class="usw" style="background:{GREEN}"></span>Investigation report filled in <b>{d["done"]}</b></span>
+<span><span class="usw" style="background:{RED}"></span>Investigation report blank <b>{d["nothing"]}</b></span>
+</div>
+{w1}
+</div>
+<div class="callout" style="border-left-color:{RED}"><b>Every square is one of the {n}
+damages, and {d["nothing"]} are blank where the learning should be.</b> The investigation
+report &mdash; the part of the record that holds who investigated, what caused the damage
+and what should change &mdash; is untouched on {d["nothing"]} damages. Not thin.
+Untouched. Whatever those {d["nothing"]} damages had to teach, the record does not hold
+it.</div>
+</div>
 {priority_card}
 </div></div>
 
@@ -732,22 +771,24 @@ each damage and open to challenge.</div>
 <div class="sub">The test for each lesson: could the company act on it to help prevent the
 next damage &mdash; not close this one, prevent the next one?</div>
 <div class="split2">
-{donut([("A concrete action", d["b_concrete"], GREEN),
-        ("Restates a rule / slogan", d["b_restate"], AMBER),
-        ("Not an answer", d["b_non"], RED),
-        ("No lesson at all", d["nothing"], "#c3cad2")],
-       str(d["b_concrete"]), f"of {n} name an action")}
 <div>
-<div class="callout"><b>Of the {n} damages, {d["b_concrete"]} produced a lesson with a
-concrete action of any kind.</b> {d["b_restate"]} restate a rule the company already has,
-or offer a slogan &mdash; &ldquo;careful hand digging&rdquo;, &ldquo;expect the
-unexpected&rdquo;. {d["b_non"]} are not answers at all: &ldquo;N/A&rdquo;,
-&ldquo;Yes&rdquo;, &ldquo;TBC&rdquo;. And {d["nothing"]} gave no lesson at all &mdash; the
-report is blank. The field, where it was filled, was filled so the form would close.</div>
-<div class="callout"><b>And of the {d["b_concrete"]}, only {len(d["strategic"])} reach
-beyond the job they were written on</b> &mdash; something the company could adopt everywhere
-to help prevent the next damage:</div>
-</div></div>
+<div class="wafflekey">
+<span><span class="usw" style="background:{GREEN}"></span>A concrete action <b>{d["b_concrete"]}</b> (ringed = the {len(d["strategic"])} the whole company could act on)</span>
+<span><span class="usw" style="background:{AMBER}"></span>Restates a rule / slogan <b>{d["b_restate"]}</b></span>
+<span><span class="usw" style="background:{RED}"></span>Not an answer <b>{d["b_non"]}</b></span>
+<span><span class="usw" style="background:#c3cad2"></span>No lesson at all <b>{d["nothing"]}</b></span>
+</div>
+{w3}
+</div>
+<div class="callout"><b>Every square is one of the {n} damages.</b> {d["b_concrete"]}
+produced a lesson with a concrete action of any kind, and of those only
+{len(d["strategic"])} &mdash; the ringed squares &mdash; reach beyond the job they were
+written on. {d["b_restate"]} restate a rule the company already has, or offer a slogan
+&mdash; &ldquo;careful hand digging&rdquo;, &ldquo;expect the unexpected&rdquo;.
+{d["b_non"]} are not answers at all: &ldquo;N/A&rdquo;, &ldquo;Yes&rdquo;,
+&ldquo;TBC&rdquo;. And {d["nothing"]} gave no lesson at all &mdash; the report is blank.
+The field, where it was filled, was filled so the form would close.</div>
+</div>
 <div class="vgrid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">{strategic_cards}</div>
 </div></div>
 
@@ -851,20 +892,21 @@ for.</div>
   (d["b_concrete"], "have a lesson that names a real action", f"the rest are slogans, repeats of existing rules, or empty answers like N/A"),
   (len(d["strategic"]), "are lessons the whole company could act on", "everything else applies only to the job it was written on"),
 ], n)}
-<div class="split2" style="margin-top:24px">
-{donut([("The record says it was found", 0, CHAR),
-        ("Known not found: genny and CAT not used", d["kit_no"], RED),
-        ("Report says unable-to-detect", d["unable"], AMBER),
-        ("The record cannot say", d["det_unknown"], "#c3cad2")],
-       str(d["kit_no"]), f"of {n} known answers")}
-<div>
-<div class="callout" style="border-left-color:{RED}"><b>Was the service found before it was
-hit?</b> Out of {n} damages to buried services, the record gives a definite answer on
-<b>{d["kit_no"]}</b> &mdash; both times because the report answers No to &ldquo;Genny used?&rdquo; and &ldquo;CAT
-used?&rdquo;. It
-never once says a service was found. For {d["det_unknown"]} of the {n}, it cannot say
-anything at all.</div>
-</div></div>
+<div class="zeroline">Was the service found before it was hit? The record never once
+says yes: <span class="zn">0 of {n}</span>.</div>
+<div class="sbar">
+<i style="width:{d["kit_no"]/n*100:.1f}%;background:{RED}" title="Known not found"></i>
+<i style="width:{d["unable"]/n*100:.1f}%;background:{AMBER}" title="Report says unable-to-detect"></i>
+<i style="width:{d["det_unknown"]/n*100:.1f}%;background:#c3cad2" title="The record cannot say"></i>
+</div>
+<div class="sbarlab">
+<span><span class="usw" style="background:{RED}"></span>Known not found: the report answers No to &ldquo;Genny used?&rdquo; and &ldquo;CAT used?&rdquo; <b>{d["kit_no"]}</b></span>
+<span><span class="usw" style="background:{AMBER}"></span>Report says unable-to-detect <b>{d["unable"]}</b></span>
+<span><span class="usw" style="background:#c3cad2"></span>The record cannot say <b>{d["det_unknown"]}</b></span>
+</div>
+<div class="callout" style="border-left-color:{RED}">Out of {n} damages to buried services,
+the record gives a definite answer on <b>{d["kit_no"]}</b>. For {d["det_unknown"]} of the
+{n}, it cannot say anything at all.</div>
 <div class="statrow" style="margin-top:22px">
 {stat(f'{d["nothing"]}', "investigation report blank &mdash; taught us nothing we can use in a company-wide reduction strategy", RED, R_T)}
 {stat(f'{d["done"] - len(d["strategic"])}', "filled in, but gave no lesson the whole company can use", AMBER, A_T)}
