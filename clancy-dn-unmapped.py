@@ -199,6 +199,18 @@ made they stay here, complete and unattached.</div>
 </body></html>"""
 
 
+
+def vocab_gate(html):
+    """Refuse to publish wording the section's rules ban. Fail closed - same gate, same
+    reason as pages/hub/analysis; these publishers shipped ungated for a month and only
+    passed by luck (round-3 plan audit, 2 Aug 2026)."""
+    import subprocess as _sp, sys as _s
+    r = _sp.run([_s.executable, f"{VAULT}/clancy-vocab-check.py", "-"],
+                input=html, capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip())
+    if r.returncode != 0:
+        raise SystemExit("REFUSED to publish - reword the phrases above and re-run.")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--local")
@@ -209,6 +221,7 @@ def main():
         open(a.local, "w").write(html)
         print(f"wrote {a.local} ({len(html):,} chars)")
     if a.publish:
+        vocab_gate(html)
         mod = {"module_key": MK, "slug": MK, "title": "Unmapped Damages",
                "section": "Customers", "subsection": "External", "area": "Clancy",
                "tier": "passcode", "passcode": "strive2030",

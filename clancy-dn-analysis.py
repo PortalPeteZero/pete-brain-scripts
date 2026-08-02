@@ -1348,11 +1348,23 @@ def main():
     ap.add_argument("--label", default="what Depotnet holds today, before enrichment")
     a = ap.parse_args()
     html, metrics = build(a.edition, a.label)
+    # Gates run on EVERY build — the vocab gate used to sit publish-only here, so a --local
+    # preview could carry wording the publish would refuse (round-4 audit finding). The
+    # page-check needs the register page's row shape, so here it checks this single page.
+    vocab_gate(html)
+    import tempfile as _tf, subprocess as _sp, sys as _s
+    with _tf.TemporaryDirectory() as _td:
+        import os as _os
+        open(_os.path.join(_td, "analysis.html"), "w").write(html)
+        _r = _sp.run([_s.executable, f"{VAULT}/clancy-dn-page-check.py", "--dir", _td],
+                     capture_output=True, text=True)
+        print(_r.stdout.strip())
+        if _r.returncode != 0:
+            raise SystemExit("REFUSED — the page-check failed; fix the build and re-run.")
     if a.local:
         open(a.local, "w").write(html)
         print(f"wrote {a.local} ({len(html):,} chars)")
     if a.publish:
-        vocab_gate(html)
         # Title and sort are PER YEAR — hardcoding them made both editions publish under the
         # identical title at the identical sort position, indistinguishable in every menu, and
         # a manual UPDATE was silently reverted on the next publish.

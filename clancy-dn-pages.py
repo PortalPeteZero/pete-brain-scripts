@@ -1539,6 +1539,18 @@ def main():
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
         pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, f)
     vocab_gate(pages)
+    # the page-check runs on EVERY build — local previews and publishes alike — so a wrong
+    # table can never reach a preview, let alone the site. Stage-2 assertions arm with the
+    # CLANCY_STAGE2 flag alongside the renderer work they prove.
+    import tempfile as _tf, subprocess as _sp
+    with _tf.TemporaryDirectory() as _td:
+        for _k2, _h2 in pages.items():
+            open(os.path.join(_td, _k2.replace("/", "__")), "w").write(_h2)
+        _r = _sp.run([sys.executable, f"{VAULT}/clancy-dn-page-check.py", "--dir", _td],
+                     capture_output=True, text=True, env=os.environ)
+        print(_r.stdout.strip())
+        if _r.returncode != 0:
+            raise SystemExit("REFUSED — the page-check failed; fix the build and re-run.")
     if args.local:
         os.makedirs(args.local, exist_ok=True)
         for name, htm in pages.items():

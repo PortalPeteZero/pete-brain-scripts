@@ -382,7 +382,20 @@ def report_page(r):
 {ui.TAIL}"""
 
 
+
+def vocab_gate(html):
+    """Refuse to publish wording the section's rules ban. Fail closed - same gate, same
+    reason as pages/hub/analysis; these publishers shipped ungated for a month and only
+    passed by luck (round-3 plan audit, 2 Aug 2026)."""
+    import subprocess as _sp, sys as _s
+    r = _sp.run([_s.executable, f"{VAULT}/clancy-vocab-check.py", "-"],
+                input=html, capture_output=True, text=True)
+    print(r.stdout.strip() or r.stderr.strip())
+    if r.returncode != 0:
+        raise SystemExit("REFUSED to publish - reword the phrases above and re-run.")
+
 def put(key, html):
+    vocab_gate(html)
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     reason = ("Reports library renders report titles and panel-pack text verbatim - the wording "
               "rules own verbatim-quote exception; Sygma prose says damage throughout")

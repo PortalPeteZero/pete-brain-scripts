@@ -233,6 +233,10 @@ NAV_ITEMS = [
     ("analysis", "What the data tells us", f"/m/{ANALYSIS}"),
     ("reports", "Reports", f"/m/{REPORTS}"),
     ("reviews", "Genny &amp; CAT", f"/m/{REVIEWS}"),
+    # The glossary is the SSOT for the section's terms (Pete, 2 Aug 2026). A nav change
+    # touches EVERY page, so shipping any edit to this list means one full
+    # clancy-dn-publish.py run — never a lone page publish.
+    ("glossary", "Glossary", "/m/clancy-damage-glossary"),
 ]
 
 

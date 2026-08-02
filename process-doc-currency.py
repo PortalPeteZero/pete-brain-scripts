@@ -53,7 +53,7 @@ DOMAINS = [
         "effects": [
             ("module_content", "updated_at", "module_key=like.clancy-*"),
         ],
-        "files": r"(?:clancy-dn-(?:pages|hub|analysis|reports|gc-pages|unmapped|publish)"
+        "files": r"(?:clancy-dn-(?:pages|hub|analysis|reports|gc-pages|unmapped|publish|glossary)"
                  r"|clancy_dn_ui|clancy-vocab-check)\.py$",
     },
 ]

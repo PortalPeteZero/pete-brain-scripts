@@ -44,6 +44,13 @@ STEPS = [
      ["clancy-dn-unmapped.py", "--publish"], ["clancy-unmapped-damages"]),
     ("the reports library",
      ["clancy-dn-reports.py", "--publish"], ["clancy-damage-reports"]),
+    # joined 2 Aug 2026 (edits-plan stage 1): the Genny & CAT section shares the Depot navbar,
+    # so a nav change that skipped it stranded 13 live pages — including three this script is
+    # now the ONLY generator for (the Chrome-era builders are gone).
+    ("the Genny & CAT review section (13 pages)",
+     ["clancy-dn-gc-pages.py", "--publish"], ["clancy-genny-cat-reviews"]),
+    ("the glossary — the section's terms, from clancy_glossary",
+     ["clancy-dn-glossary.py", "--publish"], ["clancy-damage-glossary"]),
 ]
 
 
