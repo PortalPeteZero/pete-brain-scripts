@@ -220,6 +220,20 @@ def parse(doc):
             "incident_date": iso(a.get("incidentDate")),
         })
 
+    # An action's own timeline is DERIVABLE: incident timeline entries carry the
+    # imIncidentActionId they belong to. FY26/27's were hand-scraped from the browser modal one
+    # by one; that was never necessary and left FY25/26's 79 actions with none at all until this
+    # was spotted by auditing the finished work.
+    by_action = {}
+    for e in tl:
+        if e.get("action"):
+            by_action.setdefault(e["action"], []).append(
+                {k: v for k, v in e.items() if k != "action"})
+    for a in actions:
+        got = by_action.get(a["id"])
+        if got:
+            a["timeline"] = got
+
     # ---- every file the payload references ----------------------------------------------
     # Files hang off timeline entries AND off individual questions.
     #
