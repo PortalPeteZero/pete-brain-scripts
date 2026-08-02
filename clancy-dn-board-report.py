@@ -165,6 +165,12 @@ def gather():
         f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
         f"WHERE a.question='Service Strike Underlying Cause' "
         f"AND a.answer ILIKE '%insufficient plans%'")[0]["n"])
+    d["plans_split"] = sql(
+        f"SELECT i.id, i.strike_category cat, i.strike_subcategory sub "
+        f"FROM clancy_dn_incidents i WHERE i.fy='{FY}' AND i.id IN ("
+        f"SELECT a.incident_id FROM clancy_dn_answers a "
+        f"WHERE a.question='Service Strike Underlying Cause' "
+        f"AND a.answer ILIKE '%insufficient plans%') ORDER BY i.strike_category, i.id")
     # plans question, on the completed sections
     pq = sql(
         f"SELECT lower(btrim(a.answer)) a, count(*) n FROM clancy_dn_answers a "
@@ -336,6 +342,20 @@ CSS = """
 .ft .fx{color:#7a8490;font-weight:400}
 .asof{font-size:12px;color:#7a8490;font-weight:600;text-transform:uppercase;
  letter-spacing:.05em;margin-top:6px}
+.pkey{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-top:18px}
+@media(max-width:860px){.pkey{grid-template-columns:1fr}}
+.pk-e{background:#fff;border:3px solid #D50032;border-radius:16px;padding:20px 24px;
+ box-shadow:0 16px 38px -18px rgba(213,0,50,.45)}
+.pk-e .pkh{display:inline-block;background:#D50032;color:#fff;font-size:11px;
+ font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:14px;
+ padding:4px 12px;margin-bottom:10px}
+.pk-e .pkn{font-size:38px;font-weight:800;color:#D50032;letter-spacing:-.02em;
+ line-height:1;margin-bottom:8px}
+.pk-e{font-size:14.5px;line-height:1.65;color:#2b3440}
+.pk-e mark{background:#D50032;color:#fff;padding:1px 8px;border-radius:5px;font-weight:800}
+.pk-e .pkc{font-size:12.5px;color:#6a7480;margin-top:10px;font-weight:600}
+.pk-p{background:#eceff2;border-radius:16px;padding:20px 24px;color:#353E47;
+ font-size:13.5px;line-height:1.65}
 .vgx{display:none}
 .vwrap{max-height:255px;overflow:hidden;position:relative}
 .vgx:checked + .vwrap{max-height:none}
@@ -382,6 +402,31 @@ def build():
         for r in d["strategic"])
 
     ex = d["ex"]
+
+    # who blames the plans, by what was struck — the electric cables are the scandal
+    ps = d["plans_split"]
+    elec = [r for r in ps if r["cat"] == "Electric"]
+    rest = [r for r in ps if r["cat"] != "Electric"]
+    from collections import Counter as _C
+    def _chips(rows):
+        cn = _C((r["sub"] or r["cat"] or "unstated").replace("Electric - ", "")
+                .replace("&#8211;", "-") for r in rows)
+        return " &middot; ".join(f"{v}&times; {esc(k.lower())}" for k, v in cn.most_common())
+    _proven = " &mdash; among them damage 152586, the one whose recorded conclusions are on record as incorrect" \
+        if any(r["id"] == 152586 for r in elec) else ""
+    _rest_all_poly = rest and all("poly" in (r["sub"] or "").lower() for r in rest)
+    plans_split_box = f'''
+<div class="pkey">
+<div class="pk-e"><span class="pkh">The key finding</span>
+<div class="pkn">{len(elec)} of the {len(ps)}</div>
+damages blaming &ldquo;Insufficient plans&rdquo; are <b>electric cables</b> &mdash;
+conductive, exactly what the genny and CAT exist to find.
+<mark>Insufficient plans should never stand as the cause or the lesson on an electric
+cable.</mark>
+<div class="pkc">{_chips(elec)}{_proven}</div></div>
+<div class="pk-p"><b>The other {len(rest)} are {"plastic (poly) services" if _rest_all_poly else "gas and water services"}</b>
+&mdash; {_chips(rest)}. {"The genny and CAT cannot pick these up: the only strikes here where plans genuinely carry more weight &mdash; and even here they are a contributing factor, not a lesson." if _rest_all_poly else "Where a service is plastic, plans genuinely carry more weight &mdash; and even there they are a contributing factor, not a lesson."}</div>
+</div>'''
 
     html = f"""{ui.head("This year&#8217;s damages: the report | Genny&#8217;s Damage Depot", CSS)}
 {ui.navbar("report")}
@@ -524,6 +569,7 @@ wrong&rdquo; stands as the recorded root cause and the lesson stops there, the r
 written down a known working condition, not a cause. The real finding is that plans are
 still being treated as if they position services. If there is a learning in this
 year&#8217;s record, it is that one.</div>
+{plans_split_box}
 </div></div>
 
 <div class="band"><div class="rwrap">
