@@ -72,9 +72,8 @@ PAGE_CSS = """
 .cols .v{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
 .cols .k{font-size:11px;color:var(--faint);font-weight:600;white-space:nowrap}
 .hbars{display:flex;flex-direction:column;gap:9px}
-.hb{display:grid;grid-template-columns:118px 1fr 30px;align-items:center;gap:10px}
-.hb .k{font-size:12px;color:var(--mid);text-align:right;overflow:hidden;text-overflow:ellipsis;
- white-space:nowrap}
+.hb{display:grid;grid-template-columns:140px 1fr 30px;align-items:center;gap:10px}
+.hb .k{font-size:12px;color:var(--mid);text-align:right;line-height:1.25}
 .hb .t{height:15px;background:#eef1f5;border-radius:4px;overflow:hidden}
 .hb .t i{display:block;height:100%;background:var(--green);border-radius:4px;
  border-right:2px solid #fff;transform-origin:left;animation:slide .6s cubic-bezier(.2,.7,.3,1) both}

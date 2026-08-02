@@ -898,7 +898,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 #%TID%{border-collapse:separate;border-spacing:0}
 #%TID% thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
  padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
-#%TID% thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:136px;min-height:40px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
+#%TID% thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:0;min-width:100%;white-space:normal;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 #%TID% thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
 #%TID% thead th .arr{color:#97D700}

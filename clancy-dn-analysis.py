@@ -534,7 +534,7 @@ tr.achild td:first-child:before{content:"\\21B3";position:absolute;left:10px;col
  box-shadow:var(--sh-1);margin-bottom:18px}
 .sec h2{font-size:19px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px}
 .sec .why{font-size:13px;color:var(--faint);margin-bottom:16px}
-.sec p{font-size:14.5px;color:var(--mid);margin-bottom:12px;max-width:78ch}
+.sec p{font-size:14.5px;color:var(--mid);margin-bottom:12px}
 .sec p b{color:var(--ink)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0 0 20px}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:13px;padding:15px 16px;
@@ -546,10 +546,9 @@ tr.achild td:first-child:before{content:"\\21B3";position:absolute;left:10px;col
 .kpi.warn .n{color:var(--red)}
 .kpi .l{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.35}
 .hbars{display:flex;flex-direction:column;gap:8px}
-.hb{display:grid;grid-template-columns:210px minmax(140px,320px) auto;align-items:center;gap:10px}
-@media(max-width:640px){.hb{grid-template-columns:130px minmax(90px,1fr) auto}}
-.hb .k{font-size:12.5px;color:var(--mid);text-align:right;overflow:hidden;text-overflow:ellipsis;
- white-space:nowrap}
+.hb{display:grid;grid-template-columns:250px minmax(140px,320px) auto;align-items:center;gap:10px}
+@media(max-width:640px){.hb{grid-template-columns:120px minmax(90px,1fr) auto}}
+.hb .k{font-size:12.5px;color:var(--mid);text-align:right;line-height:1.3}
 .hb .t{height:16px;background:#eef1f5;border-radius:4px;overflow:hidden}
 .hb .t i{display:block;height:100%;background:var(--green);border-radius:4px}
 .hb .t i.grey{background:#353E47}
@@ -1108,10 +1107,10 @@ STAGE4_CSS = """
  text-align:right;font-variant-numeric:tabular-nums;padding-left:26px}
 .sec table.t th,.sec table.t td{padding-top:6px;padding-bottom:6px}
 /* the register: charcoal header band with VISIBLE column notes, sticky in a bounded box */
-.tscroll{max-height:80vh;overflow:auto;border-radius:14px}
+.tscroll{max-height:80vh;overflow:auto;border-radius:14px;padding-bottom:14px;background:#fff}
 table.reg thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
  padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
-table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:136px;min-height:40px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
+table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:0;min-width:100%;white-space:normal;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 table.reg thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
 table.reg td{padding:8px 10px;font-size:13px;background:#fff}
@@ -1685,27 +1684,25 @@ where it should have been from one that was not.</p>
 <table class="t"><tr><th>Utility</th><th>Under 450mm</th><th>With a depth</th><th>Share</th></tr>
 {shallow_rows}</table></div></div></div>
 
-<div class="sec"><h2><span class="snum">4</span> How it happened</h2>
-<div class="why">The plant or tool recorded as causing the damage, and the setting. Held for
-{h['with_plant']} of {n}.</div>
+<div class="sec"><h2><span class="snum">4</span> How it happened, and what Depotnet says caused it</h2>
+<div class="why">The plant or tool that did the damage, then Depotnet&#8217;s own root and
+underlying cause fields &mdash; counted only from sections that made a real selection.</div>
 <p>{_mech} of the {n} name mechanical plant &mdash; a digger, breaker, drill or saw. {_hand}
 name a hand tool.</p>
 <div class="split"><div>{hbar(d['plant'], total=n)}</div>
 <div><h2 style="font-size:15px">{_mech_head}</h2>
 <table class="t"><tr><th>Utility</th><th>Mechanical</th><th>Hand tool</th><th>Total</th></tr>
-{mech_rows}</table></div></div></div>
-
-<div class="sec"><h2><span class="snum">5</span> What Depotnet says caused it</h2>
-<div class="why">Root and underlying cause, counted only from the sections that made a real
-selection in that field.</div>
-<p>Of {n} damages this year, <b>{h['with_cause']} carry a cause</b> and {n - h['with_cause']} carry
-none at all. Of those {h['with_cause']}, {len(d['blanket'])} tick nearly every option on one or
-other of the two fields and are set aside below. That leaves {usable_line}</p>
-<h2 style="font-size:15px;margin-top:18px">Root cause</h2>{hbar(d['root_cause'], 'val', 'n', total=d['root_n'])}
-<h2 style="font-size:15px;margin-top:20px">Underlying cause</h2>{hbar(d['underlying'], 'val', 'n', total=d['under_n'])}
+{mech_rows}</table></div></div>
+<p style="margin-top:20px">Of {n} damages this year, <b>{h['with_cause']} carry a cause</b> and
+{n - h['with_cause']} carry none at all. Of those {h['with_cause']}, {len(d['blanket'])} tick
+nearly every option on one or other of the two fields and are set aside below. That leaves
+{usable_line}</p>
+<div class="split" style="margin-top:8px"><div>
+<h2 style="font-size:15px">Root cause</h2>{hbar(d['root_cause'], 'val', 'n', total=d['root_n'])}</div>
+<div><h2 style="font-size:15px">Underlying cause</h2>{hbar(d['underlying'], 'val', 'n', total=d['under_n'])}</div></div>
 {blanket_note}</div>
 
-<div class="sec"><h2><span class="snum">6</span> The backlog</h2>
+<div class="sec"><h2><span class="snum">5</span> The backlog</h2>
 <div class="why">A damage stays <b>open</b> until Clancy close the case on Depotnet. This is the
 one place on the page that deals with open and closed.</div>
 <table class="t"><tr><th>Status</th><th>Damages</th><th>Investigation report done</th>
@@ -1720,7 +1717,7 @@ of the strike, {oldest_open} of them have now been open more than 60 days:</p>
 {open_rows_html}
 {ev_block}</div>
 
-<div class="sec"><h2><span class="snum">7</span> What the lessons are worth</h2>
+<div class="sec"><h2><span class="snum">6</span> What the lessons are worth</h2>
 <div class="why">Of the {d['closed_n']} damages Clancy has closed and investigated, only
 {cf['distinct_briefable']} produced a lesson you could brief a crew with. Graded below.</div>
 <table class="t"><tr><th>What the lessons field holds</th><th>Closed damages</th><th>Share</th></tr>
@@ -1735,18 +1732,7 @@ fix.</p>
 
 {dupe_note}
 
-<div class="sec"><h2><span class="snum">8</span> By contract, and a question we cannot answer</h2>
-<div class="why">Shown with age, open count and the completed sections side by side, because
-any one of those columns on its own would be misleading.</div>
-<table class="t"><tr><th>Contract</th><th>Damages</th><th>Average age</th><th>Still open</th>
-<th>Investigation report done</th></tr>{contract_rows}</table>
-<p style="margin-top:16px">There is real variation here and we cannot tell you what causes it.
-{age_example}</p>
-<p>The honest position: the pattern is real and the record does not say why &mdash; most
-likely it is about who administers Depotnet on each contract. <b>A question for Clancy, not a
-conclusion about any contract&#8217;s crews.</b></p></div>
-
-<div class="sec"><h2><span class="snum">9</span> What was learned</h2>
+<div class="sec"><h2><span class="snum">7</span> What was learned</h2>
 <div class="why">The lessons-learnt field, on the {h['with_lessons']} damages that carry one.</div>
 {hbar(d['lessons_quality'], total=h['with_lessons'])}
 <p style="margin-top:16px">Where the section is completed properly it produces something a
@@ -1755,7 +1741,7 @@ verbatim, because the difference between them is the whole argument.</p>
 <h2 style="font-size:15px;margin-top:18px">The thin ones, in full</h2><p>{thin_q}</p>
 <h2 style="font-size:15px;margin-top:18px">The substantial ones, in full</h2>{good_q}</div>
 
-<div class="sec"><h2><span class="snum">10</span> What this cannot tell you</h2>
+<div class="sec"><h2><span class="snum">8</span> What this cannot tell you</h2>
 <div class="why">Stated plainly, because a report that hides its own limits is worth less than one
 that does not.</div>
 <p><b>{n - h['with_cause']} of {n} damages have no cause recorded.</b> Not an unclear cause. None.
