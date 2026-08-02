@@ -664,8 +664,8 @@ Out of the <b>{_e_tot} electric damages</b> this year: <b>{_e_inv}</b> have a co
 investigation report ({round(_e_inv/_e_tot*100)}%) and <b>{_e_tot - _e_inv} are blank</b>;
 <b>{int(ce_row["lesson"])}</b> have anything in the lessons field; and
 <b>{int(ce_row["act"])}</b> has ever had a corrective action raised against it.
-<table class="ptable"><tr><th>Utility</th><th>Damages</th><th>Investigation report done</th>
-<th>Lessons field filled</th><th>Any corrective action</th></tr>{"".join(prow)}</table>
+<div style="overflow-x:auto"><table class="ptable"><tr><th>Utility</th><th>Damages</th><th>Investigation report done</th>
+<th>Lessons field filled</th><th>Any corrective action</th></tr>{"".join(prow)}</table></div>
 {gas_zero}
 <div style="font-style:italic;font-weight:700;color:#17202b;margin-top:10px">The category
 with the most danger in it gets the least attention after the strike: the lowest
@@ -752,7 +752,7 @@ cable.</mark>
 <div class="pkc">{_chips(elec)}{_proven}</div></div>
 </div>'''
 
-    html = f"""{ui.head("This year&#8217;s damages: the report | Genny&#8217;s Damage Depot", CSS)}
+    html = f"""{ui.head(("This year&#8217;s damages: the report" if CURRENT else FYLABEL + " damages: the report") + " | Genny&#8217;s Damage Depot", CSS)}
 {ui.navbar("report")}
 {ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "The report")}
 {yswitch}
