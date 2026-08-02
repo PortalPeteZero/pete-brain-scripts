@@ -103,6 +103,13 @@ def read_transcript(path):
                 if m.get("role") == "assistant" and isinstance(m.get("content"), list):
                     for c in m["content"]:
                         if c.get("type") == "tool_use":
+                            # A Workflow/Agent call CONTAINS pattern text without executing
+                            # anything itself — an audit workflow whose prompts mention
+                            # "clancy-dn-publish.py" fired this gate on 2 Aug 2026 while
+                            # mutating nothing. Real mutations reach the transcript as
+                            # Bash / Edit / Write / NotebookEdit calls, so only those count.
+                            if c.get("name") in ("Workflow", "Agent", "Task"):
+                                continue
                             calls.append((ts, c.get("name", "") + " " +
                                           json.dumps(c.get("input", ""))[:4000]))
     except Exception:
