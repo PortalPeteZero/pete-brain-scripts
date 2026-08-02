@@ -145,9 +145,20 @@ def parse(doc):
     take("underlying_cause", "Service Strike Underlying Cause", inv)
     take("root_cause", "Service Strike Root Cause", inv)
     take("lessons_learnt", "Preventative Outcomes/Actions/Lessons Learnt", inv)
+    # The form asks for millimetres in its own label ("Unit In MM"), but seven damages carry a
+    # decimal - 0.3, 0.4, 0.5, 0.6, 0.7, 1.1 - which is somebody answering in metres. Those used
+    # to fall through .isdigit() and vanish, so the record showed no depth at all.
+    #
+    # We do NOT convert them. 0.5 almost certainly means 500mm, but "almost certainly" is not
+    # good enough on a page Clancy reads: a fabricated 500 is indistinguishable from a measured
+    # 500 once it is in the column. So depth_mm stays NULL and the raw text is kept in
+    # depth_raw, which lets the page report the real finding - the form says mm and people are
+    # answering in metres - instead of silently showing a blank.
     dep = (qa.get("Depth Of Utility (Approx) - Unit In MM") or "").strip()
-    if dep.isdigit():
-        promoted["depth_mm"] = int(dep)
+    if dep:
+        promoted["depth_raw"] = dep
+        if dep.isdigit():
+            promoted["depth_mm"] = int(dep)
 
     row = {
         **promoted,

@@ -127,8 +127,19 @@ def drive(*args):
 
 
 def ls(fid):
+    # RAISE on a failed listing - never return [] for it. drive-api.py exits 1 and writes to
+    # stderr on any API error, leaving stdout empty, so a version of this that ignored the
+    # return code could not tell "this folder is empty" from "Drive just failed". Everything
+    # downstream reads an empty listing as "nothing filed yet": incident_folder() would create
+    # a SECOND home for a damage that already has one, and existing_names() would return {} so
+    # every file gets re-downloaded and re-uploaded alongside the copies already there. That is
+    # not hypothetical - damage 133852 ended up with three folders that way on 1 Aug 2026.
+    # A transient Drive error must stop the run, not quietly duplicate the tree.
     r = subprocess.run(["python3", DRIVE, "ls", fid], capture_output=True, text=True,
                        env={**os.environ, "VAULT": VAULT})
+    if r.returncode:
+        raise RuntimeError(f"Drive listing failed for {fid}: "
+                           + (r.stderr.strip() or r.stdout.strip() or f"exit {r.returncode}"))
     out = []
     for line in r.stdout.splitlines():
         m = _LS.match(line.strip())
@@ -156,8 +167,19 @@ def incident_folder(inc, create=True):
     hits = [(e["name"], e["id"]) for e in ls(DAMAGES_FOLDER)
             if e["type"] == "DIR" and e["name"].startswith(want)]
     if len(hits) > 1:
-        hits.sort(key=lambda h: -len(ls(h[1])))
-        print(f"    !! {len(hits)} folders exist for {inc['id']} — using the fullest")
+        # "Fullest" has to mean most FILES, counted all the way down. Counting direct children
+        # picks the wrong folder whenever the real home keeps its files in photos/ and
+        # documents/ (two children) and the empty duplicate has the same two empty subfolders -
+        # exactly the shape the ls() bug above produced. Ties then split on nothing useful, so
+        # filing could add to a folder holding none of the damage's files.
+        def n_files(fid, depth=0):
+            n = 0
+            for e in ls(fid):
+                n += 1 if e["type"] == "FILE" else (n_files(e["id"], depth + 1) if depth < 3 else 0)
+            return n
+        hits.sort(key=lambda h: -n_files(h[1]))
+        print(f"    !! {len(hits)} folders exist for {inc['id']} - using the one holding the "
+              f"most files ({hits[0][1]})")
     if hits:
         return hits[0][1]
     if not create:
@@ -254,6 +276,11 @@ def run(rows, audit=False):
         # on upload, so anything skipped stayed unlinked for ever and looked like a gap.
         if not audit:
             url = f"https://drive.google.com/drive/folders/{folder}"
+            # Stamp the damage's Drive home on the incident itself. Only the old Chrome capture
+            # did this, so every damage filed down the API path - all 164 of FY25/26 - had a
+            # full Drive folder and no link to it on its page, while all 48 of FY26/27 had one.
+            rest(f"clancy_dn_incidents?id=eq.{inc['id']}", "PATCH",
+                 {"capture_drive_folder": url}, {"Prefer": "return=minimal"})
             for f in want:
                 did = have.get(f["name"])
                 if not did:
