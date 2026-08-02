@@ -222,7 +222,7 @@ def gather():
     # marks only 21 of them complete.
     d["by_status"] = sql(f"""SELECT i.status, count(*) n,
       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clancy_dn_answers a
-        WHERE a.incident_id=i.id AND a.section='investigation')) has_section,
+        WHERE a.incident_id=i.id AND a.section='investigation' AND a.answered)) has_section,
       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clancy_dn_answers a
         WHERE a.incident_id=i.id AND a.question='Is the investigation complete?'
           AND upper(btrim(a.answer))='YES')) says_complete,
@@ -236,16 +236,16 @@ def gather():
         AND upper(btrim(a.answer))='NO' AND i.status='Closed' ORDER BY i.id""")
     d["inv_shape"] = sql(f"""WITH per AS (
       SELECT i.id, (SELECT count(*) FROM clancy_dn_answers a
-        WHERE a.incident_id=i.id AND a.section='investigation') k
+        WHERE a.incident_id=i.id AND a.section='investigation' AND a.answered) k
       FROM clancy_dn_incidents i WHERE i.fy='{FY}')
       SELECT min(k) lo, max(k) hi FROM per WHERE k > 0""")[0]
     d["inv_universal"] = sql(f"""SELECT count(*) n FROM (
       SELECT a.question FROM clancy_dn_answers a JOIN clancy_dn_incidents i ON i.id=a.incident_id
-      WHERE i.fy='{FY}' AND a.section='investigation'
+      WHERE i.fy='{FY}' AND a.section='investigation' AND a.answered
       GROUP BY 1 HAVING count(DISTINCT a.incident_id) =
         (SELECT count(DISTINCT a2.incident_id) FROM clancy_dn_answers a2
          JOIN clancy_dn_incidents i2 ON i2.id=a2.incident_id
-         WHERE i2.fy='{FY}' AND a2.section='investigation')) t""")[0]["n"]
+         WHERE i2.fy='{FY}' AND a2.section='investigation' AND a2.answered)) t""")[0]["n"]
     d["team_members"] = sql(f"""SELECT a.question q, count(DISTINCT a.incident_id) n
       FROM clancy_dn_answers a JOIN clancy_dn_incidents i ON i.id=a.incident_id
       WHERE i.fy='{FY}' AND a.question LIKE 'Investigation Team Member%'
@@ -256,9 +256,9 @@ def gather():
       coalesce(string_agg(CASE WHEN pdf_captured_at IS NULL THEN id::text END, ', '),'') uncaptured
       FROM clancy_dn_incidents i WHERE i.fy='{FY}' AND NOT EXISTS
         (SELECT 1 FROM clancy_dn_answers a WHERE a.incident_id=i.id
-          AND a.section='investigation')""")[0]
+          AND a.section='investigation' AND a.answered)""")[0]
     d["inv_basis"] = sql(f"""SELECT
-      count(DISTINCT a.incident_id) FILTER (WHERE a.section='investigation') has_section,
+      count(DISTINCT a.incident_id) FILTER (WHERE a.section='investigation' AND a.answered) has_section,
       count(DISTINCT a.question) FILTER (WHERE a.section='investigation') questions,
       count(DISTINCT a.incident_id) FILTER (WHERE a.question='Is the investigation complete?'
         AND upper(btrim(a.answer))='YES') complete,
@@ -292,7 +292,7 @@ def gather():
       round(avg(CURRENT_DATE - incident_date::date)) avg_age,
       count(*) FILTER (WHERE status='Open') still_open,
       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clancy_dn_answers a
-        WHERE a.incident_id=clancy_dn_incidents.id AND a.section='investigation')) inv
+        WHERE a.incident_id=clancy_dn_incidents.id AND a.section='investigation' AND a.answered)) inv
       FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1
       HAVING count(*) >= 3 ORDER BY n DESC""")
     d["by_severity"] = sql(f"""SELECT coalesce(severity,'Not stated') v, count(*) n,
@@ -327,7 +327,7 @@ def gather():
       (SELECT count(*) FROM clancy_dn_actions x WHERE x.incident_id=i.id) acts,
       (SELECT count(*) FROM clancy_dn_files  z WHERE z.incident_id=i.id) files,
       (SELECT count(*) FROM clancy_dn_answers a
-        WHERE a.incident_id=i.id AND a.section='investigation') inv_answers,
+        WHERE a.incident_id=i.id AND a.section='investigation' AND a.answered) inv_answers,
       (SELECT count(*) FROM clancy_dn_answers a
         WHERE a.incident_id=i.id AND a.section='questions') inc_answers,
       upper(btrim(coalesce((SELECT a.answer FROM clancy_dn_answers a WHERE a.incident_id=i.id

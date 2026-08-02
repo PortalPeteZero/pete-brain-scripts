@@ -122,12 +122,15 @@ def build():
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
          AND EXISTS (SELECT 1 FROM clancy_dn_answers x WHERE x.incident_id=i.id
-                     AND x.section='questions')) AS inv_form,
+                     AND x.section='questions' AND x.answered)) AS inv_form,
       (SELECT count(*) FROM clancy_dn_incidents i WHERE i.fy='FY26/27'
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
+         -- ANSWERED, not "a row exists": since the API ingest stores the full question set
+         -- including unanswered ones, "a row exists" is true for every damage and this count
+         -- silently became 0.
          AND EXISTS (SELECT 1 FROM clancy_dn_answers x WHERE x.incident_id=i.id
-                     AND x.section='investigation')) AS inv_report,
+                     AND x.section='investigation' AND x.answered)) AS inv_report,
       (SELECT count(*) FROM clancy_dn_incidents i WHERE i.fy='FY26/27'
          AND (i.lessons_learnt IS NULL OR btrim(i.lessons_learnt)='')
          AND (i.root_cause IS NULL OR btrim(i.root_cause)='')
