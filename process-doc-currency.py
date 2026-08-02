@@ -33,15 +33,23 @@ DOMAINS = [
     {
         "name": "Clancy Depotnet capture",
         "doc": "Customers/SY-Clancy/clancy-depotnet-capture.md",
-        # a CHANGE to how capture works, not merely reading it
-        "changed": r"clancy-dn-(?:import|capture|pdf)\.py|clancy_dn_answers\?|--queue\b",
+        # a CHANGE to how capture works, not merely reading it.
+        # These names must track the tools that ACTUALLY run. The original list was
+        # import|capture|pdf — the Chrome-era tools — so once capture moved to the API path
+        # (ingest / files / verify / drive-audit) the gate matched nothing and the capture doc
+        # could never be flagged stale, which is the exact rot it exists to prevent. Caught by
+        # the FY25/26 plan audit, 2 Aug 2026.
+        "changed": r"clancy-dn-(?:import|capture|pdf|ingest|files|verify|drive-audit)\.py"
+                   r"|clancy_dn_answers\?|--queue\b|--relink\b",
         "records": "how a damage is pulled off Depotnet: the tabs, the exports, the traps",
     },
     {
         "name": "Genny's Damage Depot pages",
         "doc": "Customers/SY-Clancy/clancy-depotnet-damages.md",
+        # clancy-dn-publish.py runs all six publishers in one command, so a publish that goes
+        # through it matched none of the per-tool patterns below.
         "changed": r"clancy-dn-(?:pages|hub|analysis|reports|gc-pages|unmapped)\.py\s+.*--publish"
-                   r"|clancy-vocab-check\.py",
+                   r"|clancy-dn-publish\.py|clancy-vocab-check\.py",
         "records": "what each page is, how it refreshes, and the wording rules it publishes under",
     },
 ]
