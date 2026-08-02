@@ -45,11 +45,16 @@ _k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = _k["url"], _k["service_role_key"]
 H = {"apikey": SR, "Authorization": f"Bearer {SR}", "Content-Type": "application/json"}
 
-# Files Depotnet lists but genuinely will not serve. Its own signed URL 400s/403s for these —
-# reproduced in a browser with a freshly minted URL, so it is Depotnet's signature, not our
-# encoding. They are NOT counted as a filing failure; they are reported separately so the number
+# Files Depotnet lists but genuinely will not serve — marked source='unfetchable-sas' on the row.
+# PROVEN with real HTTP on freshly-minted URLs (2 Aug 2026, all wire-legal variants):
+#   percent-encode the query's non-ASCII  -> 400 InvalidQueryParameterValue
+#   raw UTF-8 bytes in the query          -> 403 AuthenticationFailed
+#   drop the rscd parameter               -> 403
+#   re-encode rscd fully                  -> 403
+# Depotnet signs the SAS over a content-disposition containing a raw en-dash in a form no valid
+# HTTP request can reproduce. NOT counted as a filing failure; reported separately so the number
 # never quietly grows.
-UNFETCHABLE_NOTE = "Depotnet's own signed URL will not serve these"
+UNFETCHABLE_NOTE = "Depotnet's own signed URL will not serve these (proven with fresh URLs, 2 Aug 2026)"
 
 
 def _urlopen_retry(req, timeout=120, tries=9):
@@ -147,7 +152,7 @@ def main():
 
     answers = by_inc(rest("clancy_dn_answers?select=incident_id,section,question,answered"))
     actions = by_inc(rest("clancy_dn_actions?select=id,incident_id"))
-    files = by_inc(rest("clancy_dn_files?select=incident_id,name,storage_path,drive_id"))
+    files = by_inc(rest("clancy_dn_files?select=incident_id,name,storage_path,drive_id,source,deleted_on_depotnet"))
 
     fails = {k: [] for k in ("register", "answers", "actions", "files", "promoted",
                              "duplicates", "drive", "report")}
@@ -199,11 +204,12 @@ def main():
             if book.get(src) and not (i.get(col) or "").strip():
                 fails["promoted"].append(f"{iid}: payload answers {col} but the row is empty")
 
-        # Drive. A row with no drive_id is either unfiled (a fail) or one Depotnet will not
-        # serve (reported, not failed) — tell them apart rather than lumping them together.
+        # Drive. A row with no drive_id is either unfiled (a fail) or one Depotnet cannot
+        # serve (source='unfetchable-sas' — an explicit state, set after real HTTP proof, not a
+        # filename heuristic). Withdrawn files (deleted on Depotnet) need no drive presence.
         for f in my_fil:
-            if not f["drive_id"]:
-                if "–" in (f["name"] or ""):
+            if not f["drive_id"] and not f.get("deleted_on_depotnet"):
+                if f.get("source") == "unfetchable-sas":
                     unfetchable += 1
                 else:
                     fails["drive"].append(f"{iid}: '{(f['name'] or '?')[:44]}' has no drive_id")

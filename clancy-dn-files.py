@@ -250,7 +250,15 @@ def fetch(url, tries=3):
     for n in range(tries):
         try:
             with urllib.request.urlopen(sign_safe_url(url), timeout=180) as r:
-                return r.read()
+                blob = r.read()
+            # An Azure ERROR BODY that arrives with HTTP 200 (or slips through any other way)
+            # must never be saved as the file: damage 138613 carried a 516-byte XML error page
+            # under a .docx name for two days, counted as captured, and the harvest skipped the
+            # real fetch for ever after because the name already existed in Drive.
+            head = blob[:80].lstrip(b"\xef\xbb\xbf")
+            if head.startswith(b"<?xml") and b"<Error>" in blob[:200]:
+                raise RuntimeError("Azure error body, not the file: " + blob[:120].decode("utf-8", "replace"))
+            return blob
         except Exception as e:
             last = e
             time.sleep(1.5 * (n + 1))

@@ -27,8 +27,15 @@ _LS = re.compile(r"^(DIR|FILE)\s+(\S+)\s+(\S+)\s+([\w-]{20,})\s+(.*)$")
 
 
 def ls(folder_id):
+    # RAISE on a failed listing — never return [] for it. drive-api.py exits 1 with empty stdout
+    # on any API error, so ignoring the return code makes an outage indistinguishable from an
+    # empty folder — and for an AUDIT that is fatal: a failed top-level listing reported
+    # "0 folder-sets, no problems", a clean pass over nothing. Same fix as clancy-dn-files.py.
     r = subprocess.run(["python3", DRIVE, "ls", folder_id], capture_output=True, text=True,
                        env={**os.environ, "VAULT": VAULT})
+    if r.returncode:
+        raise RuntimeError(f"Drive listing failed for {folder_id}: "
+                           + (r.stderr.strip() or r.stdout.strip() or f"exit {r.returncode}"))
     out = []
     for line in r.stdout.splitlines():
         m = _LS.match(line.strip())

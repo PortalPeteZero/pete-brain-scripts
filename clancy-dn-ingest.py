@@ -200,6 +200,9 @@ def parse(doc):
                 "question": (q.get("question") or "").strip(),
                 "answer": (str(a).strip() or None) if a is not None else None,
                 "mandatory": q.get("mandatory"),
+                # Explicit, because the column DEFAULT is 'pdf' (the old capture) — leaving it
+                # unset stamped all 13,227 FY25/26 API-captured answers as PDF-parsed.
+                "source": "depotnet-api",
             })
 
     # ---- actions ------------------------------------------------------------------------
@@ -289,6 +292,16 @@ def parse(doc):
                                   "name": None, "path": path, "storage_path": stem,
                                   "depotnet_file_id": None,
                                   "uploaded_on_depotnet": iso(o.get("dateCreated"))}
+        # Depotnet marks a withdrawn photo/document with dateDeleted rather than removing it.
+        # 41 records across 11 damages carry it (2 Aug 2026) and every one had been filed and
+        # rendered as live evidence. Carry the marker so pages can hold them back; a stem is
+        # only withdrawn if NO live reference to it remains, so a live sighting clears it.
+        if o.get("dateDeleted"):
+            if cur.get("_live_refs", 0) == 0:
+                cur["deleted_on_depotnet"] = str(o["dateDeleted"])[:10]
+        else:
+            cur["_live_refs"] = cur.get("_live_refs", 0) + 1
+            cur.pop("deleted_on_depotnet", None)
         if fid and not cur["depotnet_file_id"]:
             cur["depotnet_file_id"] = fid
         if o.get("fileName") and not cur["name"]:
@@ -310,6 +323,19 @@ def parse(doc):
     files = []
     for stem, f in merged.items():
         f["name"] = f["name"] or stem.rsplit("/", 1)[-1]   # only now fall back to the path
+    # Collision suffixing — MUST MATCH files_in_payload() in clancy-dn-files.py exactly (same
+    # sort, same stamp), because that is the name the file actually carries in Drive. Before
+    # this, every re-ingest reset `name` to Depotnet's raw filename and 89 rows pointed at
+    # names that did not exist in Drive, which is precisely what breaks --relink.
+    _seen = {}
+    for f in sorted(merged.values(), key=lambda x: x["storage_path"]):
+        n = f["name"]
+        if n in _seen:
+            tail = f["storage_path"].rsplit("/", 1)[-1]
+            stamp = tail[:19] if tail[:4].isdigit() else str(_seen[n] + 1)
+            base, dot, ext = n.rpartition(".")
+            f["name"] = f"{base or n} ({stamp}){dot}{ext}"
+        _seen[n] = _seen.get(n, 0) + 1
         files.append(f)
 
     return {"incident": row, "answers": answers, "actions": actions, "files": files,
@@ -337,7 +363,7 @@ def write(parsed):
     # drive_id / drive_folder are deliberately NOT in the payload: filing sets them, and a
     # re-ingest must never blank them. Postgres only overwrites the columns supplied.
     if parsed["files"]:
-        rows = [{k: v for k, v in f.items() if k != "path"} | {"source": "depotnet-api"}
+        rows = [{k: v for k, v in f.items() if k not in ("path", "_live_refs")} | {"source": "depotnet-api"}
                 for f in parsed["files"]]
         rest("clancy_dn_files?on_conflict=incident_id,storage_path", "POST", rows,
              {"Prefer": "resolution=merge-duplicates,return=minimal"})
