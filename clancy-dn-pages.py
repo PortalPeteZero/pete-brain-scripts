@@ -369,6 +369,9 @@ text.blabel{font-size:12px;fill:#44506
 .fyt .s a{color:var(--accent);text-decoration:none;font-weight:600}
 .fyt .s a:hover{text-decoration:underline}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.embed .dnav,.embed .hero,.embed .crumbs,.embed .backbar,.embed .card:has(#sem-q),
+.embed #genny-fab,.embed #genny-panel{display:none!important}
+.embed body{padding-top:0}
 tr.child td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
  padding-top:6px;padding-bottom:6px}
 tr.child td:first-child{padding-left:26px;position:relative}
@@ -523,7 +526,9 @@ function initTable(tid){
   if(q) q.addEventListener('input',()=>{wipeSearch();apply();});
   sels.forEach(s=>s.addEventListener('change',()=>{wipeSearch();apply();}));
   rows().forEach(r=>{r.addEventListener('click',()=>{
-    if(r.dataset.href) location.href=r.dataset.href;
+    if(!r.dataset.href) return;
+    if(window.GennyCard) GennyCard.open(r.dataset.href);   // stage 3: never lose your place
+    else location.href=r.dataset.href;
   });});
   t.querySelectorAll('th[data-col]').forEach((th,i)=>{th.addEventListener('click',()=>{
     const idx=+th.dataset.col, num=th.dataset.num==='1', asc=th.dataset.asc!=='1';
@@ -1084,7 +1089,19 @@ def fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, fykey):
 {search_box(fykey)}
 <div id="dmg"></div>
 <script>
-(function(){{const b=document.getElementById('backbtn');
+(function(){{
+ // ?embed=1: this page is framed inside the pop-up card (edits plan, stage 3). Hide the site
+ // chrome, NEVER touch history (a history.back() in here navigates the page UNDER the card),
+ // and bridge Escape to the host — keydown does not cross the iframe boundary on its own.
+ var EMBED=new URLSearchParams(location.search).has('embed');
+ if(EMBED){{
+  document.documentElement.classList.add('embed');
+  document.addEventListener('keydown',function(e){{
+   if(e.key==='Escape') parent.postMessage({{gennyCard:'close'}}, location.origin);
+  }});
+ }}
+ const b=document.getElementById('backbtn');
+ if(EMBED){{ b.style.display='none'; return; }}
  if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){{
   b.addEventListener('click',e=>{{e.preventDefault();history.back();}});
   b.innerHTML='&larr; Back to your place in the list';}}
@@ -1513,6 +1530,8 @@ def fy_incidents_page(inc, act, fykey, enrich=None, aby=None, fby=None, gloss=No
     body.append(f'<div class="h2row"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — filter by contract, utility, severity or status; click a row to open it in full</span></div>')
     body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False, enrich=enrich,
                                aby=aby, fby=fby, gloss=gloss))
+    if STAGE2:
+        body.append(ui.CARD)
     return shell(f"Incidents — {label}", "\n".join(body), FY_PAGE[fykey],
                  f"{label} · every Depotnet Incident Register row for the year, captured in full",
                  fykey=fykey, subactive="incidents", wide=True)

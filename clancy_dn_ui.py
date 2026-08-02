@@ -226,6 +226,72 @@ h2.sec{font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:upperc
 """.replace("IMG_HERO", A_HERO)
 
 
+# ── the damage pop-up card (edits plan stage 3) ─────────────────────────────────────────────
+# One copy, both tables. Frames the damage page in ?embed=1 (its chrome hides itself). The
+# mechanics each answer a proven failure from the plan audits:
+#   · switching damages uses contentWindow.location.replace — setting src pushes a history
+#     entry per damage and Back then navigates the hidden frame instead of the page;
+#   · the embed page bridges Escape via postMessage — keydown never crosses the iframe
+#     boundary, so a host-only listener dies the moment focus enters the card;
+#   · the host scroll-locks with overscroll containment while the card is open;
+#   · on small viewports the card is a full-screen sheet.
+CARD = """
+<style>
+#gcard-back{position:fixed;inset:0;background:rgba(31,41,51,.55);z-index:9000;display:none}
+#gcard{position:fixed;inset:4vh 4vw;background:#fff;border-radius:16px;z-index:9001;display:none;
+ box-shadow:0 24px 80px rgba(0,0,0,.35);overflow:hidden;flex-direction:column}
+#gcard.on,#gcard-back.on{display:flex}
+#gcard-back.on{display:block}
+#gcard-top{display:flex;align-items:center;gap:14px;padding:10px 16px;background:#353E47;color:#fff}
+#gcard-top .t{font-weight:800;font-size:14px;flex:1}
+#gcard-top a{color:#97D700;font-weight:700;font-size:13px;text-decoration:none}
+#gcard-top button{background:none;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1;
+ padding:2px 8px}
+#gcard iframe{border:0;width:100%;height:100%;flex:1;background:#f5f6f8}
+@media(max-width:640px){#gcard{inset:0;border-radius:0}}
+</style>
+<div id="gcard-back"></div>
+<div id="gcard" role="dialog" aria-modal="true" aria-label="Damage record">
+ <div id="gcard-top"><span class="t">Damage record</span>
+  <a id="gcard-open" href="#" target="_blank" rel="noopener">Open the full page &#8599;</a>
+  <button id="gcard-x" aria-label="Close">&times;</button></div>
+</div>
+<script>
+window.GennyCard=(function(){
+ var back=document.getElementById('gcard-back'), card=document.getElementById('gcard'),
+     openl=document.getElementById('gcard-open'), x=document.getElementById('gcard-x'),
+     frame=null, prevOverflow='';
+ function embedUrl(u){return u+(u.indexOf('?')>-1?'&':'?')+'embed=1';}
+ function open(u){
+  openl.href=u;
+  if(!frame){
+   frame=document.createElement('iframe');
+   frame.src=embedUrl(u);              // FIRST load may use src: it adds no history entry
+   card.appendChild(frame);
+  }else{
+   frame.contentWindow.location.replace(embedUrl(u));  // NEVER src after that
+  }
+  back.classList.add('on');card.classList.add('on');
+  prevOverflow=document.body.style.overflow;
+  document.body.style.overflow='hidden';
+  back.style.overscrollBehavior='contain';
+ }
+ function close(){
+  back.classList.remove('on');card.classList.remove('on');
+  document.body.style.overflow=prevOverflow;
+ }
+ back.addEventListener('click',close);
+ x.addEventListener('click',close);
+ document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+ window.addEventListener('message',function(e){
+  if(e.origin===location.origin&&e.data&&e.data.gennyCard==='close')close();
+ });
+ return {open:open,close:close};
+})();
+</script>
+"""
+
+
 # ── chrome builders ──────────────────────────────────────────────────────────────────────────
 NAV_ITEMS = [
     ("overview", "Overview", f"/m/{HUB}"),

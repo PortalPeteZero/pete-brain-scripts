@@ -863,8 +863,14 @@ actions &mdash; both shown as Depotnet holds them.</div>
     c.setAttribute('aria-pressed', c.getAttribute('aria-pressed')==='true'?'false':'true');
     apply();
   }});}});
+  // stage 3: a damage link opens the pop-up card instead of navigating away
+  tb.addEventListener('click',function(e){{
+    var a=e.target.closest&&e.target.closest('a');
+    if(a&&window.GennyCard){{e.preventDefault();GennyCard.open(a.getAttribute('href'));}}
+  }});
 }})();
 </script>
+{ui.CARD}
 </div>"""
 
 
@@ -1014,8 +1020,14 @@ not recorded.</div>
     c.setAttribute('aria-pressed', c.getAttribute('aria-pressed')==='true'?'false':'true');
     apply();
   }});}});
+  // stage 3: a damage link opens the pop-up card instead of navigating away
+  tb.addEventListener('click',function(e){{
+    var a=e.target.closest&&e.target.closest('a');
+    if(a&&window.GennyCard){{e.preventDefault();GennyCard.open(a.getAttribute('href'));}}
+  }});
 }})();
 </script>
+{ui.CARD}
 </div>"""
 
 
