@@ -159,6 +159,12 @@ def gather():
     assert overlap == 0, "kit-no and unable-to-detect overlap — split the donut differently"
     d["det_unknown"] = d["n"] - d["kit_no"] - d["unable"]
 
+    # how many blame plans as the underlying cause — part five's companion stat
+    d["plans_blamed"] = int(sql(
+        f"SELECT count(DISTINCT a.incident_id) n FROM clancy_dn_answers a "
+        f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
+        f"WHERE a.question='Service Strike Underlying Cause' "
+        f"AND a.answer ILIKE '%insufficient plans%'")[0]["n"])
     # plans question, on the completed sections
     pq = sql(
         f"SELECT lower(btrim(a.answer)) a, count(*) n FROM clancy_dn_answers a "
@@ -505,7 +511,7 @@ Whether they could not detect or did not detect, the record cannot say.</div>
 <h2><span class="tag" style="background:{CHAR}">Part five</span> &ldquo;The plans were wrong&rdquo; is not a cause</h2>
 <div class="statrow">
 {stat(f'{d["plans_no"]} of {n}', "damages answer that the utility was NOT where the plans showed &mdash; the question is unanswered on " + str(n - d["plans_no"] - d["plans_yes"]), CHAR)}
-{stat(f'{d["kit_yes"]} of {n}', "damages answer Yes to the form&#8217;s own &lsquo;Genny used?&rsquo; and &lsquo;CAT used?&rsquo; questions &mdash; used is all the form can say", CHAR)}
+{stat(f'{d["plans_blamed"]} of {n}', "damages record &lsquo;Insufficient plans&rsquo; as the underlying cause of the strike", RED, R_T)}
 </div>
 <div class="callout"><b>The most common recorded story is that the service was not where
 the plans showed.</b> Inaccurate plans are a real and well-known contributing factor
