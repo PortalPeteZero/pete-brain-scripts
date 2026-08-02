@@ -538,10 +538,11 @@ never once says a service was found. For {d["det_unknown"]} of the {n}, it canno
 anything at all.</div>
 </div></div>
 <div class="statrow" style="margin-top:22px">
-{stat(d["nothing"], "damages that taught us nothing", RED, R_T)}
-{stat(len(d["strategic"]), "lessons the company can use", GREEN, G_T)}
-{stat(f'{d["kit_no"]} of {n}', "with a known answer on detection", CHAR, C_T)}
+{stat(f'{d["nothing"]}', "investigation report blank &mdash; taught us nothing", RED, R_T)}
+{stat(f'{d["done"] - len(d["strategic"])}', "filled in, but gave no lesson the whole company can use", AMBER, A_T)}
+{stat(f'{len(d["strategic"])}', "gave a lesson the whole company can act on", GREEN, G_T)}
 </div>
+<div class="sub" style="margin-top:2px">{d["nothing"]} + {d["done"] - len(d["strategic"])} + {len(d["strategic"])} = the {n} damages logged so far this year.</div>
 {strip("That is not a lessons process. That is a form being closed.", RED)}
 {strip("Fixes, not strategy: what the record holds serves the incident it belongs to, never the next one.", CHAR)}
 {strip("The one recorded cause put to the test did not hold.", RED)}
