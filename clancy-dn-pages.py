@@ -26,7 +26,9 @@ import clancy_dn_ui as ui
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 # Stage-2 hold flag (edits plan): the reworked tables render ONLY when armed. A routine
 # capture publish with the flag off ships the approved output, never the preview.
-STAGE2 = os.environ.get("CLANCY_STAGE2") == "1"
+# ARMED by default since the 2 Aug switch-on (Pete waived previews and directed the build
+# through); CLANCY_STAGE2=0 disarms back to the pre-redesign rendering if ever needed.
+STAGE2 = os.environ.get("CLANCY_STAGE2", "1") == "1"
 SEC = os.path.expanduser("~/.config/pete-secrets")
 if not os.path.exists(f"{SEC}/command-centre-supabase-keys.json"):
     SEC = f"{VAULT}/Library/processes/secrets"

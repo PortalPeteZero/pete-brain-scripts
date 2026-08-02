@@ -73,7 +73,9 @@ FY_PAGES = {
 }
 FY = os.environ.get("CLANCY_FY", "FY26/27")
 # stage-2 hold flag (edits plan): armed -> the reworked register table; off -> approved output
-STAGE2 = os.environ.get("CLANCY_STAGE2") == "1"
+# ARMED by default since the 2 Aug switch-on (Pete waived previews and directed the build
+# through); CLANCY_STAGE2=0 disarms back to the pre-redesign rendering if ever needed.
+STAGE2 = os.environ.get("CLANCY_STAGE2", "1") == "1"
 MK = FY_PAGES[FY]["mk"]
 
 
@@ -1347,7 +1349,7 @@ def build(edition, label):
         _sampled = (" We looked at two of them on screen, not all "
                     f"{blank_ok}," if FY == "FY26/27" and blank_ok > 2 else "")
         _unstarted_note = (
-            f"<p><b>What we cannot tell you is why {blank_ok} have not been started.</b>"
+            f"<p><b>What we cannot tell you is why {blank_ok} are not done.</b>"
             f"{_sampled} We do not know Clancy&#8217;s own rule for when the section has to "
             "be completed, who is meant to do it, or whether anything chases it. That is the "
             "question worth asking, and it is a more useful one than any count on this page.</p>")
@@ -1424,7 +1426,7 @@ marked as required.</p>
 <p>Where this page counts investigations, it is counting that section. As it stands:</p>
 <ul class="plain">
  <li><b>{ib['has_section']} of the {n} have their investigation report section completed.</b></li>
- <li><b>{blank_ok} have not been started.</b> The section is sitting there, every field
+ <li><b>{blank_ok} are not done.</b> The section is sitting there, every field
      untouched.</li>
  {uncaptured_line}
 </ul>
