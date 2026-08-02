@@ -33,8 +33,29 @@ Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-analysis.py [--local out.html] [--publish]
                                                         [--edition N] [--label "..."]
 """
-import os, json, argparse, datetime, html as H, urllib.request
+import os, json, argparse, datetime, html as H, urllib.request, urllib.error
 import clancy_dn_ui as ui
+
+
+def _urlopen_retry(req, timeout=120, tries=6):
+    """Supabase answers 429 under load. clancy-dn-publish.py runs six of these tools back to
+    back and each writes many rows, so the later steps reliably hit it - observed 2 Aug 2026,
+    where the FY26/27 analysis build died mid-run on a 429 and left that page stale while every
+    other page had been rebuilt. Without backoff a publish half-updates the section and the
+    freshness report is the only clue. Retries 429 and 5xx with exponential backoff."""
+    import time as _t
+    for n in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+        except Exception:
+            if n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = os.path.expanduser("~/.config/pete-secrets")
@@ -61,7 +82,7 @@ def sql(q):
         data=json.dumps({"query": q}).encode(),
         headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json",
                  "User-Agent": "Mozilla/5.0"}, method="POST")
-    return json.loads(urllib.request.urlopen(req, timeout=180).read().decode())
+    return json.loads(_urlopen_retry(req, timeout=180).read().decode())
 
 
 def esc(v):
@@ -117,6 +138,14 @@ def gather():
         ELSE '900mm or deeper' END v, count(*) n, min(coalesce(depth_mm,99999)) srt
       FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1 ORDER BY srt""")
 
+    # Depths answered in the wrong unit. The form's own label says "Unit In MM" and these are
+    # decimals, i.e. metres. They are deliberately NOT converted (see clancy-dn-ingest.py), so
+    # without this they are simply absent from "Not recorded" - indistinguishable from a damage
+    # where nobody filled the field in at all. That difference matters: one is a gap, the other
+    # is a measurement we hold and cannot safely use.
+    d["depth_wrong_unit"] = sql(f"""SELECT id, location, depth_raw
+      FROM clancy_dn_incidents WHERE fy='{FY}' AND depth_raw IS NOT NULL AND depth_mm IS NULL
+      ORDER BY id""")
     d["plant"] = sql(f"""SELECT coalesce(nullif(btrim(caused_by_plant),''),'Not recorded') v, count(*) n
       FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1 ORDER BY n DESC, v""")
 
@@ -914,6 +943,20 @@ def build(edition, label):
             f'<b>not</b> a claim about the whole history: '
             f'{esc(d["years_without_lessons"])} carry no lessons in what we hold, so there was '
             f'nothing from those years to compare against.</div></div>')
+    wu = d["depth_wrong_unit"]
+    wrong_unit_note = ""
+    if wu:
+        _l = ", ".join(f'{x["id"]} ({esc(x["depth_raw"])})' for x in wu)
+        wrong_unit_note = (
+            f'<div class="flag"><b>{len(wu)} damage{"" if len(wu)==1 else "s"} recorded the depth '
+            f'in the wrong unit.</b> The field is labelled &ldquo;Depth Of Utility (Approx) - Unit '
+            f'In MM&rdquo; and {"this one carries" if len(wu)==1 else "these carry"} a decimal, '
+            f'which is metres: {_l}. We have deliberately not converted '
+            f'{"it" if len(wu)==1 else "them"} &mdash; 0.5 almost certainly means 500mm, but once '
+            f'a converted figure sits in the column it cannot be told apart from a measured one, '
+            f'and this page is read as evidence. {"It counts" if len(wu)==1 else "They count"} as '
+            f'no depth in the chart above. The fix is on the form, not in the data: the unit is in '
+            f'the label but nothing stops a metre being typed.</div>')
     trunc_note = ""
     if lf["truncated"]:
         trunc_note = (f'<div class="flag"><b>{lf["truncated"]} lesson stops mid-sentence.</b> '
@@ -1103,6 +1146,7 @@ a recorded cause, which is the number this page can actually reason from.</p></d
 <p style="margin-top:16px">Gas is the largest single category. Depth is recorded on
 {h['with_depth']} of {n} and is the more useful of the two, because it separates a service that was
 where it should have been from one that was not.</p>
+{wrong_unit_note}
 <h2 style="font-size:15px;margin-top:20px">Sub-category</h2>{hbar(d['subcat'], total=n)}</div>
 
 <div class="sec"><h2>3. How it happened</h2>
@@ -1254,7 +1298,7 @@ def main():
             headers={"apikey": SR, "Authorization": f"Bearer {SR}",
                      "Content-Type": "application/json",
                      "Prefer": "resolution=merge-duplicates"}, method="POST")
-        urllib.request.urlopen(req, timeout=60)
+        _urlopen_retry(req, timeout=60)
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         reason = ("Damage analysis quotes Depotnet cause and lesson wording verbatim - the wording "
                   "rules own verbatim-quote exception; Sygma prose says damage throughout")

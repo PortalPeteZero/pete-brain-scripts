@@ -979,14 +979,24 @@ function render(){{
  // Everything pulled off Depotnet for this damage. Kept separate from the Sygma layer below
  // because they are two different Drive folders: this one is Depotnet's own attachments, that one
  // is the panel-review material. Showing only one of them is what made the record look empty.
- const FKIND={{pdf:['Incident record','the full Depotnet PDF'],photo:['Photos','site photographs attached on Depotnet'],document:['Documents','everything else attached to the incident']}};
+ // 'video' MUST be in this map and in the render order below. It was missing, so 16 videos sat
+ // in Drive and in clancy_dn_files and appeared on no page at all - and because the header counts
+ // fls.length while the loop only renders three kinds, the count said 12 files and twelve were
+ // listed minus the video, so nothing looked wrong. Any kind_of() can return belongs here.
+ const FKIND={{pdf:['Incident record','the full Depotnet PDF'],photo:['Photos','site photographs attached on Depotnet'],video:['Video','video attached on Depotnet'],document:['Documents','everything else attached to the incident']}};
  const fls=(D.files||{{}})[id]||[];
  const capf=(D.capfolder||{{}})[id];
  h+='<div class="card"><div class="h2row"><h2>Captured from Depotnet</h2><span class="note">'
    +(fls.length?fls.length+' file'+(fls.length==1?'':'s')+' held in Drive':'nothing captured yet')+'</span></div>';
  if(fls.length){{
-  ['pdf','photo','document'].forEach(k=>{{
-   const g=fls.filter(f=>f.kind===k); if(!g.length)return;
+  // Anything whose kind is not in FKIND would vanish silently, so unknown kinds are collected
+  // and rendered too rather than dropped - the failure above must not be repeatable by adding
+  // a new kind upstream.
+  const KNOWN=['pdf','photo','video','document'];
+  const other=fls.filter(f=>KNOWN.indexOf(f.kind)<0);
+  KNOWN.concat(other.length?['__other']:[]).forEach(k=>{{
+   const g=k==='__other'?other:fls.filter(f=>f.kind===k); if(!g.length)return;
+   if(k==='__other')FKIND.__other=['Other attachments','held on Depotnet, kind not recognised'];
    h+='<div class="fl" style="margin-top:10px">'+FKIND[k][0]+' <span class="muted" style="font-weight:400">'+FKIND[k][1]+'</span></div>';
    // A row with no drive_id is a file we know the NAME of but do not hold. Rendering it as a link
    // gives a click that goes nowhere, which is worse than not listing it. Reported live 31 Jul 2026

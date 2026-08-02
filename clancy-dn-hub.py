@@ -13,8 +13,29 @@ tokens) comes from clancy_dn_ui.py, which every generator in this section import
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-hub.py [--local out.html] [--publish]
 """
-import os, json, argparse, datetime, urllib.request
+import os, json, argparse, datetime, urllib.request, urllib.error
 import clancy_dn_ui as ui
+
+
+def _urlopen_retry(req, timeout=120, tries=6):
+    """Supabase answers 429 under load. clancy-dn-publish.py runs six of these tools back to
+    back and each writes many rows, so the later steps reliably hit it - observed 2 Aug 2026,
+    where the FY26/27 analysis build died mid-run on a 429 and left that page stale while every
+    other page had been rebuilt. Without backoff a publish half-updates the section and the
+    freshness report is the only clue. Retries 429 and 5xx with exponential backoff."""
+    import time as _t
+    for n in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+        except Exception:
+            if n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = os.path.expanduser("~/.config/pete-secrets")
@@ -32,7 +53,7 @@ def sql(q):
         data=json.dumps({"query": q}).encode(),
         headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json",
                  "User-Agent": "Mozilla/5.0"}, method="POST")
-    return json.loads(urllib.request.urlopen(req, timeout=120).read().decode())
+    return json.loads(_urlopen_retry(req, timeout=120).read().decode())
 
 
 PAGE_CSS = """
@@ -394,7 +415,7 @@ def main():
             headers={"apikey": SR, "Authorization": f"Bearer {SR}",
                      "Content-Type": "application/json",
                      "Prefer": "resolution=merge-duplicates"}, method="POST")
-        urllib.request.urlopen(req, timeout=60)
+        _urlopen_retry(req, timeout=60)
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         reason = ("Depotnet hub quotes register descriptions verbatim - the wording rules own "
                   "verbatim-quote exception; Sygma prose says damage throughout")
