@@ -51,21 +51,59 @@ PHOTO_EXT = (".jpg", ".jpeg", ".png", ".heic", ".gif", ".bmp", ".webp")
 VIDEO_EXT = (".mp4", ".mov", ".avi", ".m4v", ".3gp")
 
 
+def _urlopen_retry(req, timeout=120, tries=6):
+    """Supabase answers 429 under load — a heavy filing run or 22 page writes in a row will
+    hit it. Without backoff the caller dies mid-publish and leaves the section half-updated.
+    Retries on 429 and 5xx with exponential backoff; anything else raises immediately."""
+    import time as _t
+    for n in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+        except Exception:
+            if n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+
+
 def rest(path, method="GET", payload=None, extra=None):
     h = dict(H); h.update(extra or {})
     req = urllib.request.Request(f"{URL}/rest/v1/{path}",
         data=json.dumps(payload).encode() if payload is not None else None, headers=h,
         method=method)
     try:
-        t = urllib.request.urlopen(req, timeout=120).read().decode()
+        t = _urlopen_retry(req, timeout=120).read().decode()
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"{e.code} {method} {path[:60]} — {e.read().decode()[:200]}")
     return json.loads(t) if t.strip() else None
 
 
 def sign_safe_url(u):
-    """The ONLY safe transform on a Depotnet signed URL. See the module docstring."""
-    return u.replace(" ", "%20")
+    """The only safe transform on a Depotnet signed URL, plus non-ASCII.
+
+    Space -> %20 and NOTHING else that is already ASCII — see the module docstring for the
+    measurements. But a filename can also carry non-ASCII: en-dashes are common in Clancy's
+    document names ("Appendix H – PTD – 20.05.2025.docx"), and urllib refuses those outright
+    with UnicodeEncodeError before a request is even made. Those bytes MUST be percent-encoded
+    as UTF-8 — Azure signs the decoded path, so encoding them is what makes the signature
+    verify, exactly as with the space. Found 2 Aug 2026: 9 FY25/26 files, all with an en-dash.
+    """
+    head, sep, qs = u.partition("?")
+    out = []
+    for ch in head:
+        if ch == " ":
+            out.append("%20")
+        elif ord(ch) < 128:
+            out.append(ch)
+        else:
+            out.append("".join(f"%{b:02X}" for b in ch.encode("utf-8")))
+    # The query string is Depotnet's own, already encoded, and the signature covers it. Only a
+    # raw space is unsafe there; touching anything else (notably the rscd content-disposition,
+    # which repeats the filename) returns 400 "Value for one of the query parameters ... invalid".
+    return "".join(out) + sep + qs.replace(" ", "%20")
 
 
 def kind_of(name):

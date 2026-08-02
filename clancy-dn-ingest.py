@@ -46,13 +46,31 @@ BASELINE = {"clientLogo", "imIncident", "timeline", "questions", "reportQuestion
             "injuries", "witnesses", "vehicles", "notices", "isArchived", "hideConfirmedCategory"}
 
 
+def _urlopen_retry(req, timeout=120, tries=6):
+    """Supabase answers 429 under load — a heavy filing run or 22 page writes in a row will
+    hit it. Without backoff the caller dies mid-publish and leaves the section half-updated.
+    Retries on 429 and 5xx with exponential backoff; anything else raises immediately."""
+    import time as _t
+    for n in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+        except Exception:
+            if n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+
+
 def rest(path, method="GET", payload=None, extra=None):
     h = dict(H); h.update(extra or {})
     req = urllib.request.Request(f"{URL}/rest/v1/{path}",
         data=json.dumps(payload).encode() if payload is not None else None, headers=h,
         method=method)
     try:
-        t = urllib.request.urlopen(req, timeout=120).read().decode()
+        t = _urlopen_retry(req, timeout=120).read().decode()
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"{e.code} on {method} {path[:60]} — {e.read().decode()[:300]}")
     return json.loads(t) if t.strip() else None

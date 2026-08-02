@@ -31,13 +31,31 @@ k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = k["url"], k["service_role_key"]
 MK = "clancy-depotnet-damages"
 
+def _urlopen_retry(req, timeout=120, tries=6):
+    """Supabase answers 429 under load — a heavy filing run or 22 page writes in a row will
+    hit it. Without backoff the caller dies mid-publish and leaves the section half-updated.
+    Retries on 429 and 5xx with exponential backoff; anything else raises immediately."""
+    import time as _t
+    for n in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+        except Exception:
+            if n == tries - 1:
+                raise
+            _t.sleep(min(2 ** n, 30))
+
+
 def rest(path, method="GET", body=None, headers=None):
     h = {"apikey": SR, "Authorization": f"Bearer {SR}", "Content-Type": "application/json"}
     h.update(headers or {})
     req = urllib.request.Request(f"{URL}/rest/v1/{path}",
                                  data=(json.dumps(body).encode() if body is not None else None),
                                  headers=h, method=method)
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with _urlopen_retry(req, timeout=120) as r:
         t = r.read().decode()
         return json.loads(t) if t else None
 
@@ -756,18 +774,34 @@ def fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, fykey):
     rows = [r for r in inc if r["fy"] == fykey]
     year_ids = {r["id"] for r in rows}
     acts = [a for a in act if a["incident_id"] in year_ids]
+    qtext, qmap = [], {}
+    def qidx(q):
+        if q not in qmap:
+            qmap[q] = len(qtext); qtext.append(q)
+        return qmap[q]
+
     data = {
         "incidents": {str(r["id"]): r for r in rows},
         "actions": defaultdict(list),
         "enrich": {str(k): v for k, v in enrich.items() if k in year_ids},
         "files": {str(k): v for k, v in files_by_inc.items() if k in year_ids},
-        "answers": {str(k): v for k, v in answers_by_inc.items() if k in year_ids},
+        # Answers are the bulk of this page: 164 damages x ~87 questions, with the SAME question
+        # text repeated on every damage — 2.45 MB of 4.07 MB, and a 413 Payload Too Large from
+        # Supabase. The text is deduped into QTEXT and each answer references it by index; the
+        # page rehydrates on load. Same data, roughly a quarter of the bytes.
+        "answers": {str(k): [[qidx(a["question"]), a["answer"],
+                              1 if a.get("mandatory") else 0,
+                              1 if a.get("answered") else 0,
+                              a["section"]]
+                             for a in v]
+                    for k, v in answers_by_inc.items() if k in year_ids},
         "capfolder": {str(r["id"]): r.get("capture_drive_folder") for r in rows
                       if r.get("capture_drive_folder")},
     }
     for a in acts:
         data["actions"][str(a["incident_id"])].append(a)
     data["actions"] = dict(data["actions"])
+    data["qtext"] = qtext
     payload = json.dumps(data, default=str).replace("</", "<\\/")
     body = f"""
 <div class="backbar"><a href="/raw/{MK}/{yp["incidents"]}" id="backbtn">&larr; Back to the {label} list</a></div>
@@ -846,7 +880,10 @@ function render(){{
  // We now hold the FULL question set, including the ones nobody answered — the API returns
  // answer:null where the PDF simply omitted the row. So a blank required field is visible as a
  // blank required field, instead of being indistinguishable from a question never asked.
- const ans=(D.answers||{{}})[id]||[];
+ const QT=D.qtext||[];
+ const ans=((D.answers||{{}})[id]||[]).map(function(a){{
+   return {{question:QT[a[0]], answer:a[1], mandatory:!!a[2], answered:!!a[3], section:a[4]}};
+ }});
  const nAns=ans.filter(a=>a.answered).length, nBlank=ans.length-nAns;
  const nReqBlank=ans.filter(a=>a.mandatory&&!a.answered).length;
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>The investigation in full</h2>'
@@ -1431,7 +1468,7 @@ def main():
                 data=json.dumps({"query": q}).encode(),
                 headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json",
                          "User-Agent": "Mozilla/5.0"}, method="POST")
-            return urllib.request.urlopen(req, timeout=120).read().decode()
+            return _urlopen_retry(req, timeout=120).read().decode()
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         reason = ("Depotnet Damages pages quote Incident Register descriptions verbatim - "
                   "the wording rules own verbatim-quote exception; Sygma prose says damage throughout")

@@ -700,8 +700,10 @@ def build(edition, label):
     # that at the top and the reader is told which sections are waiting on the capture.
     d["scaffold"] = d["headline"]["captured"] == 0
     h, m = d["headline"], metrics_of(d)
+    # scoped to THIS financial year: the table was keyed on edition alone, so FY25/26's publish
+    # overwrote FY26/27's metrics and each page then compared itself to the other year.
     prior = sql("SELECT edition, label, published_at::date d, metrics FROM clancy_analysis_editions "
-                f"WHERE edition < {edition} ORDER BY edition DESC LIMIT 1")
+                f"WHERE fy = '{FY}' AND edition < {edition} ORDER BY edition DESC LIMIT 1")
     prior = prior[0] if prior else None
     today = datetime.date.today()
     n = h["damages"]
@@ -862,6 +864,21 @@ def build(edition, label):
     bs = d["blank_split"]
     blank_ok, blank_unk = bs["confirmed_blank"], bs["not_captured"]
     shape, universal = d["inv_shape"], d["inv_universal"]
+    # FY-specific prose. These used to be hard-coded to FY26/27, so every other year's page
+    # claimed "four months" and quoted two FY26/27 damages as its worked examples.
+    n_months = len(d["months"])
+    months_phrase = (f" in {n_months} month{'s' if n_months != 1 else ''}"
+                     if n_months < 12 else " across the year")
+    worked_examples = ("" if FY != "FY26/27" else
+        "<p><b>The unstarted ones are unstarted on Depotnet, not just in our copy.</b> We opened "
+        "two of them on the system itself: <b>damage 117327</b> (Southern Water, 20 April) and "
+        "<b>damage 119372</b> (UKPN, 28 April), both more than three months old. On both, the "
+        "section loads in full and not a single field has been filled in. So this is not "
+        "something we failed to collect.</p>")
+    uncaptured_line = ("" if not blank_unk else
+        f"<li><b>{blank_unk} we have not looked at yet</b> ({bs['uncaptured']}). We have not "
+        "pulled the record down, so we cannot say either way, and it is counted on its own "
+        "rather than lumped in with the rest.</li>")
     team = ", ".join(str(r["n"]) for r in d["team_members"][1:])
     _ncc = [str(r["id"]) for r in d["not_complete_closed"]]
     not_complete_closed = len(_ncc) if len(_ncc) != 1 else "one"
@@ -925,15 +942,10 @@ marked as required.</p>
  <li><b>{ib['has_section']} of the {n} have their investigation report section completed.</b></li>
  <li><b>{blank_ok} have not been started.</b> The section is sitting there, every field
      untouched.</li>
- <li><b>{blank_unk} we have not looked at yet</b> ({bs['uncaptured']}, raised on 30 July). We have
-     not pulled its record down, so we cannot say either way, and it is counted on its own rather
-     than lumped in with the rest.</li>
+ {uncaptured_line}
 </ul>
 
-<p><b>The unstarted ones are unstarted on Depotnet, not just in our copy.</b> We opened two of
-them on the system itself: <b>damage 117327</b> (Southern Water, 20 April) and <b>damage
-119372</b> (UKPN, 28 April), both more than three months old. On both, the section loads in full
-and not a single field has been filled in. So this is not something we failed to collect.</p>
+{worked_examples}
 
 <p><b>Completed is not the same as signed off</b>, and Depotnet asks that itself. As its last
 question the section asks &ldquo;Is the investigation complete?&rdquo; Of the
@@ -988,7 +1000,7 @@ record can carry that weight.</div>
 <div class="sec"><h2>1. The year</h2>
 <div class="why">Month by month, and how many of each month&#8217;s damages have their investigation report section completed.</div>
 {cols(d['months'], 'm', 'n', 'investigated')}
-<p style="margin-top:16px">{n} damages in four months, {delta:+d}% against the same period last
+<p style="margin-top:16px">{n} damages{months_phrase}, {delta:+d}% against the same period last
 year ({py}). {h['still_open']} are still open. The small figure under each month is how many carry
 a recorded cause, which is the number this page can actually reason from.</p></div>
 
@@ -1165,11 +1177,11 @@ def main():
             f"updated_at=EXCLUDED.updated_at;")
         ed = json.dumps(metrics).replace("'", "''")
         lab = a.label.replace("'", "''")
-        sql(f"""INSERT INTO clancy_analysis_editions (edition, label, basis, metrics)
-                VALUES ({a.edition}, '{lab}',
+        sql(f"""INSERT INTO clancy_analysis_editions (fy, edition, label, basis, metrics)
+                VALUES ('{FY}', {a.edition}, '{lab}',
                  'Depotnet Incident Register + per-incident investigation capture; no document enrichment',
                  '{ed}'::jsonb)
-                ON CONFLICT (edition) DO UPDATE SET label=EXCLUDED.label,
+                ON CONFLICT (fy, edition) DO UPDATE SET label=EXCLUDED.label,
                   basis=EXCLUDED.basis, metrics=EXCLUDED.metrics, published_at=now();""")
         print(f"published {MK} as edition {a.edition} — commandcentre.info/m/{MK}")
 
