@@ -870,6 +870,10 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 
 def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None,
                    aby=None, fby=None, gloss=None):
+    # stage-2 hold flag: armed -> the reworked table; off -> the approved rendering, unchanged
+    if STAGE2 and aby is not None:
+        return incident_table_v2(inc, act_by_inc, tid, fy_filter=fy_filter, enrich=enrich,
+                                 aby=aby, fby=fby, gloss=gloss)
     enrich = enrich or {}
     # There used to be an "unknown — not in our export" state here, on the theory that a damage
     # newer than the newest action we hold might have actions we cannot see. It was wrong: Pete,
@@ -1499,7 +1503,7 @@ def hub(inc, act):
     sub = "The whole register across every year — the per-year sections are where the detail lives."
     return shell("Depotnet Damages — all years", search_box(None) + kpis_html(cards) + doors + fys_html + trend, "overview.html", sub)
 
-def fy_incidents_page(inc, act, fykey, enrich=None):
+def fy_incidents_page(inc, act, fykey, enrich=None, aby=None, fby=None, gloss=None):
     rows = [r for r in inc if r["fy"] == fykey]
     label = FY_LABEL[fykey]
     act_by_inc = defaultdict(list)
@@ -1507,18 +1511,20 @@ def fy_incidents_page(inc, act, fykey, enrich=None):
         act_by_inc[a["incident_id"]].append(a)
     body = [search_box(fykey)]
     body.append(f'<div class="h2row"><h2>Every damage in {label}</h2><span class="note">{len(rows)} incidents — filter by contract, utility, severity or status; click a row to open it in full</span></div>')
-    body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False, enrich=enrich))
+    body.append(incident_table(rows, act_by_inc, f"ti{fykey.replace('/', '')}", fy_filter=False, enrich=enrich,
+                               aby=aby, fby=fby, gloss=gloss))
     return shell(f"Incidents — {label}", "\n".join(body), FY_PAGE[fykey],
                  f"{label} · every Depotnet Incident Register row for the year, captured in full",
                  fykey=fykey, subactive="incidents", wide=True)
 
-def all_incidents_page(inc, act, enrich=None):
+def all_incidents_page(inc, act, enrich=None, aby=None, fby=None, gloss=None):
     # Not in the nav — the landing page's cross-year cards (total / still open) deep-link here.
     act_by_inc = defaultdict(list)
     for a in act:
         act_by_inc[a["incident_id"]].append(a)
     body = [search_box(None), f'<div class="h2row"><h2>The full register, all years</h2><span class="note">{len(inc)} service damages, April 2023 to today — reached from the Overview cards; each year also has its own register</span></div>']
-    body.append(incident_table(inc, act_by_inc, "tall", enrich=enrich))
+    body.append(incident_table(inc, act_by_inc, "tall", enrich=enrich,
+                               aby=aby, fby=fby, gloss=gloss))
     return shell("All incidents — every year", "\n".join(body), "overview.html",
                  f"{len(inc)} service damages · the whole register in one table", wide=True)
 
@@ -1777,7 +1783,8 @@ def main():
     for f in FYS:
         yp = year_pages(f)
         pages[yp["dash"]] = fy_dashboard(inc, act, f, full=True)
-        pages[yp["incidents"]] = fy_incidents_page(inc, act, f, enrich)
+        pages[yp["incidents"]] = fy_incidents_page(inc, act, f, enrich,
+                                                   aby=answers_by_inc, fby=files_by_inc, gloss=gloss)
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
         pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, f)

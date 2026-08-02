@@ -72,6 +72,8 @@ FY_PAGES = {
     "FY23/24": {"mk": "clancy-damage-analysis-2023-24", "label": "FY 2023/24"},
 }
 FY = os.environ.get("CLANCY_FY", "FY26/27")
+# stage-2 hold flag (edits plan): armed -> the reworked register table; off -> approved output
+STAGE2 = os.environ.get("CLANCY_STAGE2") == "1"
 MK = FY_PAGES[FY]["mk"]
 
 
@@ -271,6 +273,16 @@ def gather():
           AND norm IN (SELECT norm FROM clancy_dn_lesson_quality WHERE lesson<>''
                        GROUP BY norm HAVING count(*) > 1)
           AND fy='{FY}') z""")[0]
+    # stage 2: the per-action detail for child rows, and the glossary rows the column
+    # explainers render (one copy of the wording — the glossary is the SSOT)
+    d["actions_detail"] = sql(f"""SELECT a.incident_id, a.id, a.assigned_to, a.status,
+        a.date_raised::date raised, a.closed_at::date closed,
+        left(coalesce(a.corrective_measure, a.description, ''), 160) measure
+      FROM clancy_dn_actions a JOIN clancy_dn_incidents i ON i.id=a.incident_id
+      WHERE i.fy='{FY}' ORDER BY a.incident_id, a.date_raised""")
+    d["gloss"] = {g["column_key"]: g for g in sql(
+        "SELECT column_key, term, plain_meaning FROM clancy_glossary WHERE column_key IS NOT NULL")}
+
     # The honest denominator for any "only one in the register" claim.
     d["lesson_pool"] = sql("""SELECT count(*) total, count(DISTINCT norm) distinct_texts
       FROM clancy_dn_lesson_quality WHERE lesson <> ''""")[0]
@@ -467,6 +479,15 @@ def cols(rows, lab, val, sub=None):
 
 
 PAGE_CSS = """
+tr.achild td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
+ padding-top:6px;padding-bottom:6px}
+tr.achild td:first-child{padding-left:26px;position:relative}
+tr.achild td:first-child:before{content:"\\21B3";position:absolute;left:10px;color:#9aa4af}
+.colkey{margin:0 0 12px;background:#fff;border:1px solid #e3e6ea;border-radius:12px}
+.colkey summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:13px}
+.colkey .kin{padding:2px 16px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:6px 18px}
+.colkey .ke{font-size:12.5px;line-height:1.45;color:#4a5560}
+
 .lead{font-size:16.5px;color:var(--mid);max-width:74ch;margin-bottom:6px}
 .sec{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px 26px;
  box-shadow:var(--sh-1);margin-bottom:18px}
@@ -617,6 +638,234 @@ def yn(count, captured):
     if count:
         return f'<span class="mk y" title="{count} on Depotnet">{count}</span>'
     return '<span class="mk n" title="None on Depotnet">0</span>'
+
+
+
+def damage_table_v2(d):
+    """The stage-2 register (edits plan, converged 2 Aug 2026): the investigation split, the
+    three always-asserting action columns, action child rows, and glossary-driven explainers.
+    Renders ONLY when CLANCY_STAGE2 is armed; damage_table() below stays the approved output."""
+    rows, n = d["rows"], len(d["rows"])
+    gloss = d.get("gloss") or {}
+    acts_by = {}
+    for a in d.get("actions_detail") or []:
+        acts_by.setdefault(a["incident_id"], []).append(a)
+    n_notcomplete = sum(1 for r in rows if (r.get("inv_done") or "") == "NO")
+    tr = []
+    for r in rows:
+        captured = bool(r["captured"])
+        done = r["inv_answers"] > 0
+        iv = (r["inv_done"] or "").upper()
+        # column 1: the section itself — Done / Not done / – (uncaptured)
+        if not captured:
+            inv_h = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+            inv_key = "uncaptured"
+        elif done:
+            inv_h = '<span class="pill closed">Done</span>'
+            inv_key = "done"
+        else:
+            inv_h = '<span class="pill">Not done</span>'
+            inv_key = "notdone"
+        # column 2: Clancy's own verdict — only a worked section can carry one
+        if not captured:
+            ver_h = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+        elif not done:
+            ver_h = '<span class="mk b" title="The section is not done, so the question was never answered">&mdash;</span>'
+        elif iv == "YES":
+            ver_h = '<span class="pill closed">Yes</span>'
+        elif iv == "NO":
+            ver_h = '<span class="pill open" title="A fully worked section where Clancy answer that the investigating itself is not finished">No</span>'
+        else:
+            ver_h = "&mdash;"
+        # the three action columns: EXPORT-derived, ALWAYS assert
+        acts, aout, acls = r["acts"], r["acts_out"], r["acts_closed"]
+        cwoa = (r["status"] == "Complete with Outstanding Actions" and acts == 0)
+        if acts:
+            raised_h = f'{acts}'
+            open_h = (f'<span class="pill open">{aout} overdue</span>' if aout else "0")
+            closed_h = f'{acls}'
+        else:
+            tip = ("Depotnet incident status says outstanding actions; its actions export "
+                   "holds none - both shown as Depotnet holds them" if cwoa else
+                   "No corrective action exists for this damage in the export - for any year")
+            raised_h = f'<span class="pill" style="background:#fdf3e2;color:#8a5a00" title="{tip}">None{"*" if cwoa else ""}</span>'
+            open_h = "&mdash;"
+            closed_h = "&mdash;"
+        # evidence: capture-derived; a true 0 only on a captured damage
+        if not captured:
+            ev_h = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+        elif r["files"]:
+            ev_h = f'{r["files"]}'
+        else:
+            ev_h = '<span title="Captured in full - Depotnet holds no files for this damage">0</span>'
+        st = r["status"] or "Not stated"
+        st_cls = "closed" if st.startswith("Closed") else ("open" if st == "Open" else "")
+        dt_ = str(r["dt"])
+        nice = datetime.datetime.strptime(dt_, "%Y-%m-%d").strftime("%-d %b")
+        hay = " ".join(str(x or "") for x in
+                       (r["id"], r["contract"], r["service"], st)).lower()
+        tr.append(
+            f'<tr data-c="{esc(r["contract"])}" data-s="{esc(r["service"])}" data-st="{esc(st)}" '
+            f'data-inv="{inv_key}" data-cause="{r["cause"]}" data-lesson="{r["lesson"]}" '
+            f'data-acts="{acts}" data-aout="{aout}" data-acls="{acls}" data-cat="{r["cat"] or ""}" data-genny="{r["genny"] or ""}" '
+            f'data-hay="{esc(hay)}">'
+            f'<td class="id"><a href="{DAMAGE_URL.format(r["id"])}">{r["id"]}</a></td>'
+            f'<td>{nice}</td><td>{esc(r["contract"])}</td><td>{esc(r["service"])}</td>'
+            f'<td class="st"><span class="pill {st_cls}">{esc(st)}</span></td>'
+            f'<td>{inv_h}</td>'
+            f'<td>{ver_h}</td>'
+            f'<td class="c">{raised_h}</td>'
+            f'<td class="c">{open_h}</td>'
+            f'<td class="c">{closed_h}</td>'
+            f'<td class="c">{mark(r["cause"], allow_no=False)}</td>'
+            f'<td class="c">{mark(r["lesson"], allow_no=False)}</td>'
+            f'<td class="c">{mark(r["genny"])}</td><td class="c">{mark(r["cat"])}</td>'
+            f'<td class="c">{mark(r["permit"])}</td>'
+            f'<td class="n">{ev_h}</td>'
+            "</tr>")
+        for a in acts_by.get(r["id"], []):
+            bits = [f'Action {a["id"]}']
+            if a.get("assigned_to"):
+                bits.append(esc(a["assigned_to"]))
+            when = (str(a.get("raised") or "&mdash;")
+                    + (" &rarr; " + str(a["closed"]) if a.get("closed") else ""))
+            stat = a.get("status") or "&mdash;"
+            stat_h = (f'<span class="pill closed">Closed</span>' if stat == "Closed"
+                      else f'<span class="pill open">{esc(stat)}</span>')
+            tr.append(
+                f'<tr class="achild" data-parent="{r["id"]}">'
+                f'<td colspan="4">{" &middot; ".join(bits)}</td>'
+                f'<td colspan="5">{esc(a.get("measure") or "") or "&mdash;"}</td>'
+                f'<td colspan="3" style="white-space:nowrap">{when}</td>'
+                f'<td colspan="4">{stat_h}</td></tr>')
+
+    def opts(key, label):
+        vals = sorted({r[key] for r in rows})
+        o = "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in vals)
+        return (f'<select data-f="{key}" aria-label="{label}">'
+                f'<option value="">{label}: all</option>{o}</select>')
+
+    sts = sorted({r["status"] or "Not stated" for r in rows})
+    st_sel = ('<select data-f="status" aria-label="Status"><option value="">Status: all</option>'
+              + "".join(f'<option value="{esc(v)}">{esc(v)}</option>' for v in sts) + "</select>")
+
+    KEYCOLS = ["damage_id", "contract", "utility", "status", "investigation_report",
+               "marked_complete", "actions_raised", "actions_still_open", "actions_closed",
+               "spotcheck_cause", "spotcheck_lesson", "spotcheck_genny", "spotcheck_cat",
+               "spotcheck_permit", "evidence"]
+    kes = "".join(
+        f'<div class="ke"><b>{esc(gloss[k]["term"])}</b> &mdash; {esc(gloss[k]["plain_meaning"])}</div>'
+        for k in KEYCOLS if k in gloss)
+    colkey = (f'<details class="colkey"><summary>What each column means '
+              f'(from the glossary &mdash; the same wording everywhere)</summary>'
+              f'<div class="kin">{kes}</div></details>') if kes else ""
+
+    def th(label, key=None, cls=""):
+        tip = f' title="{esc(gloss[key]["plain_meaning"])}"' if key and key in gloss else ""
+        return f'<th{" class=\"" + cls + "\"" if cls else ""}{tip}>{label}</th>'
+
+    heads = (th("Damage", "damage_id") + th("Date") + th("Contract", "contract")
+             + th("Service", "utility") + th("Status", "status")
+             + th("Investigation<br>report", "investigation_report")
+             + th("Marked<br>complete", "marked_complete")
+             + th("Actions<br>raised", "actions_raised", "c")
+             + th("Still<br>open", "actions_still_open", "c")
+             + th("Closed", "actions_closed", "c")
+             + th("Cause", "spotcheck_cause", "c") + th("Lesson", "spotcheck_lesson", "c")
+             + th("Genny", "spotcheck_genny", "c") + th("CAT", "spotcheck_cat", "c")
+             + th("Permit", "spotcheck_permit", "c") + th("Evidence", "evidence", "n"))
+
+    return f"""
+<div class="sec wide"><h2>Every damage this year, one line each</h2>
+<div class="why">The register behind everything above. Each column is a value Depotnet holds, read
+live, so this table changes as Clancy update their own records. Indented rows are the damage&#8217;s
+corrective actions, one per action, from Depotnet&#8217;s own export.</div>
+{colkey}
+<div class="fbar">
+  <input type="search" id="q" placeholder="Search a damage number, contract or service">
+  {opts('contract', 'Contract')}{opts('service', 'Service')}{st_sel}
+  <select data-f="inv" aria-label="Investigation report">
+    <option value="">Investigation report: all</option>
+    <option value="done">Done</option>
+    <option value="notdone">Not done</option>
+    <option value="uncaptured">Not captured yet</option>
+  </select>
+</div>
+<div class="chips">
+  <button class="chip" data-t="cause" aria-pressed="false">No cause recorded</button>
+  <button class="chip" data-t="lesson" aria-pressed="false">No lesson recorded</button>
+  <button class="chip" data-t="acts" aria-pressed="false">No actions at all</button>
+  <button class="chip" data-t="genny" aria-pressed="false">Genny not used</button>
+  <button class="chip" data-t="cat" aria-pressed="false">CAT not used</button>
+  <span class="fcount" id="fcount">{n} of {n} damages</span>
+</div>
+
+<div class="tscroll"><table class="reg"><thead><tr>
+{heads}
+</tr></thead><tbody id="rtb">{"".join(tr)}</tbody></table>
+<div class="nores" id="nores" hidden>No damages match those filters.</div></div>
+
+<div class="legend">
+  <span><span class="mk y">&#10003;</span> Depotnet records a yes</span>
+  <span><span class="mk n">&#10007;</span> Depotnet records an explicit no</span>
+  <span><span class="mk b">&ndash;</span> nothing held &mdash; the section is not done or the
+  damage is not captured; never a no</span>
+</div>
+<div class="flag"><b>How the two investigation columns work.</b> <b>Investigation report</b> is
+the section itself: Done means every required question is answered; Not done means untouched
+&mdash; it is never half-filled. <b>Marked complete</b> is Clancy&#8217;s own answer to the
+section&#8217;s final question, &ldquo;Is the investigation complete?&rdquo; &mdash; the
+{n_notcomplete} answering No are fully worked sections where Clancy say the investigating itself
+is still running. The action columns always assert, every year: the Action Report export is
+complete whether or not a damage is captured, so None means none. * marks the damages whose own
+incident status says &ldquo;Complete with Outstanding Actions&rdquo; while the export holds no
+actions &mdash; both shown as Depotnet holds them.</div>
+
+<script>
+(function(){{
+  var tb=document.getElementById('rtb'),
+      rows=[].slice.call(tb.rows).filter(function(r){{return !r.classList.contains('achild');}}),
+      q=document.getElementById('q'), cnt=document.getElementById('fcount'),
+      nr=document.getElementById('nores'),
+      sels=[].slice.call(document.querySelectorAll('.fbar select')),
+      chips=[].slice.call(document.querySelectorAll('.chip'));
+  var MAP={{contract:'c',service:'s',status:'st',inv:'inv'}};
+  function apply(){{
+    var needle=(q.value||'').toLowerCase().trim(), shown=0;
+    rows.forEach(function(r){{
+      var ok=true;
+      if(needle) ok=(r.dataset.hay||'').indexOf(needle)>-1;
+      if(ok) sels.forEach(function(s){{
+        var v=s.value; if(!v) return;
+        var key=MAP[s.dataset.f]||s.dataset.f;
+        if(r.dataset[key]!==v) ok=false;
+      }});
+      if(ok) chips.forEach(function(c){{
+        if(c.getAttribute('aria-pressed')!=='true') return;
+        var t=c.dataset.t;
+        if(t==='cause'  && r.dataset.cause !=='N') ok=false;
+        if(t==='lesson' && r.dataset.lesson!=='N') ok=false;
+        if(t==='acts'   && r.dataset.acts !=='0') ok=false;
+        if(t==='genny'  && r.dataset.genny!=='NO') ok=false;
+        if(t==='cat'    && r.dataset.cat  !=='NO') ok=false;
+      }});
+      r.hidden=!ok; if(ok) shown++;
+      // children follow their parent, and are never counted
+      var d=r.nextElementSibling;
+      while(d && d.classList.contains('achild')){{ d.hidden=!ok; d=d.nextElementSibling; }}
+    }});
+    cnt.textContent=shown+' of {n} damages';
+    nr.hidden=shown>0;
+  }}
+  q.addEventListener('input',apply);
+  sels.forEach(function(s){{s.addEventListener('change',apply);}});
+  chips.forEach(function(c){{c.addEventListener('click',function(){{
+    c.setAttribute('aria-pressed', c.getAttribute('aria-pressed')==='true'?'false':'true');
+    apply();
+  }});}});
+}})();
+</script>
+</div>"""
 
 
 def damage_table(d):
@@ -772,7 +1021,7 @@ not recorded.</div>
 
 def build(edition, label):
     d = gather()
-    dmg_table = damage_table(d)
+    dmg_table = damage_table_v2(d) if STAGE2 else damage_table(d)
     # A year with no deep capture has NO investigation data, so every "not started / no cause /
     # no lessons" count on this page would be OUR backlog wearing Clancy's name. The page says
     # that at the top and the reader is told which sections are waiting on the capture.
