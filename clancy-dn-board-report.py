@@ -743,12 +743,14 @@ year&#8217;s record, it is that one.</div>
 
 <div class="band"><div class="rwrap">
 <h2><span class="tag" style="background:{RED}">Part six</span> Those plans listings need scrutiny &mdash; here is the first one tested</h2>
-<div class="sub">We are not convinced that plans are the cause, or the lesson, on those
-damages. Our involvement is recent: we have worked on only a few of this year&#8217;s
-damages, and we have only recently had access to Depotnet itself. Damage 152586 is one of
-the first where we have reviewed the detection data behind the form in full &mdash; and
-the result is clear. The cause listed is not the cause. What actually happened is totally
-different from what Depotnet holds. Side by side:</div>
+<div class="callout" style="border-left-color:{RED}">We are not convinced that plans are
+the cause, or the lesson, on <b>all</b> of those damages. Our involvement is recent: we
+have worked on only a few of this year&#8217;s damages, and we have only recently had
+access to Depotnet itself. Damage 152586 is one of the first where we have reviewed the
+detection data behind the form in full &mdash; and on that one the result is clear.
+<b>The cause listed is not the cause. What actually happened is totally different from
+what Depotnet holds.</b></div>
+<div class="sub">Side by side:</div>
 <div class="sbs">
 <div class="sb dn"><div class="sh">What Depotnet records &mdash; damage {ex["id"]}</div>
 <ul>
@@ -815,17 +817,16 @@ anything at all.</div>
 <h3 style="font-size:17px;margin:26px 0 2px">Why the record stays like this</h3>
 <div class="loop">
 <div class="lp lp1"><span class="lpn">1</span><b>Gaps in knowledge and understanding</b>
-of how services are found and how damages happen
-<div class="lpc">The wrong genny connection at Hollow Lane; plans treated as positioning services</div></div>
+<div class="lpc">Of how services are found, and how damages really happen</div></div>
 <div class="lparr la1">&#8600;</div>
 <div class="lp lp2"><span class="lpn">2</span><b>So the data is read wrongly</b>
-<div class="lpc">&ldquo;Insufficient plans&rdquo; on {len(elec)} traceable electric cables; causes that dissolve under review</div></div>
+<div class="lpc">Causes and lessons that do not stand up to scrutiny</div></div>
 <div class="lparr la2">&#8601;</div>
 <div class="lp lp3"><span class="lpn">3</span><b>So the wrong data gets collected &mdash; or none</b>
-<div class="lpc">{d["nothing"]} of {n} reports blank; the detection question missing from the form</div></div>
+<div class="lpc">The right questions are never asked, and forms are left blank</div></div>
 <div class="lparr la3">&#8598;</div>
 <div class="lp lp4"><span class="lpn">4</span><b>So there is less to learn from</b>
-<div class="lpc">{len(d["strategic"])} usable lessons out of {n} damages</div></div>
+<div class="lpc">And the understanding gap grows &mdash; round it goes again</div></div>
 <div class="lparr la4">&#8599;</div>
 <div class="lpmid">The loop that keeps the record where it is</div>
 </div>
