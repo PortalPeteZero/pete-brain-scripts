@@ -267,6 +267,21 @@ def parse(doc):
         if not path:
             return
         stem = path.split("?")[0]
+        # Depotnet sometimes stores a question's ANSWER TEXT where a photo should be, and then
+        # signs a perfectly valid SAS URL for it. Damage 116627 carries
+        #   azurePath "answered", fileName "answered", extension "", dateCreated 0001-01-01
+        #   path https://dnclancyprod.file.core.windows.net/answered?sv=...&sig=...
+        # There is no such blob. Left alone it becomes a file row that can never be filed, so
+        # the Drive check fails for ever on a file that does not exist.
+        #
+        # Every real attachment sits under the container structure — default/client18/jobs/… —
+        # so it has at least two path segments after the host. A bare name at the root does not.
+        # This is REPORTED, never dropped in silence: if Depotnet changes its layout we need to
+        # hear about it rather than quietly lose attachments.
+        if len(stem.split("://", 1)[-1].split("/")) < 3:
+            warn.append(f"phantom attachment ignored — Depotnet signed a URL for a blob with no "
+                        f"path: {stem[-60:]!r} (kind {kind}); this is an answer stored as a file")
+            return
         fid = o.get("documentId") or o.get("photoId") or o.get("videoId")
         cur = merged.get(stem)
         if cur is None:
