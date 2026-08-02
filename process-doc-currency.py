@@ -110,6 +110,15 @@ def read_transcript(path):
                             # Bash / Edit / Write / NotebookEdit calls, so only those count.
                             if c.get("name") in ("Workflow", "Agent", "Task"):
                                 continue
+                            # A git command is never a page change either — a COMMIT MESSAGE
+                            # that discusses the watched tools fired this gate on 2 Aug 2026
+                            # minutes after the Workflow fix: the message text matched the
+                            # domain pattern, the word "Write" in it matched MUTATING. Pages
+                            # change via the publishers and DB writes, never via git.
+                            if c.get("name") == "Bash":
+                                _cmd = (c.get("input") or {}).get("command", "")
+                                if re.match(r"\s*git\b", _cmd):
+                                    continue
                             calls.append((ts, c.get("name", "") + " " +
                                           json.dumps(c.get("input", ""))[:4000]))
     except Exception:
