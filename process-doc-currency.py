@@ -9,17 +9,22 @@ adapt".
 THE FAILURE THIS EXISTS FOR. Across 1 Aug the Clancy work learned a dozen things that only
 existed in the chat: that Depotnet's tab is called Report and not "the investigation form",
 that the incident PDF carries no action tabs, that the Incident Register export has 16 columns
-and none of them touch the forms, that changing a Depotnet `#/` URL does not reload the page.
-Every one of those would have been re-derived — or worse, re-guessed — by the next session. The
-process docs were only updated because Pete asked twice.
+and none of them touch the forms. Every one of those would have been re-derived — or worse,
+re-guessed — by the next session. The process docs were only updated because Pete asked twice.
 
-WHY A GATE AND NOT A RULE. A rule to "keep the docs current" is a wish; nothing refuses. This
-refuses. It fires ONLY when the session actually changed something in a guarded domain — edited
-its code, published its pages, ran its import — and that domain's process doc has not been
-written to since the session began. A read-only session, a question, a chat: silent.
+WHY EFFECTS AND NOT TEXT. The first design scanned the transcript's tool-call text for tool
+names. On 2 Aug it false-fired three times in three turns: on an audit WORKFLOW whose prompts
+mentioned the tools, on a git COMMIT MESSAGE that discussed them, and on the TEST FIXTURE that
+proved the previous fix — each time demanding a doc update for a change that never happened.
+Text about a change is not a change. So the gate now asks the DATABASE what actually moved:
 
-The bar is deliberately "was it touched this session", not "is it good". Nothing can measure
-good. But a doc that was never opened on a day its subject changed is provably stale.
+  · a domain's pages changed        -> max(updated_at) over its module_content keys
+  · a domain's captured data moved  -> max capture timestamps on its tables
+  · a domain's code was edited      -> Edit/Write tool calls whose file_path (the structured
+    field, never free text) matches the domain's files
+
+and fires only when a real change in THIS session postdates the doc's last write. A read-only
+session, a question, an audit, a chat: silent — however loudly they discuss the tools.
 
   echo '{"transcript_path": "..."}' | python3 process-doc-currency.py
   python3 process-doc-currency.py --test <transcript.jsonl>   # measure BEFORE trusting it
@@ -27,35 +32,31 @@ good. But a doc that was never opened on a day its subject changed is provably s
 """
 import json, os, re, sys, datetime, urllib.request
 
-# A domain is guarded only where (a) a process doc exists and (b) a change to the domain is
-# unambiguous from the tool calls. Add a domain by adding a row — nothing else to change.
+# A domain is guarded where (a) a process doc exists and (b) its changes leave OBSERVABLE
+# effects. "effects" are (table, timestamp-column, PostgREST filter) triples; "files" matches
+# Edit/Write file_path values. Add a domain by adding a row.
 DOMAINS = [
     {
         "name": "Clancy Depotnet capture",
         "doc": "Customers/SY-Clancy/clancy-depotnet-capture.md",
-        # a CHANGE to how capture works, not merely reading it.
-        # These names must track the tools that ACTUALLY run. The original list was
-        # import|capture|pdf — the Chrome-era tools — so once capture moved to the API path
-        # (ingest / files / verify / drive-audit) the gate matched nothing and the capture doc
-        # could never be flagged stale, which is the exact rot it exists to prevent. Caught by
-        # the FY25/26 plan audit, 2 Aug 2026.
-        "changed": r"clancy-dn-(?:import|capture|pdf|ingest|files|verify|drive-audit)\.py"
-                   r"|clancy_dn_answers\?|--queue\b|--relink\b",
         "records": "how a damage is pulled off Depotnet: the tabs, the exports, the traps",
+        "effects": [
+            ("clancy_dn_incidents", "raw_api_at", None),
+            ("clancy_dn_files", "captured_at", None),
+        ],
+        "files": r"clancy-dn-(?:import|capture|pdf|ingest|files|verify|drive-audit)\.py$",
     },
     {
         "name": "Genny's Damage Depot pages",
         "doc": "Customers/SY-Clancy/clancy-depotnet-damages.md",
-        # clancy-dn-publish.py runs all six publishers in one command, so a publish that goes
-        # through it matched none of the per-tool patterns below.
-        "changed": r"clancy-dn-(?:pages|hub|analysis|reports|gc-pages|unmapped)\.py\s+.*--publish"
-                   r"|clancy-dn-publish\.py|clancy-vocab-check\.py",
         "records": "what each page is, how it refreshes, and the wording rules it publishes under",
+        "effects": [
+            ("module_content", "updated_at", "module_key=like.clancy-*"),
+        ],
+        "files": r"(?:clancy-dn-(?:pages|hub|analysis|reports|gc-pages|unmapped|publish)"
+                 r"|clancy_dn_ui|clancy-vocab-check)\.py$",
     },
 ]
-
-# Only these count as changing something. A grep, a SELECT, a screenshot do not.
-MUTATING = re.compile(r"--publish\b|--apply\b|\bWrite\b|\bEdit\b|UPDATE |INSERT |DELETE |PATCH", re.I)
 
 
 def secrets():
@@ -65,30 +66,51 @@ def secrets():
     return json.load(open(f"{sec}/command-centre-supabase-keys.json"))
 
 
-def doc_updated_at(vault_path):
+def _get(k, path):
+    req = urllib.request.Request(f"{k['url']}/rest/v1/{path}",
+                                 headers={"apikey": k["service_role_key"],
+                                          "Authorization": f"Bearer {k['service_role_key']}"})
+    return json.loads(urllib.request.urlopen(req, timeout=20).read().decode())
+
+
+def doc_updated_at(k, vault_path):
     """When was this process doc last written? None if it does not exist."""
+    rows = _get(k, "vault_notes?select=updated_at&vault_path=eq."
+                + urllib.request.quote(vault_path, safe=""))
+    return rows[0]["updated_at"] if rows else None
+
+
+def latest_effect(k, table, col, flt):
+    """The newest real change the domain left in the database. None if nothing there."""
+    q = f"{table}?select={col}&order={col}.desc.nullslast&limit=1"
+    if flt:
+        q += "&" + flt
+    rows = _get(k, q)
+    return rows[0][col] if rows and rows[0].get(col) else None
+
+
+def _norm(ts):
+    """Timestamps arrive as '2026-08-02 06:01:04.965641+00' (Postgres) and
+    '2026-08-02T06:01:04.965Z' (transcript). Normalise to aware datetimes."""
+    if not ts:
+        return None
+    t = str(ts).replace(" ", "T").replace("Z", "+00:00")
+    if re.search(r"\+\d\d$", t):
+        t += ":00"
     try:
-        k = secrets()
-        q = ("vault_notes?select=updated_at&vault_path=eq."
-             + urllib.request.quote(vault_path, safe=""))
-        req = urllib.request.Request(f"{k['url']}/rest/v1/{q}",
-                                     headers={"apikey": k["service_role_key"],
-                                              "Authorization": f"Bearer {k['service_role_key']}"})
-        rows = json.loads(urllib.request.urlopen(req, timeout=20).read().decode())
-        return rows[0]["updated_at"] if rows else None
+        return datetime.datetime.fromisoformat(t)
     except Exception:
-        return "UNCHECKABLE"
+        return None
 
 
 def read_transcript(path):
-    """Session start, and every tool call WITH ITS TIMESTAMP.
+    """Session start, plus every Edit/Write call's (timestamp, file_path).
 
-    The timestamp matters. The first version of this gate asked "was the doc written since the
-    session began", which is useless in a long session: this one ran 39 hours, the docs were
-    written at hour 13, and the gate then passed for ever no matter how much changed afterwards.
-    It is now "was the doc written since the last change IN THAT DOMAIN".
+    ONLY the structured file_path field is read — never free text. Command strings, commit
+    messages, workflow scripts and heredocs can all legitimately DISCUSS the guarded tools;
+    discussing a change is not making one.
     """
-    start, calls = None, []
+    start, edits = None, []
     try:
         with open(path) as f:
             for line in f:
@@ -102,46 +124,58 @@ def read_transcript(path):
                 m = e.get("message") or {}
                 if m.get("role") == "assistant" and isinstance(m.get("content"), list):
                     for c in m["content"]:
-                        if c.get("type") == "tool_use":
-                            # A Workflow/Agent call CONTAINS pattern text without executing
-                            # anything itself — an audit workflow whose prompts mention
-                            # "clancy-dn-publish.py" fired this gate on 2 Aug 2026 while
-                            # mutating nothing. Real mutations reach the transcript as
-                            # Bash / Edit / Write / NotebookEdit calls, so only those count.
-                            if c.get("name") in ("Workflow", "Agent", "Task"):
-                                continue
-                            # A git command is never a page change either — a COMMIT MESSAGE
-                            # that discusses the watched tools fired this gate on 2 Aug 2026
-                            # minutes after the Workflow fix: the message text matched the
-                            # domain pattern, the word "Write" in it matched MUTATING. Pages
-                            # change via the publishers and DB writes, never via git.
-                            if c.get("name") == "Bash":
-                                _cmd = (c.get("input") or {}).get("command", "")
-                                if re.match(r"\s*git\b", _cmd):
-                                    continue
-                            calls.append((ts, c.get("name", "") + " " +
-                                          json.dumps(c.get("input", ""))[:4000]))
+                        if (c.get("type") == "tool_use"
+                                and c.get("name") in ("Edit", "Write", "NotebookEdit")):
+                            fp = (c.get("input") or {}).get("file_path") or ""
+                            if fp:
+                                edits.append((ts, fp))
     except Exception:
         pass
-    return start, calls
+    return start, edits
 
 
-def evaluate(start, calls):
-    """Which guarded domains were CHANGED more recently than their doc was written?"""
+def evaluate(start, edits):
+    """Which guarded domains show a REAL change, in this session, newer than their doc?"""
     out = []
+    start_dt = _norm(start)
+    try:
+        k = secrets()
+    except Exception:
+        return out                        # never block on our own inability to check
     for d in DOMAINS:
-        hits = [(ts, c) for ts, c in calls
-                if re.search(d["changed"], c) and MUTATING.search(c)]
-        if not hits:
-            continue                      # read-only in this domain, or untouched
-        last_change = max(ts for ts, _ in hits if ts) if any(ts for ts, _ in hits) else start
-        upd = doc_updated_at(d["doc"])
-        if upd == "UNCHECKABLE":
+        candidates = []                   # (datetime, human description)
+        # 1. database effects — what actually changed, whoever changed it
+        for table, col, flt in d["effects"]:
+            try:
+                eff = latest_effect(k, table, col, flt)
+            except Exception:
+                continue
+            dt = _norm(eff)
+            if dt:
+                candidates.append((dt, f"{table}.{col} = {eff}"))
+        # 2. code edits via the structured file_path field only
+        for ts, fp in edits:
+            if re.search(d["files"], fp):
+                dt = _norm(ts)
+                if dt:
+                    candidates.append((dt, f"edited {fp}"))
+        if not candidates:
+            continue
+        # only THIS session's changes are this session's to record
+        if start_dt:
+            candidates = [c for c in candidates if c[0] >= start_dt]
+        if not candidates:
+            continue
+        last_dt, example = max(candidates, key=lambda c: c[0])
+        try:
+            upd = doc_updated_at(k, d["doc"])
+        except Exception:
             continue                      # never block on our own inability to check
-        if upd and last_change and upd >= last_change:
-            continue                      # the doc is newer than the last change — fine
-        out.append({**d, "updated": upd or "never", "changed_at": last_change,
-                    "example": hits[-1][1][:120]})
+        upd_dt = _norm(upd)
+        if upd_dt and upd_dt >= last_dt:
+            continue                      # the doc is newer than the last real change — fine
+        out.append({**d, "updated": upd or "never",
+                    "changed_at": last_dt.isoformat(), "example": example})
     return out
 
 
@@ -150,20 +184,20 @@ def main():
         payload = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    start, calls = read_transcript(payload.get("transcript_path", ""))
-    if not calls:
+    start, edits = read_transcript(payload.get("transcript_path", ""))
+    if not start:
         sys.exit(0)
-    findings = evaluate(start, calls)
+    findings = evaluate(start, edits)
     if not findings:
         sys.exit(0)
     d = findings[0]
     sys.stderr.write(
         f"BLOCKED by process-doc-currency: this session changed **{d['name']}** but its process "
-        f"doc has not been written to since the session began.\n"
+        f"doc has not been written to since that change.\n"
         f"  Doc:  {d['doc']}\n"
         f"        last written {d['updated']} · domain last changed {d.get('changed_at')}\n"
         f"  It records {d['records']}.\n"
-        f"  What triggered this: {d['example']}\n\n"
+        f"  What changed: {d['example']}\n\n"
         f"  Update it now — edit, add, amend or delete, whatever the session actually learned — "
         f"then finish the turn. Read it first, change the parts that are now wrong, and do not "
         f"append a duplicate section.\n"
@@ -178,17 +212,18 @@ def main():
 if __name__ == "__main__":
     if "--domains" in sys.argv:
         for d in DOMAINS:
-            print(f"{d['name']}\n  doc: {d['doc']}\n  fires on: {d['changed']}\n")
+            effs = ", ".join(f"{t}.{c}" for t, c, _ in d["effects"])
+            print(f"{d['name']}\n  doc: {d['doc']}\n  effects: {effs}\n  files: {d['files']}\n")
         sys.exit(0)
     if "--test" in sys.argv:
         p = sys.argv[sys.argv.index("--test") + 1]
-        start, calls = read_transcript(p)
-        print(f"session start: {start} · {len(calls)} tool calls")
-        f = evaluate(start, calls)
+        start, edits = read_transcript(p)
+        print(f"session start: {start} · {len(edits)} structured file edits")
+        f = evaluate(start, edits)
         if not f:
-            print("would NOT block — no guarded domain was changed without its doc being written")
+            print("would NOT block — no guarded domain changed after its doc was written")
         for x in f:
             print(f"would BLOCK [{x['name']}] — doc last updated {x['updated']}\n"
-                  f"   trigger: {x['example']}")
+                  f"   change: {x['example']}")
         sys.exit(0)
     main()
