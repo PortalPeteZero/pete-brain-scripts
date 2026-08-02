@@ -171,6 +171,53 @@ def gather():
         f"SELECT a.incident_id FROM clancy_dn_answers a "
         f"WHERE a.question='Service Strike Underlying Cause' "
         f"AND a.answer ILIKE '%insufficient plans%') ORDER BY i.strike_category, i.id")
+    d["gas_poly"] = int(sql(
+        f"SELECT count(*) n FROM clancy_dn_incidents WHERE fy='{FY}' "
+        f"AND strike_category='Gas' AND strike_subcategory ILIKE '%poly%'")[0]["n"])
+    d["gas_service_poly"] = int(sql(
+        f"SELECT count(*) n FROM clancy_dn_incidents WHERE fy='{FY}' "
+        f"AND strike_category='Gas' AND strike_subcategory ILIKE '%service%poly%'")[0]["n"])
+    def _consistency(where):
+        rows = sql(
+            f"SELECT CASE "
+            f"WHEN a.answer IS NULL THEN 'blank' "
+            f"WHEN a.answer ILIKE '%insufficient plans%' AND a.answer ILIKE '%unable to detect%' THEN 'both' "
+            f"WHEN a.answer ILIKE '%insufficient plans%' THEN 'plans' "
+            f"WHEN a.answer ILIKE '%unable to detect%' THEN 'unable' "
+            f"ELSE 'other' END v, count(*) n "
+            f"FROM clancy_dn_incidents i "
+            f"LEFT JOIN clancy_dn_answers a ON a.incident_id=i.id "
+            f"AND a.question='Service Strike Underlying Cause' AND a.answered "
+            f"WHERE i.fy='{FY}' AND {where} GROUP BY 1")
+        out = {k: 0 for k in ("plans", "unable", "both", "other", "blank")}
+        out.update({r["v"]: int(r["n"]) for r in rows})
+        return out
+    d["cx_elec"] = _consistency("i.strike_category='Electric'")
+    d["cx_gas"] = _consistency(
+        "i.strike_category='Gas' AND i.strike_subcategory ILIKE '%service%poly%'")
+    # are the electric both-rows all blanket ticks? derive, never assert
+    both_opts = sql(
+        f"SELECT min(array_length(string_to_array(a.answer, ','), 1)) mn "
+        f"FROM clancy_dn_answers a JOIN clancy_dn_incidents i ON i.id=a.incident_id "
+        f"AND i.fy='{FY}' AND i.strike_category='Electric' "
+        f"WHERE a.question='Service Strike Underlying Cause' "
+        f"AND a.answer ILIKE '%insufficient plans%' AND a.answer ILIKE '%unable to detect%'")
+    d["cx_elec_both_min_opts"] = int(both_opts[0]["mn"] or 0)
+    d["cx_elec_plans_alone_ids"] = [int(r["id"]) for r in sql(
+        f"SELECT i.id FROM clancy_dn_incidents i "
+        f"JOIN clancy_dn_answers a ON a.incident_id=i.id "
+        f"AND a.question='Service Strike Underlying Cause' AND a.answered "
+        f"WHERE i.fy='{FY}' AND i.strike_category='Electric' "
+        f"AND a.answer ILIKE '%insufficient plans%' "
+        f"AND a.answer NOT ILIKE '%unable to detect%' ORDER BY i.id")]
+    wx = sql(
+        f"SELECT count(*) n FROM clancy_dn_answers a "
+        f"JOIN clancy_dn_incidents i ON i.id=a.incident_id "
+        f"AND i.fy='{FY}' AND i.strike_category='Electric' "
+        f"WHERE a.question='Service Strike Underlying Cause' "
+        f"AND a.answer ILIKE '%insufficient plans%' AND a.answer ILIKE '%unable to detect%' "
+        f"AND a.answer ILIKE '%inclement weather%' AND a.answer ILIKE '%night working%'")
+    d["cx_elec_both_weather"] = int(wx[0]["n"])
     # plans question, on the completed sections
     pq = sql(
         f"SELECT lower(btrim(a.answer)) a, count(*) n FROM clancy_dn_answers a "
@@ -356,6 +403,31 @@ CSS = """
 .pk-e .pkc{font-size:12.5px;color:#6a7480;margin-top:10px;font-weight:600}
 .pk-p{background:#eceff2;border-radius:16px;padding:20px 24px;color:#353E47;
  font-size:13.5px;line-height:1.65}
+.cxrule{background:linear-gradient(135deg,#353E47,#3e4954);color:#e4eaf0;
+ border-radius:16px;border-left:6px solid #97D700;padding:20px 24px;font-size:15px;
+ line-height:1.65;margin-top:22px}
+.cxrule b{color:#fff}
+.cxg{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+@media(max-width:860px){.cxg{grid-template-columns:1fr}}
+.cxcard{background:#fff;border:1px solid #e7eaf0;border-radius:16px;padding:18px 20px;
+ box-shadow:0 10px 28px -20px rgba(53,62,71,.3)}
+.cxcard h4{font-size:15.5px;letter-spacing:-.01em;margin-bottom:2px}
+.cxcard .cxs{font-size:12px;color:#6a7480;margin-bottom:14px;font-weight:600}
+.cxrow{padding:9px 10px;border-radius:10px;margin:5px 0}
+.cxrow .cxl{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+ font-size:13px;font-weight:700;color:#2b3440}
+.cxrow .cxn{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.cxrow .cxb{height:8px;border-radius:4px;background:#eef1f5;margin-top:6px;overflow:hidden}
+.cxrow .cxb i{display:block;height:100%;background:#9aa4b0;border-radius:4px}
+.cxrow .cxnote{font-size:11.5px;color:#6a7480;margin-top:5px;line-height:1.4}
+.cxrow.imposs{background:#fdeef1;border:2px solid #D50032}
+.cxrow.imposs .cxn{color:#D50032}
+.cxrow.imposs .cxb i{background:#D50032}
+.cxrow.blanket{background:#fdf3e4;border:2px solid #b45309}
+.cxrow.blanket .cxn{color:#b45309}
+.cxrow.blanket .cxb i{background:#b45309}
+.cxrow.truth{background:#eceff2;border:2px solid #353E47}
+.cxrow.truth .cxb i{background:#353E47}
 .vgx{display:none}
 .vwrap{max-height:255px;overflow:hidden;position:relative}
 .vgx:checked + .vwrap{max-height:none}
@@ -415,17 +487,70 @@ def build():
     _proven = " &mdash; among them damage 152586, the one whose recorded conclusions are on record as incorrect" \
         if any(r["id"] == 152586 for r in elec) else ""
     _rest_all_poly = rest and all("poly" in (r["sub"] or "").lower() for r in rest)
+    gas_blamed = sum(1 for r in ps if r["cat"] == "Gas")
+
+    # "Does the record agree with itself?" — the internal-consistency test (Pete, 2 Aug)
+    ce, cg = d["cx_elec"], d["cx_gas"]
+    ne, ng = sum(ce.values()), sum(cg.values())
+    def _cxrow(label, n, total, cls="", note=""):
+        w = 0 if total == 0 else max(3, round(n / total * 100))
+        nt = f'<div class="cxnote">{note}</div>' if note else ""
+        return (f'<div class="cxrow {cls}"><div class="cxl"><span>{label}</span>'
+                f'<span class="cxn">{n}</span></div>'
+                f'<div class="cxb"><i style="width:{w}%"></i></div>{nt}</div>')
+    _wx = (" &mdash; listing, along the way, night working and the weather"
+           if d["cx_elec_both_weather"] == ce["both"] and ce["both"] else "")
+    cx_block = f'''
+<div class="cxrule"><b>Does the record agree with itself?</b> On an electric cable, wrong
+plans can only cause a strike if the trace also failed &mdash; if the genny and CAT find
+the cable, the plans do not matter. So &ldquo;Insufficient plans&rdquo; on an electric
+damage must come paired with &ldquo;Unable to detect location of service&rdquo;.
+<b>Plans alone is half an answer: it never explains why the trace did not save you.</b></div>
+<div class="cxg">
+<div class="cxcard"><h4>Electric &mdash; {ne} damages</h4>
+<div class="cxs">Traceable, conductive: detection should find these</div>
+{_cxrow("&ldquo;Insufficient plans&rdquo; ALONE", ce["plans"], ne, "imposs",
+        ("The impossible answer: nothing explains why the trace did not find the cable."
+         + (" Damage 152586 &mdash; the one that failed its data review &mdash; sits here."
+            if 152586 in d["cx_elec_plans_alone_ids"] else "")
+         + (" So does 133852, whose own form says the plans showed the service where expected."
+            if 133852 in d["cx_elec_plans_alone_ids"] else "")) if ce["plans"] else "")}
+{_cxrow("Plans + unable-to-detect together", ce["both"], ne, "blanket",
+        (f"Every one is a blanket answer ticking {d['cx_elec_both_min_opts']} boxes at once{_wx}. Nothing was actually paired." if ce["both"] else ""))}
+{_cxrow("&ldquo;Unable to detect&rdquo; as a considered answer", ce["unable"], ne, "",
+        "Never once chosen on its own for an electric cable")}
+{_cxrow("Other options", ce["other"], ne)}
+{_cxrow("Investigation report blank", ce["blank"], ne)}
+</div>
+<div class="cxcard"><h4>Gas service pipes &mdash; {ng} damages</h4>
+<div class="cxs">Poly, typically not on plans: here the pairing is simply TRUE</div>
+{_cxrow("Plans + unable-to-detect together", cg["both"], ng, "truth",
+        "The one answer that is a plain fact for a poly service pipe &mdash; never written")}
+{_cxrow("&ldquo;Unable to detect&rdquo; alone", cg["unable"], ng)}
+{_cxrow("&ldquo;Insufficient plans&rdquo; alone", cg["plans"], ng)}
+{_cxrow("Other options", cg["other"], ng)}
+{_cxrow("Investigation report blank", cg["blank"], ng, "truth",
+        "The biggest answer on the hardest pipes is silence")}
+</div></div>
+<div class="strip" style="border-left-color:{RED};margin-top:14px">The record does not
+agree with itself. Where the pairing is impossible to avoid, it never appears; where it is
+impossible to defend, it stands alone.</div>'''
+
     plans_split_box = f'''
 <div class="pkey">
-<div class="pk-e"><span class="pkh">The key finding</span>
-<div class="pkn">{len(elec)} of the {len(ps)}</div>
-damages blaming &ldquo;Insufficient plans&rdquo; are <b>electric cables</b> &mdash;
-conductive, exactly what the genny and CAT exist to find.
+<div class="pk-p"><span class="pkh" style="background:#353E47;color:#fff;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:14px;padding:4px 12px;margin-bottom:10px">Where plans really are the problem</span>
+<div class="pkn" style="font-size:38px;font-weight:800;color:#353E47;letter-spacing:-.02em;line-height:1;margin-bottom:8px">{d["gas_poly"]} plastic gas damages</div>
+{d["gas_service_poly"]} of them are <b>service pipes</b> &mdash; typically not shown on
+plans at all, and a poly pipe gives the genny and CAT nothing to find. If
+&ldquo;insufficient plans&rdquo; belonged anywhere as a finding, it is here.
+<div style="margin-top:10px;font-size:15px"><b>Recorded as a plans problem: {gas_blamed} of the {d["gas_poly"]}.</b></div></div>
+<div class="pk-e"><span class="pkh">Yet on the cables detection should always find</span>
+<div class="pkn">{len(elec)} electric cables</div>
+&mdash; conductive, exactly what the genny and CAT exist to find &mdash; carry
+&ldquo;Insufficient plans&rdquo; as the underlying cause.
 <mark>Insufficient plans should never stand as the cause or the lesson on an electric
 cable.</mark>
 <div class="pkc">{_chips(elec)}{_proven}</div></div>
-<div class="pk-p"><b>The other {len(rest)} are {"plastic (poly) services" if _rest_all_poly else "gas and water services"}</b>
-&mdash; {_chips(rest)}. {"The genny and CAT cannot pick these up: the only strikes here where plans genuinely carry more weight &mdash; and even here they are a contributing factor, not a lesson." if _rest_all_poly else "Where a service is plastic, plans genuinely carry more weight &mdash; and even there they are a contributing factor, not a lesson."}</div>
 </div>'''
 
     html = f"""{ui.head("This year&#8217;s damages: the report | Genny&#8217;s Damage Depot", CSS)}
@@ -570,6 +695,7 @@ written down a known working condition, not a cause. The real finding is that pl
 still being treated as if they position services. If there is a learning in this
 year&#8217;s record, it is that one.</div>
 {plans_split_box}
+{cx_block}
 </div></div>
 
 <div class="band"><div class="rwrap">
