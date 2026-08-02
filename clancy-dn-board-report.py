@@ -130,11 +130,12 @@ def gather():
         f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
         f"WHERE a.question IN ('Genny used?','CAT used?') "
         f"AND lower(btrim(a.answer))='no'")[0]["n"])
-    for q, key in (("Genny used?", "genny_yes"), ("CAT used?", "cat_yes")):
-        d[key] = int(sql(
-            f"SELECT count(*) n FROM clancy_dn_answers a "
-            f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
-            f"WHERE a.question='{q}' AND lower(btrim(a.answer))='yes'")[0]["n"])
+    for q, key in (("Genny used?", "genny"), ("CAT used?", "cat")):
+        for ans in ("yes", "no"):
+            d[f"{key}_{ans}"] = int(sql(
+                f"SELECT count(*) n FROM clancy_dn_answers a "
+                f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
+                f"WHERE a.question='{q}' AND lower(btrim(a.answer))='{ans}'")[0]["n"])
     d["kit_yes"] = int(sql(
         f"SELECT count(DISTINCT a.incident_id) n FROM clancy_dn_answers a "
         f"JOIN clancy_dn_incidents i ON i.id=a.incident_id AND i.fy='{FY}' "
@@ -422,21 +423,21 @@ damages had to teach, the record does not hold it.</div>
 
 <div class="band"><div class="rwrap">
 <h2><span class="tag" style="background:{CHAR}">Part two</span> What we have, in their own words</h2>
-<div class="sub">The {d["with_lessons"]} damages that do carry a cause and a lesson &mdash;
+<div class="sub">Of the {n} damages, {d["with_lessons"]} carry a cause and a lesson &mdash;
 shown exactly as written, nothing reworded. This is the entire harvest of the year so far.</div>
 <div class="statrow">
-{stat(d["with_cause"], "carry a root cause", CHAR)}
-{stat(d["with_lessons"], "carry something in the lessons field", CHAR)}
+{stat(f'{d["with_cause"]} of {n}', "damages carry a root cause", CHAR)}
+{stat(f'{d["with_lessons"]} of {n}', "damages carry something in the lessons field", CHAR)}
 {stat(d["blanket"], "of those causes tick four or more boxes at once", RED, R_T)}
 </div>
-<h3 style="font-size:16px;margin:20px 0 4px">The {d["with_cause"]} recorded causes</h3>
+<h3 style="font-size:16px;margin:20px 0 4px">The recorded causes &mdash; {d["with_cause"]} of the {n} damages have one</h3>
 <div class="sub" style="margin-bottom:4px">A cause that ticks nearly every option on the
 form names everything and explains nothing &mdash; those are flagged red.</div>
 <input type="checkbox" class="vgx" id="vg-causes">
 <div class="vwrap"><div class="vgrid">{cause_cards}</div><div class="vfade"></div></div>
 <label class="vmore" for="vg-causes" data-more="&#9662; Show all {d['with_cause']} causes"
  data-less="&#9652; Show the first row only"></label>
-<h3 style="font-size:16px;margin:26px 0 4px">The {d["with_lessons"]} recorded lessons</h3>
+<h3 style="font-size:16px;margin:26px 0 4px">The recorded lessons &mdash; {d["with_lessons"]} of the {n} damages have one</h3>
 <div class="sub" style="margin-bottom:4px">Colour is the verdict. Green: a concrete action.
 Amber: a slogan, or a rule that already exists. Red: not an answer at all. The test for
 each verdict is stated in part three; the classification is Sygma&#8217;s, stored against
@@ -454,14 +455,16 @@ next damage &mdash; not close this one, prevent the next one?</div>
 <div class="split2">
 {donut([("A concrete action", d["b_concrete"], GREEN),
         ("Restates a rule / slogan", d["b_restate"], AMBER),
-        ("Not an answer", d["b_non"], RED)],
-       str(d["b_concrete"]), "concrete actions")}
+        ("Not an answer", d["b_non"], RED),
+        ("No lesson at all", d["nothing"], "#c3cad2")],
+       str(d["b_concrete"]), f"of {n} name an action")}
 <div>
-<div class="callout"><b>{d["b_concrete"]} of the {d["with_lessons"]} contain a concrete
-action of any kind.</b> {d["b_restate"]} restate a rule the company already has, or offer a
-slogan &mdash; &ldquo;careful hand digging&rdquo;, &ldquo;expect the unexpected&rdquo;.
-{d["b_non"]} are not answers at all: &ldquo;N/A&rdquo;, &ldquo;Yes&rdquo;, &ldquo;TBC&rdquo;.
-The field was filled so the form would close.</div>
+<div class="callout"><b>Of the {n} damages, {d["b_concrete"]} produced a lesson with a
+concrete action of any kind.</b> {d["b_restate"]} restate a rule the company already has,
+or offer a slogan &mdash; &ldquo;careful hand digging&rdquo;, &ldquo;expect the
+unexpected&rdquo;. {d["b_non"]} are not answers at all: &ldquo;N/A&rdquo;,
+&ldquo;Yes&rdquo;, &ldquo;TBC&rdquo;. And {d["nothing"]} gave no lesson at all &mdash; the
+report is blank. The field, where it was filled, was filled so the form would close.</div>
 <div class="callout"><b>And of the {d["b_concrete"]}, only {len(d["strategic"])} reach
 beyond the job they were written on</b> &mdash; something the company could adopt everywhere
 to help prevent the next damage:</div>
@@ -474,8 +477,8 @@ to help prevent the next damage:</div>
 <div class="sub">The single most important fact about any strike on a buried service:
 was the service found before it was hit?</div>
 <div class="qbox">
-<div class="qb on"><div class="qq">On the form</div>Genny used? <br>&#10003; Yes on {d["genny_yes"]} of the {d["done"]} completed reports</div>
-<div class="qb on"><div class="qq">On the form</div>CAT used? <br>&#10003; Yes on {d["cat_yes"]} of the {d["done"]} completed reports</div>
+<div class="qb on"><div class="qq">On the form</div>Genny used? <br>&#10003; Yes on {d["genny_yes"]} of the {n} damages &middot; No on {d["genny_no"]} &middot; never answered on {n - d["genny_yes"] - d["genny_no"]}</div>
+<div class="qb on"><div class="qq">On the form</div>CAT used? <br>&#10003; Yes on {d["cat_yes"]} of the {n} damages &middot; No on {d["cat_no"]} &middot; never answered on {n - d["cat_yes"] - d["cat_no"]}</div>
 <div class="qb off"><div class="qq">Not on the form</div>Did the genny and CAT find the
 service that was hit? <br>This question does not exist anywhere on Depotnet.</div>
 </div>
@@ -501,8 +504,8 @@ Whether they could not detect or did not detect, the record cannot say.</div>
 <div class="band" style="background:{C_T}"><div class="rwrap">
 <h2><span class="tag" style="background:{CHAR}">Part five</span> &ldquo;The plans were wrong&rdquo; is not a cause</h2>
 <div class="statrow">
-{stat(f'{d["plans_no"]} of {d["done"]}', "completed reports answer that the utility was NOT where the plans showed", CHAR)}
-{stat(f'{d["kit_yes"]} of {d["done"]}', "completed reports answer Yes to the form&#8217;s own &lsquo;Genny used?&rsquo; and &lsquo;CAT used?&rsquo; questions &mdash; used is all the form can say", CHAR)}
+{stat(f'{d["plans_no"]} of {n}', "damages answer that the utility was NOT where the plans showed &mdash; the question is unanswered on " + str(n - d["plans_no"] - d["plans_yes"]), CHAR)}
+{stat(f'{d["kit_yes"]} of {n}', "damages answer Yes to the form&#8217;s own &lsquo;Genny used?&rsquo; and &lsquo;CAT used?&rsquo; questions &mdash; used is all the form can say", CHAR)}
 </div>
 <div class="callout"><b>The most common recorded story is that the service was not where
 the plans showed.</b> In this industry that is not a cause. Plans are known to be
