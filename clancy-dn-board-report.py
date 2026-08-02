@@ -318,6 +318,18 @@ CSS = """
 .ft .fx{color:#7a8490;font-weight:400}
 .asof{font-size:12px;color:#7a8490;font-weight:600;text-transform:uppercase;
  letter-spacing:.05em;margin-top:6px}
+.vgx{display:none}
+.vwrap{max-height:255px;overflow:hidden;position:relative}
+.vgx:checked + .vwrap{max-height:none}
+.vfade{position:absolute;left:0;right:0;bottom:0;height:110px;
+ background:linear-gradient(180deg,rgba(255,255,255,0),#fff)}
+.vgx:checked + .vwrap .vfade{display:none}
+.vmore{display:inline-flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer;
+ background:#97D700;color:#25320a;border-radius:20px;padding:8px 18px;font-size:13px;
+ font-weight:800;box-shadow:0 1px 3px rgba(53,62,71,.25)}
+.vmore:hover{background:#a5e211}
+.vmore::after{content:attr(data-more)}
+.vgx:checked ~ .vmore::after{content:attr(data-less)}
 """
 
 
@@ -409,13 +421,19 @@ shown exactly as written, nothing reworded. This is the entire harvest of the ye
 <h3 style="font-size:16px;margin:20px 0 4px">The {d["with_cause"]} recorded causes</h3>
 <div class="sub" style="margin-bottom:4px">A cause that ticks nearly every option on the
 form names everything and explains nothing &mdash; those are flagged red.</div>
-<div class="vgrid">{cause_cards}</div>
+<input type="checkbox" class="vgx" id="vg-causes">
+<div class="vwrap"><div class="vgrid">{cause_cards}</div><div class="vfade"></div></div>
+<label class="vmore" for="vg-causes" data-more="&#9662; Show all {d['with_cause']} causes"
+ data-less="&#9652; Show the first row only"></label>
 <h3 style="font-size:16px;margin:26px 0 4px">The {d["with_lessons"]} recorded lessons</h3>
 <div class="sub" style="margin-bottom:4px">Colour is the verdict. Green: a concrete action.
 Amber: a slogan, or a rule that already exists. Red: not an answer at all. The test for
 each verdict is stated in part three; the classification is Sygma&#8217;s, stored against
 each damage and open to challenge.</div>
-<div class="vgrid">{lesson_cards}</div>
+<input type="checkbox" class="vgx" id="vg-lessons">
+<div class="vwrap"><div class="vgrid">{lesson_cards}</div><div class="vfade"></div></div>
+<label class="vmore" for="vg-lessons" data-more="&#9662; Show all {d['with_lessons']} lessons"
+ data-less="&#9652; Show the first row only"></label>
 </div></div>
 
 <div class="band" style="background:{G_T}"><div class="rwrap">
