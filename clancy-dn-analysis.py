@@ -1659,8 +1659,11 @@ service is not where it was supposed to be.</div>
 <div class="callout2"><b>It is not, on this record, a carelessness story.</b> Only
 {cs['no_detect']} of the {cs_n} investigated damages record a &ldquo;no&rdquo; to using
 the genny or the CAT &mdash; on the rest, the reports answer that the genny and CAT were
-used and the strike happened anyway. That points the fix at better plans and deeper checks
-where plans are known to be poor, not at telling teams to be more careful.</div>
+used and the strike happened anyway. Inaccurate plans contribute, and contribute more
+where the service is plastic. But plans are known to be indicative only, and position
+comes from detection, trial holes and safe digging &mdash; so the learning points at how
+services are being located and proven on the ground, not at better drawings, which do not
+exist.</div>
 <div class="callout2"><b>When it goes wrong, it is usually under a machine.</b>
 {cs['mech']} of the {cs_n} name mechanical plant; {cs['hand']} name a hand tool.</div>
 <div class="callout2"><b>What would make this analysis stronger is simple:</b> the
