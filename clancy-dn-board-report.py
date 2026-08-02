@@ -444,6 +444,31 @@ CSS = """
 .cxrow.blanket .cxb i{background:#b45309}
 .cxrow.truth{background:#eceff2;border:2px solid #353E47}
 .cxrow.truth .cxb i{background:#353E47}
+.loop{display:grid;grid-template-columns:1fr 1.2fr 1fr;grid-template-rows:auto auto auto;
+ gap:10px;margin:26px 0 6px;align-items:center}
+.lp{background:#fff;border:1px solid #e7eaf0;border-radius:14px;padding:14px 16px;
+ box-shadow:0 8px 24px -18px rgba(53,62,71,.35);font-size:13.5px;line-height:1.5;
+ color:#2b3440}
+.lp .lpn{display:inline-flex;width:26px;height:26px;border-radius:8px;background:#353E47;
+ color:#fff;align-items:center;justify-content:center;font-weight:800;font-size:13px;
+ margin-bottom:6px}
+.lp b{display:block;font-size:14px;margin-bottom:4px}
+.lp .lpc{font-size:12px;color:#6a7480;margin-top:5px}
+.lp1{grid-area:1/2}.lp2{grid-area:2/3}.lp3{grid-area:3/2}.lp4{grid-area:2/1}
+.lpmid{grid-area:2/2;justify-self:center;text-align:center;background:#353E47;color:#fff;
+ border-radius:50%;width:170px;height:170px;display:flex;align-items:center;
+ justify-content:center;padding:20px;font-size:14px;font-weight:800;line-height:1.4;
+ box-shadow:0 14px 34px -16px rgba(53,62,71,.55)}
+.lparr{font-size:30px;font-weight:800;color:#97D700;text-align:center;line-height:1}
+.la1{grid-area:1/3;align-self:end;justify-self:start}
+.la2{grid-area:3/3;align-self:start;justify-self:start}
+.la3{grid-area:3/1;align-self:start;justify-self:end}
+.la4{grid-area:1/1;align-self:end;justify-self:end}
+.loopunder{font-size:14.5px;font-weight:700;color:#17202b;margin:8px 0 18px}
+@media(max-width:860px){.loop{display:flex;flex-direction:column}
+ .lparr{display:none}.lpmid{width:auto;height:auto;border-radius:14px}
+ .lp:not(:last-child):after{content:"\2193";display:block;text-align:center;
+  color:#97D700;font-size:22px;font-weight:800;margin-top:8px}}
 .vgx{display:none}
 .vwrap{max-height:255px;overflow:hidden;position:relative}
 .vgx:checked + .vwrap{max-height:none}
@@ -787,13 +812,33 @@ anything at all.</div>
 {strip("That is not a lessons process. That is a form being closed.", RED)}
 {strip("Fixes, not strategy: what the record holds serves the incident it belongs to, never the next one.", CHAR)}
 {strip("The one recorded cause put to the test did not hold.", RED)}
-<div class="callout" style="border-left-color:{GREEN}"><b>What changes this.</b> Three
+<h3 style="font-size:17px;margin:26px 0 2px">Why the record stays like this</h3>
+<div class="loop">
+<div class="lp lp1"><span class="lpn">1</span><b>Gaps in knowledge and understanding</b>
+of how services are found and how damages happen
+<div class="lpc">The wrong genny connection at Hollow Lane; plans treated as positioning services</div></div>
+<div class="lparr la1">&#8600;</div>
+<div class="lp lp2"><span class="lpn">2</span><b>So the data is read wrongly</b>
+<div class="lpc">&ldquo;Insufficient plans&rdquo; on {len(elec)} traceable electric cables; causes that dissolve under review</div></div>
+<div class="lparr la2">&#8601;</div>
+<div class="lp lp3"><span class="lpn">3</span><b>So the wrong data gets collected &mdash; or none</b>
+<div class="lpc">{d["nothing"]} of {n} reports blank; the detection question missing from the form</div></div>
+<div class="lparr la3">&#8598;</div>
+<div class="lp lp4"><span class="lpn">4</span><b>So there is less to learn from</b>
+<div class="lpc">{len(d["strategic"])} usable lessons out of {n} damages</div></div>
+<div class="lparr la4">&#8599;</div>
+<div class="lpmid">The loop that keeps the record where it is</div>
+</div>
+<div class="loopunder">Training breaks it at the first arrow. Better questions on the form
+break it at the third.</div>
+<div class="callout" style="border-left-color:{GREEN}"><b>What changes this.</b> Four
 things, in order. Complete the investigation report on every damage &mdash; {d["nothing"]}
 of {n} are blank. Ask the question that matters on the form itself: was the service
-detected before the strike, and if not, why not. And read the supporting documents behind
-each damage &mdash; the photographs, the permits, the survey data &mdash; which is the
-enrichment work already planned. That work produces the second report: what the documents
-say that the fields do not.</div>
+detected before the strike, and if not, why not. Train the people interpreting the data
+&mdash; the investigations are only as good as the understanding behind them. And read
+the supporting documents behind each damage &mdash; the photographs, the permits, the
+survey data &mdash; which is the enrichment work already planned. That work produces the
+second report: what the documents say that the fields do not.</div>
 </div></div>
 {ui.foot(today)}
 """
