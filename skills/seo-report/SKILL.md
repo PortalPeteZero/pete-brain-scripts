@@ -147,6 +147,36 @@ Built 1 Aug 2026 in a session that started as "run the health check" and became 
 every previous Sygma session went round the same circles. **If you follow this section you do not
 have to re-derive any of it.** Everything below is live and verified.
 
+### ⛔ WHERE A SEARCH VOLUME COMES FROM (added 2 Aug 2026 — read before quoting any demand figure)
+**`seo_keyword_map.volume`, refreshed by `seo-volume-refresh.py`. Nowhere else, ever.**
+`seo_keyword_map.priority` is a hand-set RANKING field. Four tools read it and printed it as
+"monthly searches" — `seo-term.py`, `seo-movement.py`, `seo-section-report.py`, `seo-week-snapshot.py`.
+It was set once when the map was built and never refreshed, so it could only drift: a live pull of
+all 482 mapped keywords found **268 out by more than 25%**, total demand overstated by **67%**
+(9,707 held vs 5,804 live). Fixing ONE tool on 1 Aug and leaving three is why Pete got a different
+number again the next morning — the lesson is that this class of bug is never fixed in one file.
+```bash
+VAULT=/tmp/pbs python3 /tmp/pbs/seo-volume-refresh.py            # report drift, write nothing
+VAULT=/tmp/pbs python3 /tmp/pbs/seo-volume-refresh.py --apply    # pull live Ahrefs GB, write the map
+```
+`volumes_for()` RAISES if the map has never been refreshed, and the writer REFUSES a partial pull
+(<80% answered), because a partial refresh silently reinstates the stale numbers. **Before quoting a
+demand total, check `volume_checked_at`.** 401 of 482 keywords carry a volume; the other 81 are terms
+Ahrefs returns nothing for and must render as no figure, never as zero.
+
+### ⛔ THE WINDOW IS PART OF THE NUMBER
+`seo_term_weekly.wpos` is a **SEVEN-day** figure (the snapshot query is `date > wk - 7`).
+`seo-term.py` and `seo-movement.py` use **28 days**. On 2 Aug I presented weekly figures under a
+"28 days to 30 July" heading, which made a one-week reading look like a month. **State the window
+every time, and never mix the two in one table.** Positions also move legitimately as the window
+rolls — "cat and genny training" ranged 6 to 88 across 28 days — so a changed number is not
+automatically a bug, but an unlabelled one is always a fault.
+
+### Where the "what needs work" answer already lives
+Do NOT hand-roll SQL to invent a new framing. `seo-movement.py` writes `seo_term_movement`, and its
+**INVISIBLE** verdict IS the work list — real demand Sygma is not being shown for. Quote the stored
+run (`as_of`, `window_days`) or re-run `--write`; never blend a stored count with a fresh one.
+
 ### The one rule that resolves most arguments
 `public.seo_keyword_map` is the **SSOT for what Sygma targets**. 484 commercial keywords, 43 pages,
 two sections (Avoidance 334 / Utility Mapping 150). Nothing may be reported that is not in it, and
@@ -162,7 +192,8 @@ Radiodetection in — those are real Sygma courses).
 | "how are we doing for **one term**?" | `seo-term.py "<term>"` — deterministic, identical every run |
 | "how is **Avoidance / Mapping** doing, and what needs work?" | `seo-section-report.py avoidance\|mapping` |
 | "did anything actually **move**?" | `seo-movement.py --write` |
-| capture the week (rolling 4-week board) | `seo-week-snapshot.py` |
+| capture the week (rolling 4-week board) | `seo-week-snapshot.py` — refreshes map volumes first |
+| refresh search volumes on the map | `seo-volume-refresh.py --apply` — THE only source of a volume |
 | the whole picture, four sources | `skills/sygma-health-report/scripts/build_report.py` |
 | who is above us on a term | `ahrefs-api.py` → `tracked_serp(9613452, "<term>")` — **FREE** |
 
