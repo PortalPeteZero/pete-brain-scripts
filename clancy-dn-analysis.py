@@ -412,6 +412,21 @@ def gather():
     d["only_other"] = sql(f"""SELECT count(*) n FROM clancy_dn_incidents WHERE fy='{FY}'
       AND btrim(coalesce(root_cause,''))='Other'""")[0]["n"]
 
+    # the lead section's story, all derived: what the usable cause analyses actually say
+    d["cause_story"] = sql(f"""SELECT
+      count(*) FILTER (WHERE root_cause ILIKE '%location and condition%') svcloc,
+      count(*) FILTER (WHERE underlying_cause ILIKE '%insufficient plans%'
+        OR underlying_cause ILIKE '%unable to detect%') plans_or_detect,
+      count(*) FILTER (WHERE caused_by_plant ~* 'digger|excavator|breaker|drill|saw|pick') mech,
+      count(*) FILTER (WHERE caused_by_plant ~* 'hand|graft|shovel|spade|fork|bar') hand,
+      count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clancy_dn_answers a WHERE a.incident_id=i.id
+        AND a.question='Genny used?' AND upper(btrim(a.answer))='NO')
+        OR EXISTS (SELECT 1 FROM clancy_dn_answers a WHERE a.incident_id=i.id
+        AND a.question='CAT used?' AND upper(btrim(a.answer))='NO')) no_detect,
+      count(*) n
+      FROM clancy_dn_incidents i WHERE fy='{FY}'
+      AND root_cause IS NOT NULL AND btrim(root_cause)<>''""")[0]
+
     d["actions"] = sql(f"""SELECT count(DISTINCT a.incident_id) damages_with, count(*) actions
       FROM clancy_dn_actions a JOIN clancy_dn_incidents i ON i.id=a.incident_id
       WHERE i.fy='{FY}'""")[0]
@@ -755,12 +770,14 @@ def damage_table_v2(d):
             stat = a.get("status") or "&mdash;"
             stat_h = (f'<span class="pill closed">Closed</span>' if stat == "Closed"
                       else f'<span class="pill open">{esc(stat)}</span>')
+            # ONE full-width cell per action — spreading fields across 16 unrelated columns
+            # made the child rows unreadable (Pete, 2 Aug evening)
+            _meas = esc(a.get("measure") or "")
             tr.append(
-                f'<tr class="achild" data-parent="{r["id"]}">'
-                f'<td colspan="4">{" &middot; ".join(bits)}</td>'
-                f'<td colspan="5">{esc(a.get("measure") or "") or "&mdash;"}</td>'
-                f'<td colspan="3" style="white-space:nowrap">{when}</td>'
-                f'<td colspan="4">{stat_h}</td></tr>')
+                f'<tr class="achild" data-parent="{r["id"]}"><td colspan="16">'
+                f'<b>{" &middot; ".join(bits)}</b> &middot; {stat_h} &middot; '
+                f'<span style="white-space:nowrap">{when}</span>'
+                f'{" &mdash; " + _meas if _meas else ""}</td></tr>')
 
     def opts(key, label):
         vals = sorted({r[key] for r in rows})
@@ -1070,8 +1087,7 @@ STAGE4_CSS = """
 .tscroll{max-height:80vh;overflow:auto;border-radius:14px}
 table.reg thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
  padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
-table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;
- margin-bottom:3px;max-width:150px;white-space:normal;text-transform:none;letter-spacing:.02em}
+table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.25;margin-bottom:4px;width:120px;min-height:26px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 table.reg thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
 table.reg td{padding:8px 10px;font-size:13px;background:#fff}
@@ -1233,8 +1249,17 @@ def build(edition, label):
     na = d["dupe_nonanswers"]
     if d["dupes"]:
         blocks = ""
+        _short_lines = []
         for r in d["dupes"]:
             recs = r["recs"]
+            # A short pasted phrase ("AML to be sourced...") is admin noise, not a lesson —
+            # four full evidence cards for 53 characters buried the real finding. One line.
+            if int(r["len"]) < 120:
+                ids_s = ", ".join(str(x["id"]) for x in recs)
+                _short_lines.append(
+                    f'<li>&ldquo;{esc(r["lesson"])}&rdquo; &mdash; pasted on {r["n"]} damages '
+                    f'({ids_s}){" across two years" if int(r["n_years"]) > 1 else ""}.</li>')
+                continue
             cards = ""
             for x in recs:
                 # A group can span years, so a card that is NOT this year's says which year it is.
@@ -1248,6 +1273,7 @@ def build(edition, label):
                     f'<tr><td>Depth of the service</td><td>{x["depth"]}mm</td></tr>'
                     f'<tr><td>Root cause recorded</td><td>{esc(x["root"])}</td></tr>'
                     f'<tr><td>Underlying cause</td><td>{esc(x["under"])}</td></tr></table>'
+                    f'<div class="fl" style="margin-top:8px">WHAT HAPPENED ON THIS DAMAGE, IN ITS OWN WORDS</div>'
                     f'<div class="dq">{esc(x["descr"])}</div></div>')
             ids = ", ".join(str(x["id"]) for x in recs)
             span = ("" if r["n_years"] < 2 else
@@ -1255,8 +1281,12 @@ def build(edition, label):
             blocks += (
                 f'<h3 style="margin-top:22px">On {r["n"]} damages &middot; {r["len"]} characters</h3>'
                 f'<div class="why">Damages {ids}.</div>'
+                f'<div class="fl" style="margin-top:10px">THE LESSON TEXT BOTH CARRY, WORD FOR WORD</div>'
                 f'<blockquote class="q">{esc(r["lesson"])}</blockquote>'
-                f'<p>Each of these carries that text in its lessons-learnt field.{span}</p>'
+                f'<p>That exact text sits in the lessons-learnt field of each damage below. The '
+                f'descriptions underneath are each damage&#8217;s OWN account of what happened '
+                f'&mdash; different events, and that is the point: one lesson was written once '
+                f'and pasted onto both.{span}</p>'
                 f'<div class="dmgs">{cards}</div>')
 
         # The paragraphs below were written by hand about ONE SPECIFIC PAIR — 121878 and 122362
@@ -1267,7 +1297,9 @@ def build(edition, label):
         # group appeared, which is exactly what happened once the matching was fixed.
         _pair = {121878, 122362}
         reading = ('' if not any({x["id"] for x in r["recs"]} == _pair for r in d["dupes"]) else
-            '<p style="margin-top:16px">Take the 312-character one. Read the two accounts against '
+            '<p style="margin-top:16px">Take the long safety lesson quoted above &mdash; the one '
+            'beginning &ldquo;When digging around underground utility services&rdquo;. Read the '
+            'two accounts against '
             'the lesson. The first team '
             'had already stopped the excavator at the marked services and gone over to hand '
             'digging; they struck an <b>unmarked</b> gas service with a graft <b>in hard ground</b>. '
@@ -1283,15 +1315,14 @@ def build(edition, label):
             'being caught out by an unmarked service. That is genuinely worth briefing, and it is '
             'now sitting behind a paragraph that reads as though it were written for something '
             'else.</p>')
-        nonans = ('' if not na["rows"] else
-            f'<p style="margin-top:16px"><b>Repeated non-answers are counted separately and are '
-            f'not in the figures above.</b> A further {na["rows"]} damages this year share '
-            f'{na["texts"]} short texts of the &ldquo;N/A&rdquo;, &ldquo;TBC&rdquo;, '
-            f'&ldquo;AML&rdquo; kind. Two people both typing &ldquo;N/A&rdquo; is a gap in the '
-            f'record, not a lesson copied from one damage to another, so counting them together '
-            f'would overstate the reuse.</p>')
+        nonans = ''
+
         # Groups form across years, so the total and this year's share are different numbers and
         # BOTH have to be stated. Saying only the total put "6 damages" beside a tile reading 3.
+        if _short_lines:
+            blocks += ('<h3 style="margin-top:22px">Short pasted phrases</h3>'
+                       '<p>Not lessons &mdash; the same few admin words dropped into the field '
+                       'on several damages:</p><ul class="kf">' + "".join(_short_lines) + "</ul>")
         n_groups = len(d["dupes"])
         n_dmg = sum(r["n"] for r in d["dupes"])
         n_here = sum(r["n_this_year"] for r in d["dupes"])
@@ -1326,11 +1357,7 @@ def build(edition, label):
     # section 3's reading, derived from the same classification the by-utility table uses
     _mech = sum(r.get("mech") or 0 for r in d["mech_by_utility"])
     _hand = sum(r.get("hand") or 0 for r in d["mech_by_utility"])
-    _plant_read = (f"Read one thing off this before the detail: {_mech} of the {n} name mechanical "
-                   f"plant &mdash; a digger, breaker, drill or saw &mdash; against {_hand} naming a "
-                   f"hand tool. A mechanical strike is the machine finding the service before the "
-                   f"crew does; that split is what the Genny &amp; CAT columns in the register "
-                   f"exist to interrogate.")
+    # _mech and _hand feed section 4's opening line directly
     # section 5's closing sentence: the not-done damages, split by their own case status
     _nd = sql(f"""SELECT status, count(*) n FROM clancy_dn_incidents i
       WHERE fy='{FY}' AND NOT EXISTS (SELECT 1 FROM clancy_dn_answers a
@@ -1341,6 +1368,8 @@ def build(edition, label):
                     f"&ldquo;Complete with Outstanding Actions&rdquo;)") if _odd_n else ""
     _last_action_nice = (datetime.datetime.strptime(str(d["last_action"]), "%Y-%m-%d")
                          .strftime("%-d %B %Y")) if d.get("last_action") else "never"
+    cs = {k: int(v or 0) for k, v in d["cause_story"].items()}
+    cs_n = cs["n"]
     wu = d["depth_wrong_unit"]
     wrong_unit_note = ""
     if wu:
@@ -1536,35 +1565,44 @@ record can carry that weight.</div>
  <div class="kpi {'warn' if delta > 0 else ''}"><div class="n">{delta:+d}%</div>
   <div class="l">against the same<br>months last year ({py})</div></div>
  <div class="kpi warn"><div class="n">{h['supply_lost']}</div><div class="l">interrupted a<br>customer&#8217;s supply</div></div>
- <div class="kpi warn"><div class="n">{h['still_open']}</div><div class="l">still open<br>on Depotnet</div></div>
- <div class="kpi"><div class="n">{ib['has_section']}</div>
-  <div class="l">investigation report<br>sections done</div></div>
-</div>
-
-<div class="kpis">
- <div class="kpi"><div class="n">{ib['complete']}/{ib['has_section']}</div>
-  <div class="l">of the done sections<br>marked complete by Clancy</div></div>
- <div class="kpi warn"><div class="n">{blank_ok}</div>
-  <div class="l">carry no cause &mdash; their report<br>section is not done</div></div>
- <div class="kpi warn"><div class="n">{oldest_open}</div>
-  <div class="l">open for 60 days<br>or longer</div></div>
- <div class="kpi warn"><div class="n">{cf['distinct_briefable']}/{d['closed_n']}</div>
-  <div class="l">closed damages that produced<br>a lesson worth briefing</div></div>
- <div class="kpi warn"><div class="n">{lf['copied']}</div>
-  <div class="l">lessons copied word for word<br>from another damage</div></div>
+ <div class="kpi"><div class="n">{ib['has_section']}/{n}</div>
+  <div class="l">investigated on paper &mdash;<br>report sections done</div></div>
+ <div class="kpi warn"><div class="n">{cf['distinct_briefable']}</div>
+  <div class="l">lessons worth briefing<br>came out of it</div></div>
 </div>
 
 {movement}
 
-<div class="sec"><h2>1. The year</h2>
+<div class="sec"><h2>1. What is causing the damages</h2>
+<div class="why">The straight answer, from the {cs_n} damages whose investigation report section
+names a cause. That is {cs_n} of {n} &mdash; the picture will firm up as more sections are done,
+and this page says so rather than pretending.</div>
+<p><b>The dominant story is services not being where the paperwork said they would be.</b>
+{cs['svcloc']} of the {cs_n} name &ldquo;service location and condition&rdquo; as the root cause,
+and {cs['plans_or_detect']} name &ldquo;insufficient plans&rdquo; or &ldquo;unable to detect the
+service&rdquo; underneath. In plain terms: crews are digging where the drawings and detection
+said it was safe to dig, and the service is not where it was supposed to be.</p>
+<p><b>It is not, on this record, a carelessness story.</b> Only {cs['no_detect']} of the {cs_n}
+investigated damages record a &ldquo;no&rdquo; to using the CAT or the genny &mdash; on the rest,
+the crews say the detection kit was used and the strike happened anyway. That points the fix at
+better plans and deeper checks where plans are known to be poor, not at telling crews to be more
+careful.</p>
+<p><b>When it goes wrong, it is usually a machine that does the damage.</b> {cs['mech']} of the
+{cs_n} name mechanical plant &mdash; a digger, breaker or drill &mdash; against {cs['hand']} a
+hand tool. A machine strike is instant and total, which is why the checks before the bucket goes
+in matter more than anything done after.</p>
+<p><b>What would make this analysis stronger is simple:</b> the {blank_ok} damages with no
+investigation report section yet. Every one completed adds a cause to this picture. Today the
+year&#8217;s cause analysis rests on {pct(cs_n, n)} of its damages.</p></div>
+
+<div class="sec"><h2>2. The year</h2>
 <div class="why">Month by month, and how many of each month&#8217;s damages have their investigation report section completed.</div>
 {cols(d['months'], 'm', 'n', 'done')}
-<p style="margin-top:16px">{n} damages{months_phrase}{compare}. {h['still_open']} are still open on
-Depotnet. The small figure under each month is how many of that month&#8217;s damages have their
-investigation report section done &mdash; the only rows this page can read a cause or a lesson
-from.</p></div>
+<p style="margin-top:16px">{n} damages{months_phrase}{compare}. The small figure under each month
+is how many of that month&#8217;s damages have their investigation report section done &mdash; the
+only rows this page can read a cause or a lesson from.</p></div>
 
-<div class="sec"><h2>2. What was struck</h2>
+<div class="sec"><h2>3. What was struck</h2>
 <div class="why">Depotnet&#8217;s own strike category and recorded depth. Held for
 {h['with_struck']} of {n}.</div>
 <div class="split"><div>{hbar(d['utility'], total=n)}</div>
@@ -1575,14 +1613,18 @@ where it should have been from one that was not.</p>
 {wrong_unit_note}
 <h2 style="font-size:15px;margin-top:20px">Sub-category</h2>{hbar(d['subcat'], total=n)}</div>
 
-<div class="sec"><h2>3. How it happened</h2>
+<div class="sec"><h2>4. How it happened</h2>
 <div class="why">The plant or tool recorded as causing the damage, and the setting. Held for
 {h['with_plant']} of {n}.</div>
-<p>{_plant_read}</p>
+<p><b>{_mech} of the {n} were machine strikes</b> &mdash; a digger, breaker, drill or saw &mdash;
+against {_hand} with a hand tool. A machine strike is instant and total: by the time anyone
+feels resistance the service is already cut. That is why everything on this page about plans,
+detection and permits matters &mdash; they are the only checks that happen before the bucket
+goes in.</p>
 <div class="split"><div>{hbar(d['plant'], total=n)}</div>
-<div>{hbar(d['environment'], total=n, tone='grey')}</div></div></div>
+<div></div></div></div>
 
-<div class="sec"><h2>4. What Depotnet says caused it</h2>
+<div class="sec"><h2>5. What Depotnet says caused it</h2>
 <div class="why">Root and underlying cause, counted only from the sections that made a real
 selection in that field.</div>
 <p>Of {n} damages this year, <b>{h['with_cause']} carry a cause</b> and {n - h['with_cause']} carry
@@ -1592,34 +1634,28 @@ other of the two fields and are set aside below. That leaves {usable_line}</p>
 <h2 style="font-size:15px;margin-top:20px">Underlying cause</h2>{hbar(d['underlying'], 'val', 'n', total=d['under_n'])}
 {blanket_note}</div>
 
-<div class="sec"><h2>5. Where the process holds, and where it stops</h2>
-<div class="why">Split by whether the damage is closed, because closed damages are where the
-completed sections are.</div>
+<div class="sec"><h2>6. The backlog</h2>
+<div class="why">Open, closed, and how long damages wait &mdash; handled here, once.</div>
 <table class="t"><tr><th>Status</th><th>Damages</th><th>Investigation report done</th>
 <th>Depotnet says complete</th><th>Depotnet says not complete</th></tr>
 {status_rows}</table>
-<p style="margin-top:16px"><b>Every damage closed this year has its investigation report
-section completed. {d['closed_n']} of {d['closed_n']}.</b> That is worth saying plainly: a
-completed section and a closed damage go together without exception this year. Which of the two drives the other, we
-cannot see from here. Depotnet marks {closed_complete} of those {d['closed_n']} as complete and
-{closed_not} as not complete, which is its own view rather than ours.</p>
-<p>What is slow is getting there. {h['still_open']} of {n} are still open, and the older ones have
-been open a long time.</p>
-{open_rows_html}
-<p style="margin-top:14px">So the honest reading is not that {n - h['with_cause']} damages went
-uninvestigated. It is that {_notdone_open} of them are open and waiting their turn{_notdone_odd},
-and the learning from them is not available to anyone yet. That is a different problem with a
-different fix.</p></div>
+<p style="margin-top:16px"><b>The investigation happens when a damage closes.</b> All
+{d['closed_n']} closed damages are investigated; {_notdone_open} of the {h['still_open']} open
+ones are not yet. So the {blank_ok} missing investigations are mostly a queue, not a refusal
+&mdash; and until they are done, the causes and lessons from those damages do not exist for
+anyone.</p>
+<p><b>The queue is slow.</b> {oldest_open} of the open damages have been waiting more than 60
+days:</p>
+{open_rows_html}</div>
 
-<div class="sec"><h2>6. The learning gap, measured where it can be measured</h2>
-<div class="why">Judged only on the {d['closed_n']} damages that are closed, because a closed case
-is where the process has finished with the damage. Rules are stated so you can disagree with them.</div>
+<div class="sec"><h2>7. What the lessons are worth</h2>
+<div class="why">Of the {d['closed_n']} damages Clancy has closed and investigated, only
+{cf['distinct_briefable']} produced a lesson you could brief a crew with. Graded below.</div>
 <table class="t"><tr><th>What the lessons field holds</th><th>Closed damages</th><th>Share</th></tr>
 {closed_tier_rows}</table>
-<p style="margin-top:16px">This is the finding that survives scrutiny. All {d['closed_n']} closed
-damages have their investigation report section done, and every one has a cause. But of those {d['closed_n']}, only
-<b>{cf['distinct_briefable']}</b> produced a lesson that runs to more than a phrase. The rest are
-a few words: enough to close a field, not enough to brief a team on.</p>
+<p style="margin-top:16px">Every closed damage was investigated and has a cause &mdash; the
+process is being followed. But the lesson field, the part that would stop the NEXT damage, gets a
+few words: enough to close the form, not enough to brief a team.</p>
 <p><b>The section is being completed. The lesson field is not.</b> That is a gap in the last step
 of the form rather than in the diligence of the people filling it in, and it is the cheapest thing
 on this page to fix.</p>
@@ -1627,20 +1663,18 @@ on this page to fix.</p>
 
 {dupe_note}
 
-<div class="sec"><h2>7. By contract, and a question we cannot answer</h2>
+<div class="sec"><h2>8. By contract, and a question we cannot answer</h2>
 <div class="why">Shown with age, open count and the completed sections side by side, because
 any one of those columns on its own would be misleading.</div>
 <table class="t"><tr><th>Contract</th><th>Damages</th><th>Average age</th><th>Still open</th>
 <th>Investigation report done</th></tr>{contract_rows}</table>
 <p style="margin-top:16px">There is real variation here and we cannot tell you what causes it.
 {age_example}</p>
-<p>What we do <b>not</b> know is how Clancy work Depotnet in practice: whether an investigation is
-required at a fixed point, what triggers closure, whether different contracts are administered by
-different people with different habits, or whether some of this is simply timing. Any of those
-would produce the pattern above. <b>This table is a question for Clancy, not a conclusion about
-Clancy.</b></p></div>
+<p>The honest position: the pattern is real and the record does not say why &mdash; most
+likely it is about who administers Depotnet on each contract. <b>A question for Clancy, not a
+conclusion about any contract&#8217;s crews.</b></p></div>
 
-<div class="sec"><h2>8. What was learned</h2>
+<div class="sec"><h2>9. What was learned</h2>
 <div class="why">The lessons-learnt field, on the {h['with_lessons']} damages that carry one.</div>
 {hbar(d['lessons_quality'], total=h['with_lessons'])}
 <p style="margin-top:16px">Where the section is completed properly it produces something a
@@ -1649,7 +1683,7 @@ verbatim, because the difference between them is the whole argument.</p>
 <h2 style="font-size:15px;margin-top:18px">The thin ones, in full</h2><p>{thin_q}</p>
 <h2 style="font-size:15px;margin-top:18px">The substantial ones, in full</h2>{good_q}</div>
 
-<div class="sec"><h2>9. Three things visible only once it is all in one place</h2>
+<div class="sec"><h2>10. Three things visible only once it is all in one place</h2>
 <div class="why">Each of these is a count, not an interpretation.</div>
 <h2 style="font-size:15px">{_shallow_head}</h2>
 <table class="t"><tr><th>Utility</th><th>Under 450mm</th><th>With a depth</th><th>Share</th></tr>
@@ -1659,7 +1693,7 @@ verbatim, because the difference between them is the whole argument.</p>
 {mech_rows}</table>
 <h2 style="font-size:15px;margin-top:20px">The investigation report gap compounds</h2>{ev_line}</div>
 
-<div class="sec"><h2>10. What this cannot tell you</h2>
+<div class="sec"><h2>11. What this cannot tell you</h2>
 <div class="why">Stated plainly, because a report that hides its own limits is worth less than one
 that does not.</div>
 <p><b>{n - h['with_cause']} of {n} damages have no cause recorded.</b> Not an unclear cause. None.

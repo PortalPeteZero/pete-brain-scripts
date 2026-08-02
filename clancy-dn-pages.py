@@ -821,13 +821,13 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
             st = a.get("status") or "—"
             st_h = (f'<span class="b warn">{esc(st)}</span>' if st not in ("Closed",)
                     else f'<span class="b yes">Closed</span>')
+            # ONE full-width cell per action — colspans across 21 unrelated columns made the
+            # child rows unreadable (Pete, 2 Aug evening)
             rows_html.append(
-                f'<tr class="child" data-parent="{r["id"]}">'
-                f'<td colspan="3">{" &middot; ".join(bits)}</td>'
-                f'<td colspan="4">{meas or "&mdash;"}</td>'
-                f'<td colspan="2" style="white-space:nowrap">{when}</td>'
-                f'<td colspan="3">{st_h}</td>'
-                f'<td colspan="{span_cols - 12}" ></td></tr>')
+                f'<tr class="child" data-parent="{r["id"]}"><td colspan="21">'
+                f'<b>{" &middot; ".join(bits)}</b> &middot; {st_h} &middot; '
+                f'<span style="white-space:nowrap">{when}</span>'
+                f'{" &mdash; " + meas if meas else ""}</td></tr>')
 
     # the column key: rendered from the glossary rows, one copy of the wording
     KEYCOLS = ["damage_id", "contract", "location", "description", "utility", "severity",
@@ -874,8 +874,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 #%TID%{border-collapse:separate;border-spacing:0}
 #%TID% thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
  padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
-#%TID% thead th .thd{font-size:10px;font-weight:600;letter-spacing:.02em;color:#aeb8c2;
- text-transform:none;line-height:1.3;margin-bottom:3px;max-width:150px;white-space:normal}
+#%TID% thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.25;margin-bottom:4px;width:120px;min-height:26px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 #%TID% thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
 #%TID% thead th .arr{color:#97D700}
