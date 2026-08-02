@@ -50,13 +50,94 @@ def upsert(rows):
     _cki_mod().post(rows)
 
 
+# --- frontmatter + banner preservation (2026-08-02) -------------------------------------------
+# TWO bugs, both hit four times in one session on 2 Aug 2026 while re-saving plan notes:
+#
+#  1. FRONTMATTER WIPE. row_for() sets "frontmatter": fm straight from the FILE. `body` and
+#     `frontmatter` are separate columns, so the very common workflow -- read the body out of
+#     vault_notes, edit it, write it to a file, cc-save it -- produces a file with NO frontmatter,
+#     and the upsert overwrites the stored frontmatter with {}. `status` is destroyed silently.
+#
+#  2. STALE BANNER. row_for only stamps the lifecycle banner when the body has none. A body read
+#     back from the DB already carries one, so after a status change the OLD banner survives and
+#     the note keeps advertising the wrong state.
+#
+# Together these turn a COMPLETED or SCRAPPED plan back into one that reads as live -- precisely
+# the failure the banner exists to prevent. Fixed HERE rather than in cc-knowledge-ingest: the bulk
+# walker reads real on-disk notes that legitimately have frontmatter, so it does not have this
+# problem and does not need the blast radius.
+
+def _existing_frontmatter(vault_path):
+    """The frontmatter already stored for this vault_path, or {}. Fail-open: a lookup problem must
+    never block a save."""
+    try:
+        import json as _json, urllib.request as _rq, urllib.parse as _up
+        cki = _cki_mod()
+        q = f"vault_notes?select=frontmatter&vault_path=eq.{_up.quote(vault_path, safe='')}"
+        req = _rq.Request(f"{cki.URL}/rest/v1/{q}",
+                          headers={"apikey": cki.SR, "Authorization": f"Bearer {cki.SR}"})
+        with _rq.urlopen(req, timeout=15) as resp:
+            rows = _json.load(resp)
+        return (rows[0].get("frontmatter") or {}) if rows else {}
+    except Exception:
+        return {}
+
+
+_BANNER_RE = None
+def _strip_banner(body):
+    """Remove any existing lifecycle banner so row_for re-stamps it from the CURRENT status."""
+    global _BANNER_RE
+    if _BANNER_RE is None:
+        import re as _re
+        _BANNER_RE = _re.compile(r"^<!-- PLAN-LIFECYCLE-BANNER -->\n(?:>.*\n)+\s*")
+    return _BANNER_RE.sub("", body.lstrip("\ufeff"))
+
+
 def save_file(path):
     """Persist a single .md file to vault_notes, ALWAYS (ignores the bulk ephemeral skip). Returns the
     canonical, container-prefixed vault_path that was written."""
     path = os.path.abspath(path)
-    row = _cki_mod().row_for(path)          # same builder as cc-knowledge-ingest → same vault_path
+    cki = _cki_mod()
+
+    text = open(path, encoding="utf-8", errors="replace").read()
+    fm, body = cki.fm_parse(text)
+    rebuilt = False
+
+    # (2) always re-stamp the banner from the current status, never inherit a stale one
+    stripped = _strip_banner(body)
+    if stripped != body:
+        body, rebuilt = stripped, True
+
+    # (1) file has no frontmatter -> keep what the DB already holds rather than wiping it
+    if not fm:
+        prior = _existing_frontmatter(cki._vault_rel(path, {}))
+        if prior:
+            fm, rebuilt = prior, True
+            print(f"  cc-save: file had no frontmatter; preserved the stored one "
+                  f"(status={prior.get('status')!r}) rather than wiping it")
+
+    if rebuilt:
+        import tempfile
+        dumped = "\n".join(f"{k}: {_fm_val(v)}" for k, v in fm.items()) if fm else ""
+        head = f"---\n{dumped}\n---\n\n" if fm else ""
+        d = tempfile.mkdtemp()
+        tmp = os.path.join(d, os.path.basename(path))
+        open(tmp, "w", encoding="utf-8").write(head + body)
+        row = cki.row_for(tmp)
+        row["vault_path"] = cki._vault_rel(path, fm)   # keep the REAL path, not the temp one
+    else:
+        row = cki.row_for(path)                        # unchanged path when nothing needed rebuilding
+
     upsert([row])
     return row["vault_path"]
+
+
+def _fm_val(v):
+    """Re-serialise a frontmatter value for the temp file. Lists become [a, b]; everything else is
+    written as-is, which is what fm_parse expects to read back."""
+    if isinstance(v, list):
+        return "[" + ", ".join(str(x) for x in v) + "]"
+    return "" if v is None else str(v)
 
 
 def _embed():
