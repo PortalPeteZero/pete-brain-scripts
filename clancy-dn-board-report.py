@@ -496,15 +496,19 @@ form says &mdash; the only one. Side by side:</div>
 <li>Underlying cause: <mark>&ldquo;{esc(ex["underlying"])}&rdquo;</mark></li>
 <li>Genny used? {esc(ex["genny"])} &middot; CAT used? {esc(ex["cat"])}</li>
 </ul></div>
-<div class="sb rv"><div class="sh">What the review of the detection data found</div>
+<div class="sb rv"><div class="sh">What the Sygma review and the panel meeting established</div>
 <ul>
-<li>The cable was presented as untraceable &mdash; <mark>it was traceable</mark></li>
-<li>The genny was <mark>connected to the column the wrong way</mark>; connected properly,
-the service would have been found</li>
-<li>The scan&ndash;mark&ndash;expose procedure that would have caught it
-<mark>was not followed</mark>, and that was accepted in the review meeting</li>
-<li>Formal conclusion on record: the findings recorded for this damage are
-<mark>incorrect and need amending</mark></li>
+<li>The review of the CAT and genny download data confirmed the genny
+<mark>was not used</mark> and the cable <mark>was never traced</mark> &mdash; the
+form&#8217;s &ldquo;Genny used? Yes&rdquo; did not survive the data</li>
+<li>When the cable was exposed in a trial hole it was not connected to and re-traced
+&mdash; <mark>&ldquo;we haven&#8217;t got the clamps&rdquo;</mark>, in the team&#8217;s
+own words at the panel</li>
+<li>Clancy&#8217;s own procedure was not followed, in the Senior Contract
+Manager&#8217;s words at the panel: <mark>&ldquo;our procedure is scan it, mark it,
+expose it &mdash; and we haven&#8217;t done it&rdquo;</mark></li>
+<li>The review&#8217;s formal conclusion, on record: the findings and conclusions
+recorded for this damage are <mark>&ldquo;incorrect and need amending&rdquo;</mark></li>
 </ul></div>
 </div>
 <div class="callout" style="border-left-color:{RED}"><b>One damage out of {n} has had this
