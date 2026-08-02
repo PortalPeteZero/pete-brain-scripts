@@ -226,7 +226,13 @@ def gather():
     d["lesson_funnel"] = sql(f"""SELECT
         count(*) FILTER (WHERE tier='4 briefable') briefable,
         count(DISTINCT lesson) FILTER (WHERE tier='4 briefable') distinct_briefable,
-        count(*) FILTER (WHERE tier='4 briefable' AND is_duplicated) copied,
+        -- MUST match the population the duplicated-lesson section quotes, or the page
+        -- contradicts itself. It did: this counted tier 4 only, so FY25/26's tile said
+        -- "0 lessons copied word for word" directly above a section headed "the same lesson,
+        -- word for word, on more than one damage - 4 damages". The section's rule is the one
+        -- to follow: anything long enough to BE a lesson (tier 3 or 4), never a bare
+        -- non-answer, which is counted and stated separately.
+        count(*) FILTER (WHERE tier IN ('3 a single phrase','4 briefable') AND is_duplicated) copied,
         count(*) FILTER (WHERE tier IN ('0 none recorded','1 a non-answer')) nothing,
         count(*) FILTER (WHERE looks_truncated) truncated
       FROM clancy_dn_lesson_quality WHERE fy='{FY}'""")[0]
@@ -928,11 +934,18 @@ def build(edition, label):
             f'&ldquo;AML&rdquo; kind. Two people both typing &ldquo;N/A&rdquo; is a gap in the '
             f'record, not a lesson copied from one damage to another, so counting them together '
             f'would overstate the reuse.</p>')
-        n_groups, n_dmg = len(d["dupes"]), sum(r["n"] for r in d["dupes"])
+        # Groups form across years, so the total and this year's share are different numbers and
+        # BOTH have to be stated. Saying only the total put "6 damages" beside a tile reading 3.
+        n_groups = len(d["dupes"])
+        n_dmg = sum(r["n"] for r in d["dupes"])
+        n_here = sum(r["n_this_year"] for r in d["dupes"])
+        span = ("" if n_dmg == n_here else
+                f' &mdash; {n_dmg} in total once the other years carrying the same '
+                f'text{"" if n_groups == 1 else "s"} are counted')
         head = (
             f'<div class="sec"><h2>The same lesson, word for word, on more than one damage</h2>'
-            f'<div class="why">{n_dmg} damages carrying {n_groups} '
-            f'text{"" if n_groups == 1 else "s"} between them.</div>')
+            f'<div class="why">{n_here} damage{"" if n_here == 1 else "s"} this year{span}, '
+            f'carrying {n_groups} text{"" if n_groups == 1 else "s"} between them.</div>')
         dupe_note = (head + blocks + reading + nonans +
             f'<div class="flag"><b>How far this claim goes, and what the test is.</b> '
             f'&ldquo;Word for word&rdquo; here means the same words in the same order, ignoring '
