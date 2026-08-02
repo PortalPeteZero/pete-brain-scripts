@@ -539,7 +539,7 @@ function initTable(tid){
     const r=b.closest('tr'), open=r.dataset.open==='1';
     r.dataset.open=open?'0':'1';
     b.setAttribute('aria-expanded',String(!open));
-    b.innerHTML=(open?'&#9656; ':'&#9662; ')+b.dataset.v;
+    b.innerHTML=open?('&#9656; '+b.dataset.v+' action'+(b.dataset.v==='1'?'':'s')):'&#9662; hide';
     let d=r.nextElementSibling;
     while(d && !d.classList.contains('row')){
       if(d.classList.contains('child')) d.hidden=open;
@@ -759,7 +759,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
         if acts:
             raised_h = (f'<button class="kidtog" data-v="{len(acts)}" '
                         f'aria-expanded="false" title="Show this damage&#8217;s actions">'
-                        f'&#9656; {len(acts)}</button>')
+                        f'&#9656; {len(acts)} action{"" if len(acts) == 1 else "s"}</button>')
             open_h = (f'<span class="b warn">{n_open} overdue</span>' if n_open
                       else '<span class="b" data-v="0">0</span>')
             closed_h = f'{n_closed}'
@@ -866,7 +866,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
     markkey = ('<div class="markkey"><b>Marks:</b> &#10003; answered yes / something written '
                '&middot; &#10007; answered no — their words &middot; &ndash; nothing held: the '
                'section is not done or the damage is not captured (never asserting which). '
-               '<b>Action columns always assert</b> — the export covers every year.</div>')
+               '<b>Action columns always assert</b> — the export covers every year. A green <b>&#9656; n actions</b> button opens that damage&#8217;s actions as rows underneath it.</div>')
 
     def th(label, col, num=False, key=None):
         g = gloss.get(key) if key else None
@@ -897,7 +897,7 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 /* ── stage 4: the visual lift — charcoal header band, visible column notes, density ── */
 #%TID%{border-collapse:separate;border-spacing:0}
 #%TID% thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
- padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
+ padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700;min-width:88px}
 #%TID% thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:0;min-width:100%;white-space:normal;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 #%TID% thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
@@ -915,8 +915,9 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
 #%TID% tr.child td:first-child{background:#f8f9fb}
 .card:has(#%TID%){max-height:80vh;overflow:auto;padding:0!important;border-radius:14px;
  box-shadow:0 2px 6px rgba(31,41,51,.06),0 12px 32px rgba(31,41,51,.08)}
-.kidtog{border:0;cursor:pointer;background:#eaf6d3;color:#3f6d00;border-radius:20px;
- padding:3px 12px;font-size:12px;font-weight:800;font-family:inherit}
+.kidtog{border:0;cursor:pointer;background:#97D700;color:#25320a;border-radius:20px;
+ padding:4px 13px;font-size:12px;font-weight:800;font-family:inherit;white-space:nowrap;
+ box-shadow:0 1px 3px rgba(53,62,71,.25)}
 .kidtog:hover{background:#dcefbe}
 .b{display:inline-block;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:800}
 .b.yes{background:#eaf6d3;color:#3f6d00}

@@ -517,8 +517,9 @@ def cols(rows, lab, val, sub=None):
 
 
 PAGE_CSS = """
-.kidtog{border:0;cursor:pointer;background:#eaf6d3;color:#3f6d00;border-radius:20px;
- padding:3px 12px;font-size:12px;font-weight:800;font-family:inherit}
+.kidtog{border:0;cursor:pointer;background:#97D700;color:#25320a;border-radius:20px;
+ padding:4px 13px;font-size:12px;font-weight:800;font-family:inherit;white-space:nowrap;
+ box-shadow:0 1px 3px rgba(53,62,71,.25)}
 .kidtog:hover{background:#dcefbe}
 tr.achild td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
  padding-top:6px;padding-bottom:6px}
@@ -722,7 +723,7 @@ def damage_table_v2(d):
         cwoa = (r["status"] == "Complete with Outstanding Actions" and acts == 0)
         if acts:
             raised_h = (f'<button class="kidtog" data-v="{acts}" aria-expanded="false" '
-                        f'title="Show this damage&#8217;s actions">&#9656; {acts}</button>')
+                        f'title="Show this damage&#8217;s actions">&#9656; {acts} action{"" if acts == 1 else "s"}</button>')
             open_h = (f'<span class="pill open">{aout} overdue</span>' if aout else "0")
             closed_h = f'{acls}'
         else:
@@ -857,6 +858,8 @@ corrective actions, one per action, from Depotnet&#8217;s own export.</div>
   <span><span class="mk n">&#10007;</span> Depotnet records an explicit no</span>
   <span><span class="mk b">&ndash;</span> nothing held &mdash; the section is not done or the
   damage is not captured; never a no</span>
+  <span><span class="kidtog" style="cursor:default">&#9656; n actions</span> click to open that
+  damage&#8217;s actions as rows underneath</span>
 </div>
 <div class="flag"><b>How the two investigation columns work.</b> <b>Investigation report</b> is
 the section itself: Done means every required question is answered; Not done means untouched
@@ -917,7 +920,7 @@ actions &mdash; both shown as Depotnet holds them.</div>
       var r=b.closest('tr'), open=r.dataset.open==='1';
       r.dataset.open=open?'0':'1';
       b.setAttribute('aria-expanded',String(!open));
-      b.innerHTML=(open?'&#9656; ':'&#9662; ')+b.dataset.v;
+      b.innerHTML=open?('&#9656; '+b.dataset.v+' action'+(b.dataset.v==='1'?'':'s')):'&#9662; hide';
       var d=r.nextElementSibling;
       while(d && d.classList.contains('achild')){{ d.hidden=open; d=d.nextElementSibling; }}
       return;
@@ -1084,7 +1087,7 @@ not recorded.</div>
       var r=b.closest('tr'), open=r.dataset.open==='1';
       r.dataset.open=open?'0':'1';
       b.setAttribute('aria-expanded',String(!open));
-      b.innerHTML=(open?'&#9656; ':'&#9662; ')+b.dataset.v;
+      b.innerHTML=open?('&#9656; '+b.dataset.v+' action'+(b.dataset.v==='1'?'':'s')):'&#9662; hide';
       var d=r.nextElementSibling;
       while(d && d.classList.contains('achild')){{ d.hidden=open; d=d.nextElementSibling; }}
       return;
@@ -1109,7 +1112,7 @@ STAGE4_CSS = """
 /* the register: charcoal header band with VISIBLE column notes, sticky in a bounded box */
 .tscroll{max-height:80vh;overflow:auto;border-radius:14px;padding-bottom:14px;background:#fff}
 table.reg thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
- padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
+ padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700;min-width:88px}
 table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;margin-bottom:4px;width:0;min-width:100%;white-space:normal;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:.02em}
 table.reg thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
  white-space:nowrap}
