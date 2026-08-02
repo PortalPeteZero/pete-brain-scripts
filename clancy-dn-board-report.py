@@ -401,8 +401,14 @@ CSS = """
 .pk-e{font-size:14.5px;line-height:1.65;color:#2b3440}
 .pk-e mark{background:#D50032;color:#fff;padding:1px 8px;border-radius:5px;font-weight:800}
 .pk-e .pkc{font-size:12.5px;color:#6a7480;margin-top:10px;font-weight:600}
-.pk-p{background:#eceff2;border-radius:16px;padding:20px 24px;color:#353E47;
- font-size:13.5px;line-height:1.65}
+.pk-p{background:#fff;border:3px solid #F2A900;border-radius:16px;padding:20px 24px;
+ color:#2b3440;font-size:14.5px;line-height:1.65;
+ box-shadow:0 16px 38px -18px rgba(242,169,0,.45)}
+.pk-p .pkh{display:inline-block;background:#F2A900;color:#2b2000;font-size:11px;
+ font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:14px;
+ padding:4px 12px;margin-bottom:10px}
+.pk-p .pkn{font-size:38px;font-weight:800;color:#c78a00;letter-spacing:-.02em;
+ line-height:1;margin-bottom:8px}
 .cxrule{background:linear-gradient(135deg,#353E47,#3e4954);color:#e4eaf0;
  border-radius:16px;border-left:6px solid #97D700;padding:20px 24px;font-size:15px;
  line-height:1.65;margin-top:22px}
@@ -419,7 +425,13 @@ CSS = """
 .cxrow .cxn{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
 .cxrow .cxb{height:8px;border-radius:4px;background:#eef1f5;margin-top:6px;overflow:hidden}
 .cxrow .cxb i{display:block;height:100%;background:#9aa4b0;border-radius:4px}
-.cxrow .cxnote{font-size:11.5px;color:#6a7480;margin-top:5px;line-height:1.4}
+.cxrow .cxnote{font-size:13px;color:#3f4a55;margin-top:6px;line-height:1.5}
+.cxrow .cxnote b{color:#17202b}
+.cxrow .cxnote mark{background:#b45309;color:#fff;padding:1px 7px;border-radius:5px;
+ font-weight:800}
+.cxgroup{border:3px solid #D50032;border-radius:14px;padding:4px 10px 10px;margin:6px 0 14px}
+.cxgroup .cxgh{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+ color:#D50032;padding:8px 10px 4px}
 .cxrow.imposs{background:#fdeef1;border:2px solid #D50032}
 .cxrow.imposs .cxn{color:#D50032}
 .cxrow.imposs .cxb i{background:#D50032}
@@ -509,6 +521,7 @@ damage must come paired with &ldquo;Unable to detect location of service&rdquo;.
 <div class="cxg">
 <div class="cxcard"><h4>Electric &mdash; {ne} damages</h4>
 <div class="cxs">Traceable, conductive: detection should find these</div>
+<div class="cxgroup"><div class="cxgh">The {ce["plans"] + ce["both"]} plans listings &mdash; not one of them sound</div>
 {_cxrow("&ldquo;Insufficient plans&rdquo; ALONE", ce["plans"], ne, "imposs",
         ("The impossible answer: nothing explains why the trace did not find the cable."
          + (" Damage 152586 &mdash; the one that failed its data review &mdash; sits here."
@@ -516,7 +529,8 @@ damage must come paired with &ldquo;Unable to detect location of service&rdquo;.
          + (" So does 133852, whose own form says the plans showed the service where expected."
             if 133852 in d["cx_elec_plans_alone_ids"] else "")) if ce["plans"] else "")}
 {_cxrow("Plans + unable-to-detect together", ce["both"], ne, "blanket",
-        (f"Every one is a blanket answer ticking {d['cx_elec_both_min_opts']} boxes at once{_wx}. Nothing was actually paired." if ce["both"] else ""))}
+        (f"<mark>All four ticked all {d['cx_elec_both_min_opts']} boxes on the form</mark>{_wx}. <b>An answer that ticks everything tells us nothing.</b>" if ce["both"] else ""))}
+</div>
 {_cxrow("&ldquo;Unable to detect&rdquo; as a considered answer", ce["unable"], ne, "",
         "Never once chosen on its own for an electric cable")}
 {_cxrow("Other options", ce["other"], ne)}
@@ -538,8 +552,8 @@ impossible to defend, it stands alone.</div>'''
 
     plans_split_box = f'''
 <div class="pkey">
-<div class="pk-p"><span class="pkh" style="background:#353E47;color:#fff;display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:14px;padding:4px 12px;margin-bottom:10px">Where plans really are the problem</span>
-<div class="pkn" style="font-size:38px;font-weight:800;color:#353E47;letter-spacing:-.02em;line-height:1;margin-bottom:8px">{d["gas_poly"]} plastic gas damages</div>
+<div class="pk-p"><span class="pkh">Where plans really are the problem</span>
+<div class="pkn">{d["gas_poly"]} plastic gas damages</div>
 {d["gas_service_poly"]} of them are <b>service pipes</b> &mdash; typically not shown on
 plans at all, and a poly pipe gives the genny and CAT nothing to find. If
 &ldquo;insufficient plans&rdquo; belonged anywhere as a finding, it is here.
