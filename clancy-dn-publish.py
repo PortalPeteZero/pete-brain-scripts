@@ -51,6 +51,8 @@ STEPS = [
      ["clancy-dn-gc-pages.py", "--publish"], ["clancy-genny-cat-reviews"]),
     ("the glossary — the section's terms, from clancy_glossary",
      ["clancy-dn-glossary.py", "--publish"], ["clancy-damage-glossary"]),
+    ("the board report — this year's damages, what the record can tell us",
+     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report"]),
 ]
 
 
