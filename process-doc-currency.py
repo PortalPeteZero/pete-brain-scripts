@@ -110,7 +110,7 @@ def read_transcript(path):
     messages, workflow scripts and heredocs can all legitimately DISCUSS the guarded tools;
     discussing a change is not making one.
     """
-    start, edits = None, []
+    start, edits, runs = None, [], []
     try:
         with open(path) as f:
             for line in f:
@@ -124,18 +124,81 @@ def read_transcript(path):
                 m = e.get("message") or {}
                 if m.get("role") == "assistant" and isinstance(m.get("content"), list):
                     for c in m["content"]:
-                        if (c.get("type") == "tool_use"
-                                and c.get("name") in ("Edit", "Write", "NotebookEdit")):
+                        if c.get("type") != "tool_use":
+                            continue
+                        if c.get("name") in ("Edit", "Write", "NotebookEdit"):
                             fp = (c.get("input") or {}).get("file_path") or ""
                             if fp:
                                 edits.append((ts, fp))
+                        elif c.get("name") == "Bash":
+                            cmd = (c.get("input") or {}).get("command") or ""
+                            if cmd:
+                                runs.append((ts, cmd))
     except Exception:
         pass
-    return start, edits
+    return start, edits, runs
 
 
-def evaluate(start, edits):
-    """Which guarded domains show a REAL change, in this session, newer than their doc?"""
+# ⛔ OWNERSHIP (added 2 Aug 2026). A database effect proves a change HAPPENED. It does not prove
+# THIS session made it. The old filter was `effect_time >= session_start`, and the comment claimed
+# that meant "only this session's changes" — it did not. A long-running session sees every other
+# session's writes land inside its own window. On 2 Aug a Sygma-website session was blocked, on
+# every turn, for Clancy pages published at 14:38 by a different session whose four commits
+# (3de4191, 1891f58, 1cbe519, cca83e3) were provably not its own. It could not comply without
+# inventing a summary of work it had never done, into a customer's process doc.
+#
+# So a DB effect now only counts when this session ALSO shows it ACTED in that domain:
+#   · a structured Edit/Write file_path matching the domain's files, or
+#   · a Bash command that INVOKES one of the domain's scripts.
+# Both are actions, not text. The invocation pattern is anchored to a python call so the three
+# false-fire shapes this gate already learned about — a workflow prompt naming a tool, a commit
+# message discussing one, a test fixture quoting one — still cannot trip it. `grep -rn clancy...`
+# does not match; `VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-pages.py` does.
+#
+# This narrows the gate: a session that changes a domain by some route leaving no edit and no
+# invocation will not be caught. That is the right trade. A gate that blocks the wrong session
+# every turn gets switched off, and then it guards nothing at all.
+
+def _strip_heredocs(cmd):
+    """Remove heredoc BODIES before looking for an invocation.
+
+    A heredoc is data, not execution. Patch scripts, test fixtures and documentation blocks all
+    legitimately CONTAIN the string `python3 .../clancy-dn-pages.py` — and on 2 Aug this gate
+    fired on itself: the very commit that added the invocation matcher carried an example
+    invocation inside its own explanatory heredoc, and the gate read that as a run. Discussing a
+    command inside a heredoc is the same class of false positive as discussing it in a commit
+    message, which this gate already refuses to trip on.
+    """
+    out, i = [], 0
+    for m in re.finditer(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", cmd):
+        marker = m.group(1)
+        end = re.search(r"^\s*" + re.escape(marker) + r"\s*$", cmd[m.end():], re.M)
+        out.append(cmd[i:m.start()])
+        i = m.end() + (end.end() if end else len(cmd[m.end():]))
+    out.append(cmd[i:])
+    return " ".join(out)
+
+
+def _acted_in_domain(d, edits, runs):
+    """Did THIS session edit or run something in this domain? Returns a reason, or None."""
+    for ts, fp in edits:
+        if re.search(d["files"], fp):
+            return f"edited {fp}"
+    # d["files"] is a PATH matcher and ends with `$`. In a command string the script is followed by
+    # its arguments, so the anchor must come off or `python3 clancy-dn-pages.py --publish` never
+    # matches while the argument-less form does — which is exactly the hole the first version had.
+    scripts = (d.get("scripts") or d["files"]).rstrip("$")
+    inv = re.compile(r"(?:^|[;&|`(\n]\s*|\s)(?:VAULT=\S+\s+)*"
+                     r"(?:/usr/bin/env\s+)?python3?\s+\S*?(?:" + scripts + r")\b", re.M)
+    for ts, cmd in runs:
+        m = inv.search(_strip_heredocs(cmd))
+        if m:
+            return f"ran {m.group(0).strip()[:60]}"
+    return None
+
+
+def evaluate(start, edits, runs=()):
+    """Which guarded domains show a REAL change, MADE BY THIS SESSION, newer than their doc?"""
     out = []
     start_dt = _norm(start)
     try:
@@ -144,8 +207,9 @@ def evaluate(start, edits):
         return out                        # never block on our own inability to check
     for d in DOMAINS:
         candidates = []                   # (datetime, human description)
-        # 1. database effects — what actually changed, whoever changed it
-        for table, col, flt in d["effects"]:
+        acted = _acted_in_domain(d, edits, runs)
+        # 1. database effects — a real change, but only OURS if this session acted in the domain
+        for table, col, flt in (d["effects"] if acted else []):
             try:
                 eff = latest_effect(k, table, col, flt)
             except Exception:
@@ -184,10 +248,10 @@ def main():
         payload = json.load(sys.stdin)
     except Exception:
         sys.exit(0)
-    start, edits = read_transcript(payload.get("transcript_path", ""))
+    start, edits, runs = read_transcript(payload.get("transcript_path", ""))
     if not start:
         sys.exit(0)
-    findings = evaluate(start, edits)
+    findings = evaluate(start, edits, runs)
     if not findings:
         sys.exit(0)
     d = findings[0]
@@ -217,9 +281,11 @@ if __name__ == "__main__":
         sys.exit(0)
     if "--test" in sys.argv:
         p = sys.argv[sys.argv.index("--test") + 1]
-        start, edits = read_transcript(p)
-        print(f"session start: {start} · {len(edits)} structured file edits")
-        f = evaluate(start, edits)
+        start, edits, runs = read_transcript(p)
+        print(f"session start: {start} · {len(edits)} structured file edits · {len(runs)} bash calls")
+        for d in DOMAINS:
+            print(f"  acted in [{d['name']}]: {_acted_in_domain(d, edits, runs) or 'NO'}")
+        f = evaluate(start, edits, runs)
         if not f:
             print("would NOT block — no guarded domain changed after its doc was written")
         for x in f:
