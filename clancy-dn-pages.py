@@ -152,6 +152,18 @@ def load():
     aby = defaultdict(list)
     for x in answers:
         aby[x["incident_id"]].append(x)
+    # The register's subcontractor field is often null while the damage's own incident report
+    # names one — 26 of FY25/26's "Clancy direct: 103" were subcontractor damages by their own
+    # record. The report answer fills the gap at read time (the register field wins when set,
+    # and nothing is written back, so a register re-import cannot undo it).
+    _sub_report = {}
+    for x in answers:
+        if (x.get("question") or "").strip().endswith("Please Provide Name of Subcontractor"):
+            v = (x.get("answer") or "").strip()
+            if v:
+                _sub_report[x["incident_id"]] = v
+    for r in inc:
+        r["sub_effective"] = r.get("subcontractor") or _sub_report.get(r["id"])
     fby = defaultdict(list)
     for f in files:
         fby[f["incident_id"]].append(f)
@@ -1162,14 +1174,17 @@ def fy_dashboard(inc, act, fykey, full=True):
     body.append(f'<div class="card"><div class="h2row"><h2>By severity</h2></div>{donut([s for s in sevs if s[1]], SEV_COLORS)}{legend(sevs, SEV_COLORS)}</div>')
     body.append('</div>')
     # subcontractor + top towns
-    subs = Counter((r["subcontractor"] or "Clancy direct") for r in rows).most_common(8)
+    subs = Counter((r.get("sub_effective") or "Clancy direct") for r in rows).most_common(8)
     towns = Counter()
     for r in rows:
         loc = (r["location"] or "")
         m = re.search(r"([A-Za-z ]+?),?\s*[A-Z]{1,2}\d{1,2}[A-Z]?(\s?\d[A-Z]{2})?\s*$", loc)
         towns[(m.group(1).strip().title() if m else (loc.split(",")[-1].strip().title() or "Unstated"))[:28] or "Unstated"] += 1
     body.append('<div class="grid c2">')
-    body.append(f'<div class="card"><div class="h2row"><h2>Delivered by</h2><span class="note">subcontractor on the incident record</span></div>{hbar(subs, color="#64748b")}</div>')
+    _n_rep = sum(1 for r in rows if not r.get("subcontractor") and r.get("sub_effective"))
+    _sub_note = ("subcontractor on the incident record" if not _n_rep else
+                 f"register field, plus the {_n_rep} named only in the incident report answers")
+    body.append(f'<div class="card"><div class="h2row"><h2>Delivered by</h2><span class="note">{_sub_note}</span></div>{hbar(subs, color="#64748b")}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>Most-hit places</h2></div>{hbar(towns.most_common(8), color="#0e9594")}</div>')
     body.append('</div>')
     body.append(f"""<div class="grid c3" style="margin-top:20px">
