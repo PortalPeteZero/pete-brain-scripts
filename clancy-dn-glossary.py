@@ -86,6 +86,8 @@ SEEDS = [
      "Everywhere — it is the population every page counts", "Depotnet", None, "register", 10, None),
     ("Damage ID & date", "Depotnet's own number for the damage, and the date the strike happened (not the date it was typed in).",
      "First column of every table; every page links by this ID", "Depotnet", "133852 · 17 Jun 2026", "register", 20, "damage_id"),
+    ("Date (column)", "The day the strike happened — Depotnet's incident date, never the date it was typed up.",
+     "Register and analysis tables", "Depotnet", None, "register", 25, "damage_date"),
     ("Contract", "The Clancy contract the crew was working under when the damage happened, grouped into families (e.g. Anglian Water).",
      "Register and analysis tables; the by-contract chart", "Depotnet", None, "register", 30, "contract"),
     ("Location", "Where the damage happened, as typed on the incident. Quality varies from full address to a street name.",

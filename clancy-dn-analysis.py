@@ -574,7 +574,7 @@ blockquote.q .src{display:block;margin-top:7px;font-size:11.5px;color:var(--fain
  padding:14px 18px;margin:14px 0;font-size:13.5px;color:var(--mid)}
 .flag b{color:var(--ink)}
 .none{font-size:13.5px;color:var(--faint);font-style:italic}
-ul.plain{margin:0 0 14px;padding-left:20px;max-width:78ch}
+ul.plain{margin:0 0 14px;padding-left:20px}
 ul.plain li{font-size:14.5px;color:var(--mid);margin-bottom:7px;line-height:1.55}
 ul.plain li b{color:var(--ink)}
 .dmgs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0 4px}
@@ -811,7 +811,7 @@ def damage_table_v2(d):
         return (f'<th{" class=\"" + cls + "\"" if cls else ""}{tip}>{note}'
                 f'<div class="tht">{label}</div></th>')
 
-    heads = (th("Damage", "damage_id") + th("Date") + th("Contract", "contract")
+    heads = (th("Damage", "damage_id") + th("Date", "damage_date") + th("Contract", "contract")
              + th("Service", "utility") + th("Status", "status")
              + th("Investigation<br>report", "investigation_report")
              + th("Marked<br>complete", "marked_complete")
