@@ -380,12 +380,50 @@ def mast_compact(kicker, title, sub=""):
     return hero(kicker, title, sub)
 
 
+# ── design system v2 — the board report's language, shared by every Depot page ──────────
+# ADDITIVE ONLY (audit rule, 2 Aug): new classes; never edit classes the renderers share.
+DS2 = """
+.band2{border-top:1px solid #e5e8ec;padding:4px 0}
+.band2 .rwrap{max-width:1180px;margin:0 auto;padding:30px 22px}
+.tagh{display:flex;align-items:center;gap:12px;font-size:22px;font-weight:800;
+ letter-spacing:-.022em;margin-bottom:6px}
+.tagh .tag{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+ padding:4px 12px;border-radius:20px;color:#fff;background:#353E47}
+.subh{color:#5a6572;font-size:14.5px;margin-bottom:20px;max-width:70ch}
+.statrow2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;
+ margin:16px 0}
+.bigstat2{border-radius:15px;padding:17px 18px;background:#fff;border:1px solid #e7eaf0;
+ border-top:5px solid #353E47;box-shadow:0 1px 2px rgba(23,32,20,.06),
+ 0 10px 26px -18px rgba(53,62,71,.3)}
+.bigstat2 .bn{font-size:40px;font-weight:800;line-height:1;letter-spacing:-.03em;
+ font-variant-numeric:tabular-nums;color:#353E47}
+.bigstat2 .bl{font-size:12.5px;color:#5a6572;margin-top:8px;line-height:1.4;font-weight:600}
+.bigstat2.good{border-top-color:#97D700}.bigstat2.good .bn{color:#4f7000}
+.bigstat2.bad{border-top-color:#D50032;background:#fdeef1}.bigstat2.bad .bn{color:#D50032}
+.callout2{background:#fff;border:1px solid #e7eaf0;border-left:6px solid #97D700;
+ border-radius:14px;padding:17px 22px;font-size:14.5px;line-height:1.65;color:#3f4a55;
+ margin:14px 0;box-shadow:0 8px 24px -18px rgba(53,62,71,.25)}
+.callout2 b{color:#17202b}
+.callout2.warn{border-left-color:#D50032}
+.strip2{background:#fff;border:1px solid #e7eaf0;border-left:6px solid #353E47;
+ border-radius:12px;padding:14px 20px;font-size:16px;font-weight:700;color:#17202b;
+ margin:10px 0;letter-spacing:-.01em}
+.frame2{background:linear-gradient(135deg,#353E47,#3e4954);color:#e4eaf0;border-radius:16px;
+ border-left:6px solid #97D700;padding:20px 24px;font-size:15px;line-height:1.65;
+ box-shadow:0 10px 30px -18px rgba(53,62,71,.5)}
+.frame2 b{color:#fff}
+.split2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:860px){.split2{grid-template-columns:1fr}}
+.tint-red{background:#fdeef1}.tint-green{background:#f4fbe4}.tint-char{background:#eceff2}
+.tint-amber{background:#fdf6e3}
+"""
+
 def head(title, extra_css=""):
     return (
         '<!DOCTYPE html>\n<html lang="en"><head><meta charset="UTF-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1.0">'
         '<meta name="robots" content="noindex, nofollow">'
-        f"<title>{title}</title><style>{CSS}{extra_css}</style></head><body>")
+        f"<title>{title}</title><style>{CSS}{DS2}{extra_css}</style></head><body>")
 
 
 def foot(when, note="Prepared by Sygma Solutions."):

@@ -1595,8 +1595,8 @@ filled in at the time: what was hit, by whom, in what conditions, at what depth.
 year has one.</p>
 
 <p>The <b>investigation report section</b> (the <b>Report</b> tab on Depotnet) is the long one. It
-carries a named lead investigator, a named senior manager, the investigation team, the CAT and
-genny download review, the causes, the lessons, and a closing question of its own, &ldquo;Is the
+carries a named lead investigator, a named senior manager, the investigation team, the genny
+and CAT download review, the causes, the lessons, and a closing question of its own, &ldquo;Is the
 investigation complete?&rdquo; It is the same form on every damage and most of its fields are
 marked as required.</p>
 
@@ -1649,21 +1649,25 @@ record can carry that weight.</div>
 <div class="why">The straight answer, from the {cs_n} damages whose investigation report section
 names a cause. That is {cs_n} of {n} &mdash; the picture will firm up as more sections are done,
 and this page says so rather than pretending.</div>
-<p><b>The dominant story is services not being where the paperwork said they would be.</b>
-{cs['svcloc']} of the {cs_n} name &ldquo;service location and condition&rdquo; as the root cause,
-and {cs['plans_or_detect']} name &ldquo;insufficient plans&rdquo; or &ldquo;unable to detect the
-service&rdquo; underneath. In plain terms: teams are digging where the drawings and detection
-said it was safe to dig, and the service is not where it was supposed to be.</p>
-<p><b>It is not, on this record, a carelessness story.</b> Only {cs['no_detect']} of the {cs_n}
-investigated damages record a &ldquo;no&rdquo; to using the CAT or the genny &mdash; on the rest,
-the reports answer that the genny and CAT were used and the strike happened anyway. That points
-the fix at better plans and deeper checks where plans are known to be poor, not at telling teams
-to be more careful.</p>
-<p><b>When it goes wrong, it is usually under a machine.</b> {cs['mech']} of the {cs_n} name
-mechanical plant; {cs['hand']} name a hand tool.</p>
-<p><b>What would make this analysis stronger is simple:</b> the {blank_ok} damages with no
-investigation report section yet. Every one completed adds a cause to this picture. Today the
-year&#8217;s cause analysis rests on {pct(cs_n, n)} of its damages.</p></div>
+<div class="split2" style="margin-top:6px">
+<div class="callout2"><b>The dominant story is services not being where the paperwork said
+they would be.</b> {cs['svcloc']} of the {cs_n} name &ldquo;service location and
+condition&rdquo; as the root cause, and {cs['plans_or_detect']} name &ldquo;insufficient
+plans&rdquo; or &ldquo;unable to detect the service&rdquo; underneath. In plain terms:
+teams are digging where the drawings and detection said it was safe to dig, and the
+service is not where it was supposed to be.</div>
+<div class="callout2"><b>It is not, on this record, a carelessness story.</b> Only
+{cs['no_detect']} of the {cs_n} investigated damages record a &ldquo;no&rdquo; to using
+the genny or the CAT &mdash; on the rest, the reports answer that the genny and CAT were
+used and the strike happened anyway. That points the fix at better plans and deeper checks
+where plans are known to be poor, not at telling teams to be more careful.</div>
+<div class="callout2"><b>When it goes wrong, it is usually under a machine.</b>
+{cs['mech']} of the {cs_n} name mechanical plant; {cs['hand']} name a hand tool.</div>
+<div class="callout2"><b>What would make this analysis stronger is simple:</b> the
+{blank_ok} damages with no investigation report section yet. Every one completed adds a
+cause to this picture. Today the year&#8217;s cause analysis rests on {pct(cs_n, n)} of
+its damages.</div>
+</div></div>
 
 <div class="sec"><h2><span class="snum">2</span> The year</h2>
 <div class="why">Month by month, and how many of each month&#8217;s damages have their investigation report section completed.</div>
@@ -1747,26 +1751,27 @@ verbatim, because the difference between them is the whole argument.</p>
 <div class="sec"><h2><span class="snum">8</span> What this cannot tell you</h2>
 <div class="why">Stated plainly, because a report that hides its own limits is worth less than one
 that does not.</div>
-<p><b>{n - h['with_cause']} of {n} damages have no cause recorded.</b> Not an unclear cause. None.
-{pct(n - h['with_cause'], n)} of this year is therefore absent from section 4 entirely.</p>
-<p><b>{len(d['blanket'])} of the {h['with_cause']} that do carry one tick nearly every box</b>,
-which amounts to the same thing.</p>
-<p><b>{d['actions']['damages_with']} of {n} damages have a corrective action recorded against
-them</b> ({d['actions']['actions']} actions in total), and none has been raised on any service
-damage since <b>{_last_action_nice}</b>. We checked that against Depotnet directly with every filter
-cleared, so it is not an artefact of our export. But we do <b>not</b> know whether raising a
-corrective action is mandatory at Clancy, or discretionary, or expected only in certain
-circumstances. Without that, the figure is a fact about the record and not a judgement about
-anyone&#8217;s practice.</p>
-<p><b>We do not know how Clancy work Depotnet.</b> We can read what the fields contain. We cannot
-see the process behind them: when an investigation is required, who signs it off, what triggers a
-damage to close, whether an action is compulsory, or whether teams are briefed verbally in ways
-that never reach the system. Every count on this page should be read as what the record holds,
-not as what people did or did not do.</p>
-<p>Nothing here says whether the service was successfully located before it was hit, how recently
-the team had been trained, or what was on the plans against what was in the ground. Some of that
-sits inside the panel packs, statements and photographs attached to each damage, and reading those
-properly is the next piece of work.</p></div>
+<div class="split2" style="margin-top:6px">
+<div class="callout2 warn"><b>{n - h['with_cause']} of {n} damages have no cause recorded.</b>
+Not an unclear cause. None. {pct(n - h['with_cause'], n)} of this year is therefore absent
+from section 4 entirely &mdash; and {len(d['blanket'])} of the {h['with_cause']} that do
+carry one tick nearly every box, which amounts to the same thing.</div>
+<div class="callout2 warn"><b>{d['actions']['damages_with']} of {n} damages have a
+corrective action recorded against them</b> ({d['actions']['actions']} actions in total),
+and none has been raised on any service damage since <b>{_last_action_nice}</b>. Checked
+against Depotnet directly with every filter cleared. But we do <b>not</b> know whether
+raising an action is mandatory, discretionary, or expected only in certain circumstances
+&mdash; so this is a fact about the record, not a judgement about practice.</div>
+<div class="callout2"><b>We do not know how Clancy work Depotnet.</b> We can read what the
+fields contain, not the process behind them: when an investigation is required, who signs
+it off, what closes a damage, whether an action is compulsory, or whether teams are
+briefed verbally in ways that never reach the system. Every count here is what the record
+holds, not what people did or did not do.</div>
+<div class="callout2"><b>And nothing here says whether the service was found before it was
+hit</b>, how recently the team had been trained, or what was on the plans against what was
+in the ground. Some of that sits inside the panel packs, statements and photographs
+attached to each damage, and reading those properly is the next piece of work.</div>
+</div></div>
 
 {dmg_table}
 

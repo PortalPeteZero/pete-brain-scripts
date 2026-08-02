@@ -158,6 +158,9 @@ def build():
       (SELECT count(*) FROM clancy_reports) AS reports,
       (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
          AND root_cause IS NOT NULL AND btrim(root_cause)<>'') AS analysed,
+      (SELECT count(*) FROM clancy_report_lesson_buckets b
+         JOIN clancy_dn_incidents i2 ON i2.id=b.incident_id AND i2.fy='FY26/27'
+         WHERE b.strategic) AS usable,
       (SELECT count(*) FROM clancy_unmapped_damages) AS unmapped,
       (SELECT count(*) FROM clancy_dn_incidents WHERE sygma_reviewed_at IS NOT NULL) AS sygma_rev,
       (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
@@ -287,6 +290,19 @@ def build():
    <div><div class="n">{d['cur'] - d['analysed']}</div><div class="l">carry none</div></div>
   </div>
   <div class="go">Read the analysis &rarr;</div>
+ </a>
+ <a class="door b" href="/m/clancy-damage-board-report">
+  <div class="kicker">The summary for the board</div>
+  <div class="t">This year&#8217;s damages: the report</div>
+  <div class="d">The whole year in one page: what is missing, what the record holds in
+  Clancy&#8217;s own words, what can actually be used, the question the form never asks, and
+  what the data is telling us. Built for a reader with ten minutes.</div>
+  <div class="figs">
+   <div><div class="n">{d['cur']}</div><div class="l">damages read</div></div>
+   <div><div class="n">{d['cur'] - d['analysed']}</div><div class="l">report blank</div></div>
+   <div><div class="n">{d['usable']}</div><div class="l">lessons the company could use</div></div>
+  </div>
+  <div class="go">Read the report &rarr;</div>
  </a>
  <a class="door b" href="/m/{ui.REPORTS}">
   <div class="kicker">What Sygma produced</div>
