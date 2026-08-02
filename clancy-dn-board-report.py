@@ -508,12 +508,16 @@ Whether they could not detect or did not detect, the record cannot say.</div>
 {stat(f'{d["kit_yes"]} of {n}', "damages answer Yes to the form&#8217;s own &lsquo;Genny used?&rsquo; and &lsquo;CAT used?&rsquo; questions &mdash; used is all the form can say", CHAR)}
 </div>
 <div class="callout"><b>The most common recorded story is that the service was not where
-the plans showed.</b> In this industry that is not a cause. Plans are known to be
-indicative only, and every team is trained not to rely on them for the position of a
-service. Position comes from detection, trial holes and safe digging. Where &ldquo;the
-plans were wrong&rdquo; is recorded as the cause, the real finding is that teams are still
-treating plans as if they position services. If there is a learning in this year&#8217;s
-record, it is that one.</div>
+the plans showed.</b> Inaccurate plans are a real and well-known contributing factor
+&mdash; and where a service is plastic and the genny and CAT cannot pick it up, they
+contribute more. But in this industry they are not the cause, and they are not a lesson.
+Plans are known to be indicative only, and every team is trained not to rely on them for
+the position of a service &mdash; position comes from detection, trial holes and safe
+digging, precisely because the plans cannot be trusted. Where &ldquo;the plans were
+wrong&rdquo; stands as the recorded root cause and the lesson stops there, the record has
+written down a known working condition, not a cause. The real finding is that plans are
+still being treated as if they position services. If there is a learning in this
+year&#8217;s record, it is that one.</div>
 </div></div>
 
 <div class="band"><div class="rwrap">
