@@ -62,7 +62,7 @@ def rows_for(prop, days, min_impr):
       prv AS (
         SELECT k, sum(impr) i, sum(wp*impr)/nullif(sum(impr),0) w
         FROM daily WHERE date <= current_date - {days} GROUP BY 1)
-      SELECT m.keyword, COALESCE(m.priority,0) vol, m.cluster,
+      SELECT m.keyword, m.volume AS vol, m.cluster,
              round(cur.w::numeric,1) wnow, round(prv.w::numeric,1) wprev,
              cur.i inow, prv.i iprev, cur.solid,
              round((cur.hi-cur.lo)::numeric,1) band

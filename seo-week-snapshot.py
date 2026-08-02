@@ -13,7 +13,7 @@ term can look ten places better on noise alone. Storing only the average would m
 term in one evening. The weekly range is what lets a movement be tested against the term's own
 volatility rather than asserted.
 
-⛔ VOLUME (fixed 1 Aug 2026). This used to write `COALESCE(m.priority,0)` into the `volume`
+⛔ VOLUME (fixed 1 Aug, finished 2 Aug 2026). This used to write `COALESCE(m.priority,0)` into `volume`
 column -- i.e. it copied `seo_keyword_map.priority`, a number set once when the map was built, and
 labelled it "monthly searches". Confirmed on 1 Aug: 482 of 482 rows had priority == volume. When
 all 482 keywords were finally pulled live from Ahrefs, 268 had drifted >25% and the store was
@@ -46,28 +46,27 @@ def q(s):
 
 
 
-def live_volumes(keywords, prop):
-    """Live Ahrefs GB monthly volume for every mapped keyword. Raises rather than guessing.
+def refresh_map_volumes(prop):
+    """Refresh seo_keyword_map.volume via the SHARED module, then read it back.
 
-    NEVER fall back to seo_keyword_map.priority here. Priority is a hand-set ranking field; it was
-    being written into the volume column and read back as "searches per month" for weeks."""
+    Deliberately does NOT own a second copy of the Ahrefs pull. Having two implementations of
+    "what is the volume" is exactly how the priority-as-volume bug survived being fixed once."""
     import importlib.util
-    spec = importlib.util.spec_from_file_location("ahrefs", f"{VAULT}/ahrefs-api.py")
+    spec = importlib.util.spec_from_file_location("svr", f"{VAULT}/seo-volume-refresh.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    api = m.AhrefsAPI(caller="seo-week-snapshot")
-    out = {}
-    for i in range(0, len(keywords), 100):
-        chunk = keywords[i:i + 100]
-        for row in api.keywords_overview(chunk, country="gb"):
-            out[row["keyword"]] = row.get("volume_monthly")
-    got = sum(1 for v in out.values() if v is not None)
-    if got < len(keywords) * 0.8:
-        raise SystemExit(
-            f"FAIL: Ahrefs returned a volume for only {got}/{len(keywords)} keywords. Refusing to "
-            f"write the snapshot -- a partial volume refresh silently reintroduces stale numbers.")
-    print(f"  volume refreshed from Ahrefs: {got}/{len(keywords)} keywords")
-    return out
+    keywords = [r["keyword"] for r in sql(
+        f"SELECT keyword FROM seo_keyword_map WHERE property_key=$x${prop}$x$")]
+    live, answered = m.live_volumes(keywords, caller="seo-week-snapshot")
+    vals = [(k, v) for k, v in live.items() if v is not None]
+    for i in range(0, len(vals), 200):
+        chunk = vals[i:i + 200]
+        cases = " ".join(f"WHEN $x${k}$x$ THEN {v}" for k, v in chunk)
+        keys = ",".join(f"$x${k}$x$" for k, _ in chunk)
+        sql(f"UPDATE seo_keyword_map SET volume = CASE keyword {cases} END, volume_checked_at = now() "
+            f"WHERE property_key=$x${prop}$x$ AND keyword IN ({keys})")
+    print(f"  volume refreshed on the map from Ahrefs: {answered}/{len(keywords)} keywords")
+    return m.volumes_for(prop)
 
 
 def main():
@@ -100,7 +99,7 @@ def main():
         FROM seo_gsc_daily
         WHERE property_key='{prop}' AND date > date '{wk}' - 7 AND date <= date '{wk}'
         ORDER BY lower(query), impressions DESC)
-      SELECT m.keyword, m.target_page, m.cluster, COALESCE(m.priority,0) vol,  -- REPLACED below by the live Ahrefs volume; see live_volumes()
+      SELECT m.keyword, m.target_page, m.cluster, m.volume AS vol,
              w.wpos, COALESCE(w.impr,0) impr, COALESCE(w.clicks,0) clicks,
              round(w.best,1) best, round(w.worst,1) worst, COALESCE(w.days,0) days, r.pg
       FROM seo_keyword_map m
@@ -112,12 +111,12 @@ def main():
           f"{sum(1 for r in rows if (r['impr'] or 0) > 0)} with impressions")
     # Overwrite the priority-derived placeholder with a LIVE volume before anything is written.
     if "--no-volume-refresh" not in a:
-        vols = live_volumes([r["keyword"] for r in rows], prop)
+        vols = refresh_map_volumes(prop)
         for r in rows:
             r["vol"] = vols.get(r["keyword"])
     else:
-        print("  ⚠ --no-volume-refresh: `volume` will carry seo_keyword_map.priority, which is NOT "
-              "a monthly search figure. Do not quote a demand total off this run.")
+        print("  ⚠ --no-volume-refresh: this run carries whatever seo_keyword_map.volume already held. "
+              "Check volume_checked_at before quoting a demand total off it.")
 
     if dry:
         print("dry run - nothing written")

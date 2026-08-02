@@ -77,7 +77,7 @@ def fetch(section, days):
              replace(replace(page,'https://www.sygma-solutions.com',''),'https://sygma-solutions.com','') pg
       FROM seo_gsc_daily WHERE property_key='{PROP}' AND date > {b0} AND date <= {b1}
       ORDER BY lower(query), impressions DESC)
-    SELECT m.keyword, m.target_page, m.priority AS vol,
+    SELECT m.keyword, m.target_page, m.volume AS vol,
            COALESCE(c.impr,0) impr, COALESCE(c.clicks,0) clicks,
            round(c.wpos::numeric,1) wpos, round(p.wpos::numeric,1) prev_wpos,
            COALESCE(p.impr,0) prev_impr, r.pg AS ranks_via

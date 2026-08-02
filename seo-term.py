@@ -45,7 +45,7 @@ def main():
     prop = args[args.index("--property") + 1] if "--property" in args else DEFAULT_PROP
     t = term.replace("'", "''")
 
-    mapped = sql(f"SELECT keyword, target_page, cluster, COALESCE(priority,0) vol FROM seo_keyword_map "
+    mapped = sql(f"SELECT keyword, target_page, cluster, volume AS vol FROM seo_keyword_map "
                  f"WHERE property_key='{prop}' AND lower(keyword)='{t}'")
     cur = sql(f"""SELECT min(date)::text lo, max(date)::text hi, sum(impressions) impr, sum(clicks) clicks,
                    round((sum(position*impressions)/nullif(sum(impressions),0))::numeric,1) wpos
