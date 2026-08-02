@@ -149,7 +149,7 @@ def load():
     # the column explainers render the GLOSSARY's rows — one copy of the wording (edits plan
     # item 2); a column with no glossary row simply gets no explainer, never a second draft
     gloss = {g["column_key"]: g for g in rest(
-        "clancy_glossary?select=column_key,term,plain_meaning&column_key=not.is.null")}
+        "clancy_glossary?select=column_key,term,plain_meaning,short_note&column_key=not.is.null")}
     # The full investigation Q&A. 2,404 rows were being captured and then never shown anywhere —
     # the richest material we hold, invisible on the page. (Pete, 31 Jul: ensure everything the
     # agent pulled in is actually there.)
@@ -372,7 +372,8 @@ text.blabel{font-size:12px;fill:#44506
 .fyt .s a:hover{text-decoration:underline}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
 .embed .dnav,.embed .hero,.embed .crumbs,.embed .backbar,.embed .card:has(#sem-q),
-.embed #genny-fab,.embed #genny-panel{display:none!important}
+.embed #genny-fab,.embed #genny-panel,.embed [id^="genny-"],
+.embed [style*="2147483000"]{display:none!important}
 .embed body{padding-top:0}
 tr.child td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
  padding-top:6px;padding-bottom:6px}
@@ -846,9 +847,12 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
                '<b>Action columns always assert</b> — the export covers every year.</div>')
 
     def th(label, col, num=False, key=None):
-        tip = f' title="{esc(gloss[key]["plain_meaning"])}"' if key and key in gloss else ""
-        return (f'<th data-col="{col}"{" data-num=\"1\"" if num else ""}{tip}>{label} '
-                f'<span class="arr">↕</span></th>')
+        g = gloss.get(key) if key else None
+        tip = f' title="{esc(g["plain_meaning"])}"' if g else ""
+        note = (f'<div class="thd">{esc(g["short_note"])}</div>'
+                if g and g.get("short_note") else '<div class="thd">&nbsp;</div>')
+        return (f'<th data-col="{col}"{" data-num=\"1\"" if num else ""}{tip}>{note}'
+                f'<div class="tht">{label} <span class="arr">↕</span></div></th>')
 
     heads = (th("ID / Date", 0, True, "damage_id") + th("Contract", 1, key="contract")
              + th("Location", 2, key="location") + th("What happened", 3, key="description")
@@ -866,20 +870,33 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
              + th("Captured", 19, True, "captured") + th("Outcome &amp; learning", 20, key="outcome_learning"))
 
     stage4_css = "<style>" + """
-/* ── stage 4: the visual lift (edits plan) — density, alignment, sticky headers ── */
-/* numbers stack: right-aligned tabular digits wherever digits line up */
-table.reg td.n,table.reg th.n,table.reg td.c[data-v],#%TID% td[data-v]{font-variant-numeric:tabular-nums}
-/* density: the table is the hero — tighter rows, smaller chrome around it */
-#%TID% td{padding:7px 9px;font-size:13px}
-#%TID% th{padding:8px 9px;font-size:11px}
-/* marks centred on a fixed grid */
-#%TID% td.c,table.reg td.c{text-align:center;min-width:44px}
-/* sticky header INSIDE the scroll container — position:sticky is defeated by an
-   overflow wrapper unless the wrapper itself is the scroll box with a bounded height */
-.card:has(#%TID%){max-height:78vh;overflow:auto}
-#%TID% thead th{position:sticky;top:0;background:#f7f9fc;z-index:3;box-shadow:0 1px 0 #e3e6ea}
-#%TID% td:first-child,#%TID% th:first-child{position:sticky;left:0;background:#fff;z-index:2}
-#%TID% thead th:first-child{z-index:4;background:#f7f9fc}
+/* ── stage 4: the visual lift — charcoal header band, visible column notes, density ── */
+#%TID%{border-collapse:separate;border-spacing:0}
+#%TID% thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
+ padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
+#%TID% thead th .thd{font-size:10px;font-weight:600;letter-spacing:.02em;color:#aeb8c2;
+ text-transform:none;line-height:1.3;margin-bottom:3px;max-width:150px;white-space:normal}
+#%TID% thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
+ white-space:nowrap}
+#%TID% thead th .arr{color:#97D700}
+#%TID% thead th:first-child{z-index:4}
+#%TID% td{padding:8px 10px;font-size:13px;background:#fff;border-top:1px solid #eef1f5}
+#%TID% td[data-v]{font-variant-numeric:tabular-nums}
+#%TID% td.c{text-align:center;min-width:44px}
+#%TID% tbody tr.row{cursor:pointer}
+#%TID% tbody tr.row:hover td{background:#f4fae6}
+#%TID% tr.child td{background:#f8f9fb}
+#%TID% tr.child:hover td{background:#f8f9fb}
+#%TID% td:first-child,#%TID% th:first-child{position:sticky;left:0;z-index:2}
+#%TID% td:first-child{background:#fff}
+#%TID% tr.child td:first-child{background:#f8f9fb}
+.card:has(#%TID%){max-height:80vh;overflow:auto;padding:0!important;border-radius:14px;
+ box-shadow:0 2px 6px rgba(31,41,51,.06),0 12px 32px rgba(31,41,51,.08)}
+.b{display:inline-block;border-radius:20px;padding:3px 11px;font-size:12px;font-weight:800}
+.b.yes{background:#eaf6d3;color:#3f6d00}
+.b.no{background:#f0f2f5;color:#7a8593}
+.b.warn{background:#fdecea;color:#D50032}
+.b.amber{background:#fdf3e2;color:#8a5a00}
 """.replace("%TID%", tid) + "</style>"
     return f"""
 {stage4_css}{colkey}{markkey}

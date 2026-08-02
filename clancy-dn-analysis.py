@@ -126,9 +126,13 @@ def gather():
         d["prior_year_same_months"] = 0
     d["prior_fy"] = _prior_fy
 
+    # the month companion figure is the DONE report sections — one name, the glossary's.
+    # (It was aliased "investigated" and counted causes; three names for one number, and
+    # "investigated" is the exact implication Pete banned.)
     d["months"] = sql(f"""SELECT to_char(incident_date,'Mon') m, min(incident_date) o, count(*) n,
-      count(*) FILTER (WHERE root_cause IS NOT NULL AND btrim(root_cause)<>'') investigated
-      FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1 ORDER BY o""")
+      count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clancy_dn_answers a
+        WHERE a.incident_id=i.id AND a.section='investigation' AND a.answered)) done
+      FROM clancy_dn_incidents i WHERE fy='{FY}' GROUP BY 1 ORDER BY o""")
 
     d["utility"] = sql(f"""SELECT coalesce(nullif(btrim(strike_category),''),'Not recorded') v, count(*) n
       FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1 ORDER BY n DESC, v""")
@@ -283,7 +287,7 @@ def gather():
       FROM clancy_dn_actions a JOIN clancy_dn_incidents i ON i.id=a.incident_id
       WHERE i.fy='{FY}' ORDER BY a.incident_id, a.date_raised""")
     d["gloss"] = {g["column_key"]: g for g in sql(
-        "SELECT column_key, term, plain_meaning FROM clancy_glossary WHERE column_key IS NOT NULL")}
+        "SELECT column_key, term, plain_meaning, short_note FROM clancy_glossary WHERE column_key IS NOT NULL")}
 
     # The honest denominator for any "only one in the register" claim.
     d["lesson_pool"] = sql("""SELECT count(*) total, count(DISTINCT norm) distinct_texts
@@ -380,7 +384,24 @@ def gather():
       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM clancy_dn_answers a
         WHERE a.incident_id=clancy_dn_incidents.id AND a.section='investigation' AND a.answered)) inv
       FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1
-      HAVING count(*) >= 3 ORDER BY n DESC""")
+      ORDER BY n DESC""")
+    # a "n >= 3" cutoff silently dropped 6 damages across 4 small contracts (audit, 2 Aug pm).
+    # Contracts with 1-2 damages roll up into one visible line — nothing vanishes.
+    # the management API returns some numerics as strings — normalise before comparing
+    for _r in d["by_contract"]:
+        for _k2 in ("n", "avg_age", "still_open", "inv"):
+            _r[_k2] = int(_r[_k2] or 0)
+    _big = [r for r in d["by_contract"] if r["n"] >= 3]
+    _small = [r for r in d["by_contract"] if r["n"] < 3]
+    if _small:
+        _big.append({
+            "c": f"{len(_small)} smaller contracts ({', '.join(x['c'] for x in _small)})",
+            "n": sum(x["n"] for x in _small),
+            "avg_age": round(sum(x["avg_age"] * x["n"] for x in _small)
+                             / max(sum(x["n"] for x in _small), 1)),
+            "still_open": sum(x["still_open"] for x in _small),
+            "inv": sum(x["inv"] for x in _small)})
+    d["by_contract"] = _big
     d["by_severity"] = sql(f"""SELECT coalesce(severity,'Not stated') v, count(*) n,
       count(*) FILTER (WHERE root_cause IS NOT NULL AND btrim(root_cause)<>'') inv
       FROM clancy_dn_incidents WHERE fy='{FY}' GROUP BY 1 ORDER BY n DESC""")
@@ -473,7 +494,7 @@ def cols(rows, lab, val, sub=None):
     mx = max([r[val] for r in rows] + [1])
     out = []
     for r in rows:
-        s = (f'<div class="s2">{r[sub]} investigated</div>' if sub else "")
+        s = (f'<div class="s2">{r[sub]} section{"" if r[sub] == 1 else "s"} done</div>' if sub else "")
         out.append(f'<div class="c"><div class="v">{r[val]}</div>'
                    f'<div class="bar" style="height:{max(round(100*r[val]/mx),3)}%"></div>'
                    f'<div class="k">{esc(r[lab])}</div>{s}</div>')
@@ -763,8 +784,12 @@ def damage_table_v2(d):
               f'<div class="kin">{kes}</div></details>') if kes else ""
 
     def th(label, key=None, cls=""):
-        tip = f' title="{esc(gloss[key]["plain_meaning"])}"' if key and key in gloss else ""
-        return f'<th{" class=\"" + cls + "\"" if cls else ""}{tip}>{label}</th>'
+        g = gloss.get(key) if key else None
+        tip = f' title="{esc(g["plain_meaning"])}"' if g else ""
+        note = (f'<div class="thd">{esc(g["short_note"])}</div>'
+                if g and g.get("short_note") else '<div class="thd">&nbsp;</div>')
+        return (f'<th{" class=\"" + cls + "\"" if cls else ""}{tip}>{note}'
+                f'<div class="tht">{label}</div></th>')
 
     heads = (th("Damage", "damage_id") + th("Date") + th("Contract", "contract")
              + th("Service", "utility") + th("Status", "status")
@@ -1041,10 +1066,18 @@ STAGE4_CSS = """
 .sec table.t th:not(:first-child),.sec table.t td:not(:first-child){
  text-align:right;font-variant-numeric:tabular-nums;padding-left:26px}
 .sec table.t th,.sec table.t td{padding-top:6px;padding-bottom:6px}
-/* the register: sticky header inside a bounded scroll box; density pass */
-.tscroll{max-height:78vh;overflow:auto}
-table.reg thead th{position:sticky;top:0;background:#f7f9fc;z-index:3;box-shadow:0 1px 0 #e3e6ea}
-table.reg td{padding:7px 9px;font-size:13px}
+/* the register: charcoal header band with VISIBLE column notes, sticky in a bounded box */
+.tscroll{max-height:80vh;overflow:auto;border-radius:14px}
+table.reg thead th{position:sticky;top:0;z-index:3;background:#353E47;color:#fff;
+ padding:8px 10px 9px;vertical-align:bottom;border-bottom:3px solid #97D700}
+table.reg thead th .thd{font-size:10px;font-weight:600;color:#aeb8c2;line-height:1.3;
+ margin-bottom:3px;max-width:150px;white-space:normal;text-transform:none;letter-spacing:.02em}
+table.reg thead th .tht{font-size:11.5px;font-weight:800;letter-spacing:.03em;color:#fff;
+ white-space:nowrap}
+table.reg td{padding:8px 10px;font-size:13px;background:#fff}
+table.reg tbody tr:hover td{background:#f4fae6}
+table.reg tr.achild td{background:#f8f9fb}
+table.reg tr.achild:hover td{background:#f8f9fb}
 table.reg td.c{text-align:center;min-width:40px}
 table.reg td.n,table.reg th.n{font-variant-numeric:tabular-nums}
 /* bolder section headers, on brand */
@@ -1133,14 +1166,28 @@ def build(edition, label):
             if r[den] >= 5 and (best is None or share > best[1]):
                 best = (r["u"], share)
         return best
-    _sl = _leader(d["shallow_by_utility"], "shallow", "total")
-    _shallow_head = (f"{esc(_sl[0])} is the shallow-service problem "
-                     f"({round(_sl[1]*100)}% of its recorded depths are under 450mm)"
-                     if _sl else "Shallow services, by utility")
-    _me = _leader(d["mech_by_utility"], "mech", "total")
-    _mech_head = (f"{esc(_me[0])} is the mechanical-plant problem "
-                  f"({round(_me[1]*100)}% of its damages name mechanical plant)"
-                  if _me else "Mechanical plant vs hand tools, by utility")
+    # Headings carry their own caveats: the winner is judged on 5+ records, and anything the
+    # table shows at a higher share on fewer records is NAMED — a heading must never be
+    # contradicted by the table directly beneath it.
+    def _head_line(rows, num, den, what):
+        best = _leader(rows, num, den)
+        if not best:
+            return None
+        small = [r for r in rows
+                 if r["u"] != "Not recorded" and 0 < (r.get(den) or 0) < 5
+                 and (r.get(num) or 0) / r[den] > best[1]]
+        extra = ("; " + ", ".join(
+            f"{esc(r['u'])} is {r.get(num) or 0} of {r[den]}, too few to weigh"
+            for r in small)) if small else ""
+        bn = next((r for r in rows if r["u"] == best[0]), {})
+        return (f"{esc(best[0])} is the {what} "
+                f"({bn.get(num)} of its {bn.get(den)} &mdash; {round(best[1]*100)}%{extra})")
+    _shallow_head = (_head_line(d["shallow_by_utility"], "shallow", "total",
+                                "shallow-service problem: depths under 450mm")
+                     or "Shallow services, by utility")
+    _mech_head = (_head_line(d["mech_by_utility"], "mech", "total",
+                             "mechanical-plant problem")
+                  or "Mechanical plant vs hand tools, by utility")
     shallow_rows = "".join(
         f"<tr><td>{esc(r['u'])}</td><td class='n'>{r['shallow']}</td><td class='n'>{r['total']}</td>"
         f"<td class='n'>{pct(r['shallow'], r['total'])}</td></tr>" for r in d["shallow_by_utility"])
@@ -1265,6 +1312,35 @@ def build(edition, label):
             f'<b>not</b> a claim about the whole history: '
             f'{esc(d["years_without_lessons"])} carry no lessons in what we hold, so there was '
             f'nothing from those years to compare against.</div></div>')
+    # section 2's reading, derived — "Gas is the largest" was a knife-edge claim at 20 v 19
+    _u = [r for r in d["utility"] if r["v"] != "Not recorded"]
+    if len(_u) >= 2 and _u[0]["n"] - _u[1]["n"] <= 2:
+        _struck_read = (f"{esc(_u[0]['v'])} and {esc(_u[1]['v'])} are effectively level "
+                        f"({_u[0]['n']} and {_u[1]['n']}) and together are "
+                        f"{pct(_u[0]['n'] + _u[1]['n'], n)} of the year.")
+    elif _u:
+        _struck_read = (f"{esc(_u[0]['v'])} is the largest category "
+                        f"({_u[0]['n']} of {n}).")
+    else:
+        _struck_read = ""
+    # section 3's reading, derived from the same classification the by-utility table uses
+    _mech = sum(r.get("mech") or 0 for r in d["mech_by_utility"])
+    _hand = sum(r.get("hand") or 0 for r in d["mech_by_utility"])
+    _plant_read = (f"Read one thing off this before the detail: {_mech} of the {n} name mechanical "
+                   f"plant &mdash; a digger, breaker, drill or saw &mdash; against {_hand} naming a "
+                   f"hand tool. A mechanical strike is the machine finding the service before the "
+                   f"crew does; that split is what the Genny &amp; CAT columns in the register "
+                   f"exist to interrogate.")
+    # section 5's closing sentence: the not-done damages, split by their own case status
+    _nd = sql(f"""SELECT status, count(*) n FROM clancy_dn_incidents i
+      WHERE fy='{FY}' AND NOT EXISTS (SELECT 1 FROM clancy_dn_answers a
+        WHERE a.incident_id=i.id AND a.section='investigation' AND a.answered) GROUP BY 1""")
+    _notdone_open = next((x["n"] for x in _nd if x["status"] == "Open"), 0)
+    _odd_n = sum(x["n"] for x in _nd if x["status"] != "Open")
+    _notdone_odd = (f" ({_odd_n} more sit{'s' if _odd_n == 1 else ''} on a case already marked "
+                    f"&ldquo;Complete with Outstanding Actions&rdquo;)") if _odd_n else ""
+    _last_action_nice = (datetime.datetime.strptime(str(d["last_action"]), "%Y-%m-%d")
+                         .strftime("%-d %B %Y")) if d.get("last_action") else "never"
     wu = d["depth_wrong_unit"]
     wrong_unit_note = ""
     if wu:
@@ -1462,14 +1538,14 @@ record can carry that weight.</div>
  <div class="kpi warn"><div class="n">{h['supply_lost']}</div><div class="l">interrupted a<br>customer&#8217;s supply</div></div>
  <div class="kpi warn"><div class="n">{h['still_open']}</div><div class="l">still open<br>on Depotnet</div></div>
  <div class="kpi"><div class="n">{ib['has_section']}</div>
-  <div class="l">investigation reports<br>completed</div></div>
+  <div class="l">investigation report<br>sections done</div></div>
 </div>
 
 <div class="kpis">
  <div class="kpi"><div class="n">{ib['complete']}/{ib['has_section']}</div>
-  <div class="l">of those Depotnet itself<br>marks complete</div></div>
- <div class="kpi warn"><div class="n">{h['still_open']}</div>
-  <div class="l">still open, which is why<br>they have no cause yet</div></div>
+  <div class="l">of the done sections<br>marked complete by Clancy</div></div>
+ <div class="kpi warn"><div class="n">{blank_ok}</div>
+  <div class="l">carry no cause &mdash; their report<br>section is not done</div></div>
  <div class="kpi warn"><div class="n">{oldest_open}</div>
   <div class="l">open for 60 days<br>or longer</div></div>
  <div class="kpi warn"><div class="n">{cf['distinct_briefable']}/{d['closed_n']}</div>
@@ -1482,16 +1558,18 @@ record can carry that weight.</div>
 
 <div class="sec"><h2>1. The year</h2>
 <div class="why">Month by month, and how many of each month&#8217;s damages have their investigation report section completed.</div>
-{cols(d['months'], 'm', 'n', 'investigated')}
-<p style="margin-top:16px">{n} damages{months_phrase}{compare}. {h['still_open']} are still open. The small figure under each month is how many carry
-a recorded cause, which is the number this page can actually reason from.</p></div>
+{cols(d['months'], 'm', 'n', 'done')}
+<p style="margin-top:16px">{n} damages{months_phrase}{compare}. {h['still_open']} are still open on
+Depotnet. The small figure under each month is how many of that month&#8217;s damages have their
+investigation report section done &mdash; the only rows this page can read a cause or a lesson
+from.</p></div>
 
 <div class="sec"><h2>2. What was struck</h2>
 <div class="why">Depotnet&#8217;s own strike category and recorded depth. Held for
 {h['with_struck']} of {n}.</div>
 <div class="split"><div>{hbar(d['utility'], total=n)}</div>
 <div>{hbar(d['depth'], total=n, tone='grey')}</div></div>
-<p style="margin-top:16px">Gas is the largest single category. Depth is recorded on
+<p style="margin-top:16px">{_struck_read} Depth is recorded on
 {h['with_depth']} of {n} and is the more useful of the two, because it separates a service that was
 where it should have been from one that was not.</p>
 {wrong_unit_note}
@@ -1500,6 +1578,7 @@ where it should have been from one that was not.</p>
 <div class="sec"><h2>3. How it happened</h2>
 <div class="why">The plant or tool recorded as causing the damage, and the setting. Held for
 {h['with_plant']} of {n}.</div>
+<p>{_plant_read}</p>
 <div class="split"><div>{hbar(d['plant'], total=n)}</div>
 <div>{hbar(d['environment'], total=n, tone='grey')}</div></div></div>
 
@@ -1528,16 +1607,17 @@ cannot see from here. Depotnet marks {closed_complete} of those {d['closed_n']} 
 been open a long time.</p>
 {open_rows_html}
 <p style="margin-top:14px">So the honest reading is not that {n - h['with_cause']} damages went
-uninvestigated. It is that {n - h['with_cause']} are waiting, and the learning from them is not
-available to anyone yet. That is a different problem with a different fix.</p></div>
+uninvestigated. It is that {_notdone_open} of them are open and waiting their turn{_notdone_odd},
+and the learning from them is not available to anyone yet. That is a different problem with a
+different fix.</p></div>
 
 <div class="sec"><h2>6. The learning gap, measured where it can be measured</h2>
-<div class="why">Judged only on the {d['closed_n']} damages that are closed, because those are the
-ones Depotnet marks as a complete investigation. Rules are stated so you can disagree with them.</div>
+<div class="why">Judged only on the {d['closed_n']} damages that are closed, because a closed case
+is where the process has finished with the damage. Rules are stated so you can disagree with them.</div>
 <table class="t"><tr><th>What the lessons field holds</th><th>Closed damages</th><th>Share</th></tr>
 {closed_tier_rows}</table>
 <p style="margin-top:16px">This is the finding that survives scrutiny. All {d['closed_n']} closed
-damages were investigated and every one has a cause. But of those {d['closed_n']}, only
+damages have their investigation report section done, and every one has a cause. But of those {d['closed_n']}, only
 <b>{cf['distinct_briefable']}</b> produced a lesson that runs to more than a phrase. The rest are
 a few words: enough to close a field, not enough to brief a team on.</p>
 <p><b>The section is being completed. The lesson field is not.</b> That is a gap in the last step
@@ -1588,7 +1668,7 @@ that does not.</div>
 which amounts to the same thing.</p>
 <p><b>{d['actions']['damages_with']} of {n} damages have a corrective action recorded against
 them</b> ({d['actions']['actions']} actions in total), and none has been raised on any service
-damage since <b>{d['last_action']}</b>. We checked that against Depotnet directly with every filter
+damage since <b>{_last_action_nice}</b>. We checked that against Depotnet directly with every filter
 cleared, so it is not an artefact of our export. But we do <b>not</b> know whether raising a
 corrective action is mandatory at Clancy, or discretionary, or expected only in certain
 circumstances. Without that, the figure is a fact about the record and not a judgement about
