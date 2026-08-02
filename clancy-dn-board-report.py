@@ -484,7 +484,7 @@ def build():
         cn = _C((r["sub"] or r["cat"] or "unstated").replace("Electric - ", "")
                 .replace("&#8211;", "-") for r in rows)
         return " &middot; ".join(f"{v}&times; {esc(k.lower())}" for k, v in cn.most_common())
-    _proven = " &mdash; among them damage 152586, the one whose recorded conclusions are on record as incorrect" \
+    _proven = ". One of them is damage 152586 &mdash; the damage whose recorded findings failed our review of the detection data" \
         if any(r["id"] == 152586 for r in elec) else ""
     _rest_all_poly = rest and all("poly" in (r["sub"] or "").lower() for r in rest)
     gas_blamed = sum(1 for r in ps if r["cat"] == "Gas")
@@ -544,10 +544,10 @@ impossible to defend, it stands alone.</div>'''
 plans at all, and a poly pipe gives the genny and CAT nothing to find. If
 &ldquo;insufficient plans&rdquo; belonged anywhere as a finding, it is here.
 <div style="margin-top:10px;font-size:15px"><b>Recorded as a plans problem: {gas_blamed} of the {d["gas_poly"]}.</b></div></div>
-<div class="pk-e"><span class="pkh">Yet on the cables detection should always find</span>
+<div class="pk-e"><span class="pkh">Yet where the plans get listed as the cause</span>
 <div class="pkn">{len(elec)} electric cables</div>
-&mdash; conductive, exactly what the genny and CAT exist to find &mdash; carry
-&ldquo;Insufficient plans&rdquo; as the underlying cause.
+Every one of these is conductive &mdash; the exact thing the genny and CAT exist to find.
+Yet every one has &ldquo;Insufficient plans&rdquo; listed as its underlying cause.
 <mark>Insufficient plans should never stand as the cause or the lesson on an electric
 cable.</mark>
 <div class="pkc">{_chips(elec)}{_proven}</div></div>
