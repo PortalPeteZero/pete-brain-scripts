@@ -31,7 +31,7 @@ k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = k["url"], k["service_role_key"]
 MK = "clancy-depotnet-damages"
 
-def _urlopen_retry(req, timeout=120, tries=6):
+def _urlopen_retry(req, timeout=120, tries=9):
     """Supabase answers 429 under load — a heavy filing run or 22 page writes in a row will
     hit it. Without backoff the caller dies mid-publish and leaves the section half-updated.
     Retries on 429 and 5xx with exponential backoff; anything else raises immediately."""
@@ -42,11 +42,11 @@ def _urlopen_retry(req, timeout=120, tries=6):
         except urllib.error.HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
                 raise
-            _t.sleep(min(2 ** n, 30))
+            _t.sleep(min(2 ** n, 60))
         except Exception:
             if n == tries - 1:
                 raise
-            _t.sleep(min(2 ** n, 30))
+            _t.sleep(min(2 ** n, 60))
 
 
 def rest(path, method="GET", body=None, headers=None):

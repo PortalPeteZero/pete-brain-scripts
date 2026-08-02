@@ -17,7 +17,7 @@ import os, json, argparse, datetime, urllib.request, urllib.error
 import clancy_dn_ui as ui
 
 
-def _urlopen_retry(req, timeout=120, tries=6):
+def _urlopen_retry(req, timeout=120, tries=9):
     """Supabase answers 429 under load. clancy-dn-publish.py runs six of these tools back to
     back and each writes many rows, so the later steps reliably hit it - observed 2 Aug 2026,
     where the FY26/27 analysis build died mid-run on a 429 and left that page stale while every
@@ -30,11 +30,11 @@ def _urlopen_retry(req, timeout=120, tries=6):
         except urllib.error.HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
                 raise
-            _t.sleep(min(2 ** n, 30))
+            _t.sleep(min(2 ** n, 60))
         except Exception:
             if n == tries - 1:
                 raise
-            _t.sleep(min(2 ** n, 30))
+            _t.sleep(min(2 ** n, 60))
 
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")

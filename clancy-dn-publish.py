@@ -18,7 +18,7 @@ So: one command, everything, in dependency order, and it reports the age of each
   VAULT=/tmp/pbs python3 clancy-dn-publish.py              # publish the lot
   VAULT=/tmp/pbs python3 clancy-dn-publish.py --check      # report freshness, publish nothing
 """
-import os, sys, json, argparse, subprocess, urllib.request, datetime
+import os, sys, json, time, argparse, subprocess, urllib.request, datetime
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = os.path.expanduser("~/.config/pete-secrets")
@@ -85,8 +85,15 @@ def main():
         return 0
 
     failed = []
-    for label, argv, _keys, *env in STEPS:
+    for i, (label, argv, _keys, *env) in enumerate(STEPS):
         extra = env[0] if env else {}
+        # Pace the run. Each step fires tens of queries and Supabase throttles on volume, so six
+        # heavy tools back to back reliably 429 the later ones - the FY25/26 analysis step failed
+        # exactly this way on 2 Aug 2026 while every other page rebuilt, leaving the section
+        # half-fresh. The per-request backoff is the safety net; this is what stops it being
+        # needed. A few seconds between steps costs nothing on a publish that takes minutes.
+        if i:
+            time.sleep(8)
         print(f"\n=== {label}")
         r = subprocess.run(["python3", f"{VAULT}/{argv[0]}", *argv[1:]],
                            capture_output=True, text=True,

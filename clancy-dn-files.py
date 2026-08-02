@@ -51,7 +51,7 @@ PHOTO_EXT = (".jpg", ".jpeg", ".png", ".heic", ".gif", ".bmp", ".webp")
 VIDEO_EXT = (".mp4", ".mov", ".avi", ".m4v", ".3gp")
 
 
-def _urlopen_retry(req, timeout=120, tries=6):
+def _urlopen_retry(req, timeout=120, tries=9):
     """Supabase answers 429 under load — a heavy filing run or 22 page writes in a row will
     hit it. Without backoff the caller dies mid-publish and leaves the section half-updated.
     Retries on 429 and 5xx with exponential backoff; anything else raises immediately."""
@@ -62,11 +62,11 @@ def _urlopen_retry(req, timeout=120, tries=6):
         except urllib.error.HTTPError as e:
             if e.code not in (429, 500, 502, 503, 504) or n == tries - 1:
                 raise
-            _t.sleep(min(2 ** n, 30))
+            _t.sleep(min(2 ** n, 60))
         except Exception:
             if n == tries - 1:
                 raise
-            _t.sleep(min(2 ** n, 30))
+            _t.sleep(min(2 ** n, 60))
 
 
 def rest(path, method="GET", payload=None, extra=None):
