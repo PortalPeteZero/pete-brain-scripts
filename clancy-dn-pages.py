@@ -24,6 +24,9 @@ from collections import Counter, defaultdict
 import clancy_dn_ui as ui
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
+# Stage-2 hold flag (edits plan): the reworked tables render ONLY when armed. A routine
+# capture publish with the flag off ships the approved output, never the preview.
+STAGE2 = os.environ.get("CLANCY_STAGE2") == "1"
 SEC = os.path.expanduser("~/.config/pete-secrets")
 if not os.path.exists(f"{SEC}/command-centre-supabase-keys.json"):
     SEC = f"{VAULT}/Library/processes/secrets"
@@ -141,6 +144,10 @@ def load():
     # folder as the Sygma panel-review material, so a page that renders only the review folder shows
     # none of them.
     files = rest_all("clancy_dn_files?select=incident_id,action_id,kind,name,drive_id,drive_folder,source,deleted_on_depotnet&order=incident_id,kind,name")
+    # the column explainers render the GLOSSARY's rows — one copy of the wording (edits plan
+    # item 2); a column with no glossary row simply gets no explainer, never a second draft
+    gloss = {g["column_key"]: g for g in rest(
+        "clancy_glossary?select=column_key,term,plain_meaning&column_key=not.is.null")}
     # The full investigation Q&A. 2,404 rows were being captured and then never shown anywhere —
     # the richest material we hold, invisible on the page. (Pete, 31 Jul: ensure everything the
     # agent pulled in is actually there.)
@@ -167,7 +174,7 @@ def load():
     fby = defaultdict(list)
     for f in files:
         fby[f["incident_id"]].append(f)
-    return inc, act, enrich, dict(fby), dict(aby)
+    return inc, act, enrich, dict(fby), dict(aby), gloss
 
 FAM_ORDER = ["Southern Water", "Anglian Water", "South East Water", "Scottish Water", "UKPN", "SGN"]
 # Contract families no longer carry their own hue: the "By contract" chart is a single series
@@ -362,6 +369,16 @@ text.blabel{font-size:12px;fill:#44506
 .fyt .s a{color:var(--accent);text-decoration:none;font-weight:600}
 .fyt .s a:hover{text-decoration:underline}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+tr.child td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
+ padding-top:6px;padding-bottom:6px}
+tr.child td:first-child{padding-left:26px;position:relative}
+tr.child td:first-child:before{content:"\21B3";position:absolute;left:10px;color:#9aa4af}
+.colkey{margin:0 0 12px;background:#fff;border:1px solid var(--border,#e3e6ea);border-radius:12px}
+.colkey summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:13px}
+.colkey .kin{padding:2px 16px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:6px 18px}
+.colkey .ke{font-size:12.5px;line-height:1.45;color:#4a5560}
+.colkey .ke b{color:#1f2933}
+.markkey{font-size:12px;color:#5b6770;margin:6px 0 10px}
 .filters input[type=search]{font:inherit;font-size:13.5px;padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:#fff;min-width:210px}
 .filters select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--ink);cursor:pointer}
 .filters .count{font-size:12.5px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
@@ -487,8 +504,15 @@ function initTable(tid){
       if(needle) ok=r.dataset.search.includes(needle);
       if(ok) for(const s of sels){const v=s.value; if(v && r.dataset[s.dataset.key]!==v){ok=false;break;}}
       r.style.display=ok?'':'none'; shown+=ok?1:0;
-      const d=r.nextElementSibling;
-      if(d&&d.classList.contains('det')) d.style.display='none';
+      // companions follow their parent: the det expander AND any action child rows
+      // (tr.child[data-parent], stage 2). Children are never counted as damages —
+      // 'shown' counts tr.row only.
+      let d=r.nextElementSibling;
+      while(d && !d.classList.contains('row')){
+        if(d.classList.contains('det')) d.style.display='none';
+        else if(d.classList.contains('child')) d.style.display=ok?'':'none';
+        d=d.nextElementSibling;
+      }
       r.classList.remove('openrow');
     });
     if(cnt) cnt.textContent=shown+' shown';
@@ -504,11 +528,16 @@ function initTable(tid){
   t.querySelectorAll('th[data-col]').forEach((th,i)=>{th.addEventListener('click',()=>{
     const idx=+th.dataset.col, num=th.dataset.num==='1', asc=th.dataset.asc!=='1';
     th.dataset.asc=asc?'1':'0';
-    const pairs=rows().map(r=>[r,r.nextElementSibling&&r.nextElementSibling.classList.contains('det')?r.nextElementSibling:null]);
-    pairs.sort((a,b)=>{let x=a[0].children[idx].dataset.v??a[0].children[idx].textContent,
+    // a sort group is the damage row plus EVERY companion row that follows it (det
+    // expander, action child rows) up to the next damage row — sorting must never
+    // strand a child from its parent
+    const groups=rows().map(r=>{const g=[r];let d=r.nextElementSibling;
+      while(d && !d.classList.contains('row')){g.push(d);d=d.nextElementSibling;}
+      return g;});
+    groups.sort((a,b)=>{let x=a[0].children[idx].dataset.v??a[0].children[idx].textContent,
       y=b[0].children[idx].dataset.v??b[0].children[idx].textContent;
       if(num){x=+x||0;y=+y||0;} return (x<y?-1:x>y?1:0)*(asc?1:-1);});
-    pairs.forEach(p=>{tb.appendChild(p[0]); if(p[1])tb.appendChild(p[1]);});
+    groups.forEach(g=>g.forEach(row=>tb.appendChild(row)));
   });});
   apply();
   if(deep){ t.closest('.card').scrollIntoView({behavior:'auto',block:'start'}); window.scrollBy(0,-80); }
@@ -626,7 +655,221 @@ def status_pill(s):
 
 # ---------------------------------------------------------------- incident table
 
-def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
+def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
+                      aby=None, fby=None, gloss=None):
+    """The stage-2 register table (edits plan, converged 2 Aug 2026). One row per damage,
+    action child rows beneath, the investigation split, the three action columns, the five
+    spot-checks, evidence — every value derived by the by-data-source rules:
+
+      capture-derived (investigation, spot-checks, evidence): dash + "Not captured yet" on
+      uncaptured damages — never asserting an absence we have not looked at.
+      export-derived (the three action columns): ALWAYS assert, every year — the Action
+      Report export is complete whether or not the damage is captured; no actions means no
+      actions (Pete, 1 Aug).
+    """
+    enrich = enrich or {}
+    aby = aby or {}
+    fby = fby or {}
+    gloss = gloss or {}
+    fams = sorted(set(fam(r) for r in inc))
+    utils = [u for u in UTIL_ORDER if any(r["ugroup"] == u for r in inc)]
+    sevs = ["High (Cat 1)", "Medium (Cat 2)", "Low (Cat 3)"]
+    stats = sorted(set(r["status"] or "—" for r in inc))
+    fys = sorted(set(r["fy"] for r in inc if r["fy"]), reverse=True)
+    sel = []
+    if fy_filter and len(fys) > 1:
+        sel.append(('fy', 'FY', fys))
+    sel += [('fam', 'Contract', fams), ('ugroup', 'Utility', utils), ('sev', 'Severity', sevs),
+            ('status', 'Status', stats)]
+    selects = "".join(
+        f'<select data-filter-for="{tid}" data-key="{key}"><option value="">{lab}: all</option>' +
+        "".join(f'<option>{esc(o)}</option>' for o in opts) + "</select>"
+        for key, lab, opts in sel)
+    # the investigation + action filters speak the new columns' language
+    INVOPTS = [("done", "Report done"), ("notdone", "Report not done"),
+               ("uncap", "not captured yet")]
+    ACTOPTS = [("none", "None raised"), ("open", "raised — still open"),
+               ("closed", "raised — all closed")]
+    selects += ('<select data-filter-for="' + tid + '" data-key="inv"><option value="">Investigation: all</option>'
+                + "".join(f'<option value="{v}">{esc(l)}</option>' for v, l in INVOPTS) + "</select>")
+    selects += ('<select data-filter-for="' + tid + '" data-key="acts"><option value="">Actions: all</option>'
+                + "".join(f'<option value="{v}">{esc(l)}</option>' for v, l in ACTOPTS) + "</select>")
+
+    def spot(v, captured):
+        if not captured:
+            return '<span class="mk b" title="Not captured yet">&ndash;</span>'
+        if v is None or v == "":
+            return '<span class="mk b" title="Nothing held — the investigation report section is not done, or this field is blank">&ndash;</span>'
+        u = str(v).strip().upper()
+        if u in ("NO", "N"):
+            return '<span class="mk n" title="Answered no — their words">&#10007;</span>'
+        return '<span class="mk y" title="' + esc(str(v))[:120] + '">&#10003;</span>'
+
+    rows_html = []
+    for r in sorted(inc, key=lambda x: (x["d"] or ""), reverse=True):
+        acts = act_by_inc.get(r["id"], [])
+        captured = bool(r.get("pdf_captured_at"))
+        ans = aby.get(r["id"], [])
+        inv_ans = [a for a in ans if a["section"] == "investigation"]
+        inv_done = any(a.get("answered") for a in inv_ans)
+        verdict = next((str(a.get("answer") or "").strip() for a in inv_ans
+                        if (a.get("question") or "").startswith("Is the investigation complete")), "")
+        qa = {(a.get("question") or "").strip(): (a.get("answer") or "")
+              for a in ans if a.get("answered")}
+        # capture-derived cells
+        if not captured:
+            inv_h = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+            ver_h = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+            inv_key = "uncap"
+        elif inv_done:
+            inv_h = '<span class="b yes">Done</span>'
+            ver_h = ('<span class="b yes">Yes</span>' if verdict.upper() == "YES" else
+                     '<span class="b warn" title="A fully worked section where Clancy answer that the investigating itself is not finished">No</span>'
+                     if verdict.upper() == "NO" else "&mdash;")
+            inv_key = "done"
+        else:
+            inv_h = '<span class="b no">Not done</span>'
+            ver_h = '<span class="mk b" title="The section is not done, so the question was never answered">&mdash;</span>'
+            inv_key = "notdone"
+        # export-derived: ALWAYS assert
+        n_open = sum(1 for a in acts if a["status"] != "Closed")
+        n_closed = sum(1 for a in acts if a["status"] == "Closed")
+        cwoa = (r["status"] == "Complete with Outstanding Actions" and not acts)
+        if acts:
+            raised_h = f'<span class="b yes" data-v="{len(acts)}">{len(acts)}</span>'
+            open_h = (f'<span class="b warn">{n_open} overdue</span>' if n_open
+                      else '<span class="b" data-v="0">0</span>')
+            closed_h = f'{n_closed}'
+            act_key = "open" if n_open else "closed"
+        else:
+            _tip = (" title=\"Depotnet&#8217;s incident status says outstanding actions; its "
+                    "actions export holds none — both shown as Depotnet holds them\"" if cwoa else
+                    " title=\"No corrective action exists for this damage in Depotnet&#8217;s "
+                    "own export — for any year, captured or not\"")
+            raised_h = f'<span class="b amber"{_tip}>None{" *" if cwoa else ""}</span>'
+            open_h = "&mdash;"
+            closed_h = "&mdash;"
+            act_key = "none"
+        # evidence: capture-derived; a true 0 only on a captured damage
+        held = [f for f in fby.get(r["id"], [])
+                if f.get("drive_id") and not f.get("deleted_on_depotnet")]
+        if not captured:
+            ev_h = '<span class="mk b" title="Not captured yet">&ndash;</span>'
+        elif held:
+            ev_h = f'{len(held)}'
+        else:
+            ev_h = '<span data-v="0" title="Captured in full — Depotnet holds no files for this damage">0</span>'
+        en = enrich.get(r["id"])
+        syg_b = '<span class="b yes">Yes</span>' if en else '<span class="b no">—</span>'
+        cap_b = ('<span class="b yes">Yes</span>' if captured
+                 else '<span class="b no" title="Not captured yet">—</span>')
+        if en and en.get("summary"):
+            outcome = en["summary"]
+        else:
+            cms = [a["corrective_measure"] for a in acts if a.get("corrective_measure")]
+            outcome = cms[-1] if cms else (r.get("incident_summary") or None)
+        learning = ((en.get("key_findings") or [None])[0] if en else None) or r.get("lessons_learnt")
+        if learning and len(learning) > 220:
+            learning = learning[:217] + "…"
+        ol = (f'<div class="ol"><div class="fl">Outcome</div><div class="t{"" if outcome else " muted"}">{esc(outcome) if outcome else "None recorded"}</div>'
+              f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
+        search = " ".join(str(r.get(f) or "").lower() for f in
+                          ["id", "location", "description", "contract", "raised_by", "subcontractor", "job_ref"])
+        detail = f'/raw/{MK}/{year_pages(r["fy"])["dash"][:-5]}-damage.html?id={r["id"]}' if r["fy"] in FY_PAGE else ""
+        rows_html.append(
+            f'<tr class="row" data-href="{detail}" data-search="{esc(search)}" data-fy="{esc(r["fy"] or "")}" data-fam="{esc(fam(r))}" '
+            f'data-ugroup="{esc(r["ugroup"])}" data-sev="{esc(r["sev"])}" data-status="{esc(r["status"] or "")}" '
+            f'data-inv="{inv_key}" data-acts="{act_key}">'
+            f'<td class="mono" data-v="{r["id"]}">{r["id"]}<div class="small muted" data-v="{r["d"] or ""}">{r["d"] or "—"}</div></td>'
+            f'<td>{esc(fam(r))}<div class="small muted">{esc(r["contract"] or "")}</div></td>'
+            f'<td style="min-width:150px">{esc((r["location"] or "—")[:70])}</td>'
+            f'<td style="min-width:200px"><div class="clamp2 small" style="font-size:13px">{esc((r["description"] or "—")[:220])}</div></td>'
+            f'<td><span class="pill uc">{esc(r["ugroup"])}</span></td>'
+            f'<td data-v="{["High","Medium","Low"].index(r["sev"].split(" ")[0]) if r["sev"].split(" ")[0] in ["High","Medium","Low"] else 3}">{sev_pill(r["sev"])}</td>'
+            f'<td>{status_pill(r["status"] or "—")}</td>'
+            f'<td data-v="{ {"done":0,"notdone":1,"uncap":2}[inv_key] }">{inv_h}</td>'
+            f'<td>{ver_h}</td>'
+            f'<td data-v="{len(acts)}">{raised_h}</td>'
+            f'<td data-v="{n_open}">{open_h}</td>'
+            f'<td data-v="{n_closed}" class="c">{closed_h}</td>'
+            f'<td class="c">{spot(r.get("root_cause"), captured)}</td>'
+            f'<td class="c">{spot(r.get("lessons_learnt"), captured)}</td>'
+            f'<td class="c">{spot(qa.get("Genny used?"), captured)}</td>'
+            f'<td class="c">{spot(qa.get("CAT used?"), captured)}</td>'
+            f'<td class="c">{spot(next((v for k, v in qa.items() if k.startswith("Permit to Dig")), None), captured)}</td>'
+            f'<td data-v="{len(held)}" class="c">{ev_h}</td>'
+            f'<td data-v="{1 if en else 0}">{syg_b}</td>'
+            f'<td data-v="{1 if captured else 0}">{cap_b}</td>'
+            f'<td style="min-width:230px">{ol}</td></tr>')
+        # child rows: one per action, indented, never click targets, fields when present
+        for a in sorted(acts, key=lambda a: str(a.get("date_raised") or "")):
+            bits = [f'Action {a["id"]}']
+            if a.get("assigned_to"):
+                bits.append(esc(a["assigned_to"]))
+            span_cols = 17
+            meas = esc((a.get("corrective_measure") or a.get("description") or "")[:160])
+            when = ((str(a.get("date_raised") or "")[:10] or "—")
+                    + (" → " + str(a.get("closed_at") or "")[:10] if a.get("closed_at") else ""))
+            st = a.get("status") or "—"
+            st_h = (f'<span class="b warn">{esc(st)}</span>' if st not in ("Closed",)
+                    else f'<span class="b yes">Closed</span>')
+            rows_html.append(
+                f'<tr class="child" data-parent="{r["id"]}">'
+                f'<td colspan="3">{" &middot; ".join(bits)}</td>'
+                f'<td colspan="4">{meas or "&mdash;"}</td>'
+                f'<td colspan="2" style="white-space:nowrap">{when}</td>'
+                f'<td colspan="3">{st_h}</td>'
+                f'<td colspan="{span_cols - 12}" ></td></tr>')
+
+    # the column key: rendered from the glossary rows, one copy of the wording
+    KEYCOLS = ["damage_id", "contract", "location", "description", "utility", "severity",
+               "status", "investigation_report", "marked_complete", "actions_raised",
+               "actions_still_open", "actions_closed", "spotcheck_cause", "spotcheck_lesson",
+               "spotcheck_genny", "spotcheck_cat", "spotcheck_permit", "evidence",
+               "sygma_layer", "captured", "outcome_learning"]
+    kes = "".join(
+        f'<div class="ke"><b>{esc(gloss[k]["term"])}</b> — {esc(gloss[k]["plain_meaning"])}</div>'
+        for k in KEYCOLS if k in gloss)
+    colkey = (f'<details class="colkey"><summary>What each column means '
+              f'(from the glossary — the same wording everywhere)</summary>'
+              f'<div class="kin">{kes}</div></details>') if kes else ""
+    markkey = ('<div class="markkey"><b>Marks:</b> &#10003; answered yes / something written '
+               '&middot; &#10007; answered no — their words &middot; &ndash; nothing held: the '
+               'section is not done or the damage is not captured (never asserting which). '
+               '<b>Action columns always assert</b> — the export covers every year.</div>')
+
+    def th(label, col, num=False, key=None):
+        tip = f' title="{esc(gloss[key]["plain_meaning"])}"' if key and key in gloss else ""
+        return (f'<th data-col="{col}"{" data-num=\"1\"" if num else ""}{tip}>{label} '
+                f'<span class="arr">↕</span></th>')
+
+    heads = (th("ID / Date", 0, True, "damage_id") + th("Contract", 1, key="contract")
+             + th("Location", 2, key="location") + th("What happened", 3, key="description")
+             + th("Utility", 4, key="utility") + th("Severity", 5, True, key="severity")
+             + th("Status", 6, key="status")
+             + th("Investigation report", 7, True, "investigation_report")
+             + th("Marked complete", 8, key="marked_complete")
+             + th("Actions raised", 9, True, "actions_raised")
+             + th("Still open", 10, True, "actions_still_open")
+             + th("Closed", 11, True, "actions_closed")
+             + th("Cause", 12, key="spotcheck_cause") + th("Lesson", 13, key="spotcheck_lesson")
+             + th("Genny", 14, key="spotcheck_genny") + th("CAT", 15, key="spotcheck_cat")
+             + th("Permit", 16, key="spotcheck_permit")
+             + th("Evidence", 17, True, "evidence") + th("Sygma?", 18, True, "sygma_layer")
+             + th("Captured", 19, True, "captured") + th("Outcome &amp; learning", 20, key="outcome_learning"))
+
+    return f"""
+{colkey}{markkey}
+<div class="filters"><input type="search" id="{tid}-q" placeholder="Search location, description, ID…">{selects}<span class="count" id="{tid}-count"></span></div>
+<div class="card" style="padding:6px 10px;overflow-x:auto"><table id="{tid}"><thead><tr>
+{heads}
+</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>
+<p class="small muted" style="margin-top:8px">Click any damage row to open it in full. Indented rows are that damage&#8217;s corrective actions — one per action, from Depotnet&#8217;s own export. * = Depotnet&#8217;s incident status says outstanding actions while its actions export holds none; both are shown as Depotnet holds them.</p>
+<script>{TABLE_JS}initTable("{tid}");</script>"""
+
+
+def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None,
+                   aby=None, fby=None, gloss=None):
     enrich = enrich or {}
     # There used to be an "unknown — not in our export" state here, on the theory that a damage
     # newer than the newest action we hold might have actions we cannot see. It was wrong: Pete,
@@ -1526,7 +1769,7 @@ def main():
     ap.add_argument("--local")
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
-    inc, act, enrich, files_by_inc, answers_by_inc = load()
+    inc, act, enrich, files_by_inc, answers_by_inc, gloss = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
     pages = {"overview.html": hub(inc, act)}
     # this year IS the landing: the module index serves the current-FY dashboard

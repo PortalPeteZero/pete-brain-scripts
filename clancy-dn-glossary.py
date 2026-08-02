@@ -286,7 +286,8 @@ def publish(html):
     rest("modules?on_conflict=module_key", "POST", [mod],
          {"Prefer": "resolution=merge-duplicates"})
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    reason = ("Glossary defines Depotnet's own field names verbatim - the wording rules own "
+    # no apostrophes: the reason is interpolated into single-quoted SQL
+    reason = ("Glossary defines Depotnet field names verbatim - the wording rules own "
               "the verbatim-label exception")
     assert "$gl$" not in html
     sql(f"SELECT set_config('app.damage_review_override', '{reason}', true);\n"
