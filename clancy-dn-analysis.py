@@ -1652,13 +1652,13 @@ and this page says so rather than pretending.</div>
 <p><b>The dominant story is services not being where the paperwork said they would be.</b>
 {cs['svcloc']} of the {cs_n} name &ldquo;service location and condition&rdquo; as the root cause,
 and {cs['plans_or_detect']} name &ldquo;insufficient plans&rdquo; or &ldquo;unable to detect the
-service&rdquo; underneath. In plain terms: crews are digging where the drawings and detection
+service&rdquo; underneath. In plain terms: teams are digging where the drawings and detection
 said it was safe to dig, and the service is not where it was supposed to be.</p>
 <p><b>It is not, on this record, a carelessness story.</b> Only {cs['no_detect']} of the {cs_n}
 investigated damages record a &ldquo;no&rdquo; to using the CAT or the genny &mdash; on the rest,
-the crews say the detection kit was used and the strike happened anyway. That points the fix at
-better plans and deeper checks where plans are known to be poor, not at telling crews to be more
-careful.</p>
+the reports answer that the genny and CAT were used and the strike happened anyway. That points
+the fix at better plans and deeper checks where plans are known to be poor, not at telling teams
+to be more careful.</p>
 <p><b>When it goes wrong, it is usually under a machine.</b> {cs['mech']} of the {cs_n} name
 mechanical plant; {cs['hand']} name a hand tool.</p>
 <p><b>What would make this analysis stronger is simple:</b> the {blank_ok} damages with no
@@ -1722,7 +1722,7 @@ of the strike, {oldest_open} of them have now been open more than 60 days:</p>
 
 <div class="sec"><h2><span class="snum">6</span> What the lessons are worth</h2>
 <div class="why">Of the {d['closed_n']} damages Clancy has closed and investigated, only
-{cf['distinct_briefable']} produced a lesson you could brief a crew with. Graded below.</div>
+{cf['distinct_briefable']} produced a lesson you could brief a team with. Graded below.</div>
 <table class="t"><tr><th>What the lessons field holds</th><th>Closed damages</th><th>Share</th></tr>
 {closed_tier_rows}</table>
 <p style="margin-top:16px">Every closed damage was investigated and has a cause &mdash; the
@@ -1764,7 +1764,7 @@ damage to close, whether an action is compulsory, or whether teams are briefed v
 that never reach the system. Every count on this page should be read as what the record holds,
 not as what people did or did not do.</p>
 <p>Nothing here says whether the service was successfully located before it was hit, how recently
-the crew had been trained, or what was on the plans against what was in the ground. Some of that
+the team had been trained, or what was on the plans against what was in the ground. Some of that
 sits inside the panel packs, statements and photographs attached to each damage, and reading those
 properly is the next piece of work.</p></div>
 

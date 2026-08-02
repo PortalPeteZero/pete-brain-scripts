@@ -385,8 +385,9 @@ This is how many of this year&#8217;s {n} gave us anything to work with.</div>
 <h2><span class="tag" style="background:{RED}">Part one</span> What is missing</h2>
 <div class="sub">Start with what is not there at all.</div>
 <div class="split2">
-{donut([("Gave us something", d["done"], GREEN), ("Gave us nothing", d["nothing"], RED)],
-       str(d["nothing"]), "gave nothing")}
+{donut([("Investigation report filled in", d["done"], GREEN),
+        ("Investigation report blank", d["nothing"], RED)],
+       str(d["nothing"]), "left blank")}
 <div>
 <div class="callout" style="border-left-color:{RED}"><b>{d["nothing"]} of the {n} are blank
 where the learning should be.</b> The investigation report &mdash; the part of the record
@@ -433,7 +434,7 @@ slogan &mdash; &ldquo;careful hand digging&rdquo;, &ldquo;expect the unexpected&
 {d["b_non"]} are not answers at all: &ldquo;N/A&rdquo;, &ldquo;Yes&rdquo;, &ldquo;TBC&rdquo;.
 The field was filled so the form would close.</div>
 <div class="callout"><b>And of the {d["b_concrete"]}, only {len(d["strategic"])} reach
-beyond the crew that wrote them</b> &mdash; something the company could adopt everywhere
+beyond the job they were written on</b> &mdash; something the company could adopt everywhere
 to help prevent the next damage:</div>
 </div></div>
 <div class="vgrid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">{strategic_cards}</div>
@@ -446,25 +447,25 @@ was the service found before it was hit?</div>
 <div class="qbox">
 <div class="qb on"><div class="qq">On the form</div>Genny used? <br>&#10003; Yes on {d["genny_yes"]} of the {d["done"]} completed reports</div>
 <div class="qb on"><div class="qq">On the form</div>CAT used? <br>&#10003; Yes on {d["cat_yes"]} of the {d["done"]} completed reports</div>
-<div class="qb off"><div class="qq">Not on the form</div>Did the detector find the service
-that was hit? <br>This question does not exist anywhere on Depotnet.</div>
+<div class="qb off"><div class="qq">Not on the form</div>Did the genny and CAT find the
+service that was hit? <br>This question does not exist anywhere on Depotnet.</div>
 </div>
 <div class="callout" style="border-left-color:{RED}"><b>&ldquo;Kit used&rdquo; is not
-&ldquo;service found&rdquo;.</b> A tick against the genny and the CAT says the kit was on
+&ldquo;service found&rdquo;.</b> A tick against the genny and the CAT says they were used on
 site. It says nothing about whether the service that was struck ever showed on the
-detector. Depotnet&#8217;s download question &mdash; &ldquo;CAT data downloaded and
+CAT. Depotnet&#8217;s download question &mdash; &ldquo;CAT data downloaded and
 reviewed in the portal?&rdquo; &mdash; confirms a download happened, and goes no further.</div>
 <div class="cdbox">
-<div class="cd k"><b>&ldquo;Couldn&#8217;t detect&rdquo;</b>They looked for it properly and
-the kit could not find it. A method problem: the answer is better technique or better
-technology.</div>
+<div class="cd k"><b>&ldquo;Couldn&#8217;t detect&rdquo;</b>It was properly looked for and
+the genny and CAT could not find it. A method problem: the answer is better technique
+or better technology.</div>
 <div class="cd d"><b>&ldquo;Didn&#8217;t detect&rdquo;</b>It was never properly looked for.
 A behaviour problem: the answer is training and supervision.</div>
 </div>
 <div class="callout" style="border-left-color:{RED}"><b>The form cannot tell these two
 apart</b> &mdash; and they need opposite fixes. One cause option exists,
-&ldquo;Unable to detect location of service&rdquo;, and it only appears when a crew chooses
-it about themselves. Across this year&#8217;s {n} damages: <b>{d["unable"]}</b> chose it.
+&ldquo;Unable to detect location of service&rdquo;, and it is only there when the supervisor
+filling in the investigation report chooses it. Across this year&#8217;s {n} damages it was chosen on <b>{d["unable"]}</b>.
 Whether they could not detect or did not detect, the record cannot say.</div>
 </div></div>
 
@@ -472,7 +473,7 @@ Whether they could not detect or did not detect, the record cannot say.</div>
 <h2><span class="tag" style="background:{CHAR}">Part five</span> &ldquo;The plans were wrong&rdquo; is not a cause</h2>
 <div class="statrow">
 {stat(f'{d["plans_no"]} of {d["done"]}', "completed reports answer that the utility was NOT where the plans showed", CHAR)}
-{stat(f'{d["kit_yes"]} of {d["done"]}', "completed reports say the detection kit WAS used", CHAR)}
+{stat(f'{d["kit_yes"]} of {d["done"]}', "completed reports answer Yes to the form&#8217;s own &lsquo;Genny used?&rsquo; and &lsquo;CAT used?&rsquo; questions &mdash; used is all the form can say", CHAR)}
 </div>
 <div class="callout"><b>The most common recorded story is that the service was not where
 the plans showed.</b> In this industry that is not a cause. Plans are known to be
@@ -516,22 +517,23 @@ for.</div>
 <h2><span class="tag" style="background:{CHAR}">The close</span> What your data is telling us</h2>
 <div class="sub">Everything above, in one picture.</div>
 {funnel([
-  (n, "chances to learn", "every service damage logged this year"),
-  (d["done"], "gave us anything at all", f"{d['nothing']} have an untouched investigation report: no cause, no lesson"),
-  (d["real_cause"], "carry a cause that says something", f"{d['blanket']} tick four or more boxes at once"),
-  (d["b_concrete"], "contain a concrete action", f"{d['b_restate']} restate a rule or a slogan; {d['b_non']} are not answers"),
-  (len(d["strategic"]), "could help prevent the next damage, company-wide", "the only test that matters"),
+  (n, "service damages logged so far this year", "every one is a chance to learn how to stop the next one"),
+  (d["done"], "have their investigation report filled in", f"the other {d['nothing']} are blank: no cause, no lesson"),
+  (d["real_cause"], "name a root cause that means something", f"{d['blanket']} more tick nearly every box on the form, which tells us nothing"),
+  (d["b_concrete"], "have a lesson that names a real action", f"the rest are slogans, repeats of existing rules, or empty answers like N/A"),
+  (len(d["strategic"]), "are lessons the whole company could act on", "everything else applies only to the job it was written on"),
 ], n)}
 <div class="split2" style="margin-top:24px">
 {donut([("The record says it was found", 0, CHAR),
-        ("Known not found: kit not used", d["kit_no"], RED),
-        ("Crew chose unable-to-detect", d["unable"], AMBER),
+        ("Known not found: genny and CAT not used", d["kit_no"], RED),
+        ("Report says unable-to-detect", d["unable"], AMBER),
         ("The record cannot say", d["det_unknown"], "#c3cad2")],
        f'{d["kit_no"]} of {n}', "known answers")}
 <div>
 <div class="callout" style="border-left-color:{RED}"><b>Was the service found before it was
 hit?</b> Out of {n} damages to buried services, the record gives a definite answer on
-<b>{d["kit_no"]}</b> &mdash; both times because the crew said the kit was not used. It
+<b>{d["kit_no"]}</b> &mdash; both times because the report answers No to &ldquo;Genny used?&rdquo; and &ldquo;CAT
+used?&rdquo;. It
 never once says a service was found. For {d["det_unknown"]} of the {n}, it cannot say
 anything at all.</div>
 </div></div>
