@@ -243,6 +243,10 @@ def gather():
         "SELECT full_text FROM clancy_reports WHERE title LIKE "
         "'%CAT and Genny data behind damage 152586%'")
     d["ex"]["review_line"] = (rev[0]["full_text"] if rev else "")
+    exrow = sql("SELECT status, to_char(pdf_captured_at, 'DD Month YYYY') cap "
+                "FROM clancy_dn_incidents WHERE id=152586")[0]
+    d["ex"]["status"] = exrow["status"]
+    d["ex"]["captured"] = (exrow["cap"] or "").strip()
     return d
 
 
@@ -389,7 +393,7 @@ CSS = """
 .ft .fx{color:#7a8490;font-weight:400}
 .asof{font-size:12px;color:#7a8490;font-weight:600;text-transform:uppercase;
  letter-spacing:.05em;margin-top:6px}
-.pkey{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-top:18px}
+.pkey{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
 @media(max-width:860px){.pkey{grid-template-columns:1fr}}
 .pk-e{background:#fff;border:3px solid #D50032;border-radius:16px;padding:20px 24px;
  box-shadow:0 16px 38px -18px rgba(213,0,50,.45)}
@@ -713,9 +717,13 @@ year&#8217;s record, it is that one.</div>
 </div></div>
 
 <div class="band"><div class="rwrap">
-<h2><span class="tag" style="background:{RED}">Part six</span> And that is if the record is to be believed</h2>
-<div class="sub">One damage this year has had its detection data reviewed against what the
-form says &mdash; the only one. Side by side:</div>
+<h2><span class="tag" style="background:{RED}">Part six</span> Those plans listings need scrutiny &mdash; here is the first one tested</h2>
+<div class="sub">We are not convinced that plans are the cause, or the lesson, on those
+damages. Our involvement is recent: we have worked on only a few of this year&#8217;s
+damages, and we have only recently had access to Depotnet itself. Damage 152586 is one of
+the first where we have reviewed the detection data behind the form in full &mdash; and
+the result is clear. The cause listed is not the cause. What actually happened is totally
+different from what Depotnet holds. Side by side:</div>
 <div class="sbs">
 <div class="sb dn"><div class="sh">What Depotnet records &mdash; damage {ex["id"]}</div>
 <ul>
@@ -726,7 +734,7 @@ form says &mdash; the only one. Side by side:</div>
 </ul></div>
 <div class="sb rv"><div class="sh">What the Sygma review and the panel meeting established</div>
 <ul>
-<li>The review of the CAT and genny download data confirmed the genny
+<li>The review of the genny and CAT download data confirmed the genny
 <mark>was not used</mark> and the cable <mark>was never traced</mark> &mdash; the
 form&#8217;s &ldquo;Genny used? Yes&rdquo; did not survive the data</li>
 <li>When the cable was exposed in a trial hole it was not connected to and re-traced
@@ -737,6 +745,7 @@ Manager&#8217;s words at the panel: <mark>&ldquo;our procedure is scan it, mark 
 expose it &mdash; and we haven&#8217;t done it&rdquo;</mark></li>
 <li>The review&#8217;s formal conclusion, on record: the findings and conclusions
 recorded for this damage are <mark>&ldquo;incorrect and need amending&rdquo;</mark></li>
+{"<li><b>Nothing has been amended.</b> The form still answers &ldquo;Genny used? Yes&rdquo;, the investigation is still marked complete &mdash; and the damage is now <mark>closed on Depotnet</mark>, closed within days of the review that found its record incorrect (as captured " + esc(ex["captured"]) + ")</li>" if ex["status"] == "Closed" else ""}
 </ul></div>
 </div>
 <div class="callout" style="border-left-color:{RED}"><b>One damage out of {n} has had this
