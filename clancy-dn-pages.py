@@ -863,8 +863,24 @@ def incident_table_v2(inc, act_by_inc, tid, fy_filter=True, enrich=None,
              + th("Evidence", 17, True, "evidence") + th("Sygma?", 18, True, "sygma_layer")
              + th("Captured", 19, True, "captured") + th("Outcome &amp; learning", 20, key="outcome_learning"))
 
+    stage4_css = "<style>" + """
+/* ── stage 4: the visual lift (edits plan) — density, alignment, sticky headers ── */
+/* numbers stack: right-aligned tabular digits wherever digits line up */
+table.reg td.n,table.reg th.n,table.reg td.c[data-v],#%TID% td[data-v]{font-variant-numeric:tabular-nums}
+/* density: the table is the hero — tighter rows, smaller chrome around it */
+#%TID% td{padding:7px 9px;font-size:13px}
+#%TID% th{padding:8px 9px;font-size:11px}
+/* marks centred on a fixed grid */
+#%TID% td.c,table.reg td.c{text-align:center;min-width:44px}
+/* sticky header INSIDE the scroll container — position:sticky is defeated by an
+   overflow wrapper unless the wrapper itself is the scroll box with a bounded height */
+.card:has(#%TID%){max-height:78vh;overflow:auto}
+#%TID% thead th{position:sticky;top:0;background:#f7f9fc;z-index:3;box-shadow:0 1px 0 #e3e6ea}
+#%TID% td:first-child,#%TID% th:first-child{position:sticky;left:0;background:#fff;z-index:2}
+#%TID% thead th:first-child{z-index:4;background:#f7f9fc}
+""".replace("%TID%", tid) + "</style>"
     return f"""
-{colkey}{markkey}
+{stage4_css}{colkey}{markkey}
 <div class="filters"><input type="search" id="{tid}-q" placeholder="Search location, description, ID…">{selects}<span class="count" id="{tid}-count"></span></div>
 <div class="card" style="padding:6px 10px;overflow-x:auto"><table id="{tid}"><thead><tr>
 {heads}

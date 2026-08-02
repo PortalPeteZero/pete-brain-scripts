@@ -1031,6 +1031,25 @@ not recorded.</div>
 </div>"""
 
 
+STAGE4_CSS = """
+/* stage 4: stat tables size to their CONTENT — each header sits over its right-aligned
+   digits; the name column takes the slack (the mechanical/hand-tool table was the named
+   offender: full-width stretch left headers floating nowhere near their numbers) */
+.sec table.t{width:auto;min-width:0;border-collapse:collapse}
+.sec table.t th:not(:first-child),.sec table.t td:not(:first-child){
+ text-align:right;font-variant-numeric:tabular-nums;padding-left:26px}
+.sec table.t th,.sec table.t td{padding-top:6px;padding-bottom:6px}
+/* the register: sticky header inside a bounded scroll box; density pass */
+.tscroll{max-height:78vh;overflow:auto}
+table.reg thead th{position:sticky;top:0;background:#f7f9fc;z-index:3;box-shadow:0 1px 0 #e3e6ea}
+table.reg td{padding:7px 9px;font-size:13px}
+table.reg td.c{text-align:center;min-width:40px}
+table.reg td.n,table.reg th.n{font-variant-numeric:tabular-nums}
+/* bolder section headers, on brand */
+.sec>h2{border-left:4px solid #97D700;padding-left:12px}
+"""
+
+
 def build(edition, label):
     d = gather()
     dmg_table = damage_table_v2(d) if STAGE2 else damage_table(d)
@@ -1363,7 +1382,7 @@ def build(edition, label):
                     "color:#446;padding:3px 10px;border:1px solid #dde;border-radius:20px}"
                     ".yswitch a.on{background:#97D700;border-color:#97D700;color:#222;font-weight:600}</style>")
 
-    return f"""{ui.head("What the damage data tells us | Genny&#8217;s Damage Depot", PAGE_CSS)}
+    return f"""{ui.head("What the damage data tells us | Genny&#8217;s Damage Depot", PAGE_CSS + (STAGE4_CSS if STAGE2 else ""))}
 {ui.navbar("analysis")}
 {_year_switch}
 {ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "What the data tells us")}
