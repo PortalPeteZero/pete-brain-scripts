@@ -108,11 +108,22 @@ def load():
         r["month"] = r["d"][:7] if r["d"] else None
         r["sev"] = {"HIGH - Category 1": "High (Cat 1)", "MEDIUM - Category 2": "Medium (Cat 2)",
                     "LOW - Category 3": "Low (Cat 3)"}.get(r["severity"], r["severity"] or "Unstated")
-        u = r["utility_class"] or "Unclassified"
-        r["ugroup"] = ("Electric" if u.startswith("Electric") else
-                       "Gas" if u == "Gas" else
-                       "Water" if u == "Water" else
-                       "Comms / fibre" if u.startswith("Comms") else "Other")
+        # Depotnet's own strike_category is the authority wherever the damage is captured —
+        # publishing the keyword guess beside it contradicted Depotnet on 6 FY25/26 damages and
+        # left 15 more "Unclassified" that Depotnet itself classifies. The guess only fills the
+        # two uncaptured years. r["uguess"] records which one this row used, so pages can label
+        # honestly instead of stamping "auto-read from descriptions" on Depotnet's own field.
+        sc = (r.get("strike_category") or "").strip()
+        if sc:
+            r["ugroup"] = {"Telecommunications": "Comms / fibre"}.get(sc, sc)
+            r["uguess"] = False
+        else:
+            u = r["utility_class"] or "Unclassified"
+            r["ugroup"] = ("Electric" if u.startswith("Electric") else
+                           "Gas" if u == "Gas" else
+                           "Water" if u == "Water" else
+                           "Comms / fibre" if u.startswith("Comms") else "Other")
+            r["uguess"] = True
     for a in act:
         a["due"] = a["due_date"][:10] if a["due_date"] else None
     # Sygma's own review of a damage is merged onto the incident itself (the sygma_* fields), so
@@ -129,7 +140,7 @@ def load():
     # any documents attached to it. These live in their own Drive folder, which is NOT the same
     # folder as the Sygma panel-review material, so a page that renders only the review folder shows
     # none of them.
-    files = rest_all("clancy_dn_files?select=incident_id,action_id,kind,name,drive_id,drive_folder&order=incident_id,kind,name")
+    files = rest_all("clancy_dn_files?select=incident_id,action_id,kind,name,drive_id,drive_folder,source,deleted_on_depotnet&order=incident_id,kind,name")
     # The full investigation Q&A. 2,404 rows were being captured and then never shown anywhere —
     # the richest material we hold, invisible on the page. (Pete, 31 Jul: ensure everything the
     # agent pulled in is actually there.)
@@ -670,13 +681,19 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
         else:
             act_b = '<span class="b no">None</span>'
         syg_b = '<span class="b yes">Yes</span>' if en else '<span class="b no">—</span>'
-        # Outcome: Sygma summary first, else the latest corrective measure, else honest status
+        # Outcome: Sygma summary first, else the latest corrective measure, else Depotnet's own
+        # captured incident summary. Learning: Sygma finding first, else Depotnet's own captured
+        # lessons-learnt. Before the fallbacks, 138 of FY25/26's 164 rows said "None recorded"
+        # while the damage's own investigation report section held a lesson we had captured —
+        # the column ignored the two columns this capture exists to fill.
         if en and en.get("summary"):
             outcome = en["summary"]
         else:
             cms = [a["corrective_measure"] for a in acts if a.get("corrective_measure")]
-            outcome = cms[-1] if cms else None
-        learning = (en.get("key_findings") or [None])[0] if en else None
+            outcome = cms[-1] if cms else (r.get("incident_summary") or None)
+        learning = ((en.get("key_findings") or [None])[0] if en else None) or r.get("lessons_learnt")
+        if learning and len(learning) > 220:
+            learning = learning[:217] + "…"
         ol = (f'<div class="ol"><div class="fl">Outcome</div><div class="t{"" if outcome else " muted"}">{esc(outcome) if outcome else "None recorded"}</div>'
               f'<div class="fl" style="margin-top:5px">Key learning</div><div class="t{"" if learning else " muted"}">{esc(learning) if learning else "None recorded"}</div></div>')
         rows_html.append(
@@ -704,7 +721,7 @@ def incident_table(inc, act_by_inc, tid, fy_filter=True, enrich=None):
 <th data-col="8" data-num="1">Sygma? <span class="arr">↕</span></th>
 <th data-col="9" data-num="1">Captured <span class="arr">↕</span></th><th data-col="10">Outcome &amp; learning</th>
 </tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>
-<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material. "None recorded" is honest: it means neither Depotnet nor Sygma holds an outcome or learning for that damage yet.</p>
+<p class="small muted" style="margin-top:8px">Click any row to open the damage in full — every Depotnet field, the timeline, its corrective actions and any Sygma material. Outcome and learning are read from Sygma&#8217;s review where one exists, otherwise from the damage&#8217;s own captured Depotnet investigation report section. "None recorded" means neither holds anything for that damage.</p>
 <script>{TABLE_JS}initTable("{tid}");</script>"""
 
 # ---------------------------------------------------------------- semantic search partial
@@ -841,7 +858,7 @@ function render(){{
  let h='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Damage '+id+' — '+(r.location||'location not stated')+'</h2>'
    +'<span>'+statusPill(r.status)+' '+pill(r.severity||'—',(r.severity||'').startsWith('HIGH')?'sev-h':(r.severity||'').startsWith('MEDIUM')?'sev-m':'sev-l')+'</span></div>'
    +'<p class="det desc" style="white-space:pre-wrap;max-width:96ch">'+(r.description||'No description recorded.')+'</p>'
-   +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.utility_class||'Unclassified')+'</b>'+(r.utility_confirmed?'':' (auto-read)')+'</span></div></div>';
+   +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.strike_category||r.utility_class||'Unclassified')+'</b>'+(r.strike_category?' (Depotnet\'s own category)':(r.utility_confirmed?'':' (auto-read)'))+'</span></div></div>';
  // every register field, verbatim
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Everything Depotnet holds</h2><span class="note">Incident Register row, in full</span></div><div class="fgrid">'
    +FLD.map(([k,l])=>'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+((k.includes('date')?fmtTs(r[k]):r[k])||'—')+'</div></div>').join('')+'</div></div>';
@@ -986,8 +1003,18 @@ function render(){{
  const FKIND={{pdf:['Incident record','the full Depotnet PDF'],photo:['Photos','site photographs attached on Depotnet'],video:['Video','video attached on Depotnet'],document:['Documents','everything else attached to the incident']}};
  const fls=(D.files||{{}})[id]||[];
  const capf=(D.capfolder||{{}})[id];
+ // The header must count what is actually HELD (a drive_id), not every row we know about —
+ // three damages whose only files are SAS-broken read "2 files held in Drive" with zero held.
+ // Withdrawn files (deleted on Depotnet after upload) are excluded from the headline count and
+ // labelled in the list, never silently mixed into "held".
+ const held=fls.filter(f=>f.drive_id&&!f.deleted_on_depotnet);
+ const withdrawn=fls.filter(f=>f.deleted_on_depotnet);
+ const unheld=fls.filter(f=>!f.drive_id&&!f.deleted_on_depotnet);
  h+='<div class="card"><div class="h2row"><h2>Captured from Depotnet</h2><span class="note">'
-   +(fls.length?fls.length+' file'+(fls.length==1?'':'s')+' held in Drive':'nothing captured yet')+'</span></div>';
+   +(fls.length?(held.length+' of '+fls.length+' file'+(fls.length==1?'':'s')+' held in Drive'
+     +(withdrawn.length?' · '+withdrawn.length+' withdrawn on Depotnet':'')
+     +(unheld.length?' · '+unheld.length+' Depotnet cannot serve':''))
+    :'no attachments on Depotnet')+'</span></div>';
  if(fls.length){{
   // Anything whose kind is not in FKIND would vanish silently, so unknown kinds are collected
   // and rendered too rather than dropped - the failure above must not be repeatable by adding
@@ -1001,12 +1028,17 @@ function render(){{
    // A row with no drive_id is a file we know the NAME of but do not hold. Rendering it as a link
    // gives a click that goes nowhere, which is worse than not listing it. Reported live 31 Jul 2026
    // after a migration carried 15 name-only entries in from the old Sygma records.
-   h+='<ul class="kf">'+g.map(f=>f.drive_id
-     ? '<li><a href="https://drive.google.com/file/d/'+f.drive_id+'/view" target="_blank" rel="noopener">'+f.name+'</a></li>'
-     : '<li>'+f.name+' <span class="muted">(referenced, not held)</span></li>').join('')+'</ul>';
+   h+='<ul class="kf">'+g.map(f=>{{
+     const tag=f.deleted_on_depotnet?' <span class="muted">(withdrawn on Depotnet '+f.deleted_on_depotnet+')</span>'
+       :(f.source==='unfetchable-sas'?' <span class="muted">(Depotnet&#8217;s own download link is broken for this file)</span>':'');
+     return f.drive_id
+       ? '<li><a href="https://drive.google.com/file/d/'+f.drive_id+'/view" target="_blank" rel="noopener">'+f.name+'</a>'+tag+'</li>'
+       : '<li>'+f.name+(tag||' <span class="muted">(referenced, not held)</span>')+'</li>';}}).join('')+'</ul>';
   }});
   if(capf)h+='<div class="legend" style="margin-top:12px"><span class="lg"><a href="'+capf+'">Open the Depotnet capture folder in Drive</a></span></div>';
- }} else h+='<p class="small muted">The Depotnet record for this damage has not been captured yet, so no PDF, photos or documents are held.</p>';
+ }} else h+='<p class="small muted">'+(r.pdf_captured_at
+   ?'Captured in full from Depotnet — this damage has no attachments on Depotnet at all.'
+   :'The Depotnet record for this damage has not been captured yet, so no PDF, photos or documents are held.')+'</p>';
  h+='</div>';
  // Sygma layer
  h+='<div class="card"><div class="h2row"><h2>Sygma material</h2><span class="note">panel reviews, findings, documents</span></div>';
@@ -1015,11 +1047,13 @@ function render(){{
   if(en.key_findings&&en.key_findings.length)h+='<div class="fl" style="margin-top:10px">Key findings</div><ul class="kf">'+en.key_findings.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   if(en.next_actions&&en.next_actions.length)h+='<div class="fl" style="margin-top:10px">Agreed next actions</div><ul class="kf">'+en.next_actions.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   const links=[];
-  // ONE Drive link per damage. The panel-review material now lives INSIDE the damage folder
-  // (moved 31 Jul 2026) — two links meant clicking the wrong one and finding transcripts where
-  // you expected the incident PDF, which is exactly what happened.
-  
+  // ONE Drive link per damage — WHEN the panel-review material lives inside the damage folder
+  // (the FY26/27 moves, 31 Jul 2026). But dropping the Sygma folder link unconditionally cut
+  // all five FY25/26 enriched damages off from their material entirely: their folders were
+  // never moved and their report_url is null, so no link could render at all. Show the Sygma
+  // folder whenever it exists and differs from the capture folder.
   if(en.report_url)links.push('<a href="'+en.report_url+'">Report</a>');
+  if(en.drive_folder&&en.drive_folder!==capf)links.push('<a href="'+en.drive_folder+'" target="_blank" rel="noopener">Panel-review material</a>');
   if(links.length)h+='<div class="legend" style="margin-top:10px">'+links.map(l=>'<span class="lg">'+l+'</span>').join('')+'</div>';
   h+='<p class="small muted" style="margin-top:8px">Sygma status: '+(en.status||'—')+(en.stage_note?' · '+en.stage_note:'')+'</p>';
  }} else h+='<p class="small muted">Nothing linked yet — panel reviews, findings and documents appear here once Sygma material is tied to this damage.</p>';
@@ -1054,14 +1088,18 @@ def fy_dashboard(inc, act, fykey, full=True):
         return base + ("?" + qs if qs else "")
     cards = [dict(n=len(rows), l="service damages recorded", href=link())]
     if fykey == "FY26/27" and prior_key:
-        months_elapsed = [m for m in FY_MONTHS[fykey] if m <= today.strftime("%Y-%m")]
+        # WHOLE months only. Including the running month compared 4 real months + 2 days
+        # against the prior year's 5 full months and published "-41% improving" (48 v 81) when
+        # the like-for-like figure is 48 v 62. Same basis as the analysis page.
+        months_elapsed = [m for m in FY_MONTHS[fykey] if m < today.strftime("%Y-%m")]
         same = sum(Counter(r["month"] for r in prior_rows).get(m.replace("2026", "2025").replace("2027", "2026"), 0)
                    for m in months_elapsed)
         cur = len([r for r in rows if r["month"] in months_elapsed])
         if same:
             pct = (cur - same) / same * 100
             cards.append(dict(n=f"{pct:+.0f}%", cls="green" if pct < 0 else "red",
-                              l=f"vs same months last year ({cur} v {same}, Apr–{today.strftime('%b')})",
+                              l=f"vs same months last year ({cur} v {same}, "
+                                f"Apr–{datetime.datetime.strptime(months_elapsed[-1], '%Y-%m').strftime('%b')})",
                               delta=("improving" if pct < 0 else "worsening"), dcls="down" if pct < 0 else "up"))
     cards += [
         dict(n=open_n, cls="amber" if open_n else "", l="still open", href=link(status="Open")),
@@ -1073,6 +1111,16 @@ def fy_dashboard(inc, act, fykey, full=True):
     ]
     label = FY_LABEL[fykey]
     body = [search_box(fykey), kpis_html(cards)]
+    # Each year links its OWN analysis edition. The navbar's "What the data tells us" points at
+    # the current year's module, which left the FY25/26 edition unreachable from its own year.
+    _an_mk = {"FY26/27": "clancy-damage-analysis",
+              "FY25/26": "clancy-damage-analysis-2025-26"}.get(fykey)
+    if _an_mk:
+        body.append(f'<div class="card" style="margin-bottom:16px"><p class="small">'
+                    f'<b><a href="/m/{_an_mk}">What the data tells us &mdash; {label}</a></b> '
+                    f'&mdash; this year&#8217;s damages read from what Depotnet itself holds: what '
+                    f'was struck, at what depth, with what plant, and what its own investigations '
+                    f'give as the cause.</p></div>')
     # The "x/y damages with corrective actions" card reads like a broken import unless the page
     # says what it is. It is not: every action Depotnet holds for a service damage is in here and
     # linked. The ratio is low because actions stopped being raised, and after the last one was
@@ -1080,18 +1128,23 @@ def fy_dashboard(inc, act, fykey, full=True):
     # moves the moment a new action lands.
     raised = [a["date_raised"] for a in act if a.get("date_raised")]
     if raised:
+        # EVERY number in this note is all-years scope, and the note says so. The first version
+        # mixed scopes: last_raised and the action total were global while `after` filtered this
+        # page's own year — so every closed-year page published "the 0 damages logged since then",
+        # which was false (16 damages had been logged since, in the running year).
         last_raised = max(raised)
-        after = [r for r in rows if r["incident_date"] and str(r["incident_date"])[:10] > str(last_raised)[:10]]
+        after = [r for r in inc if r["incident_date"] and str(r["incident_date"])[:10] > str(last_raised)[:10]]
         nice = datetime.datetime.strptime(str(last_raised)[:10], "%Y-%m-%d").strftime("%-d %B %Y")
         body.append(
             f'<div class="card" style="margin-bottom:16px;border-left:4px solid #b45309">'
             f'<p class="small"><b>Why only {with_actions} of {len(rows)}.</b> Every corrective '
             f'action Depotnet holds against a service damage is in here and linked to its damage: '
-            f'{len(act)} of them, none unmatched. The ratio is low because actions stopped '
-            f'being raised. The last one on any service damage was raised on <b>{nice}</b>, and '
-            f'the {len(after)} damages logged since then carry none at all. This was checked '
-            f'against Depotnet directly with every filter cleared, so it is a gap in the process, '
-            f'not a gap in what we imported.</p></div>')
+            f'{len(act)} across all years, none unmatched. The ratio is low because actions '
+            f'stopped being raised. The last one on any service damage in any year was raised on '
+            f'<b>{nice}</b>, and the {len(after)} damages logged since then &mdash; counted '
+            f'across every year, not just this page&#8217;s &mdash; carry none at all. This was '
+            f'checked against Depotnet directly with every filter cleared, so it is a gap in the '
+            f'process, not a gap in what we imported.</p></div>')
     prior_leg = f'<div class="legend"><span class="lg"><i style="background:#97D700"></i>{label}</span>' + \
                 (f'<span class="lg"><i style="background:#b6c3e8"></i>{FY_LABEL[prior_key]} (same month)</span>' if prior_key else "") + "</div>"
     body.append(f'<div class="card"><div class="h2row"><h2>Damages by month</h2><span class="note">financial year, April to March</span></div>'
@@ -1101,7 +1154,11 @@ def fy_dashboard(inc, act, fykey, full=True):
     sevs = sev_split(rows)
     body.append('<div class="grid c3" style="margin-top:16px">')
     body.append(f'<div class="card"><div class="h2row"><h2>By contract</h2></div>{hbar(fams)}</div>')
-    body.append(f'<div class="card"><div class="h2row"><h2>By utility hit</h2><span class="note">auto-read from descriptions</span></div>{donut([u for u in utils if u[1]], UTIL_COLORS)}{legend(utils, UTIL_COLORS)}</div>')
+    _n_guess = sum(1 for r in rows if r.get("uguess"))
+    _unote = ("Depotnet&#8217;s own strike category" if not _n_guess else
+              f"Depotnet&#8217;s own strike category where captured; auto-read from descriptions for {_n_guess}"
+              if _n_guess < len(rows) else "auto-read from descriptions")
+    body.append(f'<div class="card"><div class="h2row"><h2>By utility hit</h2><span class="note">{_unote}</span></div>{donut([u for u in utils if u[1]], UTIL_COLORS)}{legend(utils, UTIL_COLORS)}</div>')
     body.append(f'<div class="card"><div class="h2row"><h2>By severity</h2></div>{donut([s for s in sevs if s[1]], SEV_COLORS)}{legend(sevs, SEV_COLORS)}</div>')
     body.append('</div>')
     # subcontractor + top towns
@@ -1128,7 +1185,9 @@ def hub(inc, act):
     today = datetime.date.today()
     cur = [r for r in inc if r["fy"] == "FY26/27"]
     prior = [r for r in inc if r["fy"] == "FY25/26"]
-    months_elapsed = [m for m in FY_MONTHS["FY26/27"] if m <= today.strftime("%Y-%m")]
+    # whole months only — see fy_dashboard; the two must agree or the overview and the year page
+    # publish different percentages for the same comparison
+    months_elapsed = [m for m in FY_MONTHS["FY26/27"] if m < today.strftime("%Y-%m")]
     same = sum(Counter(r["month"] for r in prior).get(m.replace("2026", "2025").replace("2027", "2026"), 0) for m in months_elapsed)
     curn = len([r for r in cur if r["month"] in months_elapsed])
     overdue = sum(1 for a in act if a["status"] == "Overdue")
@@ -1345,7 +1404,13 @@ def fy_insights_page(inc, act, fykey):
                  for a in yact if a["date_raised"] and a["incident_date"])
     short_desc = sum(1 for r in rows if r["description"] and len(str(r["description"])) < 25)
     uncl = sum(1 for r in rows if (r["utility_class"] or "Unclassified") == "Unclassified")
-    sl = sum(1 for r in rows if r["utility_class"] == "Electric — street lighting")
+    # Depotnet's own sub-category is the authority where the year is captured — the keyword
+    # guess said 14 for FY25/26 when Depotnet's field says 19. Fall back to the guess only for
+    # years with no captured sub-categories at all.
+    _has_subcat = any(r.get("strike_subcategory") for r in rows)
+    sl = (sum(1 for r in rows if r.get("strike_subcategory") == "Electric - Street Light")
+          if _has_subcat else
+          sum(1 for r in rows if r["utility_class"] == "Electric — street lighting"))
     fams = fam_split(rows)
     utils = [u for u in util_split(rows) if u[1]]
     sevs = Counter(r["sev"] for r in rows)
@@ -1355,7 +1420,10 @@ def fy_insights_page(inc, act, fykey):
 
     # Year-on-year movement
     if fykey == "FY26/27" and prior_key:
-        months_elapsed = [m for m in FY_MONTHS[fykey] if m <= today.strftime("%Y-%m")]
+        # WHOLE months only. Including the running month compared 4 real months + 2 days
+        # against the prior year's 5 full months and published "-41% improving" (48 v 81) when
+        # the like-for-like figure is 48 v 62. Same basis as the analysis page.
+        months_elapsed = [m for m in FY_MONTHS[fykey] if m < today.strftime("%Y-%m")]
         same = sum(Counter(r["month"] for r in prior).get(m.replace("2026", "2025").replace("2027", "2026"), 0) for m in months_elapsed)
         curn = len([r for r in rows if r["month"] in months_elapsed])
         if same:
@@ -1396,12 +1464,17 @@ def fy_insights_page(inc, act, fykey):
         I("", f"{sl} street-lighting cable damages in {label}",
           "The exact failure mode Sygma keeps seeing at panel reviews — outlier columns that never get hooked up to. "
           "A focused toolbox talk plus the genny guidance could take a visible bite out of a named number.",
-          "Auto-classified from descriptions; the register has no utility field of its own.")
+          ("Depotnet&#8217;s own strike sub-category, captured per damage." if _has_subcat else
+           "Auto-classified from descriptions; this year is not yet captured per damage."))
     # Capture quality for the year
     I("warn" if (short_desc or uncl) else "good",
       f"Capture quality in {label}",
       f"{short_desc} descriptions under 25 characters · {uncl} damages whose utility can't be read from the description · "
-      "the Action Report carries no closure dates, so closure speed can't be measured in any year.",
+      # The old line said closure dates exist in no year. The API capture holds action closure
+      # dates for FY25/26 and FY26/27 (84 of 88 actions), so the claim is scoped to what is true.
+      + ("closure dates are captured for this year's actions, so closure speed is measurable here."
+         if any(a.get("closed_at") for a in yact) else
+         "this year's Action Report carries no closure dates, so closure speed can't be measured for it."),
       "These are the gaps Sygma's own per-damage layer (utility confirmed, root cause, panel findings, training response) will close.")
     if fykey == "FY26/27":
         I("", "The register and the STRIVE headline count differently",

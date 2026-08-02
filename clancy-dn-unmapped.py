@@ -125,8 +125,15 @@ def render_value(v):
         return '<span style="color:#b0b8c1">not recorded</span>'
     if isinstance(v, bool):
         return "Yes" if v else "No"
+    if isinstance(v, dict):
+        # a document object {"url": ..., "name": ...} — the str() of it reached the live page
+        # as Python syntax ("Documents {'url': ...}") with nothing to click
+        if v.get("url"):
+            return (f'<a href="{esc(v["url"])}" target="_blank" rel="noopener">'
+                    f'{esc(v.get("name") or v["url"])}</a> &#8599;')
+        return esc(json.dumps(v, ensure_ascii=False))
     if isinstance(v, list):
-        return "<ul>" + "".join(f"<li>{esc(x)}</li>" for x in v) + "</ul>"
+        return "<ul>" + "".join(f"<li>{render_value(x)}</li>" for x in v) + "</ul>"
     s = str(v)
     if s.startswith("http"):
         return f'<a href="{esc(s)}" target="_blank" rel="noopener">{esc(s)}</a> &#8599;'

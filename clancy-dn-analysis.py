@@ -717,7 +717,7 @@ on the form is &ldquo;Is the investigation complete?&rdquo; and Clancy answer it
 {n_notcomplete} marked <b>Not complete</b> are <i>fully worked</i> forms; Clancy are saying the
 investigation is still running, not that the form is part-done. <b>Not started</b> means all 63 questions sit blank. There is no fourth state: no
 damage this year holds a partly-filled form.<br><br>
-The <b>Incident report</b> column has been removed. All 48 have one, so it distinguished nothing
+The <b>Incident report</b> column has been removed. All {n} have one, so it distinguished nothing
 &mdash; a damage cannot reach the register without it.</div>
 
 <div class="flag"><b>Read the dash carefully.</b> A grey dash means the field is empty on Depotnet.
@@ -819,19 +819,46 @@ def build(edition, label):
         rows = "".join(f"<tr><td>{r['id']}</td><td>{esc(r['location'])[:44]}</td>"
                        f"<td class='n'>{r['rc'] or 0}</td><td class='n'>{r['uc'] or 0}</td></tr>"
                        for r in d["blanket"])
+        # Every figure derived from the rows themselves. The first version hardcoded "nine of
+        # the nine root causes and seventeen of the seventeen" (true of two FY26/27 records) and
+        # claimed exclusion stops causes looking "{N} times more common" — a multiplier that was
+        # actually just the record count. Neither survives on another year's data.
+        _mx_rc = max((r["rc"] or 0) for r in d["blanket"])
+        _mx_uc = max((r["uc"] or 0) for r in d["blanket"])
         blanket_note = (
-            f'<div class="flag"><b>{len(d["blanket"])} investigation reports tick almost every option on '
-            'the form.</b> The cause fields allow more than one box. These records select up to nine '
-            'of the nine root causes and seventeen of the seventeen underlying causes, which says '
-            'nothing about what happened. They are excluded from the counts above, because leaving '
-            f'them in makes every cause they touch look {len(d["blanket"])} times more common than it '
-            'is. Worth fixing at the form: a cause that means everything means nothing.'
+            f'<div class="flag"><b>{len(d["blanket"])} investigation report'
+            f'{"" if len(d["blanket"]) == 1 else "s"} tick almost every option on '
+            'the form.</b> The cause fields allow more than one box. These records tick up to '
+            f'{_mx_rc} root causes and {_mx_uc} underlying causes at once, which says '
+            'nothing about what happened. They are excluded from the counts above, because a '
+            'record that ticks nearly everything adds a spurious count to almost every cause on '
+            'the form. Worth fixing at the form: a cause that means everything means nothing.'
             '<table class="t" style="margin-top:12px"><tr><th>Damage</th><th>Location</th>'
             f'<th>Root ticked</th><th>Underlying ticked</th></tr>{rows}</table></div>')
 
     mech_rows = "".join(
         f"<tr><td>{esc(r['u'])}</td><td class='n'>{r['mech']}</td><td class='n'>{r['hand']}</td>"
         f"<td class='n'>{r['total']}</td></tr>" for r in d["mech_by_utility"])
+    # The headings are read off the tables beneath them — the hand-written FY26/27 pair said
+    # "Electric is a shallow-service problem" over an FY25/26 table whose shallow leader is
+    # telecommunications, a heading contradicted by its own evidence three lines lower.
+    def _leader(rows, num, den):
+        best = None
+        for r in rows:
+            if r["u"] == "Not recorded" or not r.get(den):
+                continue
+            share = (r.get(num) or 0) / r[den]
+            if r[den] >= 5 and (best is None or share > best[1]):
+                best = (r["u"], share)
+        return best
+    _sl = _leader(d["shallow_by_utility"], "shallow", "total")
+    _shallow_head = (f"{esc(_sl[0])} is the shallow-service problem "
+                     f"({round(_sl[1]*100)}% of its recorded depths are under 450mm)"
+                     if _sl else "Shallow services, by utility")
+    _me = _leader(d["mech_by_utility"], "mech", "total")
+    _mech_head = (f"{esc(_me[0])} is the mechanical-plant problem "
+                  f"({round(_me[1]*100)}% of its damages name mechanical plant)"
+                  if _me else "Mechanical plant vs hand tools, by utility")
     shallow_rows = "".join(
         f"<tr><td>{esc(r['u'])}</td><td class='n'>{r['shallow']}</td><td class='n'>{r['total']}</td>"
         f"<td class='n'>{pct(r['shallow'], r['total'])}</td></tr>" for r in d["shallow_by_utility"])
@@ -1031,6 +1058,20 @@ def build(edition, label):
     _ncc = [str(r["id"]) for r in d["not_complete_closed"]]
     not_complete_closed = len(_ncc) if len(_ncc) != 1 else "one"
     not_complete_closed_ids = "damage " + ", ".join(_ncc) if _ncc else "none"
+    # "We looked at two of them" is only TRUE of FY26/27 — the two damages Pete and Claude
+    # opened on screen on 1 Aug 2026. On any other year it was false, and with a small count
+    # it degenerated into "We looked at two of them, not all 0". Derived, per year:
+    if blank_ok == 0:
+        _unstarted_note = ""
+    else:
+        _sampled = (" We looked at two of them on screen, not all "
+                    f"{blank_ok}," if FY == "FY26/27" and blank_ok > 2 else "")
+        _unstarted_note = (
+            f"<p><b>What we cannot tell you is why {blank_ok} have not been started.</b>"
+            f"{_sampled} We do not know Clancy&#8217;s own rule for when the section has to "
+            "be completed, who is meant to do it, or whether anything chases it. That is the "
+            "question worth asking, and it is a more useful one than any count on this page.</p>")
+
     closed_complete = next((r["says_complete"] for r in d["by_status"] if r["status"] == "Closed"), 0)
     closed_not = next((r["says_not"] for r in d["by_status"] if r["status"] == "Closed"), 0)
     cf = d["closed_funnel"]
@@ -1046,9 +1087,24 @@ def build(edition, label):
     supply_rows = "".join(f"<tr><td>{esc(r['v'])}</td><td class='n'>{r['inv']}</td>"
                           f"<td class='n'>{r['n']}</td></tr>" for r in d["by_supply"])
     fylabel = FY_PAGES[FY]["label"]
+    # Year switcher. Without it the FY25/26 edition was an orphan: the navbar's "What the data
+    # tells us" points at the FY26/27 module and NO published page linked the 2025/26 one at
+    # all — a reader inside the FY25/26 section could not reach its own analysis. Only editions
+    # that actually exist in module_content are offered.
+    _pub = {r["module_key"] for r in sql(
+        "SELECT module_key FROM module_content WHERE module_key LIKE 'clancy-damage-analysis%'")}
+    _tabs = "".join(
+        f'<a href="/m/{v["mk"]}"' + (' class="on"' if k == FY else "") + f'>{v["label"]}</a>'
+        for k, v in FY_PAGES.items() if v["mk"] in _pub or k == FY)
+    _year_switch = ('<div class="yswitch" style="max-width:1080px;margin:14px auto 0;padding:0 20px">'
+                    '<span style="font-size:13px;color:#667">Edition:</span> ' + _tabs + "</div>"
+                    "<style>.yswitch a{margin-left:10px;font-size:13px;text-decoration:none;"
+                    "color:#446;padding:3px 10px;border:1px solid #dde;border-radius:20px}"
+                    ".yswitch a.on{background:#97D700;border-color:#97D700;color:#222;font-weight:600}</style>")
 
     return f"""{ui.head("What the damage data tells us | Genny&#8217;s Damage Depot", PAGE_CSS)}
 {ui.navbar("analysis")}
+{_year_switch}
 {ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "What the data tells us")}
 {ui.mast_compact("The analysis &middot; " + esc(label), "What the damage data tells us",
    f"Every service damage The Clancy Group logged in {fylabel}, read from what Depotnet itself "
@@ -1108,10 +1164,7 @@ investigation report section has not been completed. The damage may have been lo
 thoroughly and written up somewhere that is not Depotnet. Nothing on this page claims otherwise,
 and neither should anyone quoting it.</p>
 
-<p><b>What we cannot tell you is why {blank_ok} have not been started.</b> We looked at two of
-them, not all {blank_ok}, and we do not know Clancy&#8217;s own rule for when the section has to
-be completed, who is meant to do it, or whether anything chases it. That is the question worth
-asking, and it is a more useful one than any count on this page.</p></div>
+{_unstarted_note}</div>
 
 <div class="flag"><b>A blank is not proof that nothing happened.</b> A field with nothing in it is
 not evidence that the work was skipped. The investigation report section is completed as part of closing a damage,
@@ -1236,10 +1289,10 @@ verbatim, because the difference between them is the whole argument.</p>
 
 <div class="sec"><h2>9. Three things visible only once it is all in one place</h2>
 <div class="why">Each of these is a count, not an interpretation.</div>
-<h2 style="font-size:15px">Electric is a shallow-service problem; gas is not</h2>
+<h2 style="font-size:15px">{_shallow_head}</h2>
 <table class="t"><tr><th>Utility</th><th>Under 450mm</th><th>With a depth</th><th>Share</th></tr>
 {shallow_rows}</table>
-<h2 style="font-size:15px;margin-top:20px">Gas is a mechanical-plant problem; electric is split</h2>
+<h2 style="font-size:15px;margin-top:20px">{_mech_head}</h2>
 <table class="t"><tr><th>Utility</th><th>Mechanical</th><th>Hand tool</th><th>Total</th></tr>
 {mech_rows}</table>
 <h2 style="font-size:15px;margin-top:20px">The investigation report gap compounds</h2>{ev_line}</div>
@@ -1248,7 +1301,7 @@ verbatim, because the difference between them is the whole argument.</p>
 <div class="why">Stated plainly, because a report that hides its own limits is worth less than one
 that does not.</div>
 <p><b>{n - h['with_cause']} of {n} damages have no cause recorded.</b> Not an unclear cause. None.
-Just under half of this year is therefore absent from section 4 entirely.</p>
+{pct(n - h['with_cause'], n)} of this year is therefore absent from section 4 entirely.</p>
 <p><b>{len(d['blanket'])} of the {h['with_cause']} that do carry one tick nearly every box</b>,
 which amounts to the same thing.</p>
 <p><b>{d['actions']['damages_with']} of {n} damages have a corrective action recorded against
@@ -1300,11 +1353,17 @@ def main():
         print(f"wrote {a.local} ({len(html):,} chars)")
     if a.publish:
         vocab_gate(html)
-        mod = {"module_key": MK, "slug": MK, "title": "What the data tells us",
+        # Title and sort are PER YEAR — hardcoding them made both editions publish under the
+        # identical title at the identical sort position, indistinguishable in every menu, and
+        # a manual UPDATE was silently reverted on the next publish.
+        _title = ("What the data tells us" if FY == "FY26/27"
+                  else f"What the data tells us — {FY_PAGES[FY]['label']}")
+        _sort = 16 + list(FY_PAGES).index(FY)
+        mod = {"module_key": MK, "slug": MK, "title": _title,
                "section": "Customers", "subsection": "External", "area": "Clancy",
                "tier": "passcode", "passcode": "strive2030",
                "unlock_group": "clancy-depotnet",
-               "icon": "📈", "accent": "#97D700", "status": "live", "enabled": True, "sort": 16,
+               "icon": "📈", "accent": "#97D700", "status": "live", "enabled": True, "sort": _sort,
                "groups": ["clancy", "clancy-external"], "tags": ["clancy", "customer", "analysis"]}
         req = urllib.request.Request(f"{URL}/rest/v1/modules?on_conflict=module_key",
             data=json.dumps([mod]).encode(),
