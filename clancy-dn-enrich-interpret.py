@@ -156,6 +156,16 @@ def main():
                 payload["equipment"] = d["equipment"][:20]
             if d.get("dates"):
                 payload["dates"] = d["dates"][:20]
+            # key_facts / quotes / not_stated used to live ONLY in the working directory, so a
+            # cleared /tmp would have silently destroyed the specific depths, serials, names and
+            # verbatim quotes the reading recovered - and "not stated" is evidence in its own
+            # right, it is how the pages show the file was as silent as the form. (3 Aug 2026.)
+            if d.get("key_facts"):
+                payload["key_facts"] = d["key_facts"][:30]
+            if d.get("quotes"):
+                payload["quotes"] = d["quotes"][:10]
+            if d.get("not_stated"):
+                payload["not_stated"] = d["not_stated"][:10]
             if not payload:
                 continue
             payload["confidence"] = "read"
