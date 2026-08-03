@@ -107,6 +107,13 @@ def classify(name, text):
     t = (text or "")[:6000].lower()
     def any_in(markers, *hay):
         return any(m in h for m in markers for h in hay)
+    # Exact, unambiguous markers FIRST. "Incident Manager - 116966.pdf" is Depotnet's own printed
+    # form; left further down it was being caught by the plans markers (the word "plan" appears in
+    # "Health and Safety Plan" too) and counted as a utility drawing — seen live 3 Aug 2026.
+    if "incident manager" in n or "depotnet incident manager" in t[:1500]:
+        return "depotnet-form"
+    if any_in(RAMS_MARKERS, n) or "site-specific risk assessment" in t[:2000]:
+        return "rams"
     if any_in(PANEL_MARKERS, n, t):
         return "panel-review"
     if any_in(CAT_MARKERS, n, t):
@@ -125,9 +132,17 @@ def classify(name, text):
         return "photo"
     if n.endswith(".mp4"):
         return "video"
-    if "incident manager" in n:
-        return "depotnet-form"
     return "other"
+
+
+# WHICH DOCUMENTS MAY SPEAK FOR A DAMAGE. A RAMS says "CAT and Genny MUST be used" as a standing
+# instruction, and a utility company's guidance letter says the same as boilerplate — neither is a
+# lesson anybody learned from THIS damage. Promoting them would put words in Clancy's mouth and
+# wreck the one thing this exercise is proving. So only classes that carry a finding ABOUT the
+# damage are promoted. Everything else is still read, still stored, still in the enrich file — it
+# just does not get to claim it is the damage's cause or lesson. (Caught 3 Aug 2026 on damage
+# 125947, whose "lessons" were ten lines of standing RAMS control measures.)
+SPEAKS_FOR_DAMAGE = ("panel-review", "investigation", "statement", "depotnet-form")
 
 
 # ---------------------------------------------------------------- HSF-902 parse
@@ -291,9 +306,10 @@ def promote():
     by_inc = {}
     for d in docs:
         b = by_inc.setdefault(d["incident_id"], {"c": [], "l": [], "m": [], "src": []})
-        b["c"] += d.get("conclusions") or []
-        b["l"] += d.get("lessons") or []
-        b["m"] += d.get("method_failures") or []
+        if d.get("doc_class") in SPEAKS_FOR_DAMAGE:
+            b["c"] += d.get("conclusions") or []
+            b["l"] += d.get("lessons") or []
+            b["m"] += d.get("method_failures") or []
         b["src"].append({"file_id": d["file_id"], "name": d["file_name"], "class": d["doc_class"]})
     img_n = {}
     for i in imgs:
