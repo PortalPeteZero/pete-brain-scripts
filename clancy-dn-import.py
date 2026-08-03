@@ -242,6 +242,14 @@ def main():
                "job_ref", "contract", "contract_number", "workstream", "business_unit", "location",
                "severity", "subcontractor", "description", "status"]
 
+    ledger_rows = []
+
+    def _ledger_row(incident_id, source, detail, when):
+        import hashlib as _hl
+        return {"incident_id": incident_id, "source": source, "history_type": "Sheet field changed",
+                "detail": detail, "changed_by": None, "changed_at": when,
+                "detail_hash": _hl.md5(f"{detail}|{when}".encode()).hexdigest()}
+
     inc_rows, added, changed = [], 0, 0
     for r in reg:
         rid = int(r["ID"])
@@ -275,6 +283,11 @@ def main():
             if diff:
                 changed += 1
                 row["import_changed_at"] = now
+                for c in diff:
+                    if str(old.get(c) or "").strip() == str(row.get(c) or "").strip():
+                        continue  # whitespace-only: real for import_changed_at, noise for the ledger
+                    ledger_rows.append(_ledger_row(rid, "register-import",
+                        f"{c}: {str(old.get(c))[:400]!r} -> {str(row.get(c))[:400]!r}", now))
             if old.get("utility_confirmed"):
                 row["utility_class"] = old["utility_class"]
                 row["utility_keyword"] = old.get("utility_keyword")
@@ -322,12 +335,24 @@ def main():
             if diff:
                 a_changed += 1
                 row["import_changed_at"] = now
+                if row.get("incident_id"):
+                    for c in diff:
+                        if str(old.get(c) or "").strip() == str(row.get(c) or "").strip():
+                            continue
+                        ledger_rows.append(_ledger_row(row["incident_id"], "actions-import",
+                            f"action {rid} {c}: {str(old.get(c))[:400]!r} -> {str(row.get(c))[:400]!r}", now))
         act_rows.append(row)
 
     print(f"register: {len(inc_rows)} rows -> +{added} new, ~{changed} changed, "
           f"{len(inc_rows)-added-changed} unchanged")
     print(f"actions:  {len(act_rows)} rows -> +{a_added} new, ~{a_changed} changed, "
           f"{len(act_rows)-a_added-a_changed} unchanged")
+    if ledger_rows and not a.dry_run:
+        for i in range(0, len(ledger_rows), 400):
+            rest("clancy_dn_change_ledger?on_conflict=incident_id,source,detail_hash",
+                 method="POST", body=ledger_rows[i:i + 400],
+                 headers={"Prefer": "resolution=ignore-duplicates"})
+        print(f"change ledger: {len(ledger_rows)} field-level diff(s) recorded (see clancy-dn-change-sweep.py --report)")
     gone = set(existing) - {r['id'] for r in inc_rows}
     gone_a = set(existing_act) - {r['id'] for r in act_rows}
     if gone:
