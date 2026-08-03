@@ -133,6 +133,23 @@ def build():
       (SELECT count(*) FROM clancy_dn_gc_inspections) AS inspections,
       (SELECT count(*) FROM clancy_dn_gc_actions) AS gc_actions,
       (SELECT count(*) FROM clancy_dn_gc_coverage) AS gc_operatives,
+      -- Stage 3 Enrichment (3 Aug 2026). Counted from the reading records so the doors cannot
+      -- claim more than was actually read.
+      (SELECT count(*) FROM clancy_dn_enrich_ledger l JOIN clancy_dn_incidents i
+         ON i.id=l.incident_id AND i.fy='FY26/27') AS enrich_files,
+      (SELECT count(*) FROM clancy_dn_image_readings r JOIN clancy_dn_incidents i
+         ON i.id=r.incident_id AND i.fy='FY26/27') AS enrich_images,
+      (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
+         AND doc_conclusions IS NOT NULL) AS enrich_cause,
+      (SELECT count(*) FROM clancy_dn_incidents WHERE fy='FY26/27'
+         AND doc_method_failures IS NOT NULL) AS enrich_failures,
+      (SELECT count(*) FROM clancy_dn_incidents i
+         LEFT JOIN clancy_dn_baseline_pre_enrichment b ON b.id=i.id
+         WHERE i.fy='FY26/27' AND (b.lessons_learnt IS NULL OR btrim(b.lessons_learnt)='')
+           AND i.doc_lessons IS NOT NULL) AS enrich_recovered,
+      (SELECT round(coalesce(sum(l.chars_out),0)/1000000.0, 1)::text || 'm'
+         FROM clancy_dn_enrich_ledger l JOIN clancy_dn_incidents i
+         ON i.id=l.incident_id AND i.fy='FY26/27') AS enrich_chars,
       (SELECT min(date_raised)::date FROM clancy_dn_actions) AS act_first,
       -- Depotnet gives each damage a Questions tab (filled in at the time) and a Report tab
       -- (where the investigation is written down). This counted ANY answer, so a filled-in
@@ -303,6 +320,32 @@ def build():
    <div><div class="n">{d['usable']}</div><div class="l">lessons the company could use</div></div>
   </div>
   <div class="go">Read the report &rarr;</div>
+ </a>
+ <a class="door c" href="/m/clancy-damage-analysis-v2">
+  <div class="kicker">The same year, read again</div>
+  <div class="t">With the documents read</div>
+  <div class="d">The two pages above read this year from Depotnet&#8217;s own fields. These read it
+  again with every attached file open: the panel reviews, statements, permits, locator data and
+  photographs that were always in the record and never opened. Same damages, far more answer.</div>
+  <div class="figs">
+   <div><div class="n">{d['enrich_files']:,}</div><div class="l">files read</div></div>
+   <div><div class="n">{d['enrich_images']:,}</div><div class="l">photographs looked at</div></div>
+   <div><div class="n">{d['enrich_cause']}</div><div class="l">damages a document explains</div></div>
+  </div>
+  <div class="go">Read what the file held &rarr;</div>
+ </a>
+ <a class="door b" href="/m/clancy-damage-board-report-v2">
+  <div class="kicker">The second report</div>
+  <div class="t">This year&#8217;s damages, with the documents read</div>
+  <div class="d">The report the first one promised, for the same ten-minute reader: what the
+  reading recovered, the same failures counted across the year, the same damages told twice, and
+  the honest limit where the file is as silent as the form.</div>
+  <div class="figs">
+   <div><div class="n">{d['enrich_recovered']}</div><div class="l">blank records a document answers</div></div>
+   <div><div class="n">{d['enrich_failures']}</div><div class="l">damages with a named failure</div></div>
+   <div><div class="n">{d['enrich_chars']}</div><div class="l">of text recovered</div></div>
+  </div>
+  <div class="go">Read the second report &rarr;</div>
  </a>
  <a class="door b" href="/m/{ui.REPORTS}">
   <div class="kicker">What Sygma produced</div>
