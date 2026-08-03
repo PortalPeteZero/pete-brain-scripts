@@ -51,6 +51,8 @@ STEPS = [
      ["clancy-dn-gc-pages.py", "--publish"], ["clancy-genny-cat-reviews"]),
     ("the glossary — the section's terms, from clancy_glossary",
      ["clancy-dn-glossary.py", "--publish"], ["clancy-damage-glossary"]),
+    ("change watch — edits to old records, from Depotnet's own audit trail",
+     ["clancy-dn-change-watch.py", "--publish"], ["clancy-damage-change-watch"]),
     ("the board report — this year's damages, what the record can tell us",
      ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report"],
      {"CLANCY_FY": "FY26/27"}),
