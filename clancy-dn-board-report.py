@@ -637,6 +637,23 @@ fixable failure never gets named, and the fix never gets reached for.
 <div class="pkc">A few electric lessons do touch technique &mdash; the asymmetry lives in
 the cause fields, which is where the thinking shows.</div></div>
 </div>
+<div class="pk-e" style="margin-top:16px;border-color:#F2A900;box-shadow:0 16px 38px -18px rgba(242,169,0,.45)">
+<span class="pkh" style="background:#F2A900;color:#2b2000">The cost of the gap</span>
+<div style="font-size:15px;line-height:1.7;color:#2b3440">
+The remedy the record keeps reaching for costs <mark style="background:#D50032;color:#fff;padding:1px 8px;border-radius:5px;font-weight:800">&pound;6,200 a unit</mark>
+&mdash; the AML, at its maker&#8217;s own price, examined in the review below. The remedy
+it never reaches for costs about <mark style="background:#97D700;color:#25320a;padding:1px 8px;border-radius:5px;font-weight:800">&pound;215 a unit</mark>
+&mdash; a signal clamp, one per genny and CAT set, which Sygma&#8217;s business case for
+standard kit has already put to Clancy. That is <b>29 times the price for the device the
+physics says does not work</b>, on the services detection cannot help &mdash; while the
+cables actually being hit wait on a clamp, on technique, and on nothing else.
+<div style="margin-top:10px">Equip any twenty teams and the arithmetic is
+<b>&pound;124,000</b> for AML units against roughly <b>&pound;4,300</b> for clamps; scale
+either to a national fleet and the wrong answer runs into the hundreds of thousands. The
+electric fix carries <b>no significant capital cost at all</b>: training the teams are
+required to hold anyway, behaviour on the ground, and better questions on the form.
+Wrong information does not just mislead. Priced across a group, it costs a fortune.</div>
+</div></div>
 <div class="strip" style="border-left-color:{CHAR};margin-top:14px">Where detection fails
 for physics reasons, they over-trust detection and buy magic boxes; where it fails for
 technique reasons, they do not look at detection at all and blame the paper. Both are the
@@ -821,13 +838,14 @@ from the captured record when this page is rebuilt.</div>
 </div></div>
 
 <div class="band"><div class="rwrap">
-<h2><span class="tag" style="background:{CHAR}">The headline</span> {n} chances to learn</h2>
+<h2><span class="tag" style="background:{CHAR}">The headline</span> {n} chances to learn &mdash; {n - len(d["strategic"])} missed</h2>
 <div class="sub">Every damage is a chance to find out what went wrong and stop the next one.
-This is how many of this year&#8217;s {n} gave us anything to work with.</div>
+This is what this year&#8217;s {n} actually gave us.</div>
 <div class="statrow">
-{stat(n, "service damages so far this year", CHAR)}
-{stat(d["done"], "have their investigation report filled in", GREEN)}
+{stat(n, "service damages " + YEARWORD, CHAR)}
 {stat(d["nothing"], "have an untouched investigation report &mdash; no cause, no lesson recorded", RED, R_T)}
+{stat(len(d["strategic"]), "gave a lesson we can use for strategy and direction &mdash; by the test stated in part three", GREEN, G_T)}
+{stat(n - len(d["strategic"]), "missed opportunities to learn", RED, R_T)}
 </div>
 </div></div>
 
@@ -1020,6 +1038,7 @@ second report: what the documents say that the fields do not.</div>
 </div></div>
 {reach_card}
 {ui.foot(today)}
+{ui.TAIL}
 """
     return html
 

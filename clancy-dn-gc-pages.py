@@ -407,7 +407,7 @@ def actions_register_page(act, A):
             f'every row, the table shows the newest.</div>'
             f'<div class="scrollx"><table class="reg"><tr><th>Raised</th><th>Contract</th>'
             f'<th>What it concerns</th><th>Inspector</th><th>Status</th><th>Closed</th></tr>'
-            + rows + "</table></div></div></body></html>")
+            + rows + "</table></div></div><script src='/clancy/genny-widget.js?v=20260731c' defer></script></body></html>")
 
 
 def inspections_register_page(ins, act, I):
@@ -443,7 +443,7 @@ def inspections_register_page(ins, act, I):
             f'<div class="regnote">Of {I["total"]:,} in total.</div>'
             f'<div class="scrollx"><table class="reg"><tr><th>Date</th><th>Inspection</th>'
             f'<th>Inspector</th><th>Contract</th><th>Location</th><th class="n">Score %</th>'
-            f'<th>Action raised</th></tr>' + rows + "</table></div></div></body></html>")
+            f'<th>Action raised</th></tr>' + rows + "</table></div></div><script src='/clancy/genny-widget.js?v=20260731c' defer></script></body></html>")
 
 
 def coverage_page(cov, C, snap):
@@ -473,7 +473,7 @@ def coverage_page(cov, C, snap):
             + '<h2 class="rh">Every active operative, least recently inspected first</h2>'
             f'<div class="scrollx"><table class="reg"><tr><th>Operative</th><th>Last inspected</th>'
             f'<th>By</th><th class="n">Days since</th></tr>' + rows + "</table></div>"
-            "</div></body></html>")
+            "</div><script src='/clancy/genny-widget.js?v=20260731c' defer></script></body></html>")
 
 def main():
     ap = argparse.ArgumentParser()

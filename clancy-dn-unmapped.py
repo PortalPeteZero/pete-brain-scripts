@@ -196,7 +196,7 @@ made they stay here, complete and unattached.</div>
 
 {ui.foot(today.strftime('%-d %b %Y'))}
 </div>
-</body></html>"""
+<script src="/clancy/genny-widget.js?v=20260731c" defer></script></body></html>"""
 
 
 
