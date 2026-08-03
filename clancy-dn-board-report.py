@@ -227,6 +227,13 @@ def gather():
         f"count(*) FILTER (WHERE i.lessons_learnt IS NOT NULL AND btrim(i.lessons_learnt) <> '') lesson, "
         f"count(*) FILTER (WHERE i.id IN (SELECT DISTINCT incident_id FROM clancy_dn_actions)) act "
         f"FROM clancy_dn_incidents i WHERE i.fy='{FY}' GROUP BY 1 ORDER BY total DESC")
+    for kw, key in (("aml", "aml"), ("gpr", "gpr")):
+        d[f"{key}_fy"] = int(sql(
+            f"SELECT count(*) n FROM clancy_dn_incidents "
+            f"WHERE fy='{FY}' AND lessons_learnt ILIKE '%{kw}%'")[0]["n"])
+        d[f"{key}_all"] = int(sql(
+            f"SELECT count(*) n FROM clancy_dn_incidents "
+            f"WHERE lessons_learnt ILIKE '%{kw}%'")[0]["n"])
     # plans question, on the completed sections
     pq = sql(
         f"SELECT lower(btrim(a.answer)) a, count(*) n FROM clancy_dn_answers a "
@@ -601,6 +608,48 @@ its recorded findings are on record as incorrect. Applying the same scrutiny to 
 year&#8217;s plans listings is exactly the further work this report is asking for.</div>
 </div></div>"""
 
+    _unable_alone = d["cx_elec"]["unable"]
+    _ua_line = ("&ldquo;Unable to detect&rdquo; is never once chosen on its own for an "
+                "electric cable" if _unable_alone == 0 else
+                f"&ldquo;Unable to detect&rdquo; is chosen on its own for an electric "
+                f"cable just {_unable_alone} time{'s' if _unable_alone != 1 else ''}")
+    reach_card = f'''
+<div class="band" style="background:{C_T}"><div class="rwrap">
+<h2><span class="tag" style="background:{CHAR}">The pattern</span> What the record reaches for</h2>
+<div class="sub">Read the two halves of the register side by side and the same gap shows
+from opposite directions.</div>
+<div class="pkey">
+<div class="pk-p"><span class="pkh">Where detection fails for physics reasons</span>
+<div style="font-size:16px;font-weight:800;color:#17202b;margin-bottom:8px">On plastic,
+the diagnosis is right &mdash; and the remedy is wrong.</div>
+On the poly services the teams own the problem: &ldquo;unable to detect&rdquo; gets chosen
+honestly, and the lessons reach for detection answers. Across this register the AML
+appears in <b>{d["aml_all"]}</b> lesson fields ({d["aml_fy"]} in this edition) and GPR in
+<b>{d["gpr_all"]}</b> ({d["gpr_fy"]} here). But the AML does not stand up to physics-led
+review, and GPR carries real limits on a live site &mdash; both examined in the Sygma
+publications below. A right diagnosis keeps being fed the wrong remedy.</div>
+<div class="pk-e"><span class="pkh">Where detection fails for technique reasons</span>
+<div class="pkn" style="font-size:16px;margin-bottom:8px;color:#17202b">On electric, the
+diagnosis never arrives.</div>
+The one utility where detection genuinely works is the one where the cause fields never
+say the trace failed. {_ua_line}; the cause fields point at the plans instead. So the
+fixable failure never gets named, and the fix never gets reached for.
+<div class="pkc">A few electric lessons do touch technique &mdash; the asymmetry lives in
+the cause fields, which is where the thinking shows.</div></div>
+</div>
+<div class="strip" style="border-left-color:{CHAR};margin-top:14px">Where detection fails
+for physics reasons, they over-trust detection and buy magic boxes; where it fails for
+technique reasons, they do not look at detection at all and blame the paper. Both are the
+same underlying gap: nobody in the loop understands how locating actually works.</div>
+<div class="sub" style="margin-top:12px">The evidence behind both halves, published by
+Sygma: <a href="https://sygma-solutions.com/knowledge-hub/aml-pro-ssi-locators"
+style="color:#4f7000;font-weight:700">The AML Pro: a physics-led investigation</a> &middot;
+<a href="https://sygma-solutions.com/knowledge-hub/detecting-plastic-gas-service-pipes"
+style="color:#4f7000;font-weight:700">Detecting plastic pipes: methods and their
+limits</a></div>
+</div></div>
+'''
+
     _tabs = "".join(
         f'<a class="{"on" if k == FY else ""}" href="/m/{MKS[k]}">{ {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26"}[k] }</a>'
         for k in ("FY26/27", "FY25/26"))
@@ -969,6 +1018,7 @@ the supporting documents behind each damage &mdash; the photographs, the permits
 survey data &mdash; which is the enrichment work already planned. That work produces the
 second report: what the documents say that the fields do not.</div>
 </div></div>
+{reach_card}
 {ui.foot(today)}
 """
     return html
