@@ -355,21 +355,46 @@ def comparison_finding(reply):
 COURSE_CLAIM = re.compile(
     r"(?:\b\d+\s*-?\s*day\b[^.\n]{0,30}\b(?:course|training)\b"
     r"|\b(?:one|two|three|four|five)[ -]day\b[^.\n]{0,30}\b(?:course|training)\b"
-    r"|\bbookable\b|\bbook (?:it|the course|online|on the (?:page|site|website))\b"
-    r"|\badd to (?:cart|basket)\b|\bcheckout\b"
+    r"|\bbook (?:the course|onto the course)\b"
     r"|\bcourse (?:price|cost|fee)s?\b[^.\n]{0,20}\b(?:is|are|\u00a3|\d)"
     r")", re.I)
+# Commerce verbs are only a COURSE claim when the sentence is about a course. On their own they are
+# ordinary e-commerce vocabulary that this estate uses constantly for something else entirely --
+# LeakGuard bills through Stripe, so "checkout session", "stripe-checkout-session" and
+# "Stripe Checkout link" are everyday nouns there. `\bcheckout\b` was matched context-free, so on
+# 3 Aug 2026 this gate blocked three consecutive replies about Keith Donald's Stripe subscription,
+# one of which had JUST been verified by a live query, and told me to go and read ee_catalogue.
+# A gate that fires on correct, already-verified work teaches you to route around it -- which is
+# exactly the failure it was built to stop. Scoped to the sentence, not the word.
+COURSE_COMMERCE = re.compile(
+    r"\bbookable\b|\badd to (?:cart|basket)\b|\bcheckout\b"
+    r"|\bbook (?:it|online|on the (?:page|site|website))\b", re.I)
+COURSE_CONTEXT = re.compile(r"\bcourses?\b|\btraining\b|\bdelegates?\b|\bagenda\b", re.I)
 COURSE_SOURCE = re.compile(r"ee_catalogue|ee-facts|ee_rates|ee_customer_rates|ee_public_courses"
                            r"|sygma-solutions\.com/courses|firecrawl-api", re.I)
 
 
+def _sentence_around(text, start, end):
+    """The sentence the match sits in -- the unit a commerce verb has to be judged in."""
+    left = max(text.rfind(".", 0, start), text.rfind("\n", 0, start)) + 1
+    right = min([p for p in (text.find(".", end), text.find("\n", end)) if p != -1] or [len(text)])
+    return text[left:right + 1]
+
+
 def course_fact_finding(reply, tool_text):
     """Refuse a Sygma course fact this session never went and checked."""
-    if not COURSE_CLAIM.search(reply or ""):
+    reply = reply or ""
+    m = COURSE_CLAIM.search(reply)
+    if not m:
+        # A commerce verb counts only if its own sentence is actually about a course.
+        for cm in COURSE_COMMERCE.finditer(reply):
+            if COURSE_CONTEXT.search(_sentence_around(reply, cm.start(), cm.end())):
+                m = cm
+                break
+    if not m:
         return None
     if COURSE_SOURCE.search(tool_text or ""):
         return None
-    m = COURSE_CLAIM.search(reply)
     return reply[max(0, m.start() - 90):m.end() + 90].strip()
 
 
