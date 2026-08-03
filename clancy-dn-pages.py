@@ -71,7 +71,14 @@ def rest_all(path, page=1000):
     in the query string. Found 1 Aug 2026: the answers query asked for 20,000, got 1,000, and the
     per-damage pages had been rendering the Q&A for only the first 13 incidents of 535 — with no
     error anywhere. Anything that can exceed 1,000 rows must come through here.
+
+    And it must come through WITH AN ORDER. Postgres promises no row order without ORDER BY, so a
+    paged read without one can hand back the same row twice and never show you another - silently
+    short, no error, and the short number is what the page publishes. Every caller here already
+    passes one; this guard stops the next one forgetting. (cc-locator-audit, 3 Aug 2026.)
     """
+    if "order=" not in path:
+        raise ValueError(f"rest_all needs an explicit &order= - refusing to page blind: {path}")
     out = []
     while True:
         lo = len(out)
