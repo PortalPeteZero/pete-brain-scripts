@@ -146,6 +146,20 @@ def gather():
         WHERE r.parser_version='{PARSER}'
         GROUP BY 1 HAVING count(*) >= 4 ORDER BY 2 DESC LIMIT 28""")
 
+    # what the PHOTOGRAPHS alone evidence — findings no document states, only looking finds.
+    # Framed as an observation, never a conclusion: a photograph shows what was visible at the
+    # moment it was taken, and excavation itself disturbs the ground above a service.
+    d["seen"] = sql(f"""
+        SELECT lower(t) tag, count(*) images, count(DISTINCT r.incident_id) damages
+        FROM clancy_dn_image_readings r
+        JOIN clancy_dn_incidents i ON i.id=r.incident_id AND i.fy='{FY}',
+             unnest(r.shows) t
+        WHERE r.parser_version='{PARSER}'
+          AND lower(t) IN ('no marker tape','marker tape','no warning tape','concrete tile',
+                           'hand dig','mechanical excavation','cat tool','genny','marker paint',
+                           'standing water','night working','open trench')
+        GROUP BY 1 ORDER BY 3 DESC""")
+
     # the paperwork nobody could read before: photographed/scanned documents with text
     d["paper"] = sql(f"""
         SELECT r.incident_id, r.label, r.description, r.transcription
@@ -347,6 +361,22 @@ only existed as a photograph is now searchable evidence.</div>""")
                 f'<span class="chip"><b>{r["n"]}</b> {esc(r["tag"])}</span>' for r in d["tags"])
                 + "</div>")
         b.append("</div>")
+
+    # ── what only looking finds
+    if d.get("seen"):
+        b.append(f"""
+<div class="sec"><h2><span class="tag" style="background:{RED}">Only looking finds this</span>
+What the photographs show that no document says</h2>
+<div class="lede">These are not claims from anybody&#8217;s report. They are counts of what the
+photographs themselves show, recorded while each image was being looked at. No form asks these
+questions, so this evidence has never been counted before.</div>""")
+        b.append(bars(d["seen"], "tag", "damages", c["damages"]))
+        b.append('<div class="note"><b>Read these as observations, not verdicts.</b> A photograph '
+                 'shows what was visible at the moment it was taken, and the excavation itself '
+                 'disturbs whatever sat above the service. Where the count says no marker tape was '
+                 'visible, that is exactly what it says &mdash; not proof that none was ever laid. '
+                 'It is a question worth putting to the teams, on a scale nobody could see '
+                 'before.</div></div>')
 
     # ── the paperwork recovered
     if d["paper"]:
