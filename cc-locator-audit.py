@@ -409,8 +409,11 @@ def check_rows(gaps, dm_text, dm_rows):
     # A connector with NO credential recorded at all passed clean before — nobody knows where its
     # access lives. 'browser' (Playwright) genuinely needs none; anything else is a real gap.
     # These genuinely hold no stored credential: browser = Playwright; MCP connectors
-    # authenticate through the host app, not a key in the safe.
-    NO_CREDENTIAL_OK = {"browser"}
+    # authenticate through the host app, not a key in the safe; depotnet authenticates with a
+    # short-lived Bearer token held by Clancy's own front end and captured in a logged-in browser
+    # (read-only use) — there is nothing to put in the safe, and the connector's `what` records
+    # exactly where the access comes from. Confirmed with Pete 3 Aug 2026.
+    NO_CREDENTIAL_OK = {"browser", "depotnet"}
     def _no_cred_ok(n): return n in NO_CREDENTIAL_OK or "(mcp)" in n.lower()
     blank = q("SELECT name FROM connectors WHERE btrim(coalesce(secret,'')) IN ('', '-', '—', 'n/a', 'N/A', 'none') ORDER BY name")
     if blank is None:
