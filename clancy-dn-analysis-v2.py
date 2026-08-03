@@ -438,8 +438,11 @@ def publish(html):
                  "Prefer": "resolution=merge-duplicates"}, method="POST")
     _urlopen_retry(req)
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    reason = ("v2 analysis quotes Depotnet fields and Clancy's own panel documents verbatim - "
+    # No apostrophes in this string: it is interpolated into a single-quoted SQL literal, and
+    # "Clancy's" broke the whole publish with a syntax error (3 Aug 2026).
+    reason = ("v2 analysis quotes Depotnet fields and the panel documents verbatim - "
               "the wording rules own the verbatim-source exception")
+    assert "'" not in reason
     assert "$a2$" not in html
     sql(f"SELECT set_config('app.damage_review_override', '{reason}', true);\n"
         f"INSERT INTO module_content (module_key, html, updated_at) VALUES "
