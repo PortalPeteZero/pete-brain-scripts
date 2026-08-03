@@ -647,12 +647,19 @@ it never reaches for costs about <mark style="background:#97D700;color:#25320a;p
 standard kit has already put to Clancy. That is <b>29 times the price for the device the
 physics says does not work</b>, on the services detection cannot help &mdash; while the
 cables actually being hit wait on a clamp, on technique, and on nothing else.
-<div style="margin-top:10px">Equip any twenty teams and the arithmetic is
-<b>&pound;124,000</b> for AML units against roughly <b>&pound;4,300</b> for clamps; scale
-either to a national fleet and the wrong answer runs into the hundreds of thousands. The
-electric fix carries <b>no significant capital cost at all</b>: training the teams are
-required to hold anyway, behaviour on the ground, and better questions on the form.
-Wrong information does not just mislead. Priced across a group, it costs a fortune.</div>
+<div style="margin-top:10px">GPR is the stronger tool, and it is not cheap either:
+around <mark style="background:#b45309;color:#fff;padding:1px 8px;border-radius:5px;font-weight:800">&pound;18,000 a unit</mark>
+&mdash; and the field note below sets out the real limits it carries on a live site.
+Equip any twenty teams and the arithmetic reads: <b>&pound;124,000</b> of AML units,
+<b>&pound;360,000</b> of GPR units &mdash;
+<mark style="background:#D50032;color:#fff;padding:2px 10px;border-radius:6px;font-weight:800;font-size:16px">&pound;484,000 of detection kit</mark>
+&mdash; of which the physics review says the first &pound;124,000 buys nothing, the rest
+buys a method with real limits, and <b>not one pound of it touches the electric damages</b>,
+the most dangerous category on the register. Against that: clamps for the same twenty teams
+at roughly <b>&pound;4,300</b>, and an electric fix with <b>no significant capital cost at
+all</b> &mdash; training the teams are required to hold anyway, behaviour on the ground,
+and better questions on the form. Wrong information does not just mislead. Priced across a
+group, it costs a fortune.</div>
 </div></div>
 <div class="strip" style="border-left-color:{CHAR};margin-top:14px">Where detection fails
 for physics reasons, they over-trust detection and buy magic boxes; where it fails for
