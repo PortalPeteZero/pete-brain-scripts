@@ -14,7 +14,7 @@ Everything else is classified by content and left as full text for the interpret
   --promote  roll up per damage -> clancy_dn_incidents.doc_* (additive, never destructive)
   --stats    what the enrichment added, measured against the frozen baseline
 """
-import os, sys, json, re, glob, argparse, hashlib, urllib.request, urllib.parse
+import os, sys, json, re, glob, argparse, hashlib, urllib.request, urllib.parse, urllib.error
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 WORK = os.environ.get("ENRICH_WORK", "/tmp/enrich-work")
@@ -269,7 +269,21 @@ def promote():
       ADD COLUMN IF NOT EXISTS doc_sources jsonb,
       ADD COLUMN IF NOT EXISTS doc_enriched_at timestamptz,
       ADD COLUMN IF NOT EXISTS doc_parser_version text;
+    NOTIFY pgrst, 'reload schema';
     """)
+    # PostgREST caches the table schema, so a column added a moment ago is still invisible to it
+    # and every PATCH comes back 400. The NOTIFY above asks for a reload; wait for it to land
+    # rather than failing the whole promote on a race (seen live 3 Aug 2026).
+    import time
+    for _ in range(15):
+        try:
+            rest("clancy_dn_incidents?select=doc_parser_version&limit=1")
+            break
+        except urllib.error.HTTPError:
+            time.sleep(2)
+    else:
+        print("PostgREST never picked up the new doc_* columns — re-run --promote in a moment")
+        return
     docs = rest_all(f"clancy_dn_doc_extracts?select=incident_id,file_id,file_name,doc_class,"
                     f"conclusions,lessons,method_failures&parser_version=eq.{PARSER_VERSION}")
     imgs = rest_all(f"clancy_dn_image_readings?select=incident_id,file_id,has_text,transcription,"
