@@ -39,6 +39,15 @@ def rest(path, method="GET", body=None, headers=None):
 
 
 def rest_all(path, page=1000):
+    """Page through a PostgREST table. REFUSES to run without a sort order.
+
+    Postgres makes no ordering promise without ORDER BY, so a paged read without one can hand
+    back the same row twice and never show you another — silently short, with no error. These
+    counts feed customer-facing pages, so this fails closed rather than returning a plausible
+    wrong number. (Flagged by cc-locator-audit 3 Aug 2026; the run came out right, but by luck.)
+    """
+    if "order=" not in path:
+        raise ValueError(f"rest_all needs an explicit &order= — refusing to page blind: {path}")
     out, off = [], 0
     while True:
         chunk = rest(path, headers={"Range-Unit": "items", "Range": f"{off}-{off+page-1}"})
@@ -248,7 +257,7 @@ def load():
     # re-run `clancy-dn-enrich-interpret.py --load` to restore them anyway.
     have = {r["file_id"]: r for r in rest_all(
         f"clancy_dn_doc_extracts?select=file_id,conclusions,lessons,method_failures,confidence"
-        f"&parser_version=eq.{PARSER_VERSION}&confidence=eq.read")}
+        f"&parser_version=eq.{PARSER_VERSION}&confidence=eq.read&order=file_id")}
     kept = 0
     for r in doc_rows:
         prev = have.get(r["file_id"])
@@ -321,9 +330,10 @@ def promote():
         print("PostgREST never picked up the new doc_* columns — re-run --promote in a moment")
         return
     docs = rest_all(f"clancy_dn_doc_extracts?select=incident_id,file_id,file_name,doc_class,"
-                    f"conclusions,lessons,method_failures&parser_version=eq.{PARSER_VERSION}")
+                    f"conclusions,lessons,method_failures&parser_version=eq.{PARSER_VERSION}"
+                    f"&order=incident_id,file_id")
     imgs = rest_all(f"clancy_dn_image_readings?select=incident_id,file_id,has_text,transcription,"
-                    f"description&parser_version=eq.{PARSER_VERSION}")
+                    f"description&parser_version=eq.{PARSER_VERSION}&order=incident_id,file_id")
     by_inc = {}
     for d in docs:
         b = by_inc.setdefault(d["incident_id"], {"c": [], "l": [], "m": [], "src": []})

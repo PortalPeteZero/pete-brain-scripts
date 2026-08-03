@@ -43,6 +43,15 @@ def rest(path, method="GET", body=None, headers=None):
 
 
 def rest_all(path, page=200):
+    """Page through a PostgREST table. REFUSES to run without a sort order.
+
+    Postgres makes no ordering promise without ORDER BY, so a paged read without one can hand
+    back the same row twice and never show you another - silently short, with no error. These
+    counts feed customer-facing pages, so this fails closed rather than returning a plausible
+    wrong number. (Flagged by cc-locator-audit 3 Aug 2026.)
+    """
+    if "order=" not in path:
+        raise ValueError(f"rest_all needs an explicit &order= - refusing to page blind: {path}")
     out, off = [], 0
     while True:
         chunk = rest(path, headers={"Range-Unit": "items", "Range": f"{off}-{off+page-1}"})
@@ -57,7 +66,7 @@ def rest_all(path, page=200):
 
 def candidates(fy="FY26/27"):
     ids = {r["id"] for r in rest_all(
-        f"clancy_dn_incidents?select=id&fy=eq.{urllib.parse.quote(fy)}")}
+        f"clancy_dn_incidents?select=id&fy=eq.{urllib.parse.quote(fy)}&order=id")}
     rows = rest_all(f"clancy_dn_doc_extracts?select=file_id,incident_id,file_name,doc_class"
                     f"&parser_version=eq.{PARSER_VERSION}"
                     f"&doc_class=not.in.(photo,video)&order=incident_id,file_id")

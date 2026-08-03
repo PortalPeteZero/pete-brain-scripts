@@ -66,7 +66,15 @@ def rest(path, method="GET", body=None, headers=None):
 
 
 def rest_all(path, page=1000):
-    """PostgREST caps a response at 1,000 rows — page through, or a scope silently truncates."""
+    """PostgREST caps a response at 1,000 rows - page through, or a scope silently truncates.
+
+    REFUSES to run without a sort order: Postgres makes no ordering promise without ORDER BY, so
+    a paged read without one can hand back the same row twice and never show you another. Silently
+    short, no error. This scope decides which files get read at all, so it fails closed.
+    (Flagged by cc-locator-audit 3 Aug 2026.)
+    """
+    if "order=" not in path:
+        raise ValueError(f"rest_all needs an explicit &order= - refusing to page blind: {path}")
     out, off = [], 0
     while True:
         chunk = rest(path, headers={"Range-Unit": "items", "Range": f"{off}-{off+page-1}"})
@@ -86,7 +94,7 @@ def scope_files(fy="FY26/27", incident=None):
     if incident:
         q += f"&incident_id=eq.{incident}"
     rows = rest_all(q)
-    ids = {i["id"] for i in rest_all(f"clancy_dn_incidents?select=id&fy=eq.{urllib.parse.quote(fy)}")}
+    ids = {i["id"] for i in rest_all(f"clancy_dn_incidents?select=id&fy=eq.{urllib.parse.quote(fy)}&order=id")}
     rows = [r for r in rows if r["incident_id"] in ids]
     return rows
 
