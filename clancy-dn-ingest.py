@@ -365,8 +365,15 @@ def write(parsed):
     if parsed["files"]:
         rows = [{k: v for k, v in f.items() if k not in ("path", "_live_refs")} | {"source": "depotnet-api"}
                 for f in parsed["files"]]
-        rest("clancy_dn_files?on_conflict=incident_id,storage_path", "POST", rows,
-             {"Prefer": "resolution=merge-duplicates,return=minimal"})
+        # PostgREST refuses a batch whose rows carry different key sets (PGRST102, seen live
+        # 3 Aug 2026 on a mixed photo/video/action-file batch). Group by key set and upsert
+        # each group — no None-padding, so absent keys never null a column.
+        by_keys = {}
+        for r in rows:
+            by_keys.setdefault(tuple(sorted(r.keys())), []).append(r)
+        for grp in by_keys.values():
+            rest("clancy_dn_files?on_conflict=incident_id,storage_path", "POST", grp,
+                 {"Prefer": "resolution=merge-duplicates,return=minimal"})
     return True
 
 
