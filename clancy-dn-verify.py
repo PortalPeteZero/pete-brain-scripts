@@ -72,8 +72,17 @@ def _urlopen_retry(req, timeout=120, tries=9):
 
 
 def rest(path):
-    """PostgREST caps a response at 1000 rows and says nothing about it — the page build once
-    rendered 13 incidents' answers out of 535 because of exactly this. Always page."""
+    """PostgREST caps a response at 1000 rows and says nothing about it - the page build once
+    rendered 13 incidents' answers out of 535 because of exactly this. Always page.
+
+    And always page IN AN ORDER. Postgres promises no row order without ORDER BY, so a paged read
+    without one can return the same row twice and never show you another: silently short, no
+    error. In THIS tool that is the worst possible failure, because a verification that quietly
+    skips damages reports a pass it did not earn. Refuses to run without one.
+    (Flagged by cc-locator-audit 3 Aug 2026.)
+    """
+    if "order=" not in path:
+        raise ValueError(f"rest() needs an explicit &order= - refusing to page blind: {path}")
     out, step = [], 1000
     while True:
         sep = "&" if "?" in path else "?"
@@ -125,7 +134,9 @@ def main():
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args()
 
-    q = "clancy_dn_incidents?select=id,fy,incident_date,raw_api,capture_drive_folder,strike_category,root_cause,lessons_learnt,report_submitted_at,depth_mm,depth_raw"
+    q = ("clancy_dn_incidents?select=id,fy,incident_date,raw_api,capture_drive_folder,"
+         "strike_category,root_cause,lessons_learnt,report_submitted_at,depth_mm,depth_raw"
+         "&order=id")
     if a.id:
         q += f"&id=eq.{a.id}"
     else:
@@ -150,9 +161,11 @@ def main():
             d.setdefault(r[key], []).append(r)
         return d
 
-    answers = by_inc(rest("clancy_dn_answers?select=incident_id,section,question,answered"))
-    actions = by_inc(rest("clancy_dn_actions?select=id,incident_id"))
-    files = by_inc(rest("clancy_dn_files?select=incident_id,name,storage_path,drive_id,source,deleted_on_depotnet"))
+    answers = by_inc(rest("clancy_dn_answers?select=incident_id,section,question,answered"
+                      "&order=incident_id,section,q_no"))
+    actions = by_inc(rest("clancy_dn_actions?select=id,incident_id&order=id"))
+    files = by_inc(rest("clancy_dn_files?select=incident_id,name,storage_path,drive_id,source,deleted_on_depotnet"
+                    "&order=id"))
 
     fails = {k: [] for k in ("register", "answers", "actions", "files", "promoted",
                              "duplicates", "drive", "report")}
