@@ -239,8 +239,29 @@ def load():
                            else ("text" if text.strip() else "none")),
             "parser_version": PARSER_VERSION,
         })
+    # --load rebuilds each row from the deterministic parse, which knows nothing about the
+    # interpretive pass. Left alone it silently WIPES every conclusion and lesson a reader
+    # extracted from a free-form document, and the next --promote then reports a fraction of what
+    # was actually found — with published pages built on the wreckage. (Caught 3 Aug 2026 when the
+    # damages-with-a-stated-cause count fell from 44 to 13 after a routine reload.) So: never
+    # overwrite a field the interpretive pass filled. Its results are the file of record on disk;
+    # re-run `clancy-dn-enrich-interpret.py --load` to restore them anyway.
+    have = {r["file_id"]: r for r in rest_all(
+        f"clancy_dn_doc_extracts?select=file_id,conclusions,lessons,method_failures,confidence"
+        f"&parser_version=eq.{PARSER_VERSION}&confidence=eq.read")}
+    kept = 0
+    for r in doc_rows:
+        prev = have.get(r["file_id"])
+        if not prev:
+            continue
+        for col in ("conclusions", "lessons", "method_failures"):
+            if prev.get(col):
+                r[col] = prev[col]
+        r["confidence"] = "read"
+        kept += 1
     post_sized("clancy_dn_doc_extracts?on_conflict=file_id,parser_version", doc_rows)
-    print(f"doc extracts loaded: {len(doc_rows)}")
+    print(f"doc extracts loaded: {len(doc_rows)}"
+          + (f" ({kept} kept their interpretive reading)" if kept else ""))
 
     qp = f"{WORK}/vision-queue.jsonl"
     q = {}
