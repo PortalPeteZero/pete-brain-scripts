@@ -78,6 +78,44 @@ def find_projects_folder_id(drive, parent_name):
         return rows[0].get("drive_file_id")
     return None
 
+def existing_homes(name):
+    """Sweep the CC for homes that ALREADY serve this name — the anti-duplicate gate.
+
+    Why (3 Aug 2026, Pete): asked for flights to go to "the Madrid concert project", a session
+    checked ONLY public.projects, found no row, and created a brand-new project — while the trip
+    already had a CC page (/m/madrid-concert-2026), a Drive folder (My Drive/General/
+    madrid-concert-2026) and a Gmail label (Personal/PA-Madrid-Concert-2026), and the plan that
+    built them had locked "no new projects" for it. A rule ("run whereis first") is a wish; THIS
+    refuses. Creating a project when sibling homes exist needs --force after eyeballing the list.
+    """
+    toks = [t for t in re.split(r"[^A-Za-z0-9]+", name) if len(t) > 2]
+    if not toks:
+        return []
+    pat = "*" + "*".join(toks) + "*"          # PostgREST ilike wildcard
+    hits = []
+    for table, col, sel, label in (
+            ("modules", "title", "slug,title", "CC page"),
+            ("projects", "name", "slug,name,status", "project"),
+            ("vault_notes", "title", "slug,title,type", "knowledge note"),
+    ):
+        rows = rest("GET", table, params={col: f"ilike.{pat}", "select": sel, "limit": "5"})
+        if isinstance(rows, list):
+            hits += [f"{label}: {json.dumps(r, ensure_ascii=False)}" for r in rows]
+    rows = rest("GET", "drive_files", params={
+        "name": f"ilike.{pat}", "is_folder": "eq.true", "select": "drive,path", "limit": "5"})
+    if isinstance(rows, list):
+        hits += [f"Drive folder: {r.get('drive')}/{r.get('path')}" for r in rows]
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("gm", f"{VAULT}/gmail-api.py")
+        gm = importlib.util.module_from_spec(spec); spec.loader.exec_module(gm)
+        low = [t.lower() for t in toks]
+        hits += [f"Gmail label: {l['name']}" for l in gm.GmailAPI().list_labels()
+                 if l.get("type") == "user" and all(t in l["name"].lower() for t in low)]
+    except Exception:
+        pass  # degrade gracefully — the DB-side checks above still gate
+    return hits
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
@@ -85,10 +123,20 @@ def main():
     ap.add_argument("--desc", default="")
     ap.add_argument("--gmail", action="store_true", help="also create a Gmail label")
     ap.add_argument("--no-drive", action="store_true", help="skip Drive folder creation")
+    ap.add_argument("--force", action="store_true",
+                    help="create even though existing homes matched the name (you have read the list)")
     a = ap.parse_args()
 
     slug = slugify(a.name)
     out = {"slug": slug, "name": a.name, "entity": a.entity, "links": {}}
+
+    # GATE: refuse to create a NEW project when the name already has homes in the CC.
+    homes = existing_homes(a.name)
+    if homes and not a.force:
+        print(json.dumps({"_blocked": f"existing home(s) already serve '{a.name}' — a new project "
+                          "would duplicate them. Route to these, or re-run with --force if a new "
+                          "project is genuinely wanted.", "existing": homes}, indent=2, ensure_ascii=False))
+        sys.exit(1)
 
     # 1) projects row + General bucket
     existing = rest("GET", "projects", params={"slug": f"eq.{slug}", "select": "slug"})
