@@ -27,8 +27,9 @@ USAGE
                        [--role customer|supplier|partner] [--dry-run] [--allow-duplicate]
                                # routed · duplicate-guarded · mirror refreshed
   people tidy   "Name"|people/c... [--name "Full Name" --confirm-replace] [--email E] [--phone P]
-                       [--dry-run]
+                       [--replace-email E] [--replace-phone P] [--confirm-replace] [--dry-run]
                                # complete a half-finished record -- Google Contacts ONLY
+                               # --email/--phone APPEND · --replace-* overwrite (needs --confirm-replace)
   people check  [--json] [--self-test]
                                # duplicates, same-names, half-finished, needs-a-surname
   people phone  "Name" [--remove] [--dry-run]
@@ -87,8 +88,10 @@ KNOWN_FLAGS = {
     "--entity", "--email", "--phone", "--company", "--role",
     "--refresh", "--json", "--scope", "--limit", "--confirm", "--remove",
     "--name", "--confirm-replace", "--self-test", "--no-record", "-h", "--help",
+    "--replace-email", "--replace-phone",
 }
-VALUE_FLAGS = ("entity", "email", "phone", "company", "role", "scope", "limit", "name")
+VALUE_FLAGS = ("entity", "email", "phone", "company", "role", "scope", "limit", "name",
+               "replace_email", "replace_phone")
 
 
 def _die(msg, code=2):
@@ -802,8 +805,9 @@ def cmd_tidy(a):
     q = a.get("name_arg") or ""
     if not q:
         _die("a name (or a people/c... resource name) is required")
-    if not any(a.get(k) for k in ("email", "phone", "name")):
-        _die("nothing to tidy: pass at least one of --email, --phone, --name")
+    if not any(a.get(k) for k in ("email", "phone", "name", "replace_email", "replace_phone")):
+        _die("nothing to tidy: pass at least one of --email, --phone, --name, "
+             "--replace-email, --replace-phone")
 
     google, other = _google_hits(q)
     if not google:
@@ -841,6 +845,27 @@ def cmd_tidy(a):
         (landed if rc == 0 else missed).append(f"{field}={val}")
         if rc != 0:
             print(f"  ⚠ {field} append FAILED: {out}")
+
+    # REPLACEMENTS. Appending can only ever grow a record, so a WRONG address stays on it forever
+    # and `find` keeps offering it. Andy Jones carried a dead hill-eckersley address alongside the
+    # one actually in use (4 Aug 2026) and there was no way to take it off. Same guard as --name:
+    # replaces outright, so it needs --confirm-replace. Comma-separate to keep more than one.
+    for field, key in (("email", "replace_email"), ("phone", "replace_phone")):
+        val = a.get(key)
+        if not val:
+            continue
+        print(f"  REPLACING all {field}s -> {val}   (anything else on the record is dropped)")
+        if dry:
+            print("    (dry run — nothing written)")
+        elif not a.get("confirm_replace"):
+            print(f"    SKIPPED — --replace-{field} drops whatever else is there, so it needs")
+            print("    --confirm-replace.")
+            skipped.append(f"replace-{field}")
+        else:
+            rc, out = _people_api_update(res, field, val)
+            (landed if rc == 0 else missed).append(f"{field}(replaced)={val}")
+            if rc != 0:
+                print(f"  ⚠ {field} replace FAILED: {out}")
 
     if a.get("name"):
         print(f'  REPLACING "{rec.get("name")}" -> "{a["name"]}"')
@@ -1489,7 +1514,7 @@ def main():
             a[BOOLS[head]] = True
             i += 1
             continue
-        field = head.lstrip("-")
+        field = head.lstrip("-").replace("-", "_")  # --replace-email -> replace_email
         if inline:                                  # --entity=sygma
             a[field] = inline
             i += 1
