@@ -34,6 +34,12 @@ if not os.path.exists(f"{SEC}/command-centre-supabase-keys.json"):
     SEC = f"{VAULT}/Library/processes/secrets"
 k = json.load(open(f"{SEC}/command-centre-supabase-keys.json"))
 URL, SR = k["url"], k["service_role_key"]
+_CTRL = __import__("re").compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# What counts as a CHANGE on the damage page. Uploads and submissions are additions and are shown
+# with their dates in the evidence section; an amendment or a deletion is the thing a reader needs
+# flagging. Deletions matter most: Depotnet withdraws evidence without removing the record.
+CHG_KINDS = {"Report Amended", "Incident Amended", "Action Amended", "Question Response Updated",
+             "Document Deleted", "Photo Deleted", "Sheet field changed"}
 MK = "clancy-depotnet-damages"
 
 def _urlopen_retry(req, timeout=120, tries=9):
@@ -108,7 +114,11 @@ def load():
                 "actions_captured_at,sygma_summary,sygma_findings,sygma_next_actions,"
                 "sygma_reviewed_at,sygma_narrative,sygma_report_url,sygma_operatives,"
                 "sygma_supervisor,sygma_stage_note,sygma_cause,sygma_shareable,sygma_drive_folder,"
-                "timeline,report_submitted_at,report_submitted_by,include_investigation")
+                "timeline,report_submitted_at,report_submitted_by,include_investigation,"
+                # What the ATTACHED DOCUMENTS say (enrichment, 3 Aug 2026). Added 4 Aug: this page
+                # is where somebody lands when they say "let's look at 153523", and until now the
+                # 543 files we read reached NONE of it — the same gap Genny had.
+                "doc_conclusions,doc_lessons,doc_method_failures,doc_sources,doc_enriched_at")
     inc = rest_all(f"clancy_dn_incidents?select={INC_COLS}&order=incident_date.desc")
     act = rest_all("clancy_dn_actions?select=*&order=date_raised.desc")
     for r in inc:
@@ -153,6 +163,15 @@ def load():
     # folder as the Sygma panel-review material, so a page that renders only the review folder shows
     # none of them.
     files = rest_all("clancy_dn_files?select=incident_id,action_id,kind,name,drive_id,drive_folder,source,deleted_on_depotnet&order=incident_id,kind,name")
+    # The documents themselves, read line by line, and the record of what Clancy have CHANGED.
+    # Both added 4 Aug 2026 so a damage has ONE page carrying the whole story: Depotnet's own
+    # record, what the attached files say, Sygma's review, and what moved since we last looked.
+    # `not_stated` travels with the extracts on purpose — without it a reader cannot tell
+    # "this document gives no cause" from "nobody read it".
+    dex = rest_all("clancy_dn_doc_extracts?select=incident_id,file_name,doc_class,key_facts,"
+                   "quotes,not_stated,confidence&order=incident_id,file_name")
+    chg = rest_all("clancy_dn_change_ledger?select=incident_id,source,history_type,detail,"
+                   "changed_by,changed_at&order=incident_id,changed_at.desc")
     # the column explainers render the GLOSSARY's rows — one copy of the wording (edits plan
     # item 2); a column with no glossary row simply gets no explainer, never a second draft
     gloss = {g["column_key"]: g for g in rest(
@@ -183,7 +202,13 @@ def load():
     fby = defaultdict(list)
     for f in files:
         fby[f["incident_id"]].append(f)
-    return inc, act, enrich, dict(fby), dict(aby), gloss
+    dex_by_inc = defaultdict(list)
+    for x in dex:
+        dex_by_inc[x["incident_id"]].append(x)
+    chg_by_inc = defaultdict(list)
+    for x in chg:
+        chg_by_inc[x["incident_id"]].append(x)
+    return inc, act, enrich, dict(fby), dict(aby), gloss, dict(dex_by_inc), dict(chg_by_inc)
 
 FAM_ORDER = ["Southern Water", "Anglian Water", "South East Water", "Scottish Water", "UKPN", "SGN"]
 # Contract families no longer carry their own hue: the "By contract" chart is a single series
@@ -385,7 +410,7 @@ text.blabel{font-size:12px;fill:#44506
 tr.child td{background:#fafbfd;border-top:1px dashed #e8ebf0;font-size:12.5px;color:#4a5560;
  padding-top:6px;padding-bottom:6px}
 tr.child td:first-child{padding-left:26px;position:relative}
-tr.child td:first-child:before{content:"\21B3";position:absolute;left:10px;color:#9aa4af}
+tr.child td:first-child:before{content:"\\21B3";position:absolute;left:10px;color:#9aa4af}
 .colkey{margin:0 0 12px;background:#fff;border:1px solid var(--border,#e3e6ea);border-radius:12px}
 .colkey summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:13px}
 .colkey .kin{padding:2px 16px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:6px 18px}
@@ -492,6 +517,22 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .tle .tld{display:inline-block;min-width:126px;color:var(--muted)}
 .acard{border:1px solid var(--border);border-radius:11px;padding:14px 16px;margin-top:12px;background:#fafbfd}
 ul.kf{margin:6px 0 0 18px;font-size:13.5px}
+/* what the attached documents say (4 Aug 2026) */
+.dxdoc{border-left:3px solid #2f5fd0;background:#f7f9fc;border-radius:0 10px 10px 0;
+ padding:10px 14px;margin:9px 0}
+.dxname{font-size:13px;font-weight:800;margin-bottom:5px}
+.dxf{font-size:12.5px;color:#3c4757;line-height:1.5;margin:2px 0 2px 12px;text-indent:-12px}
+.dxf:before{content:"\\2013\\00a0"}
+.dxq{font-size:12.5px;font-style:italic;color:#182230;border-left:2px solid #c9d2dd;
+ margin:6px 0 6px 4px;padding:2px 0 2px 10px}
+.dxn{font-size:12px;color:#6b7784;margin-top:7px;padding-top:6px;border-top:1px solid #e4e8ee}
+.dxn b{color:#182230}
+/* what Clancy have changed */
+.chgrow{border-left:3px solid #b45309;background:#fdf8f1;border-radius:0 10px 10px 0;
+ padding:9px 13px;margin:8px 0}
+.chghead{font-size:12.5px;color:#6b7784}
+.chghead b{color:#182230}
+.chgdet{font-size:12.5px;color:#3c4757;line-height:1.55;margin-top:5px;white-space:pre-wrap}
 ul.kf li{margin-bottom:5px}
 @media print{.mast{background:#1c2a6e}.nav{display:none}}
 """
@@ -1118,7 +1159,7 @@ def search_box(fy=None):
 
 # ---------------------------------------------------------------- per-damage detail page
 
-def fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, fykey):
+def fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, fykey, dex_by_inc, chg_by_inc):
     """One page per year that renders ANY of the year's damages in full from embedded JSON
     (?id=N): every register field, every action in full, the timeline, and the Sygma layer."""
     label = FY_LABEL[fykey]
@@ -1149,6 +1190,22 @@ def fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, fykey):
                     for k, v in answers_by_inc.items() if k in year_ids},
         "capfolder": {str(r["id"]): r.get("capture_drive_folder") for r in rows
                       if r.get("capture_drive_folder")},
+        "dex": {str(k): v for k, v in dex_by_inc.items() if k in year_ids},
+        # The change trail: AMENDMENTS AND DELETIONS ONLY, newest first, capped at 40.
+        #
+        # Carrying all 3,351 ledger rows pushed FY25/26's page to 3.3 MB and Supabase refused it
+        # with 413 — the same wall the answers hit on 1 Aug, and the same lever: carry less. But
+        # the right cut is editorial, not arithmetic. This section answers "what have Clancy
+        # CHANGED", and 2,191 of those rows are Document/Photo Uploaded — additions, already
+        # listed with their dates in the evidence section above. An amendment or a deletion is a
+        # change; an upload is not. Filtering to the former drops ~80% of the rows and makes the
+        # section mean what its heading says.
+        "chg": {str(k): [{"t": c["history_type"], "d": c.get("detail") or "",
+                          "by": c.get("changed_by") or "", "at": c["changed_at"]}
+                         for c in v if c["history_type"] in CHG_KINDS][:40]
+                for k, v in chg_by_inc.items() if k in year_ids},
+        "chgn": {str(k): sum(1 for c in v if c["history_type"] in CHG_KINDS)
+                 for k, v in chg_by_inc.items() if k in year_ids},
     }
     for a in acts:
         data["actions"][str(a["incident_id"])].append(a)
@@ -1387,6 +1444,46 @@ function render(){{
    ?'Captured in full from Depotnet — this damage has no attachments on Depotnet at all.'
    :'The Depotnet record for this damage has not been captured yet, so no PDF, photos or documents are held.')+'</p>';
  h+='</div>';
+ // ── What the attached documents say (enrichment). Sits between Depotnet's own record and
+ // Sygma's review, because that is what it is: Clancy's OWN files, read. Added 4 Aug 2026 —
+ // until then this page showed none of it, so a damage whose Depotnet cause is blank read as
+ // unexplained even where a panel review in the same record explains it.
+ const dxs=D.dex[id]||[], dcon=r.doc_conclusions||[], dles=r.doc_lessons||[], dfai=r.doc_method_failures||[];
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>What the attached documents say</h2>'
+  +'<span class="note">read from the files themselves &mdash; not the Depotnet form</span></div>';
+ if(dcon.length||dles.length||dfai.length||dxs.length){{
+  if(dcon.length)h+='<div class="fl" style="margin-top:4px">Cause, per the documents</div><ul class="kf">'+dcon.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
+  if(dfai.length)h+='<div class="fl" style="margin-top:10px">Method failures the documents name</div><ul class="kf">'+dfai.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
+  if(dles.length)h+='<div class="fl" style="margin-top:10px">Lessons the documents give</div><ul class="kf">'+dles.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
+  if(dxs.length){{
+   h+='<div class="fl" style="margin-top:14px">Document by document</div>';
+   dxs.forEach(d=>{{
+    h+='<div class="dxdoc"><div class="dxname">'+d.file_name+(d.doc_class?' <span class="muted">('+d.doc_class+')</span>':'')+'</div>';
+    (d.key_facts||[]).slice(0,8).forEach(f=>{{h+='<div class="dxf">'+f+'</div>';}});
+    (d.quotes||[]).slice(0,4).forEach(q=>{{h+='<blockquote class="dxq">'+q+'</blockquote>';}});
+    // An absence has to be as visible as a value: "the document is silent" is a finding.
+    if((d.not_stated||[]).length)h+='<div class="dxn"><b>This document does not state:</b> '+d.not_stated.join('; ')+'</div>';
+    h+='</div>';
+   }});
+  }}
+  if(r.doc_enriched_at)h+='<div class="legend" style="margin-top:12px"><span class="lg">Files read '+fmtTs(r.doc_enriched_at)+'</span></div>';
+ }} else h+='<p class="small muted">The files for this damage have <b>not been read yet</b> &mdash; only FY 2026/27 has been through enrichment. That is different from the documents having nothing to say.</p>';
+ h+='</div>';
+ // ── What has changed since we last looked. Depotnet exposes no last-modified at list level,
+ // so this trail is the only way an edit to a closed record is visible at all.
+ const chs=D.chg[id]||[];
+ if(chs.length){{
+  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>What Clancy have changed</h2>'
+   +'<span class="note">amendments and deletions from Depotnet&#8217;s own audit trail</span></div>';
+  chs.slice(0,40).forEach(c=>{{
+   h+='<div class="chgrow"><div class="chghead"><b>'+(c.t||'Changed')+'</b> &middot; '
+    +fmtTs(c.at)+(c.by?' &middot; '+c.by:'')+'</div>'
+    +(c.d?'<div class="chgdet">'+c.d+'</div>':'')+'</div>';
+  }});
+  const total=(D.chgn&&D.chgn[id])||chs.length;
+  if(total>chs.length)h+='<p class="small muted">Showing the '+chs.length+' most recent of '+total+' recorded changes.</p>';
+  h+='</div>';
+ }}
  // Sygma layer
  h+='<div class="card"><div class="h2row"><h2>Sygma material</h2><span class="note">panel reviews, findings, documents</span></div>';
  if(en){{
@@ -1865,7 +1962,7 @@ def main():
     ap.add_argument("--local")
     ap.add_argument("--publish", action="store_true")
     args = ap.parse_args()
-    inc, act, enrich, files_by_inc, answers_by_inc, gloss = load()
+    inc, act, enrich, files_by_inc, answers_by_inc, gloss, dex_by_inc, chg_by_inc = load()
     print(f"loaded {len(inc)} incidents, {len(act)} actions, {len(enrich)} enriched link(s)")
     pages = {"overview.html": hub(inc, act)}
     # this year IS the landing: the module index serves the current-FY dashboard
@@ -1877,7 +1974,7 @@ def main():
                                                    aby=answers_by_inc, fby=files_by_inc, gloss=gloss)
         pages[yp["actions"]] = actions_page(inc, act, fykey=f)
         pages[yp["insights"]] = fy_insights_page(inc, act, f)
-        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, f)
+        pages[f"{yp['dash'][:-5]}-damage.html"] = fy_detail_page(inc, act, enrich, files_by_inc, answers_by_inc, f, dex_by_inc, chg_by_inc)
     vocab_gate(pages)
     # the page-check runs on EVERY build — local previews and publishes alike — so a wrong
     # table can never reach a preview, let alone the site. Stage-2 assertions arm with the
@@ -1925,6 +2022,11 @@ def main():
         for name, htm in pages.items():
             key = MK if name == "index.html" else f"{MK}/{name}"
             assert "$dn$" not in htm
+            # A control byte in the HTML makes Postgres refuse the whole statement with
+            # 08P01 "invalid message format", and the error names nothing. One reached
+            # here on 4 Aug 2026 from a CSS escape written \\00a0 in a normal Python
+            # string (octal NUL). Source fixed; this stops the next one silently.
+            htm = _CTRL.sub("", htm)
             sql(f"SELECT set_config('app.damage_review_override', '{reason}', true);\n"
                 f"INSERT INTO module_content (module_key, html, updated_at) VALUES "
                 f"('{key}', $dn${htm}$dn$, '{now}') "
