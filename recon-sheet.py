@@ -49,7 +49,7 @@ ACCOUNTS = {
 #                  (flights, most cold food, rail), outside the scope (foreign supplier, statutory
 #                  fee), exempt (insurance, finance), or not a business cost at all.
 KNOWN = [
-    (r"ANTHROPIC",            "Claude AI subscription (the assistant running this)", "8201", "std"),
+    (r"ANTHROPIC",            "Claude AI subscription", "8201", "std"),
     (r"OPENAI|CHATGPT",       "ChatGPT / OpenAI AI subscription",                    "8201", "std"),
     (r"GROK|XAI",             "Grok AI subscription (xAI)",                          "8201", "std"),
     (r"GITHUB",               "GitHub code hosting subscription",                    "8201", "std"),
@@ -122,6 +122,8 @@ KNOWN = [
     (r"RAILWAY",              "Railway -- runs the Command Centre automations",      "8201", "std"),
     (r"PASSKIT",              "PassKit digital wallet passes (the Wallet Pass work)", "8201", "std"),
     (r"SCRIBE\.HOW",          "Scribe -- how-to documentation tool",                 "8201", "std"),
+    (r"LETAIDO",              "Letaido -- Ahrefs' AI marketing workspace, USD 118.80/mo on card 8325 "
+                              "(found via the Link/Stripe receipt in Gmail)",        "8201", "std"),
     (r"TASKLET",              "Tasklet -- software subscription (Pete confirmed)",   "8201", "std"),
     (r"CLOUDINARY",           "Cloudinary image hosting",                            "8201", "std"),
     (r"OPENROUTER|PERPLEXITY|MIDJOURNEY|ELEVENLABS",
@@ -129,9 +131,11 @@ KNOWN = [
     # vehicles and premises
     (r"BLACKCIRCLES|KWIK.?FIT|NATIONAL TYRES",
                               "Tyres / vehicle servicing",                           "7301A", "std"),
-    (r"ALTITUDEFS|ALTITUDE FS|LATITUDE",
-                              "Altitude vehicle finance -- NOT Time Token (Pete corrected)",
-                                                                                     "7401", "none"),
+    (r"ALTITUDEFS|ALTITUDE FS|ALTITUDE FUNDING|LATITUDE",
+                              "Altitude Funding Solutions -- GBP 282 vehicle finance BROKER ADMIN "
+                              "FEE for Latitude Leasing, inc VAT, one per deal (10224 = second Ford "
+                              "Transit YM26EGK, 10195 = the other). Collected by GoCardless, NOT "
+                              "Time Token",                                          "7401", "std"),
     (r"TIME TOKEN",           "Time Token -- rent on the business centre (Pete confirmed)",
                                                                                      "7100", "std"),
     (r"GSY GAS",              "Gas supply",                                          "7201", "std"),
@@ -141,18 +145,19 @@ KNOWN = [
     (r"PAYMENT MADE|VIRTUALBANKTRANSFER|OPENBANKING|BANK TRANSFER|TRANSFER FROM|TRANSFER TO",
                               "Transfer between our own accounts / card repayment -- NOT a cost",
                                                                                      "", "none"),
-    (r"FP RETURN",            "Failed payment RETURNED to us. ⚠ Check the original payment OUT has "
-                              "been reversed too -- on 10 Jul 2026 three GBP 1,000 payments coded "
-                              "DLA were reconciled while their returns were not, overstating the "
-                              "director's loan by GBP 3,000",                        "", "none"),
+    (r"FP RETURN",            "DLA refund -- returned payment, reconciles against the matching DLA "
+                              "payment out (Pete confirmed)",                        "2301", "none"),
     # ⚠ GoCardless is a payment RAIL, not a supplier. "GOCARDLESS APPEARONLINE-652XJ" is Appear
     # Online being collected by direct debit. Coding it to GoCardless with no VAT was matching the
     # mechanism instead of who was actually paid, and it lost the VAT (Pete, 4 Aug 2026). The
     # specific payees are listed FIRST so they win; the bare rail is only a fallback.
     (r"APPEARONLINE|APPEAR ONLINE",
-                              "Appear Online (collected by GoCardless direct debit)", "8201", "std"),
-    (r"CONTROLACCOUNT",       "Controlaccount -- the FedEx debt arrangement (13 weekly payments)",
-                                                                                     "6900", "none"),
+                              "Appear Online -- backlink SEO work on the website (collected by "
+                              "GoCardless direct debit)",                            "6201", "std"),
+    (r"CONTROLACCOUNT|FEDEX",
+                              "Controlaccount / FedEx payment plan -- these are paying off the FEDEX "
+                              "VAT BILL, so the VAT should be claimed. Andy: worth checking how this "
+                              "has been treated so far (Pete, 4 Aug 2026)",          "6900", "std"),
     (r"ANDY JONES",           "Andy Jones -- our bookkeeper",                        "7601", "none"),
     (r"MR HAMILTON|HAMILTON.*TIK HUNT",
                               "Staff loan to Hamilton (Pete confirmed) -- a loan, not an expense "
@@ -170,9 +175,56 @@ KNOWN = [
     (r"TEXIM EUROPE",         "Texim Europe -- Dutch electronics component distributor (EU, check VAT)",
                                                                                      "5000a", "none"),
     (r"CURRY CLUB",           "Curry Club -- food",                                  "7406", "std"),
-    (r"AYUNTAMIENTO|SUMINISTROS|COLCHONE|PEDIDO",
-                              "Spanish supplier -- NO UK VAT to reclaim",            "6900", "none"),
+    # Pete's calls, 4 Aug 2026 -- personal spend on the company card goes to the director's loan
+    (r"AYUNTAMIENTO",         "Ayuntamiento de Yaiza (Spanish council) -- Director's Loan",
+                                                                                     "2301", "none"),
+    (r"NORWEGIAN CRUISE",     "Norwegian Cruise Line -- Director's Loan",            "2301", "none"),
+    (r"SUPPS HUB|SUPPSHUB",   "Supps Hub, Dubai -- Director's Loan",                 "2301", "none"),
+    (r"KSUPPLIESDECCO",       "K Supplies Decco -- Director's Loan",                 "2301", "none"),
+    (r"C C SOCO|SOCO PUERTO", "Parking, Puerto del Carmen (Spain) -- Director's Loan", "2301", "none"),
+    (r"FARMACIA",             "Spanish pharmacy -- Director's Loan",                 "2301", "none"),
+    (r"TEXIM EUROPE",         "Texim Europe BV -- Dutch electronics distributor, parts. Receipt IS "
+                              "on Capital on Tap (Paul Baxter, 11 Jun)",             "5000a", "none"),
+    (r"GOOGLE ADS|GOOGLE ADS1",
+                              "Google Ads -- website advertising spend",             "6201", "std"),
+    (r"FASTFIELD",            "FastField Mobile Forms -- site survey forms app",     "8201", "std"),
+    (r"LOVABLE",              "Lovable -- AI app builder (hosts Sygma Mala and Sales-Hire)",
+                                                                                     "8201", "std"),
+    (r"TIDIO",                "Tidio -- website live-chat widget",                   "8201", "std"),
+    (r"COOKIEYES",            "CookieYes -- website cookie consent banner",          "8201", "std"),
+    (r"HOLO AI",              "Holo AI -- AI subscription",                          "8201", "std"),
+    (r"PLAUD",                "Plaud -- AI voice recorder and meeting transcription", "8201", "std"),
+    (r"XRO |XERO CUSTOM CONNE",
+                              "Xero custom connections -- the API app fee",          "8201", "std"),
+    (r"RESEND",               "Resend -- transactional email service",               "8201", "std"),
+    (r"AI ON WHATSAPP",       "AI on WhatsApp -- AI subscription",                   "8201", "std"),
+    (r"SKOOLCOM|SKOOL\.COM",  "Skool -- online community platform",                  "8201", "std"),
+    (r"COLCHONE",             "Colchones (Spanish mattress retailer) -- Director's Loan",
+                                                                                     "2301", "none"),
+    (r"SUMINISTROS|PEDIDO",   "Spanish supplier -- NO UK VAT to reclaim",            "6900", "none"),
 ]
+
+
+# Line-level overrides, keyed (tab, date, amount). Needed because a merchant rule cannot express
+# "Suministros JL Cabrera is TOOLS at GBP 882.94 on the card but the DIRECTOR'S LOAN at GBP 29.66 on
+# Natwest" -- which is exactly what Pete said on 4 Aug 2026. Marking the individual record beats
+# bending the rule until it fits.
+OVERRIDES = {
+    ("Capital On Tap", "2026-06-06", -882.94):
+        ("Suministros JL Cabrera -- tools for work (Pete confirmed)", "7800", "none"),
+    ("Natwest Business Account", "2026-05-29", -29.66):
+        ("Suministros JL Cabrera -- Director's Loan (Pete confirmed)", "2301", "none"),
+    ("Natwest Business Account", "2026-06-01", -15.05):
+        ("Suministros JL Cabrera -- Director's Loan (Pete confirmed)", "2301", "none"),
+    ("Natwest Business Account", "2026-06-29", -838.32):
+        ("Flight, PayPal booking ref RJPTJM (Pete confirmed)", "7400C", "std"),
+    ("Natwest Business Account", "2026-07-22", -362.92):
+        ("Flight, PayPal booking ref WWNTMA (Pete confirmed)", "7400C", "std"),
+    ("Natwest Business Account", "2026-07-08", -206.53):
+        ("Iberia flight (PayPal: purchase at IBERIA LAE SA)", "7400C", "std"),
+    ("Natwest Business Account", "2026-06-15", -82.64):
+        ("Iberia flight (Pete confirmed)", "7400C", "std"),
+}
 
 
 def _die(m, c=1):
@@ -353,7 +405,7 @@ def match_bills(amount, date, bills, merchant_text="", window=95):
     return ""
 
 
-def build_rows(lines, precedent, paypal, bills=(), card=None):
+def build_rows(lines, precedent, paypal, bills=(), card=None, acct_name=""):
     D = datetime.date.fromisoformat
     out = []
     for l in sorted(lines, key=lambda x: x["date"]):
@@ -368,6 +420,7 @@ def build_rows(lines, precedent, paypal, bills=(), card=None):
         cinfo = (card or {}).get((l["date"], round(abs(l["amount"]), 2)), {})
         if cinfo.get("merchant") and not payee:
             payee = cinfo["merchant"]
+        ov = OVERRIDES.get((acct_name, l["date"], round(l["amount"], 2)))
         money_in = l["amount"] > 0
         what, acct, vat = classify(l["ref"], payee)
         if money_in:
@@ -381,6 +434,8 @@ def build_rows(lines, precedent, paypal, bills=(), card=None):
         if prev and not acct:                      # how Pete has coded this merchant before
             acct = prev[0] or ""
             vat = "std" if prev[1] == "INPUT2" else ("none" if prev[1] else vat)
+        if ov:
+            what, acct, vat = ov          # an explicit call from Pete beats every rule
         net, vatamt = vat_split(l["amount"], vat)
         reason = ("MONEY IN -- not a purchase, no input VAT" if money_in
                   else (what if vat == "none" else ""))
@@ -558,7 +613,7 @@ def build(paths, sheet_id=None):
 
     fmt = []
     for acct, lines in accounts.items():
-        rows = build_rows(lines, precedent, paypal, bills, card)
+        rows = build_rows(lines, precedent, paypal, bills, card, acct)
         title = acct[:80]
         sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:N{len(rows)+1}"
                     "?valueInputOption=USER_ENTERED",
