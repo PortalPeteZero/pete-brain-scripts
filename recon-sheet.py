@@ -116,6 +116,7 @@ KNOWN = [
     (r"RAILWAY",              "Railway -- runs the Command Centre automations",      "8201", "std"),
     (r"PASSKIT",              "PassKit digital wallet passes (the Wallet Pass work)", "8201", "std"),
     (r"SCRIBE\.HOW",          "Scribe -- how-to documentation tool",                 "8201", "std"),
+    (r"TASKLET",              "Tasklet -- software subscription (Pete confirmed)",   "8201", "std"),
     (r"CLOUDINARY",           "Cloudinary image hosting",                            "8201", "std"),
     (r"OPENROUTER|PERPLEXITY|MIDJOURNEY|ELEVENLABS",
                               "AI tool subscription",                                "8201", "std"),
