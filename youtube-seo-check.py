@@ -18,6 +18,13 @@ Usage:
   youtube-seo-check.py <payload.json>          # exit 0 clean / 1 BLOCK / 2 could not run
   youtube-seo-check.py <payload.json> --json
   youtube-seo-check.py --video VIDEO_ID        # audit something already live
+  youtube-seo-check.py <payload.json> --context clancy   # STRICT: Genny-first everywhere
+
+Naming is context-dependent and this is the compromise (Pete, 4 Aug 2026): Clancy insist on
+"Genny and CAT"; Sygma's ideal is the same; only SEO wants "CAT and Genny", because that is what
+people type. So CAT-first is permitted in TITLES AND TAGS on public search-facing surfaces and
+nowhere else. Clancy-facing material (--context clancy) is Genny-first everywhere, because the hub
+is gated -- nobody arrives by search, so there is nothing to trade away.
 
 Payload shape (same as videos.insert/update):
   {"snippet": {"title": ..., "description": ..., "tags": [...], "categoryId": "27",
@@ -49,7 +56,7 @@ def keyword_map():
         return []
 
 
-def check(payload, kws):
+def check(payload, kws, context="public"):
     sn = payload.get("snippet", {}) or {}
     st = payload.get("status", {}) or {}
     title = (sn.get("title") or "").strip()
@@ -114,13 +121,28 @@ def check(payload, kws):
             W("no-chapters", "No 00:00 timestamp line. Chapters make a long video navigable and "
                              "surface as jump-to links in search results.")
 
-    # ── Sygma house rules (front door: Properties/Sygma Solutions Website) ───
-    body_wrong = re.findall(r"C\.?A\.?T\.?\s*(?:&|and)\s*Genny", desc, re.I)
+    # ── the naming rule, which is CONTEXT-dependent (Pete, 4 Aug 2026) ──────
+    # Clancy insist on "Genny and CAT". Sygma's own ideal is "Genny and CAT". Only SEO wants
+    # "CAT and Genny", because that is what people type -- seo_keyword_map carries 18+ such terms.
+    # So the compromise is confined to SEARCH-FACING surfaces, and nowhere else:
+    #   public  (default) -- title/tags may be CAT-first (that is the query); body copy may not.
+    #   clancy  (--context clancy) -- Genny-first EVERYWHERE. The hub is gated and Sygma-owned;
+    #           nobody arrives by search, so there is nothing to trade away.
+    WRONG_ORDER = r"C\.?A\.?T\.?\s*(?:&|and)\s*Genny"
+    body_wrong = re.findall(WRONG_ORDER, desc, re.I)
     if body_wrong:
         B("naming-order-body", f"Description says {body_wrong[0]!r}. In BODY COPY it is always "
                                f"'Genny and CAT' -- the name states the method: connect the Genny "
                                f"first. (Titles/tags may use 'CAT and Genny' because that is what "
                                f"people search -- the keyword map carries it. Body copy may not.)")
+    if context == "clancy":
+        for field, val in (("title", title), ("tags", " ".join(tags))):
+            hit = re.findall(WRONG_ORDER, val, re.I)
+            if hit:
+                B("naming-order-clancy", f"{field} says {hit[0]!r}. Clancy-facing material is "
+                                         f"'Genny and CAT' EVERYWHERE, title included. The search "
+                                         f"carve-out does not apply -- the hub is gated and nobody "
+                                         f"reaches it by searching.")
     if re.search(r"\bcourses\b", title, re.I):
         B("courses-plural", "Sygma naming is 'course' SINGULAR, never 'courses'.")
 
@@ -158,7 +180,8 @@ def audit_live(video_id):
 def main():
     args = [a for a in sys.argv[1:]]
     as_json = "--json" in args
-    args = [a for a in args if a != "--json"]
+    context = "clancy" if "--context" in args and "clancy" in args else "public"
+    args = [a for a in args if a not in ("--json", "--context", "clancy", "public")]
     if not args:
         print(__doc__); sys.exit(2)
 
@@ -169,7 +192,7 @@ def main():
     else:
         payload = json.load(open(args[0])); label = args[0]
 
-    findings = check(payload, keyword_map())
+    findings = check(payload, keyword_map(), context)
     blocks = [f for f in findings if f[0] == "BLOCK"]
     warns = [f for f in findings if f[0] == "WARN"]
 
