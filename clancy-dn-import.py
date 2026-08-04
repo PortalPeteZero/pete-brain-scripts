@@ -216,12 +216,25 @@ def resolve_export(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--register", required=True)
-    ap.add_argument("--actions", required=True)
+    # --register/--actions are required for an IMPORT but not for --embed-only, which needs no
+    # export at all. Enforced below rather than by argparse, so re-embedding does not demand two
+    # spreadsheets it will never open. Added 4 Aug 2026: widening _embed_input_incident meant
+    # re-embedding the whole register, and the only way to do that was a full import run.
+    ap.add_argument("--register")
+    ap.add_argument("--actions")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--verify", action="store_true",
                     help="after import (or standalone), prove every sheet cell is in the DB")
+    ap.add_argument("--embed-only", action="store_true",
+                    help="re-embed any damage/action whose embed text has changed, and nothing "
+                         "else. Use after editing _embed_input_incident, or after enrichment "
+                         "writes new doc_* values that should become searchable.")
     a = ap.parse_args()
+    if a.embed_only:
+        embed_dirty()
+        return
+    if not a.register or not a.actions:
+        ap.error("--register and --actions are required (except with --embed-only)")
     # Resolve both inputs to the newest matching download BEFORE anything reads them, so a stale
     # file can never be imported silently (see resolve_export).
     a.register = resolve_export(a.register)
@@ -427,8 +440,30 @@ def _voyage(texts):
             json.loads(urllib.request.urlopen(req, timeout=300).read().decode())["data"]]
 
 def _embed_input_incident(r):
-    return " | ".join(str(r.get(k) or "") for k in
-                      ["contract", "location", "utility_class", "severity", "description"])
+    """What a damage is FINDABLE by.
+
+    Widened 4 Aug 2026. It was five fields — contract | location | utility_class | severity |
+    description — which meant the semantic search could only match on where and what was hit.
+    Not the cause, not the lesson, and nothing the documents recovered. So "which damages had a
+    permit failure" had literally nothing to hit: 44 of this year's 48 damages have a cause stated
+    in doc_conclusions and the search that chooses what Genny reads could not see one of them.
+
+    The Depotnet fields come first (root_cause / underlying_cause / lessons_learnt), then what the
+    documents gave. Arrays are flattened; None and empty strings drop out rather than padding the
+    text with separators. Changing this text changes every hash, so the next run re-embeds the
+    whole register — that is the intended cost, and embed_dirty() handles it on its own.
+    """
+    def flat(v):
+        if v is None:
+            return ""
+        if isinstance(v, (list, tuple)):
+            return " ".join(str(x) for x in v if x)
+        return str(v)
+    parts = [flat(r.get(k)) for k in
+             ["contract", "location", "utility_class", "strike_subcategory", "severity",
+              "description", "root_cause", "underlying_cause", "lessons_learnt",
+              "doc_conclusions", "doc_method_failures", "doc_lessons"]]
+    return " | ".join(p for p in parts if p.strip())
 
 def _embed_input_action(r):
     return (f"{r.get('contract') or ''} | asked: {r.get('description') or ''} | "
