@@ -278,6 +278,15 @@ def evaluate(reply, tool_text):
 # NARROW BY DESIGN: fires only when the reply makes a rank/position/authority COMPARISON and the
 # same paragraph contains no quoted term (" ", ' ', ` `) and no explicit `for the term/query ...`.
 # Naming the term anywhere in that paragraph satisfies it -- this polices attribution, not style.
+
+# The paragraph must actually be ABOUT search before a rank word means anything. Deliberately
+# excludes position/rank/DR themselves -- those are the ambiguous words this is disambiguating.
+SEO_CONTEXT = re.compile(
+    r"\b(?:google|serp|gsc|search console|ahrefs|semrush|keyword|search term|search query|"
+    r"impressions?|clicks?|organic|backlinks?|referring domains?|indexed|indexing|"
+    r"sitemap|seo|traffic|querie?s|rank tracker|competitor|"
+    r"sygma-solutions\.com|canary-detect\.com|lanzarotelates)\b", re.I)
+
 COMPARISON = re.compile(
     r"(?:\b(?:position|ranks?|ranking|outranks?|above (?:us|you|me)|beating (?:us|you)|"
     r"median DR|DR \d|domain rating)\b"
@@ -337,12 +346,31 @@ def _is_search_phrase(q):
     if re.search(r"[=_/\\<>{}()\[\]]|\.py\b|--", q):
         return False                                   # ahrefs_pos=5, seo-report.py, --days
     return bool(re.fullmatch(r"[A-Za-z0-9&' ]+", q))
-FOR_TERM = re.compile(r"\bfor the (?:term|query|keyword|search)\b", re.I)
-
+# HOLE 4, found 4 Aug 2026 while testing hole 3: this exempted a paragraph for merely SAYING
+# "for the term" / "for the keyword" -- no term had to follow. "Sygma is at Ahrefs position 5
+# for the keyword group" walked straight through, which is the exact unattributed shape the
+# gate exists to catch ("number 5 for what?"). The escape hatch must carry a NAMED term:
+# a quoted string, or a concrete phrase after the colon/word -- not the word on its own.
+FOR_TERM = re.compile(
+    r"\bfor the (?:term|query|keyword|search(?: term)?)\b\s*[:\-]?\s*"
+    r"(?:[\"\u201c\u2018']|`)", re.I)
 def comparison_finding(reply):
     """Return the offending paragraph, or None. Attribution check, not a correctness check."""
     for para in re.split(r"\n\s*\n", reply or ""):
         if not COMPARISON.search(para) or not NUMERIC.search(para):
+            continue
+        # HOLE 3, the other direction -- found 4 Aug 2026. "position" is ordinary English. The gate
+        # blocked "So the accurate position: 41 regenerable copies, sitting unignored where
+        # `git add -A` would commit them" -- a sentence about FILES IN A GIT CLONE, with no search
+        # term because there is no search. COMPARISON matched the word, NUMERIC matched the digit
+        # after it, and Pete got a lecture about naming his keyword.
+        #
+        # A gate that fires on innocent text teaches everyone to ignore it, which costs more than
+        # the hole it was plugging. A genuine ranking claim is never bare: it lives in a paragraph
+        # that also mentions the search world somewhere. So require ONE domain signal before the
+        # gate can fire. Deliberately does NOT include the rank words themselves -- "position",
+        # "rank" and "DR" are exactly what is ambiguous.
+        if not SEO_CONTEXT.search(para):
             continue
         if any(_is_search_phrase(q) for q in QUOTED.findall(para)) or FOR_TERM.search(para):
             continue

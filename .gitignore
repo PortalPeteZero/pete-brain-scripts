@@ -26,3 +26,31 @@ __pycache__/
 
 # Local caches / scratch
 *.cache.md
+
+# Materialised SECRETS, wherever they land. The rule above ignores Library/ because that is where
+# pete-session-bootstrap.py is supposed to write them -- but on 4 Aug 2026 a work clone
+# (/tmp/pbs-fix) was found with 41 credential files sitting at the REPO ROOT instead: live Xero
+# tokens, Stripe keys, Supabase service-role keys, Odoo logins. Untracked and unignored, so a
+# single `git add -A` would have committed the lot.
+#
+# Relying on every tool writing to the right folder is not a control. These patterns make the
+# LOCATION irrelevant: a secret file is ignored wherever it is dropped. The originals live in the
+# CC `secrets` table and are re-materialised every session, so nothing is lost by ignoring them.
+*-keys.json
+*-key.json
+*-graph.json
+*-tokens.json
+*-credentials.json
+*-api.json
+*-oauth-client.json
+*-service-account.json
+*-sentry.json
+*-ga4.json
+*-gtm.json
+*-cookieyes.json
+*-wordpress.json
+*-login.json
+*-vercel.json
+*-indexnow-key.json
+*-web-analytics.json
+stripe-*.json
