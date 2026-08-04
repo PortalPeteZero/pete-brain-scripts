@@ -38,8 +38,13 @@ DOMAINS = [
     {
         "name": "calendar / diary",
         # what the reply is talking about
-        "subject": r"\b(calendar|diar(?:y|ies)|schedule|what'?s on|booked in|training (?:on|today)|"
-                   r"day off|free day|trainer'?s? day|his day|her day|their day)\b",
+        # `schedule` is PERSON-SCOPED on purpose. A bare "schedule" is overwhelmingly a cron or a
+        # publish cadence in this system, not somebody's diary, and matching it bare is what made
+        # this gate refuse a Depotnet report on 4 Aug 2026. A real diary claim says WHOSE.
+        "subject": r"\b(calendar|diar(?:y|ies)|what'?s on|booked in|training (?:on|today)|"
+                   r"day off|free day|trainer'?s? day|his day|her day|their day)\b"
+                   r"|\b(?:his|her|their|my|your|\w+'s)\s+schedule\b"
+                   r"|\bschedule\s+(?:for|of)\s+\w+",
         # the tool call that would have answered it properly
         "primary": r"calendar-api\.py",
         "how": 'VAULT=/tmp/pbs python3 /tmp/pbs/calendar-api.py events <person>@sygma-solutions.com <from> <to>\n'
@@ -221,15 +226,36 @@ NAMED_SOURCE = re.compile(
     r"[a-z-]+\.py|[a-z_]+\.[a-z_]+)\b", re.I)
 
 
+_SENT = re.compile(r"[^.!?\n]+[.!?]?")
+
+
 def evaluate(reply, tool_text):
-    """Return a list of blocking findings."""
+    """Return a list of blocking findings.
+
+    THE SUBJECT AND THE ABSENCE MUST BE IN THE SAME SENTENCE. Until 4 Aug 2026 this searched the
+    WHOLE reply for an absence and, separately, the whole reply for a subject, then paired whatever
+    it found. So any message containing the word "schedule" anywhere and the words "can't see"
+    anywhere was refused as a calendar claim — however unrelated the two were.
+
+    Measured on a real reply that day: it blocked a Depotnet capture report because
+    "…would let this run on a schedule" (a CRON) appeared four paragraphs below "the overview
+    sheets can't see those" (spreadsheet COLUMNS). Neither clause was about anyone's diary. A gate
+    that refuses correct work teaches you to route around it, which is exactly how the real failure
+    on 27 Jul got through — so keeping it precise is what keeps it obeyed.
+
+    Same-sentence is the honest test: a genuine absence claim names its subject in the sentence
+    that makes the claim. "His calendar isn't available to me" fires; a cron and a column in
+    different paragraphs do not.
+    """
     if not reply or not ABSENCE.search(reply):
         return []
     if NAMED_SOURCE.search(reply):
         return []
+    sentences = _SENT.findall(reply)
     out = []
     for d in DOMAINS:
-        if not re.search(d["subject"], reply, re.I):
+        paired = any(re.search(d["subject"], s, re.I) and ABSENCE.search(s) for s in sentences)
+        if not paired:
             continue
         if re.search(d["primary"], tool_text):
             continue          # the primary source WAS consulted -- the absence is honest
