@@ -132,10 +132,11 @@ KNOWN = [
     (r"BLACKCIRCLES|KWIK.?FIT|NATIONAL TYRES",
                               "Tyres / vehicle servicing",                           "7301A", "std"),
     (r"ALTITUDEFS|ALTITUDE FS|ALTITUDE FUNDING|LATITUDE",
-                              "Altitude Funding Solutions -- GBP 282 vehicle finance BROKER ADMIN "
-                              "FEE for Latitude Leasing, inc VAT, one per deal (10224 = second Ford "
-                              "Transit YM26EGK, 10195 = the other). Collected by GoCardless, NOT "
-                              "Time Token",                                          "7401", "std"),
+                              "Altitude Funding Solutions -- vehicle admin fee, GBP 235.00 net + "
+                              "GBP 47.00 VAT. Tax invoice INV-5093, their VAT no. 329 7104 00. One "
+                              "per deal (10224 = 2nd Ford Transit YM26EGK, 10195 = the other), "
+                              "collected by GoCardless. INVOICE FORWARDED TO DEXT 04 Aug 2026",
+                                                                                     "7302", "std"),
     (r"TIME TOKEN",           "Time Token -- rent on the business centre (Pete confirmed)",
                                                                                      "7100", "std"),
     (r"GSY GAS",              "Gas supply",                                          "7201", "std"),
@@ -449,6 +450,51 @@ def build_rows(lines, precedent, paypal, bills=(), card=None, acct_name=""):
     return out
 
 
+def merge_with_existing(existing, fresh):
+    """Re-run behaviour, and the whole point of the sheet being live.
+
+    A line that has been RECONCILED in Xero simply stops appearing in the export. Pete's call
+    (4 Aug 2026): do NOT delete those -- mark them DONE and keep them, so the sheet accumulates a
+    record of what was asked and answered. It becomes the precedent for next time rather than a
+    disposable to-do list.
+
+    Andy's notes and any Status he has set are preserved on rows that are still open: his column
+    wins over anything regenerated.
+    """
+    def key(r):
+        # ⚠ normalise the amount. Google returns it FORMATTED ("-1,222.26") while a freshly built
+        # row holds a float (-1222.26), so a naive str() compare matched nothing and every existing
+        # line looked reconciled -- 67 rows wrongly marked DONE on the first attempt.
+        try:
+            amt = f"{float(str(r[2]).replace(',', '').strip()):.2f}"
+        except (ValueError, TypeError, IndexError):
+            amt = str(r[2] if len(r) > 2 else "")
+        return (str(r[0]).strip(), str(r[1]).strip()[:60], amt)
+    old = {key(r): r for r in existing if len(r) >= 3}
+    out, seen = [], set()
+    for r in fresh:
+        k = key(r)
+        seen.add(k)
+        prev = old.get(k)
+        if prev:
+            # keep what the humans typed: Status (M, idx 12) and Andy's notes (N, idx 13)
+            if len(prev) > 12 and prev[12] and prev[12] != "OPEN":
+                r[12] = prev[12]
+            if len(prev) > 13 and prev[13]:
+                r[13] = prev[13]
+        out.append(r)
+    for k, r in old.items():
+        if k in seen:
+            continue
+        r = list(r) + [""] * (14 - len(r))
+        r[12] = "DONE"                       # gone from the export = reconciled in Xero
+        if not r[13]:
+            r[13] = "Reconciled in Xero -- kept for the record"
+        out.append(r)
+    out.sort(key=lambda r: (str(r[0]), str(r[1])))
+    return out
+
+
 HEADERS = ["Date", "Bank reference (as Xero shows it)", "Amount", "VAT?", "Net", "VAT amount",
            "Who it was paid to", "What it actually is", "Category (Sygma's chart)",
            "Matching bill in Xero?", "Who spent it", "Why no VAT (if N)",
@@ -615,6 +661,20 @@ def build(paths, sheet_id=None):
     for acct, lines in accounts.items():
         rows = build_rows(lines, precedent, paypal, bills, card, acct)
         title = acct[:80]
+        try:
+            prev = sapi("GET", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A2:N500",
+                        tok=tok).get("values", [])
+        except SystemExit:
+            prev = []
+        if prev:
+            before = len(rows)
+            rows = merge_with_existing(prev, rows)
+            carried = len(rows) - before
+            if carried:
+                print(f"  {acct}: {carried} line(s) no longer in the export -> marked DONE, kept")
+        sapi("POST", f"/{sheet_id}:batchUpdate",
+             {"requests": [{"updateCells": {"range": {"sheetId": existing[title],
+              "startRowIndex": 1}, "fields": "userEnteredValue"}}]}, tok)
         sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:N{len(rows)+1}"
                     "?valueInputOption=USER_ENTERED",
              {"values": [HEADERS] + rows}, tok)
