@@ -1556,12 +1556,10 @@ def build(edition, label):
     # was 1.24:1 against the page so it did not read as a control at all, it sat above the
     # breadcrumbs outside the design system, and it called the YEAR an edition while v1/v2 are
     # also editions. Both axes now live in ui.page_switch, under the masthead.
-    _year_switch = ""
 
     return f"""{ui.head("What the damage data tells us | Genny&#8217;s Damage Depot", PAGE_CSS + (STAGE4_CSS if STAGE2 else ""))}
 {ui.navbar("analysis")}
-{_year_switch}
-{ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "What the data tells us")}
+{ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), ui.nav_label("analysis"))}
 {ui.mast_compact("The analysis &middot; " + esc(label), "What the damage data tells us",
    f"Every service damage The Clancy Group logged in {fylabel}, read from what Depotnet itself "
    f"holds. {n} damages, {h['captured']} of them captured in full.")}

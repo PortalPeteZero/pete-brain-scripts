@@ -322,7 +322,7 @@ def index_page(rows):
     today = datetime.date.today()
     return f"""{ui.head("Reports &amp; Reviews | Genny&#8217;s Damage Depot", PAGE_CSS)}
 {ui.navbar("reports")}
-{ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "Reports")}
+{ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), ui.nav_label("reports"))}
 {ui.mast_compact("The library", "Reports &amp; Reviews",
                  "Everything Sygma has written for Clancy on service damage, plus the Clancy "
                  "documents that sit behind it. Search the lot, or filter by what kind of "
@@ -369,7 +369,7 @@ def report_page(r):
     return f"""{ui.head(esc(r["title"]) + " | Genny&#8217;s Damage Depot", PAGE_CSS)}
 {ui.navbar("reports")}
 {ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"),
-           ("Reports", f"/m/{MK}"), TLABEL.get(typ, typ))}
+           (ui.nav_label("reports"), f"/m/{MK}"), TLABEL.get(typ, typ))}
 {ui.mast_compact(TLABEL.get(typ, typ) + " &middot; " + esc(r["dateline"]),
                  esc(r["title"]),
                  (f"Damage {r['dn_id']}, {esc(r['dn_loc'])}." if r["dn_id"] else ""))}

@@ -59,6 +59,19 @@ STEPS = [
     ("the board report, FY 2025/26 edition",
      ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report-2025-26"],
      {"CLANCY_FY": "FY25/26"}),
+    # Joined 4 Aug 2026. They were built on 3 Aug and never added here, so from that day every
+    # "publish the lot" run rebuilt the whole section AROUND them and left the two newest pages
+    # untouched — and because ages() derives its freshness list from STEPS, they were invisible
+    # to --check as well, so nothing reported the drift either. They are also the two pages that
+    # carry the navbar, so a nav change would have gone live everywhere except the pair it was
+    # built for. Same reason the Genny & CAT section joined on 2 Aug: a page that shares this
+    # section's chrome but sits outside this list is a page that silently falls behind.
+    ("what the data tells us, with the documents read — FY 2026/27",
+     ["clancy-dn-analysis-v2.py", "--publish"], ["clancy-damage-analysis-v2"],
+     {"CLANCY_FY": "FY26/27"}),
+    ("the second board report, with the documents read — FY 2026/27",
+     ["clancy-dn-board-report-v2.py", "--publish"], ["clancy-damage-board-report-v2"],
+     {"CLANCY_FY": "FY26/27"}),
 ]
 
 

@@ -680,7 +680,6 @@ limits</a></div>
     # the switch must offer only pages that genuinely exist, never a hand-maintained list.
     _pub = {r["module_key"] for r in sql(
         "SELECT module_key FROM module_content WHERE module_key LIKE 'clancy-damage-board-report%'")}
-    yswitch = ""
 
     # the 48-square waffles: one square per damage, colour = verdict (Pete: each damage
     # a square you can count). Order: green, amber, red, grey.
@@ -826,8 +825,7 @@ cable.</mark>
 
     html = f"""{ui.head(("This year&#8217;s damages: the report" if CURRENT else FYLABEL + " damages: the report") + " | Genny&#8217;s Damage Depot", CSS)}
 {ui.navbar("report")}
-{ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), "The report")}
-{yswitch}
+{ui.crumbs(("Command Centre", "/"), ("Damage Depot", f"/m/{ui.HUB}"), ui.nav_label("report"))}
 {ui.mast_compact("The report &middot; " + FYLABEL,
    ("This year&#8217;s damages: what the record can tell us" if CURRENT else
     FYLABEL + " damages: what the record can tell us"),

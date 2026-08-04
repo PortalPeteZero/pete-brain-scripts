@@ -369,8 +369,26 @@ def navbar(active=""):
         "</div></nav>")
 
 
+def nav_label(key):
+    """The label NAV_ITEMS uses for a section page. USE THIS IN BREADCRUMBS — never retype the name.
+
+    Found 4 Aug 2026, immediately after the labels were reworked: the navbar updated everywhere,
+    but each generator had its own hand-typed crumb string, so 15 report pages read "Sygma reports"
+    in the bar and "Reports" in the trail directly beneath it, and the two v2 pages disagreed with
+    themselves the same way. The labels are only worth centralising if everything that names a page
+    reads from the same place.
+    """
+    for k, label, _ in NAV_ITEMS:
+        if k == key:
+            return label
+    raise KeyError(f"no NAV_ITEMS entry named {key!r}")
+
+
 def crumbs(*trail):
-    """Breadcrumbs. Pass (label, href) tuples; the last item may be a bare string for "here"."""
+    """Breadcrumbs. Pass (label, href) tuples; the last item may be a bare string for "here".
+
+    Name a SECTION page with nav_label(key), not a literal — see nav_label's note.
+    """
     out = []
     for i, item in enumerate(trail):
         if i:

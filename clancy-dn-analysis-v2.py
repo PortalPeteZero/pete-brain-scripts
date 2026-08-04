@@ -408,7 +408,7 @@ none of it is typed in.</div></div>""")
     page = (ui.head(f"What the data tells us &mdash; with the documents read | Genny&#8217;s Damage Depot", CSS)
             + ui.navbar("analysis")
             + ui.crumbs(("Damage Depot", "/m/clancy-depotnet"),
-                        ("What the data tells us", "/m/clancy-damage-analysis"),
+                        (ui.nav_label("analysis"), "/m/clancy-damage-analysis"),
                         "With the documents read")
             + ui.hero(kicker=f"{FYLABEL} &middot; second reading",
                       title="What the data tells us, with the documents read",

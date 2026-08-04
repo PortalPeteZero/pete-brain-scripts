@@ -293,7 +293,7 @@ Nothing is typed in. The first report remains exactly as presented.</div>
     return (ui.head(f"The second report: with the documents read | Genny&#8217;s Damage Depot", CSS)
             + ui.navbar("report")
             + ui.crumbs(("Damage Depot", "/m/clancy-depotnet"),
-                        ("The report", "/m/clancy-damage-board-report"),
+                        (ui.nav_label("report"), "/m/clancy-damage-board-report"),
                         "With the documents read")
             + ui.hero(kicker=f"{FYLABEL} &middot; the second report",
                       title="This year&#8217;s damages, with the documents read",
