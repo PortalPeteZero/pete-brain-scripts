@@ -440,7 +440,10 @@ class GmailAPI:
             return False
         return any(t in s.lower() for t in ("</html", "</body", "</div", "</p>", "</table", "</span", "</a>", "<br", "<!doctype"))
 
-    def _raw_rfc822(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, in_reply_to=None, references=None):
+    def _raw_rfc822(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, in_reply_to=None,
+                    references=None, attachments=None):
+        import os
+        from email import encoders
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
 
@@ -488,7 +491,36 @@ class GmailAPI:
 
         if html is None:
             html = self._looks_like_html(body)  # auto-detect when caller doesn't specify
-        msg = MIMEText(body, "html" if html else "plain", "utf-8")
+
+        # ATTACHMENTS. Gmail takes raw RFC822, so files have always been possible -- but send() and
+        # create_draft() had no parameter for them, and on 4 Aug 2026 a session read the signature,
+        # concluded "the helper sends text only", and told Pete he had to drag the PDFs in by hand.
+        # Wrong answer from a true observation. The capability now lives here so no caller has to
+        # rebuild the MIME tree, and nobody can read the signature and conclude it cannot be done.
+        # `attachments` = a path, or a list of paths, or a list of (path, filename) to rename on the way out.
+        if attachments:
+            import mimetypes
+            from email.mime.base import MIMEBase
+            items = attachments if isinstance(attachments, (list, tuple)) else [attachments]
+            outer = MIMEMultipart()
+            outer.attach(MIMEText(body, "html" if html else "plain", "utf-8"))
+            for it in items:
+                path, name = it if isinstance(it, (list, tuple)) else (it, None)
+                if not os.path.isfile(path):
+                    raise ValueError(f"gmail-api: attachment not found: {path} -- refusing to send a mail "
+                                     "that promises an attachment it does not carry")
+                ctype, _ = mimetypes.guess_type(path)
+                maintype, subtype = (ctype or "application/octet-stream").split("/", 1)
+                part = MIMEBase(maintype, subtype)
+                with open(path, "rb") as fh:
+                    part.set_payload(fh.read())
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", "attachment",
+                                filename=name or os.path.basename(path))
+                outer.attach(part)
+            msg = outer
+        else:
+            msg = MIMEText(body, "html" if html else "plain", "utf-8")
         msg["To"] = to if isinstance(to, str) else ", ".join(to)
         if cc: msg["Cc"] = cc if isinstance(cc, str) else ", ".join(cc)
         if bcc: msg["Bcc"] = bcc if isinstance(bcc, str) else ", ".join(bcc)
@@ -544,8 +576,10 @@ class GmailAPI:
             return body, html
 
     def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,
-             in_reply_to=None, references=None):
+             in_reply_to=None, references=None, attachments=None):
         """Send an email. `html` defaults to None = auto-detect from body content.
+        `attachments` = a path, a list of paths, or a list of (path, filename) pairs to rename on the way
+        out. YES, THIS HELPER SENDS ATTACHMENTS -- do not tell anyone it cannot (4 Aug 2026).
         Pass html=True to force HTML, html=False to force plain text. `signature=True` (default) appends the
         sender alias's Gmail signature (never double-signs); pass signature=False to omit it.
         For a threaded REPLY, prefer reply_thread() — it fills thread_id + in_reply_to + references for you.
@@ -555,14 +589,15 @@ class GmailAPI:
             body, html = html, True
         if signature:
             body, html = self._apply_signature(body, html, from_)
-        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
+        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references, attachments)
         body_obj = {"raw": raw}
         if thread_id: body_obj["threadId"] = thread_id
         return self._call("POST", "/messages/send", body=body_obj)
 
     def create_draft(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,
-                     in_reply_to=None, references=None):
-        """Create a draft. `html` defaults to None = auto-detect from body content. `signature=True`
+                     in_reply_to=None, references=None, attachments=None):
+        """Create a draft. `attachments` = a path / list of paths / list of (path, filename) pairs.
+        YES, DRAFTS CARRY ATTACHMENTS TOO. `html` defaults to None = auto-detect from body content. `signature=True`
         (default) appends the sender alias's Gmail signature (never double-signs) so a draft opened + sent
         from Gmail looks the same as one you composed yourself; pass signature=False to omit it.
         For a threaded REPLY draft, prefer reply_thread(..., as_draft=True).
@@ -571,7 +606,7 @@ class GmailAPI:
             body, html = html, True
         if signature:
             body, html = self._apply_signature(body, html, from_)
-        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references)
+        raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references, attachments)
         msg_obj = {"raw": raw}
         if thread_id: msg_obj["threadId"] = thread_id
         return self._call("POST", "/drafts", body={"message": msg_obj})
