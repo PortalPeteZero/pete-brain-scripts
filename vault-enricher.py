@@ -122,6 +122,62 @@ INTERNAL_DOMAINS = frozenset({
 })
 
 
+# ---- the duplicate-home gate (4 Aug 2026) -----------------------------------------------------
+# Matter folders are named `{PREFIX}-{who}-{what}`, so the counterparty is carried in the middle
+# tokens. Two folders for the SAME counterparty therefore share those tokens while differing in the
+# what/when: SY-eu-skills-energy-environment-awards vs SY-eu-skills-statement-2026-07 share
+# {eu, skills}. Requiring TWO shared meaningful tokens is what keeps this from firing on genuinely
+# separate matters that merely share one generic word (SY-ainscough-HIRE vs SY-hps-plant-HIRE).
+_HOME_PREFIXES = frozenset({"sy", "cd", "at", "ea", "pa", "os", "team"})
+_HOME_STOPWORDS = frozenset({
+    "statement", "statements", "invoice", "invoices", "inv", "bill", "bills", "credit", "note",
+    "account", "accounts", "hire", "lease", "report", "reports", "fw", "fwd", "re", "ltd",
+    "limited", "plc", "llp", "uk", "group", "services", "service", "solutions", "and", "the",
+    "of", "for", "jan", "feb", "mar", "apr", "may", "jun", "june", "jul", "july", "aug", "sept",
+    "sep", "oct", "nov", "dec",
+})
+
+
+def _home_tokens(name):
+    toks = [t for t in re.split(r"[^A-Za-z0-9]+", name.lower()) if t]
+    if toks and toks[0] in _HOME_PREFIXES:
+        toks = toks[1:]
+    return {t for t in toks if len(t) > 1 and not t.isdigit() and t not in _HOME_STOPWORDS}
+
+
+def _sibling_home(target_path):
+    """An existing sibling folder that looks like the SAME counterparty, or None.
+
+    Only ever consulted when target_path does not yet exist -- an established home is never
+    second-guessed, so this can only block the creation of a NEW duplicate.
+
+    Two shared tokens are normally required, but plenty of counterparties are a SINGLE word
+    (Ainscough, Rausch, Socotec) and a flat two-token rule waves every one of them straight
+    through. So the bar is two shared tokens only when both names actually HAVE two to give;
+    otherwise one is enough. Either way at least one shared token must be >= 4 characters, which
+    is what stops a pair of short accidental collisions reading as the same supplier.
+    """
+    try:
+        if target_path.exists() or not target_path.parent.is_dir():
+            return None
+        want = _home_tokens(target_path.name)
+        if not want:
+            return None
+        for sib in sorted(target_path.parent.iterdir()):
+            if not sib.is_dir():
+                continue
+            mine = _home_tokens(sib.name)
+            shared = want & mine
+            if not shared:
+                continue
+            need = 2 if (len(want) >= 2 and len(mine) >= 2) else 1
+            if len(shared) >= need and max(len(t) for t in shared) >= 4:
+                return sib
+    except OSError:
+        return None
+    return None
+
+
 def resolve_drive_root():
     """Find the local CloudStorage mount root for Pete's Google Drive on this Mac.
     Returns the absolute path, or None if not found (e.g. running in a sandbox without
@@ -204,6 +260,24 @@ class VaultEnricher:
         if skip_check:
             result["skipped"] = True
             result["skip_reason"] = skip_check
+            return result
+
+        # THE DUPLICATE-HOME GATE. The CANONICAL-HOME RULE above has said "search the index first,
+        # do not invent a new folder name" since 2 Jul 2026 -- and on 4 Aug 2026 a triage still
+        # created `SY-eu-skills-statement-2026-07` alongside the existing
+        # `SY-eu-skills-energy-environment-awards`, splitting one supplier's statements across two
+        # homes. A rule that cannot refuse is a wish, so the check now lives HERE, at the one line
+        # that brings a new folder into existence.
+        twin = _sibling_home(target_path)
+        if twin is not None:
+            result["skipped"] = True
+            result["skip_reason"] = (
+                f"REFUSING to create '{target_path.name}': the sibling folder '{twin.name}' already "
+                f"looks like the same counterparty, and splitting one relationship across two homes "
+                f"is exactly what the CANONICAL-HOME RULE exists to stop. Pass that folder as "
+                f"target_dir, or -- if they really are different -- rename so they do not collide.\n"
+                f"  existing: {twin}"
+            )
             return result
 
         if not target_path.exists() and not dry_run:
