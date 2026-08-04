@@ -32,8 +32,11 @@ Payload (one decision or a list):
   "final":    {"ask": "...", "verb": "File", "label": "Receipts", "project": null, "priority": null},
   "decided_by": "pete",                     # pete | cron-proposed | cron-auto
   "overridden": false, "override_reason": ["wrong_label"],   # required if overridden
-  "create_task": {"name": "...", "priority": "P2", "entity_slug": "...", "project_slug": "...",
-                  "notes": "..."},          # ONLY on an explicit Pete confirmation
+  "create_task": {"name": "...", "priority": "P2", "due_on": "2026-08-12", "entity_slug": "...",
+                  "project_slug": "...", "notes": "..."},   # ONLY on an explicit Pete confirmation
+                  # due_on is OPTIONAL and the date is the switch: set it and the DB trigger makes
+                  # the task a PD. Bills MUST carry it. Omit it for undated P1-P4.
+  "drive_home": "Sygma Hub|Vehicles/YT24 XHB",  # a judged Drive home; ALWAYS wins over the label
   "close_task_id": "<uuid>"                 # close-on-evidence
 }
 
@@ -167,11 +170,20 @@ def _enrich(dec, fin, lines, manifest):
     'ran it, logged nothing' silence happened before.
     """
     label = fin.get("label") or ""
-    if label.startswith(_NO_ENRICH_PREFIX) or label in ("General", "CD-Info"):
-        return None
-    if not label.startswith(("Customers/", "Suppliers/", "Projects/", "Accreditations/",
-                             "Businesses/", "Personal/", "General/", "Working-Groups/")):
-        return None
+    judged = dec.get("drive_home")
+    # A JUDGED HOME ALWAYS WINS -- including over the label skip-lists below. Until 4 Aug 2026 the
+    # skip ran first, so a thread filed to the bare `General` bucket had its explicit drive_home
+    # silently discarded and enrich returned None with no line printed at all: a signed vehicle hire
+    # agreement never reached Drive and NOTHING said so. The skip-lists exist because those labels
+    # carry no single home of their own -- that reasoning does not apply once the caller has read
+    # the thread and named one. Same principle as the comment below: the label is a filing bucket,
+    # not a statement of what the thread is about.
+    if not judged:
+        if label.startswith(_NO_ENRICH_PREFIX) or label in ("General", "CD-Info"):
+            return None
+        if not label.startswith(("Customers/", "Suppliers/", "Projects/", "Accreditations/",
+                                 "Businesses/", "Personal/", "General/", "Working-Groups/")):
+            return None
     # THE HOME IS A JUDGEMENT, NOT A LOOKUP (Pete, 28 Jul 2026: "you are relying on labels too much
     # and not even reading the emails"). The label is a filing bucket; it is not a statement of what
     # the thread is ABOUT. `Suppliers/CD-Carburos` happens to be both, so a registry row is right
@@ -181,7 +193,6 @@ def _enrich(dec, fin, lines, manifest):
     # So: a home judged per thread (from actually reading it) ALWAYS wins; the registry is only the
     # default for labels where one home genuinely fits; and a label flagged is_bucket refuses a
     # lookup outright and demands the judged home.
-    judged = dec.get("drive_home")
     home = None
     if judged:
         home = judged if os.path.isabs(judged) else _abs_home(*judged.split("|", 1))
@@ -548,10 +559,16 @@ def capture(dec, apply=False, manifest=None):
             manifest.write(json.dumps({"step": "task-close", "task_id": dec["close_task_id"]}) + "\n")
     if dec.get("create_task"):
         t = dec["create_task"]
+        # due_on was hardcoded NULL until 4 Aug 2026, so a DATED bill could not be created through
+        # this path at all: three bills (ProQual, Rausch, Revolut) landed as undated P2s and had to
+        # be re-dated by hand. The date is the switch -- a due_on makes it a PD via the DB trigger --
+        # so dropping it silently downgrades every bill triage files. base_priority carries the tier
+        # the task reverts to when the date is cleared.
+        tier = t.get("priority") or "P3"
         rows = tl.cc_sql("INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, "
                          "project_slug, status, source, tags, notes) VALUES (gen_random_uuid(), "
-                         f"{q(t['name'])}, {q(t.get('priority') or 'P3')}, {q(t.get('priority') or 'P3')}, "
-                         f"NULL, {q(t.get('entity_slug'))}, {q(t.get('project_slug') or 'General')}, "
+                         f"{q(t['name'])}, {q(tier)}, {q(tier)}, "
+                         f"{q(t.get('due_on'))}, {q(t.get('entity_slug'))}, {q(t.get('project_slug') or 'General')}, "
                          f"'todo', 'claude', {a(t.get('tags'))}, {q(t.get('notes'))}) RETURNING id")
         task_id = rows[0]["id"] if rows else None
         tl.cc_sql(f"UPDATE triage_decisions SET task_id={q(task_id)} WHERE message_id='{tl.esc(mid)}'")

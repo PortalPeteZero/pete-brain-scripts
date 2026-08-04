@@ -84,7 +84,12 @@ GMAIL_SYSTEM_LABELS = frozenset({
 })
 
 SKIP_ATTACHMENT_PATTERNS = [
-    re.compile(r"^image\d+\.(png|jpg|jpeg|gif)$", re.IGNORECASE),
+    # wmz/emz are Word/Outlook metafiles and are ALWAYS signature furniture; the extension list
+    # was png/jpg/jpeg/gif only until 4 Aug 2026, so a Latitude Leasing hire agreement arrived in
+    # the YT24 XHB vehicle folder alongside four image00N.wmz and a ~WRD0004.jpg (Word's own temp
+    # artefact, which no prefix here matched either).
+    re.compile(r"^image\d+\.(png|jpg|jpeg|gif|bmp|wmz|emz|wmf|emf)$", re.IGNORECASE),
+    re.compile(r"^~WRD\d+\.(jpg|jpeg|png|gif|bmp)$", re.IGNORECASE),
     re.compile(r"^smime\.p7s$", re.IGNORECASE),
     re.compile(r"\.ics$", re.IGNORECASE),
     re.compile(r"^untitled.*$", re.IGNORECASE),
