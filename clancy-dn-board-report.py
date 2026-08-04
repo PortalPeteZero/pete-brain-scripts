@@ -29,8 +29,8 @@ H = {"apikey": SR, "Authorization": f"Bearer {SR}", "Content-Type": "application
 
 FY = os.environ.get("CLANCY_FY", "FY26/27")
 FYLABEL = {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26"}.get(FY, FY)
-MKS = {"FY26/27": "clancy-damage-board-report",
-       "FY25/26": "clancy-damage-board-report-2025-26"}
+MKS = {"FY26/27": "clancy-damage-year",
+       "FY25/26": "clancy-damage-year-2025-26"}
 MK = MKS[FY]
 CURRENT = FY == "FY26/27"
 YEARWORD = "so far this year" if CURRENT else "across the year"
@@ -679,7 +679,7 @@ limits</a></div>
     # under the masthead, with a fill that actually reads. What survives from it is this query:
     # the switch must offer only pages that genuinely exist, never a hand-maintained list.
     _pub = {r["module_key"] for r in sql(
-        "SELECT module_key FROM module_content WHERE module_key LIKE 'clancy-damage-board-report%'")}
+        "SELECT module_key FROM module_content WHERE module_key LIKE 'clancy-damage-year%'")}
 
     # the 48-square waffles: one square per damage, colour = verdict (Pete: each damage
     # a square you can count). Order: green, amber, red, grey.

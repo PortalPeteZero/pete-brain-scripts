@@ -54,10 +54,10 @@ STEPS = [
     ("change watch — edits to old records, from Depotnet's own audit trail",
      ["clancy-dn-change-watch.py", "--publish"], ["clancy-damage-change-watch"]),
     ("the board report — this year's damages, what the record can tell us",
-     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report"],
+     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-year"],
      {"CLANCY_FY": "FY26/27"}),
     ("the board report, FY 2025/26 edition",
-     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-board-report-2025-26"],
+     ["clancy-dn-board-report.py", "--publish"], ["clancy-damage-year-2025-26"],
      {"CLANCY_FY": "FY25/26"}),
     # Joined 4 Aug 2026. They were built on 3 Aug and never added here, so from that day every
     # "publish the lot" run rebuilt the whole section AROUND them and left the two newest pages
@@ -70,7 +70,7 @@ STEPS = [
      ["clancy-dn-analysis-v2.py", "--publish"], ["clancy-damage-analysis-v2"],
      {"CLANCY_FY": "FY26/27"}),
     ("the second board report, with the documents read — FY 2026/27",
-     ["clancy-dn-board-report-v2.py", "--publish"], ["clancy-damage-board-report-v2"],
+     ["clancy-dn-board-report-v2.py", "--publish"], ["clancy-damage-year-v2"],
      {"CLANCY_FY": "FY26/27"}),
 ]
 

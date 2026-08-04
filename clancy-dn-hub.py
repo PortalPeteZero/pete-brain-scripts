@@ -314,7 +314,7 @@ def build():
   the record holds in Clancy&#8217;s own words, what can actually be used, and the question the
   form never asks. Written twice &mdash; once from the form, once after the files were read.</div>
   <div class="ways">
-   <a class="way" href="/m/clancy-damage-board-report">
+   <a class="way" href="/m/clancy-damage-year">
     <div class="wt">From the form</div>
     <div class="wd">Depotnet&#8217;s fields alone &mdash; the account as it stood when this was
     first presented, before any file was opened.</div>
@@ -323,7 +323,7 @@ def build():
      <b>{d['usable']}</b> lessons the company could use</div>
     <div class="wgo">Read the report &rarr;</div>
    </a>
-   <a class="way" href="/m/clancy-damage-board-report-v2">
+   <a class="way" href="/m/clancy-damage-year-v2">
     <div class="wt">With the documents read</div>
     <div class="wd">The report the first one promised, and the honest limit where the file is
     as silent as the form.</div>

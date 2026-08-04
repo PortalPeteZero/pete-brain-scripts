@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """clancy-dn-board-report-v2.py — the second report: the same year, with the documents read.
 
-The v1 report (`clancy-damage-board-report`, presented to the STRIVE board on 3 Aug 2026) says on
+The v1 report (`clancy-damage-year`, presented to the STRIVE board on 3 Aug 2026) says on
 its own face that the supporting documents "have NOT yet been read. A second report follows once
 that work is done." This is that second report.
 
@@ -27,7 +27,7 @@ import clancy_dn_ui as ui
 
 FY = os.environ.get("CLANCY_FY", "FY26/27")
 FYLABEL = {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26"}.get(FY, FY)
-MK = "clancy-damage-board-report-v2"
+MK = "clancy-damage-year-v2"
 PARSER = "e1-2026-08-03"
 GREEN, RED, CHAR = "#97D700", "#D50032", "#353E47"
 G_T, R_T, C_T = "#f4fbe8", "#fdf0f3", "#f5f6f8"
@@ -197,7 +197,7 @@ from material Clancy&#8217;s own teams and panels attached to these damages and 
 {stat(f'{chars/1_000_000:.1f}m', "characters of text recovered from the file", CHAR)}
 </div>
 <div class="asof">Built {today} from the reading records &middot; {FYLABEL} &middot; the first
-report is unchanged at <a href="/m/clancy-damage-board-report">this year&#8217;s damages: the
+report is unchanged at <a href="/m/clancy-damage-year">this year&#8217;s damages: the
 report</a></div>
 </div></div>
 
@@ -293,7 +293,7 @@ Nothing is typed in. The first report remains exactly as presented.</div>
     return (ui.head(f"The second report: with the documents read | Genny&#8217;s Damage Depot", CSS)
             + ui.navbar("report")
             + ui.crumbs(("Damage Depot", "/m/clancy-depotnet"),
-                        (ui.nav_label("report"), "/m/clancy-damage-board-report"),
+                        (ui.nav_label("report"), "/m/clancy-damage-year"),
                         "With the documents read")
             + ui.hero(kicker=f"{FYLABEL} &middot; the second report",
                       title="This year&#8217;s damages, with the documents read",

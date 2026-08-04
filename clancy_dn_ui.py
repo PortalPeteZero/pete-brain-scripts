@@ -346,7 +346,7 @@ NAV_ITEMS = [
     # considered and rejected: it sits next to "Overview" and means very nearly the same thing,
     # which is the exact fault that "Reports" / "The report" had.
     ("overview", "Overview", f"/m/{HUB}"),
-    ("report", "The year", "/m/clancy-damage-board-report"),
+    ("report", "The year", "/m/clancy-damage-year"),
     ("damages", "Damages", f"/m/{DAMAGES}"),
     ("analysis", "Analysis", f"/m/{ANALYSIS}"),
     ("reports", "Sygma reports", f"/m/{REPORTS}"),
@@ -432,9 +432,9 @@ PAGES = {
     "analysis": {("FY26/27", "v1"): "clancy-damage-analysis",
                  ("FY26/27", "v2"): "clancy-damage-analysis-v2",
                  ("FY25/26", "v1"): "clancy-damage-analysis-2025-26"},
-    "report":   {("FY26/27", "v1"): "clancy-damage-board-report",
-                 ("FY26/27", "v2"): "clancy-damage-board-report-v2",
-                 ("FY25/26", "v1"): "clancy-damage-board-report-2025-26"},
+    "report":   {("FY26/27", "v1"): "clancy-damage-year",
+                 ("FY26/27", "v2"): "clancy-damage-year-v2",
+                 ("FY25/26", "v1"): "clancy-damage-year-2025-26"},
 }
 YEARS = [("FY26/27", "FY 2026/27"), ("FY25/26", "FY 2025/26")]
 READINGS = [("v1", "From the form"), ("v2", "With the documents read")]
