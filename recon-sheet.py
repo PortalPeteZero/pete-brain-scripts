@@ -250,6 +250,35 @@ def vat_split(gross, treatment):
     return round(g - vat, 2), vat
 
 
+def load_card_export(paths):
+    """Capital on Tap's OWN transaction export, if Pete has downloaded one.
+
+    Worth having because it carries three things Xero's bank feed does not: a clean Merchant Name
+    (rather than 'MERCHANT - PLACE - Card Ending: NNNN'), the CARDHOLDER, and whether a RECEIPT is
+    attached -- which is the difference between "claim the VAT" and "claim it and hope". Keyed on
+    date + amount, which is unique enough in practice.
+    """
+    import csv as _csv
+    out = {}
+    for p in paths:
+        if not p.lower().endswith(".csv"):
+            continue
+        try:
+            for r in _csv.DictReader(open(p, encoding="utf-8-sig")):
+                try:
+                    d = datetime.datetime.strptime(r["Clearance Date"], "%d/%m/%Y").date().isoformat()
+                    amt = round(abs(float(r["Amount"])), 2)
+                except (KeyError, ValueError):
+                    continue
+                out[(d, amt)] = {"merchant": (r.get("Merchant Name") or "").strip(),
+                                 "who": (r.get("Cardholder Name") or "").strip(),
+                                 "receipt": (r.get("Has Receipts") or "").strip(),
+                                 "cat": (r.get("Category") or "").strip()}
+        except OSError:
+            pass
+    return out
+
+
 def _tokens(s):
     return {w for w in re.split(r"[^A-Za-z0-9]+", (s or "").upper()) if len(w) > 2
             and w not in {"LTD","LIMITED","THE","AND","UK","COM","PLC","INC","CARD","ENDING"}}
@@ -292,7 +321,7 @@ def match_bills(amount, date, bills, merchant_text="", window=95):
     return label(exact[0]) if exact else ""
 
 
-def build_rows(lines, precedent, paypal, bills=()):
+def build_rows(lines, precedent, paypal, bills=(), card=None):
     D = datetime.date.fromisoformat
     out = []
     for l in sorted(lines, key=lambda x: x["date"]):
@@ -304,6 +333,9 @@ def build_rows(lines, precedent, paypal, bills=()):
             if c:
                 p = min(c, key=lambda p: (D(l["date"]) - D(p["date"])).days)
                 payee, whatpp = p["who"] or "", p["what"] or ""
+        cinfo = (card or {}).get((l["date"], round(abs(l["amount"]), 2)), {})
+        if cinfo.get("merchant") and not payee:
+            payee = cinfo["merchant"]
         what, acct, vat = classify(l["ref"], payee)
         m = merchant(payee or l["ref"])
         prev = precedent.get(m)
@@ -315,15 +347,17 @@ def build_rows(lines, precedent, paypal, bills=()):
         desc = " / ".join(x for x in [payee, whatpp] if x) or merchant(l["ref"])
         out.append([l["date"], l["ref"][:70], round(l["amount"], 2),
                     "N" if vat == "none" else "Y", net, vatamt,
-                    desc[:60], what, ACCOUNTS.get(acct, acct or ""),
+                    desc[:60], what[:110], ACCOUNTS.get(acct, acct or ""),
                     match_bills(l["amount"], l["date"], bills, payee or l["ref"]),
+                    cinfo.get("who", ""), cinfo.get("receipt", ""),
                     reason if vat == "none" else "", "OPEN", ""])
     return out
 
 
 HEADERS = ["Date", "Bank reference (as Xero shows it)", "Amount", "VAT?", "Net", "VAT amount",
            "Who it was paid to", "What it actually is", "Category (Sygma's chart)",
-           "Matching bill in Xero?", "Why no VAT (if N)", "Status", "Andy's notes"]
+           "Matching bill in Xero?", "Who spent it", "Receipt?", "Why no VAT (if N)",
+           "Status", "Andy's notes"]
 
 # Aurora-ish palette: readable, colourful, not a rainbow.
 def rgb(h):
@@ -331,62 +365,108 @@ def rgb(h):
     return {"red": int(h[0:2],16)/255, "green": int(h[2:4],16)/255, "blue": int(h[4:6],16)/255}
 
 HDR_BG, BAND_BG = rgb("1e3a5f"), rgb("f4f6fc")
-AMBER, GREEN, GREY = rgb("fff4d6"), rgb("e6f6ea"), rgb("eeeeee")
+AMBER, GREEN, GREY = rgb("fde8c8"), rgb("d9f2e0"), rgb("ededed")
+BLUE = rgb("d6e4ff")
 
 
 def tab_requests(sheet_id, nrows):
-    """Formatting: frozen header, widths, money formats, and the colour cues that make it usable."""
+    """Formatting.
+
+    ⚠ The one that matters: Google Sheets lets text OVERFLOW into adjacent empty cells unless a wrap
+    strategy is set. Descriptions were spilling across neighbouring columns and Pete's verdict was
+    "looks crap, confusing and hard to read with overlaps". Every data cell now gets an explicit
+    strategy -- WRAP where the text needs reading, CLIP where it just needs to not bleed.
+    """
     R = []
     R.append({"updateSheetProperties": {"properties": {"sheetId": sheet_id,
-        "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}})
+        "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 3}},
+        "fields": "gridProperties(frozenRowCount,frozenColumnCount)"}})
+
+    # header
     R.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
-        "cell": {"userEnteredFormat": {"backgroundColor": HDR_BG, "horizontalAlignment": "LEFT",
+        "cell": {"userEnteredFormat": {"backgroundColor": HDR_BG,
+            "verticalAlignment": "MIDDLE", "wrapStrategy": "WRAP",
             "textFormat": {"bold": True, "fontSize": 10,
-                           "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
-            "wrapStrategy": "WRAP"}},
-        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,wrapStrategy)"}})
-    for i, w in enumerate([88, 270, 90, 55, 80, 85, 190, 235, 170, 230, 180, 85, 220]):
+                           "foregroundColor": {"red": 1, "green": 1, "blue": 1}}}},
+        "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment,wrapStrategy)"}})
+    R.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id, "dimension": "ROWS",
+        "startIndex": 0, "endIndex": 1}, "properties": {"pixelSize": 46}, "fields": "pixelSize"}})
+
+    last = max(nrows, 2)
+    body = {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": last}
+
+    # every data cell: top-aligned, small, and NOT allowed to bleed into its neighbour
+    R.append({"repeatCell": {"range": body,
+        "cell": {"userEnteredFormat": {"verticalAlignment": "TOP", "wrapStrategy": "CLIP",
+                 "textFormat": {"fontSize": 10}}},
+        "fields": "userEnteredFormat(verticalAlignment,wrapStrategy,textFormat)"}})
+    # the two columns people actually read get real wrapping
+    for col in (7, 14):                                  # What it actually is, Andy's notes
+        R.append({"repeatCell": {"range": {**body, "startColumnIndex": col, "endColumnIndex": col+1},
+            "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP"}},
+            "fields": "userEnteredFormat.wrapStrategy"}})
+
+    widths = [82, 215, 86, 46, 76, 80, 155, 280, 145, 165, 105, 62, 140, 76, 200]
+    for i, w in enumerate(widths):
         R.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id,
             "dimension": "COLUMNS", "startIndex": i, "endIndex": i+1},
             "properties": {"pixelSize": w}, "fields": "pixelSize"}})
-    for col in (2, 4, 5):                                   # Amount, Net, VAT amount
-        R.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
-            "startColumnIndex": col, "endColumnIndex": col+1},
+
+    for col in (2, 4, 5):                                # Amount, Net, VAT amount
+        R.append({"repeatCell": {"range": {**body, "startColumnIndex": col, "endColumnIndex": col+1},
             "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER",
-                     "pattern": "#,##0.00;[Red]-#,##0.00"}}},
-            "fields": "userEnteredFormat.numberFormat"}})
-    rng = {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": max(nrows, 2)}
-    # amber = Andy has to decide the VAT; green = done; grey = closed off
-    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rng],
-        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
-            "values": [{"userEnteredValue": '=$D2="N"'}]},
+                     "pattern": "#,##0.00;[Red]-#,##0.00"}, "horizontalAlignment": "RIGHT"}},
+            "fields": "userEnteredFormat(numberFormat,horizontalAlignment)"}})
+
+    # quiet banding so the eye can follow a row across 13 columns
+    R.append({"addBanding": {"bandedRange": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
+        "endRowIndex": last},
+        "rowProperties": {"firstBandColor": {"red": 1, "green": 1, "blue": 1},
+                          "secondBandColor": BAND_BG}}}})
+
+    # colour cues, applied ONLY to the columns they describe so the row stays legible
+    vatcol = {**body, "startColumnIndex": 3, "endColumnIndex": 4}
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [vatcol],
+        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "N"}]},
+            "format": {"backgroundColor": AMBER, "textFormat": {"bold": True}}}}, "index": 0}})
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [vatcol],
+        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Y"}]},
+            "format": {"backgroundColor": GREEN, "textFormat": {"bold": True}}}}, "index": 0}})
+    billcol = {**body, "startColumnIndex": 9, "endColumnIndex": 10}
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [billcol],
+        "booleanRule": {"condition": {"type": "TEXT_CONTAINS",
+                        "values": [{"userEnteredValue": "possible?"}]},
             "format": {"backgroundColor": AMBER}}}, "index": 0}})
-    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rng],
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [billcol],
+        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [
+            {"userEnteredValue": '=AND(LEN($J2)>0,ISERROR(SEARCH("possible",$J2)))'}]},
+            "format": {"backgroundColor": BLUE, "textFormat": {"bold": True}}}}, "index": 0}})
+    rcol = {**body, "startColumnIndex": 12, "endColumnIndex": 13}
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rcol],
+        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Yes"}]},
+            "format": {"backgroundColor": GREEN}}}, "index": 0}})
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rcol],
+        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "No"}]},
+            "format": {"backgroundColor": AMBER}}}, "index": 0}})
+    # a finished row goes grey and struck through, across the whole row
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [body],
         "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
-            "values": [{"userEnteredValue": '=$L2="DONE"'}]},
-            "format": {"backgroundColor": GREEN,
-                       "textFormat": {"strikethrough": True, "foregroundColor": rgb("777777")}}}},
-        "index": 0}})
-    R.append({"setDataValidation": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
-        "startColumnIndex": 11, "endColumnIndex": 12},
-        "rule": {"condition": {"type": "ONE_OF_LIST", "values": [
-            {"userEnteredValue": v} for v in ["OPEN", "ANSWERED", "DONE", "QUERY"]]},
-            "showCustomUi": True, "strict": False}}})
-    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rng],
-        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
-            "values": [{"userEnteredValue": '=LEN($J2)>0'}]},
-            "format": {"backgroundColor": rgb("e8f0fe")}}}, "index": 0}})
-    R.append({"setDataValidation": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
-        "startColumnIndex": 3, "endColumnIndex": 4},
-        "rule": {"condition": {"type": "ONE_OF_LIST",
-                 "values": [{"userEnteredValue": v} for v in ["Y", "N"]]},
-                 "showCustomUi": True, "strict": False}}})
-    R.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
-        "startColumnIndex": 3, "endColumnIndex": 4},
-        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER",
-                 "textFormat": {"bold": True}}},
-        "fields": "userEnteredFormat(horizontalAlignment,textFormat)"}})
-    R.append({"setBasicFilter": {"filter": {"range": {"sheetId": sheet_id, "startRowIndex": 0}}}})
+            "values": [{"userEnteredValue": '=$N2="DONE"'}]},
+            "format": {"backgroundColor": GREY,
+                       "textFormat": {"strikethrough": True,
+                                      "foregroundColor": rgb("888888")}}}}, "index": 0}})
+
+    for col, vals in ((3, ["Y", "N"]), (13, ["OPEN", "ANSWERED", "DONE", "QUERY"])):
+        R.append({"setDataValidation": {"range": {**body, "startColumnIndex": col,
+            "endColumnIndex": col+1},
+            "rule": {"condition": {"type": "ONE_OF_LIST",
+                     "values": [{"userEnteredValue": v} for v in vals]},
+                     "showCustomUi": True, "strict": False}}})
+    R.append({"repeatCell": {"range": {**body, "startColumnIndex": 3, "endColumnIndex": 4},
+        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+        "fields": "userEnteredFormat.horizontalAlignment"}})
+    R.append({"setBasicFilter": {"filter": {"range": {"sheetId": sheet_id, "startRowIndex": 0,
+        "endRowIndex": last, "startColumnIndex": 0, "endColumnIndex": 13}}}})
     return R
 
 
@@ -394,6 +474,8 @@ def build(paths, sheet_id=None):
     S = "/private/tmp"
     accounts = {}
     for p in paths:
+        if not p.lower().endswith(".xlsx"):
+            continue                        # .csv files are the card export, handled separately
         acct, lines = parse_export(p)
         if lines and len(lines) > len(accounts.get(acct, [])):
             accounts[acct] = lines
@@ -416,6 +498,11 @@ def build(paths, sheet_id=None):
         paypal = pp.payments(pp.list_txns(frm, datetime.date.today().isoformat()))
     except Exception as e:
         print(f"  (PayPal lookup unavailable: {e})", file=sys.stderr)
+
+    card = load_card_export(paths)
+    if card:
+        print(f"  enriching from the card export: {len(card)} transactions with merchant, "
+              "cardholder and receipt flag")
 
     bills = []
     bcache = os.path.join(S, "xero_open_bills.json")
@@ -443,9 +530,9 @@ def build(paths, sheet_id=None):
 
     fmt = []
     for acct, lines in accounts.items():
-        rows = build_rows(lines, precedent, paypal, bills)
+        rows = build_rows(lines, precedent, paypal, bills, card)
         title = acct[:80]
-        sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:M{len(rows)+1}"
+        sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:O{len(rows)+1}"
                     "?valueInputOption=USER_ENTERED",
              {"values": [HEADERS] + rows}, tok)
         fmt += tab_requests(existing[title], len(rows) + 1)
@@ -467,7 +554,8 @@ if __name__ == "__main__":
     if a[0] != "build":
         _die(f"unknown command {a[0]}")
     sid = a[a.index("--sheet")+1] if "--sheet" in a else None
-    files = [f for f in a[1:] if f.endswith(".xlsx")]
+    files = [f for f in a[1:] if f.endswith((".xlsx", ".csv"))]
     if not files:
-        _die("give me at least one Xero Bank Reconciliation .xlsx export")
+        _die("give me at least one Xero Bank Reconciliation .xlsx export "
+            "(and optionally a Capital on Tap .csv transaction export)")
     build(files, sid)
