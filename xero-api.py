@@ -40,9 +40,20 @@ REPORTS_BASE  = "https://api.xero.com/api.xro/2.0/Reports"
 #      split into the granular reports.* scopes below. Asking for the broad one is the wrong move
 #      now. Holding only profitandloss + balancesheet is why /Reports 401'd on 4 Aug 2026 and a
 #      session wrongly concluded the endpoint did not exist.
-# `accounting.journals.read` (the general ledger) may be refused: Xero's changelog says journals
-# now needs the Advanced tier plus certification. It is requested anyway -- if consent drops it,
-# everything else still lands, because scopes are additive rather than all-or-nothing.
+#   3. A scope the app is NOT assigned REJECTS THE WHOLE REQUEST. Xero bounces you to
+#      /identity/error before the login screen even renders -- it does NOT quietly drop the
+#      offending scope and grant the rest. Proven on 4 Aug 2026: asking for journals.read + files
+#      + assets + projects errored the lot; removing those four authorised first time. So "scopes
+#      are additive" is about what ACCUMULATES across successive consents, not about tolerance
+#      within a single request. Add a new scope only after enabling it on the app at
+#      developer.xero.com, and probe before sending Pete to click:
+#        GET the authorize URL without following redirects -- Location /identity/user/login = it
+#        will work, Location /identity/error = it will not.
+# DELIBERATELY NOT REQUESTED (each errors the whole flow until enabled on the app):
+#   accounting.journals.read  -- the general ledger; Xero gates it behind Advanced tier + certification
+#   files / assets / projects -- separate Xero APIs, must be switched on for the app first
+# Only Sygma Solutions Limited is connected, and that is intentional (Pete, 4 Aug 2026): Sygma
+# Detection and Sygma Subsurface are on their own Xero orgs and are deliberately out of scope.
 SCOPES = " ".join([
     "offline_access", "openid",
     # --- write, already held before 4 Aug 2026 ---
@@ -56,11 +67,9 @@ SCOPES = " ".join([
     "accounting.reports.banksummary.read",
     "accounting.reports.executivesummary.read",
     "accounting.reports.budgetsummary.read",
-    # --- added 4 Aug 2026 on Pete's instruction (write across the estate) ---
+    # --- added 4 Aug 2026 on Pete's instruction ---
     "accounting.attachments",                  # read AND attach files to bills/invoices (e.g. a C79)
     "accounting.budgets.read",
-    "accounting.journals.read",                # general ledger; may be refused, see note above
-    "files", "assets", "projects",
 ])
 
 
