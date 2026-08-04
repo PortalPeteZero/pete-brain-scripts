@@ -1,6 +1,6 @@
 ---
 name: pf-seminars
-version: 1.3.0
+version: 1.4.0
 description: >
   Add a Passion Fit seminar to the archive, end to end, from nothing but a link or a
   "here's Monday's seminar". Pulls the verbatim transcript out of Plaud or Google
@@ -118,6 +118,32 @@ coaches are **Tom**, **Loren** (transcripts mis-render her as "Lauren", "Laura",
 "Linds"). Never introduce "Laura", "Lauren" or "Liz" as people in a summary. Members: use first
 names where the transcript is clear; where garbled, write "one member". Verbatim transcript
 files keep whatever the transcriber produced — never edit those.
+
+## Step 4a — VERIFY the summary against the transcript before banking (added 4 Aug 2026)
+
+Unlabelled, garbled transcripts (Google Recorder especially) invite exactly one class of error, and
+it happened at scale: the 4 Aug Lydia batch was audited adversarially and **33 findings were
+confirmed across 8 summaries** — welded quotes (two transcript moments merged into one), invented
+specifics conjured from garble (a year, a race placing, a name), and misattributed speakers.
+
+So: after writing the summary and BEFORE `pf-seminar-ingest.py`, run an adversarial verify pass —
+a second read (or a subagent per seminar) whose job is to REFUTE the summary, with the rule that
+**a finding must quote the transcript line that proves it**. Check, at minimum:
+
+- **Every direct quote** exists in the transcript as one continuous passage. Joining two moments
+  into one quotation is forbidden — mark joins with an ellipsis only within the same speech.
+- **Every attribution**: with no speaker labels, "who said it" must be earned from the transcript's
+  own evidence (being addressed by name, self-reference, third-person references excluding them).
+  When it cannot be earned, write "one member" / "one of the coaches" — never guess a name.
+- **Every specific** (year, placing, count, location, age): if it comes from garble, drop it or
+  state the uncertainty. A garbled fragment is never a fact.
+- **No cross-seminar imports** stated as this evening's content: a fact from another transcript
+  (even a verified one) must be labelled as such or left out.
+- **Causal links and pairings**: "X was the answer to Y" only if the transcript ties them — the
+  27 Jul Pete-course-example weld is the canonical failure.
+
+Fix what the pass finds, then bank. If a claim matters and cannot be verified, the summary states
+the ambiguity honestly — same principle as the date rule: never invent certainty.
 
 ## Step 5 — Tidy Plaud itself
 If the recording was in the trash or untagged, restore it and move it into the **PF** folder so
