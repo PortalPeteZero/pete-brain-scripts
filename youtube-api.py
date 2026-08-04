@@ -121,6 +121,47 @@ def get_token():
     _token_cache["exp"] = now + 3600
     return tok
 
+# ── Brand-account auth (uploads) ──────────────────────────────────────────────
+# The service account ALWAYS resolves to Peter Ashcroft's personal channel. Sygma Solutions
+# Training is a BRAND ACCOUNT, which only a human can pick at the sign-in screen, so uploads
+# to it need a stored refresh token from that one-off consent. Proved 4 Aug 2026 by a real
+# test upload landing on the wrong channel, and by videos.insert having no channel parameter
+# (onBehalfOfContentOwnerChannel needs a CMS content owner; Sygma has none -- 404).
+BRAND_CLIENT = os.path.join(os.environ.get("VAULT", "/tmp/pbs"), "Library", "processes",
+                            "secrets", "sygma-youtube-oauth-client.json")
+BRAND_TOKEN = os.path.join(os.environ.get("VAULT", "/tmp/pbs"), "Library", "processes",
+                           "secrets", "sygma-youtube-refresh-token")
+BRAND_CHANNEL = "UCehJ9inoS0AldjaEIMwan_A"
+
+
+def brand_token():
+    """Access token for the Sygma Solutions Training brand account, or None if not set up."""
+    if _token_cache.get("brand_exp", 0) > time.time() + 60:
+        return _token_cache["brand_tok"]
+    try:
+        c = json.load(open(BRAND_CLIENT))["installed"]
+        rt = open(BRAND_TOKEN).read().strip()
+    except (FileNotFoundError, KeyError):
+        return None
+    try:
+        r = json.loads(urllib.request.urlopen(urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=urllib.parse.urlencode({
+                "client_id": c["client_id"], "client_secret": c["client_secret"],
+                "refresh_token": rt, "grant_type": "refresh_token"}).encode())).read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        if "invalid_grant" in body:
+            print("Brand-account sign-in has EXPIRED (Google revokes these ~weekly while the "
+                  "app is in Testing). Re-run the authorise flow to renew it.", file=sys.stderr)
+        else:
+            print(f"Brand token refresh failed {e.code}: {body[:200]}", file=sys.stderr)
+        return None
+    _token_cache["brand_tok"] = r["access_token"]
+    _token_cache["brand_exp"] = time.time() + r.get("expires_in", 3600)
+    return r["access_token"]
+
+
 def data_api(path, params):
     url = DATA_BASE + path + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {get_token()}"})
@@ -336,13 +377,26 @@ def upload_video(path, payload_file, channel=None):
     if channel:
         payload.setdefault("snippet", {})["channelId"] = resolve_channel(channel)
 
+    # WHICH CHANNEL: videos.insert has no channel parameter -- it lands wherever the token
+    # resolves. The brand token puts it on Sygma Solutions Training; the service account puts
+    # it on Peter Ashcroft. YouTube cannot move a video between channels afterwards, so this
+    # is stated out loud rather than left to chance.
+    tok = brand_token()
+    if tok:
+        print(f"Uploading to Sygma Solutions Training ({BRAND_CHANNEL}).")
+    else:
+        tok = get_token()
+        print("WARNING: no brand-account sign-in available -- this will land on the PERSONAL "
+              "channel (Peter Ashcroft), NOT the training channel, and cannot be moved after.",
+              file=sys.stderr)
+
     size = os.path.getsize(path)
     body = json.dumps(payload).encode()
     init = urllib.request.Request(
         "https://www.googleapis.com/upload/youtube/v3/videos?"
         + urllib.parse.urlencode({"part": "snippet,status", "uploadType": "resumable"}),
         data=body, method="POST",
-        headers={"Authorization": f"Bearer {get_token()}",
+        headers={"Authorization": f"Bearer {tok}",
                  "Content-Type": "application/json; charset=UTF-8",
                  "X-Upload-Content-Length": str(size),
                  "X-Upload-Content-Type": "video/*"})
@@ -384,6 +438,7 @@ def set_privacy(video_id, status):
     """Flip a video private / unlisted / public. Separate from upload, deliberately."""
     if status not in ("private", "unlisted", "public"):
         print("status must be private, unlisted or public", file=sys.stderr); sys.exit(2)
+    tok = brand_token() or get_token()
     cur = data_api("/videos", {"part": "status,snippet", "id": video_id})
     if not cur.get("items"):
         print(f"No such video: {video_id}", file=sys.stderr); sys.exit(2)
@@ -391,7 +446,7 @@ def set_privacy(video_id, status):
     req = urllib.request.Request(
         DATA_BASE + "/videos?" + urllib.parse.urlencode({"part": "status"}),
         data=json.dumps({"id": video_id, "status": st}).encode(), method="PUT",
-        headers={"Authorization": f"Bearer {get_token()}",
+        headers={"Authorization": f"Bearer {tok}",
                  "Content-Type": "application/json"})
     try:
         r = json.loads(urllib.request.urlopen(req).read())
