@@ -20,6 +20,17 @@ WHAT IT FLAGS
   A line constructing a paged read (`offset=` as a query param or kwarg, or a `"Range"` header)
   with no `order=` / `orderby=` / `order_by=` anywhere in its statement window.
 
+WHAT IT DELIBERATELY DOES NOT FLAG (each cost a morning of false ⚠ before it was excluded)
+  · `stroke-dashoffset="{off}"` and friends — an SVG attribute is not a query param. `offset=` must
+    start a token, or every donut chart in the estate reads as an unordered database read.
+  · A `"Range": "0-0"` count probe — one row fetched purely to read the total off the
+    `Content-Range` header. It is not paging, so it cannot go short and an order means nothing.
+  · A paged read inside a function that ALREADY REFUSES without an order (a `raise` naming
+    `order=`). That refusal is the fix this guard asks for; flagging the loop it protects means
+    the guard reports its own remedy as the fault, and the finding can never be cleared by
+    correct code. Found 4 Aug 2026: two of the four live findings were exactly this, the guards
+    having been added the previous day in response to this same check.
+
 DECLARING A LEGITIMATE CASE
   Put `# paged-read-guard: ok <reason>` on the line (or the one above). Use it only where the read
   genuinely cannot go short — a single non-looping call, or a deliberately-sampled read.
@@ -35,13 +46,19 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 ROOT = Path(VAULT)
 
 # A paged read under construction: `offset=` as a param/kwarg (NOT the assignment `offset = 0`),
-# or a PostgREST Range header.
-PAGED = re.compile(r"offset=|[\"']Range[\"']\s*:")
+# or a PostgREST Range header. `offset=` must START a token — without the left-boundary check,
+# `stroke-dashoffset="{off:.1f}"` in an SVG donut matched and reported as a database read.
+PAGED = re.compile(r"(?<![\w-])offset=|[\"']Range[\"']\s*:")
 ORDERED = re.compile(r"order=|orderby=|order_by=|\.order\(")
 # `for offset in range(7)` and friends are day offsets, not pagination.
 DAY_OFFSET = re.compile(r"for\s+offset\s+in\s+range")
+# `"Range": "0-0"` fetches ONE row so the total can be read off the Content-Range header. A
+# single-row read has nothing to page and cannot come back short.
+COUNT_PROBE = re.compile(r"[\"']Range[\"']\s*:\s*[\"']0-0[\"']")
 WAIVER = re.compile(r"#\s*paged-read-guard:\s*ok")
 WINDOW = 3          # lines either side, so a call split across lines still sees its own order=
+# A function that refuses to run without an order: `raise ...("… order= …")`.
+REFUSES = re.compile(r"order=")
 
 
 def _prose_lines(src):
@@ -60,6 +77,38 @@ def _prose_lines(src):
     return out
 
 
+def _guarded_lines(src):
+    """Line numbers inside a function that REFUSES to run without a sort order.
+
+    The fix this guard asks for is exactly that refusal — `if "order=" not in path: raise ...`
+    at the top of the pager, so no caller can page blind. Once it is there, the `limit`/`offset`
+    line it protects is provably ordered, and flagging it means the check reports its own remedy
+    as the defect. That is not a cosmetic complaint: a finding no correct code can clear is a
+    permanent ⚠ on the morning report, and a permanent ⚠ is one you stop reading.
+
+    Detection is structural, not textual: find each function containing a `raise` whose message
+    names `order=`, and treat that function's whole body as guarded. An unparseable file yields
+    nothing, so it is judged on its raw lines — same bias as _prose_lines, never a blind spot."""
+    out = set()
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return out
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Raise):
+                continue
+            # Join every string literal in the raise, so an f-string's literal parts are seen.
+            msg = " ".join(c.value for c in ast.walk(sub)
+                           if isinstance(c, ast.Constant) and isinstance(c.value, str))
+            if REFUSES.search(msg):
+                out.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+                break
+    return out
+
+
 def scan(path):
     try:
         src = path.read_text(errors="replace")
@@ -67,14 +116,15 @@ def scan(path):
         return []
     lines = src.splitlines()
     prose = _prose_lines(src)
+    guarded = _guarded_lines(src)
     out = []
     for i, line in enumerate(lines):
-        if (i + 1) in prose:
+        if (i + 1) in prose or (i + 1) in guarded:
             continue
         stripped = line.strip()
         if stripped.startswith("#") or stripped.startswith("print("):
             continue
-        if not PAGED.search(line) or DAY_OFFSET.search(line):
+        if not PAGED.search(line) or DAY_OFFSET.search(line) or COUNT_PROBE.search(line):
             continue
         lo, hi = max(0, i - WINDOW), min(len(lines), i + WINDOW + 1)
         window = "\n".join(lines[lo:hi])
