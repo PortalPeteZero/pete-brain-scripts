@@ -49,9 +49,13 @@ REPORTS_BASE  = "https://api.xero.com/api.xro/2.0/Reports"
 #      developer.xero.com, and probe before sending Pete to click:
 #        GET the authorize URL without following redirects -- Location /identity/user/login = it
 #        will work, Location /identity/error = it will not.
-# DELIBERATELY NOT REQUESTED (each errors the whole flow until enabled on the app):
-#   accounting.journals.read  -- the general ledger; Xero gates it behind Advanced tier + certification
-#   files / assets / projects -- separate Xero APIs, must be switched on for the app first
+# DELIBERATELY NOT REQUESTED:
+#   accounting.journals.read -- the general ledger. PROBED 4 Aug 2026: rejected, so it is genuinely
+#     not enabled on this app (Xero gates it behind Advanced tier + certification). Pete declined
+#     to chase certification, so leave it out; adding it back errors the WHOLE flow.
+#   Everything certification-gated (Finance API, bank feeds, payment services) -- same reason.
+# files / assets / projects ARE enabled on this app -- probed individually 4 Aug 2026 rather than
+# assumed. The earlier failure was journals.read alone, not all four as first guessed.
 # Only Sygma Solutions Limited is connected, and that is intentional (Pete, 4 Aug 2026): Sygma
 # Detection and Sygma Subsurface are on their own Xero orgs and are deliberately out of scope.
 SCOPES = " ".join([
@@ -70,6 +74,14 @@ SCOPES = " ".join([
     # --- added 4 Aug 2026 on Pete's instruction ---
     "accounting.attachments",                  # read AND attach files to bills/invoices (e.g. a C79)
     "accounting.budgets.read",
+    # Verified live 4 Aug 2026 immediately after consent:
+    "files",     # Xero file library -- WORKS, 6,931 files. base=https://api.xero.com/files.xro/1.0
+    "assets",    # fixed asset register -- works but is EMPTY (0 registered assets), so do not read
+                 # it expecting the vehicles; the fleet lives in the Sygma platform hub.fleet.
+                 # base=https://api.xero.com/assets.xro/2.0... (assets.xro/1.0 for the list)
+    "projects",  # granted at APP level but the ORG returns 401 "You do not have access to Projects
+                 # for this organisation" -- Xero Projects is a paid add-on Sygma does not have.
+                 # Harmless dead weight; removing a consented scope needs a full revoke, so it stays.
 ])
 
 
