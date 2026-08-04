@@ -18,6 +18,7 @@ WHAT IT BLOCKS
   segment. Read-contract tools (the full-output-or-nothing set):
     people.py · whereis.py · triage-read.py · engine-manifest.py · ee-facts.py · ee-signoff.py
     · entity-enrich-signoff.py · triage-signoff.py · gate-report.py · connection-parity.py
+    · pf-brief.py (4 Aug 2026 — the PF record skim: headlines quoted as "record read")
   Also blocked: redirecting these tools' stdout to a file (> / >> / tee) — a file you may never
   read is the same hole (the triage-read known-limit, made refusable here).
 
@@ -39,7 +40,7 @@ _DQUOTE_RE = re.compile(r'"(?:[^"\\]|\\.)*"')
 READ_CONTRACT = (
     "people.py", "whereis.py", "triage-read.py", "engine-manifest.py", "ee-facts.py",
     "ee-signoff.py", "entity-enrich-signoff.py", "triage-signoff.py", "gate-report.py",
-    "connection-parity.py",
+    "connection-parity.py", "pf-brief.py",
 )
 TRUNCATORS = re.compile(r"^\s*(head|tail|grep|egrep|fgrep|sed|awk|cut|wc|tee)\b")
 REDIRECT = re.compile(r"(?<![0-9&])>\s*\S")
