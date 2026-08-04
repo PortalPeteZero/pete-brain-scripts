@@ -37,6 +37,48 @@ ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
 with open(KEY) as f:
     creds = json.load(f)
 
+# ── The channels on this Google account (verified 4 Aug 2026 via the Studio channel
+# switcher + the API). `youtube-api.py channels` used to show ONE, because channels?mine=true
+# returns only the account's own channel and never the Brand Account ones — which is how three
+# of these four stayed invisible. Use these ids, or the short alias, on any command. ──
+CHANNELS = {
+    "training": {
+        "id": "UCehJ9inoS0AldjaEIMwan_A", "handle": "@sygmasolutionstraining",
+        "title": "Sygma Solutions Training", "created": "2026-03-22",
+        "what": "THE training channel. Long-form Genny & CAT teaching (9-72 min). All videos "
+                "carry auto-generated transcripts. This is the source for the Clancy resource hub.",
+    },
+    "pete": {
+        "id": "UCh7dZlXSw36fAdtJGtD_PVA", "handle": "@peterashcroft6020",
+        "title": "Peter Ashcroft", "created": "2014-08-15",
+        "what": "Pete's personal channel and, historically, where the reach is: ~50k views off "
+                "short kit clips (CAT Power Mode Problems alone is 25k). Mostly under 2 min, so "
+                "most have no transcript. Also holds some Canary Detect and personal footage.",
+    },
+    "cd": {
+        "id": "UCGcN7MAX1TENtIJcdw_OyRw", "handle": "@canarydetect",
+        "title": "Canary Detect", "created": "2026-03-22",
+        "what": "Canary Detect / leak detection. Drain survey and PipeMic material.",
+    },
+    "team": {
+        "id": "UCPoeCrqGjS8fMufgMvV2WpQ", "handle": "@SygmaSolutionsTeam",
+        "title": "Sygma Solutions Team", "created": "2026-03-22",
+        "what": "EMPTY — 0 videos, no uploads playlist yet (listing it 404s, which is 'nothing "
+                "here', not an access problem). Purpose not confirmed with Pete.",
+    },
+}
+
+
+def resolve_channel(ref):
+    """Accept a short alias ('training'), a @handle, or a raw channel id."""
+    if ref in CHANNELS:
+        return CHANNELS[ref]["id"]
+    for c in CHANNELS.values():
+        if ref.lower() in (c["handle"].lower(), c["title"].lower()):
+            return c["id"]
+    return ref
+
+
 _token_cache = {}
 
 def get_token():
@@ -93,19 +135,21 @@ def date_range(days):
     return str(start), str(end)
 
 def list_channels():
-    resp = data_api("/channels", {"part": "snippet,statistics", "mine": "true"})
-    items = resp.get("items", [])
-    if not items:
-        print("No channels found. Ensure SA is added as Viewer in YouTube Studio.")
-        return
-    for c in items:
-        s = c.get("snippet", {})
-        stats = c.get("statistics", {})
-        print(f"Channel: {s.get('title')}")
-        print(f"  ID: {c['id']}")
-        print(f"  Subscribers: {stats.get('subscriberCount','?')}")
-        print(f"  Total views: {stats.get('viewCount','?')}")
-        print(f"  Videos: {stats.get('videoCount','?')}")
+    """Every channel on this account, with what it holds. Not channels?mine=true — that
+    returns one and hides the Brand Accounts."""
+    print(f"{'ALIAS':<10} {'CHANNEL ID':<26} {'TITLE':<26} {'VIDEOS':>6} {'VIEWS':>8}  HANDLE")
+    print("-" * 104)
+    for alias, c in CHANNELS.items():
+        try:
+            r = data_api("/channels", {"part": "statistics", "id": c["id"]})
+            st = r["items"][0]["statistics"]
+            v, w = st.get("videoCount", "?"), st.get("viewCount", "?")
+        except Exception:
+            v = w = "?"
+        print(f"{alias:<10} {c['id']:<26} {c['title'][:26]:<26} {v:>6} {w:>8}  {c['handle']}")
+    print()
+    for alias, c in CHANNELS.items():
+        print(f"  {alias} — {c['what']}")
 
 def channel_overview(channel_id, days=30):
     start, end = date_range(days)
@@ -254,16 +298,16 @@ def main():
         list_channels()
     elif cmd == "channel":
         if len(args) < 2: print("Usage: youtube-api.py channel CHANNEL_ID [DAYS]"); sys.exit(1)
-        channel_overview(args[1], int(args[2]) if len(args) > 2 else 30)
+        channel_overview(resolve_channel(args[1]), int(args[2]) if len(args) > 2 else 30)
     elif cmd == "videos":
         if len(args) < 2: print("Usage: youtube-api.py videos CHANNEL_ID [DAYS]"); sys.exit(1)
-        top_videos(args[1], int(args[2]) if len(args) > 2 else 30)
+        top_videos(resolve_channel(args[1]), int(args[2]) if len(args) > 2 else 30)
     elif cmd == "video":
         if len(args) < 2: print("Usage: youtube-api.py video VIDEO_ID [DAYS]"); sys.exit(1)
         video_stats(args[1], int(args[2]) if len(args) > 2 else 90)
     elif cmd == "traffic":
         if len(args) < 2: print("Usage: youtube-api.py traffic CHANNEL_ID [DAYS]"); sys.exit(1)
-        traffic_sources(args[1], int(args[2]) if len(args) > 2 else 28)
+        traffic_sources(resolve_channel(args[1]), int(args[2]) if len(args) > 2 else 28)
     elif cmd == "captions":
         if len(args) < 2: print("Usage: youtube-api.py captions VIDEO_ID"); sys.exit(1)
         list_captions(args[1])
