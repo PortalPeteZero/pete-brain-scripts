@@ -73,8 +73,10 @@ KNOWN = [
                               "Games subscription -- PERSONAL, not a business cost",  "2301", "none"),
     (r"APPLE",                "Apple services (iCloud / App Store)",                 "8201", "std"),
     (r"AMAZON|AMZN",          "Amazon purchase",                                     "7505", "std"),
+    # SETTLED, do not re-query: Sygma claims VAT on flights. Pete, 4 Aug 2026 -- "already sorted,
+    # we claim vat on it". Raised once, answered, closed.
     (r"RYANAIR|EASYJET|JET2|IBERIA|BRITISH AIRWAYS|BINTER|VUELING",
-                              "Flight",                                              "7400C", "none"),
+                              "Flight",                                              "7400C", "std"),
     (r"BOOKING\.?COM|BKG\*|HOTELS\.COM|HOTELCOM|PREMIER INN|HOLIDAY INN|TRAVELODGE|IBIS",
                               "Hotel",                                               "7402", "std"),
     (r"UBER|UBR\*|BOLT\.EU",  "Taxi",                                                "7400B", "std"),
@@ -128,19 +130,33 @@ KNOWN = [
     (r"BLACKCIRCLES|KWIK.?FIT|NATIONAL TYRES",
                               "Tyres / vehicle servicing",                           "7301A", "std"),
     (r"ALTITUDEFS|ALTITUDE FS|LATITUDE",
-                              "Altitude vehicle finance",                            "7401", "none"),
+                              "Altitude vehicle finance -- NOT Time Token (Pete corrected)",
+                                                                                     "7401", "none"),
+    (r"TIME TOKEN",           "Time Token -- rent on the business centre (Pete confirmed)",
+                                                                                     "7100", "std"),
     (r"GSY GAS",              "Gas supply",                                          "7201", "std"),
     (r"B ?& ?Q|WICKES|HOMEBASE",
                               "Building / hardware supplies",                        "7800", "std"),
     # money movements -- NOT expenses, do not code as spend
-    (r"PAYMENT MADE VIRTUALBANKTRANSFER|PAYMENT MADE OPENBANKING|BANK TRANSFER",
-                              "Card repayment / transfer between our own accounts -- NOT a cost",
+    (r"PAYMENT MADE|VIRTUALBANKTRANSFER|OPENBANKING|BANK TRANSFER|TRANSFER FROM|TRANSFER TO",
+                              "Transfer between our own accounts / card repayment -- NOT a cost",
                                                                                      "", "none"),
-    (r"FP RETURN",            "Failed payment returned to us -- NOT a cost",         "", "none"),
-    (r"GOCARDLESS",           "GoCardless direct-debit collection",                  "7901", "none"),
+    (r"FP RETURN",            "Failed payment RETURNED to us. ⚠ Check the original payment OUT has "
+                              "been reversed too -- on 10 Jul 2026 three GBP 1,000 payments coded "
+                              "DLA were reconciled while their returns were not, overstating the "
+                              "director's loan by GBP 3,000",                        "", "none"),
+    # ⚠ GoCardless is a payment RAIL, not a supplier. "GOCARDLESS APPEARONLINE-652XJ" is Appear
+    # Online being collected by direct debit. Coding it to GoCardless with no VAT was matching the
+    # mechanism instead of who was actually paid, and it lost the VAT (Pete, 4 Aug 2026). The
+    # specific payees are listed FIRST so they win; the bare rail is only a fallback.
+    (r"APPEARONLINE|APPEAR ONLINE",
+                              "Appear Online (collected by GoCardless direct debit)", "8201", "std"),
     (r"CONTROLACCOUNT",       "Controlaccount -- the FedEx debt arrangement (13 weekly payments)",
                                                                                      "6900", "none"),
     (r"ANDY JONES",           "Andy Jones -- our bookkeeper",                        "7601", "none"),
+    (r"MR HAMILTON|HAMILTON.*TIK HUNT",
+                              "Staff loan to Hamilton (Pete confirmed) -- a loan, not an expense "
+                              "and no VAT",                                          "", "none"),
     (r"CANARY DETECT",        "Canary Detect -- our own other company (intercompany)", "", "none"),
     # travel odds and ends
     (r"TRANSFEERO",           "Transfeero airport transfers",                        "7400", "std"),
@@ -246,7 +262,17 @@ def classify(ref, payee=""):
 
 
 def vat_split(gross, treatment):
-    """Default is that VAT IS reclaimable. 'none' needs a stated reason -- see KNOWN."""
+    """Default is that VAT IS reclaimable. 'none' needs a stated reason -- see KNOWN.
+
+    ⚠ MONEY IN IS NEVER A PURCHASE. A positive amount is a receipt, refund or transfer INTO the
+    account, so there is no input VAT to reclaim on it -- whatever the merchant name suggests. The
+    caller must not even reach here with a positive amount expecting a split; is_money_in() is
+    checked first in build_rows().
+
+    This is a sign check rather than another pattern because patterns kept missing: the rule
+    "PAYMENT MADE OPENBANKING" never fired against the real text "Payment made (OpenBanking)", and
+    GBP 4,063.79 of input VAT was invented across 8 lines before Pete spotted it (4 Aug 2026).
+    """
     g = abs(gross)
     if treatment == "none":
         return g, 0.0
@@ -309,20 +335,22 @@ def match_bills(amount, date, bills, merchant_text="", window=95):
             and -window <= (D(date) - D(b["date"])).days <= window]
 
     def label(b, extra=""):
-        agree = bool(mt & _tokens(b["contact"]))
-        tag = "" if agree else "possible? "
-        return f"{tag}{b['contact'][:26]} {b['number']}{extra} ({b['date']})"
+        return f"{b['contact'][:26]} {b['number']}{extra} ({b['date']})"
 
-    exact = [b for b in near if abs(abs(b["due_amt"]) - amt) < 0.005]
-    named = [b for b in exact if mt & _tokens(b["contact"])]
+    # NAME MUST AGREE. Amount alone coincides constantly and the near-misses were actively
+    # misleading -- an Anthropic GBP 75 "matched" two Business Space Solutions bills, and an
+    # Altitude vehicle-finance payment "matched" a Time Token bill, which Pete had to correct.
+    # A blank is better than a wrong lead: Andy would chase it.
+    named = [b for b in near if (mt & _tokens(b["contact"]))
+             and abs(abs(b["due_amt"]) - amt) < 0.005]
     if named:
         return label(named[0])
     for i, b1 in enumerate(near):
         for b2 in near[i+1:]:
-            if b1["contact"] == b2["contact"] and \
+            if b1["contact"] == b2["contact"] and (mt & _tokens(b1["contact"])) and \
                abs(abs(b1["due_amt"]) + abs(b2["due_amt"]) - amt) < 0.005:
                 return label(b1, f" + {b2['number']} (2 bills)")
-    return label(exact[0]) if exact else ""
+    return ""
 
 
 def build_rows(lines, precedent, paypal, bills=(), card=None):
@@ -340,14 +368,22 @@ def build_rows(lines, precedent, paypal, bills=(), card=None):
         cinfo = (card or {}).get((l["date"], round(abs(l["amount"]), 2)), {})
         if cinfo.get("merchant") and not payee:
             payee = cinfo["merchant"]
+        money_in = l["amount"] > 0
         what, acct, vat = classify(l["ref"], payee)
+        if money_in:
+            # a receipt / refund / transfer in -- never an expense, never input VAT
+            vat = "none"
+            if not what:
+                what = "MONEY IN -- receipt, refund or transfer into the account"
+            acct = acct if acct in ("", None) else ""
         m = merchant(payee or l["ref"])
         prev = precedent.get(m)
         if prev and not acct:                      # how Pete has coded this merchant before
             acct = prev[0] or ""
             vat = "std" if prev[1] == "INPUT2" else ("none" if prev[1] else vat)
         net, vatamt = vat_split(l["amount"], vat)
-        reason = what if vat == "none" else ""
+        reason = ("MONEY IN -- not a purchase, no input VAT" if money_in
+                  else (what if vat == "none" else ""))
         desc = " / ".join(x for x in [payee, whatpp] if x) or merchant(l["ref"])
         out.append([l["date"], l["ref"][:70], round(l["amount"], 2),
                     "N" if vat == "none" else "Y", net, vatamt,
@@ -438,12 +474,7 @@ def tab_requests(sheet_id, nrows):
             "format": {"backgroundColor": GREEN, "textFormat": {"bold": True}}}}, "index": 0}})
     billcol = {**body, "startColumnIndex": 9, "endColumnIndex": 10}
     R.append({"addConditionalFormatRule": {"rule": {"ranges": [billcol],
-        "booleanRule": {"condition": {"type": "TEXT_CONTAINS",
-                        "values": [{"userEnteredValue": "possible?"}]},
-            "format": {"backgroundColor": AMBER}}}, "index": 0}})
-    R.append({"addConditionalFormatRule": {"rule": {"ranges": [billcol],
-        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [
-            {"userEnteredValue": '=AND(LEN($J2)>0,ISERROR(SEARCH("possible",$J2)))'}]},
+        "booleanRule": {"condition": {"type": "NOT_BLANK"},
             "format": {"backgroundColor": BLUE, "textFormat": {"bold": True}}}}, "index": 0}})
     # a finished row goes grey and struck through, across the whole row
     R.append({"addConditionalFormatRule": {"rule": {"ranges": [body],
