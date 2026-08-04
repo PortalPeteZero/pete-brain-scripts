@@ -307,6 +307,33 @@ def build():
 
 <h2 class="sec">Where do you want to go</h2>
 <div class="grid g2">
+ <div class="door pair b">
+  <div class="kicker">The whole year in one page &middot; two ways</div>
+  <div class="t">This year&#8217;s damages: the report</div>
+  <div class="d">The whole year in one page for a reader with ten minutes: what is missing, what
+  the record holds in Clancy&#8217;s own words, what can actually be used, and the question the
+  form never asks. Written twice &mdash; once from the form, once after the files were read.</div>
+  <div class="ways">
+   <a class="way" href="/m/clancy-damage-board-report">
+    <div class="wt">From the form</div>
+    <div class="wd">Depotnet&#8217;s fields alone &mdash; the account as it stood when this was
+    first presented, before any file was opened.</div>
+    <div class="wf"><b>{d['cur']}</b> damages read &middot;
+     <b>{d['cur'] - d['analysed']}</b> report blank &middot;
+     <b>{d['usable']}</b> lessons the company could use</div>
+    <div class="wgo">Read the report &rarr;</div>
+   </a>
+   <a class="way" href="/m/clancy-damage-board-report-v2">
+    <div class="wt">With the documents read</div>
+    <div class="wd">The report the first one promised, and the honest limit where the file is
+    as silent as the form.</div>
+    <div class="wf"><b>{d['enrich_recovered']}</b> blanks a document answers &middot;
+     <b>{d['enrich_failures']}</b> with a named failure &middot;
+     <b>{d['enrich_chars']}</b> of text recovered</div>
+    <div class="wgo">Read the second report &rarr;</div>
+   </a>
+  </div>
+ </div>
  <a class="door a" href="/m/{ui.DAMAGES}">
   <div class="kicker">The register</div>
   <div class="t">Damages</div>
@@ -341,32 +368,6 @@ def build():
      <b>{d['enrich_images']:,}</b> photographs &middot;
      <b>{d['enrich_cause']}</b> explained by a document</div>
     <div class="wgo">Read what the file held &rarr;</div>
-   </a>
-  </div>
- </div>
- <div class="door pair b">
-  <div class="kicker">The summary for the board &middot; two ways</div>
-  <div class="t">This year&#8217;s damages: the report</div>
-  <div class="d">The whole year in one page for a reader with ten minutes: what is missing, what
-  the record holds in Clancy&#8217;s own words, what can actually be used, and the question the
-  form never asks. Written twice &mdash; once from the form, once after the files were read.</div>
-  <div class="ways">
-   <a class="way" href="/m/clancy-damage-board-report">
-    <div class="wt">From the form</div>
-    <div class="wd">The report presented to the STRIVE board, before the files were opened.</div>
-    <div class="wf"><b>{d['cur']}</b> damages read &middot;
-     <b>{d['cur'] - d['analysed']}</b> report blank &middot;
-     <b>{d['usable']}</b> lessons the company could use</div>
-    <div class="wgo">Read the report &rarr;</div>
-   </a>
-   <a class="way" href="/m/clancy-damage-board-report-v2">
-    <div class="wt">With the documents read</div>
-    <div class="wd">The report the first one promised, and the honest limit where the file is
-    as silent as the form.</div>
-    <div class="wf"><b>{d['enrich_recovered']}</b> blanks a document answers &middot;
-     <b>{d['enrich_failures']}</b> with a named failure &middot;
-     <b>{d['enrich_chars']}</b> of text recovered</div>
-    <div class="wgo">Read the second report &rarr;</div>
    </a>
   </div>
  </div>

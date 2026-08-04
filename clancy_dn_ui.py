@@ -336,7 +336,17 @@ NAV_ITEMS = [
     # words for the signal generator and the cable avoidance tool, both carried in clancy_glossary
     # with whose_word='Depotnet'. Renaming the customer's own terms is exactly what
     # clancy-vocab-check.py exists to refuse.
+    #
+    # ORDER IS THE ROUTE, not a list. Pete, 4 Aug 2026: "it needs to be next to overview so we go
+    # here first" — the year's read is the thing to send someone to, so it sits at position 2 and
+    # everything else is what you reach for once you have read it. "Board report" was rejected the
+    # same day: it named Sygma's own occasion for writing it, not what the page IS to the person
+    # reading it, and Clancy are not the board it was presented to. "The year" says what it is —
+    # the whole year in one page — and collides with nothing else in the bar. Note "Summary" was
+    # considered and rejected: it sits next to "Overview" and means very nearly the same thing,
+    # which is the exact fault that "Reports" / "The report" had.
     ("overview", "Overview", f"/m/{HUB}"),
+    ("report", "The year", "/m/clancy-damage-board-report"),
     ("damages", "Damages", f"/m/{DAMAGES}"),
     ("analysis", "Analysis", f"/m/{ANALYSIS}"),
     ("reports", "Sygma reports", f"/m/{REPORTS}"),
@@ -344,7 +354,6 @@ NAV_ITEMS = [
     # The glossary is the SSOT for the section's terms (Pete, 2 Aug 2026). A nav change
     # touches EVERY page, so shipping any edit to this list means one full
     # clancy-dn-publish.py run — never a lone page publish.
-    ("report", "Board report", "/m/clancy-damage-board-report"),
     ("glossary", "Glossary", "/m/clancy-damage-glossary"),
 ]
 
