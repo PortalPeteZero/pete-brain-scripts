@@ -92,8 +92,12 @@ KNOWN = [
                               "Tools and hardware",                                  "7800", "std"),
     (r"COMPANIESHOUSE|COMPANIES HOUSE",
                               "Companies House filing fee",                          "6900", "none"),
-    (r"HUMANFOCUS|BEACCREDITED|NORTHUMBRIA UNIVERSITY",
-                              "Training course / accreditation",                     "8203", "std"),
+    (r"HUMANFOCUS",           "Human Focus online training -- bought while testing online "
+                              "course providers (Pete confirmed)",                   "8203", "std"),
+    (r"BEACCREDITED",         "BeAccredited online training -- same online-course testing exercise",
+                                                                                     "8203", "std"),
+    (r"NORTHUMBRIA UNIVERSITY",
+                              "Northumbria University -- training / accreditation",  "8203", "std"),
     (r"DHL|UPS|FEDEX|PARCELFORCE|ROYAL MAIL",
                               "Courier / carriage",                                  "5100", "std"),
     # --- learned 4 Aug 2026: Pete told me, or looked up ---
@@ -349,14 +353,14 @@ def build_rows(lines, precedent, paypal, bills=(), card=None):
                     "N" if vat == "none" else "Y", net, vatamt,
                     desc[:60], what[:110], ACCOUNTS.get(acct, acct or ""),
                     match_bills(l["amount"], l["date"], bills, payee or l["ref"]),
-                    cinfo.get("who", ""), cinfo.get("receipt", ""),
+                    cinfo.get("who", ""),
                     reason if vat == "none" else "", "OPEN", ""])
     return out
 
 
 HEADERS = ["Date", "Bank reference (as Xero shows it)", "Amount", "VAT?", "Net", "VAT amount",
            "Who it was paid to", "What it actually is", "Category (Sygma's chart)",
-           "Matching bill in Xero?", "Who spent it", "Receipt?", "Why no VAT (if N)",
+           "Matching bill in Xero?", "Who spent it", "Why no VAT (if N)",
            "Status", "Andy's notes"]
 
 # Aurora-ish palette: readable, colourful, not a rainbow.
@@ -401,12 +405,12 @@ def tab_requests(sheet_id, nrows):
                  "textFormat": {"fontSize": 10}}},
         "fields": "userEnteredFormat(verticalAlignment,wrapStrategy,textFormat)"}})
     # the two columns people actually read get real wrapping
-    for col in (7, 14):                                  # What it actually is, Andy's notes
+    for col in (7, 13):                                  # What it actually is, Andy's notes
         R.append({"repeatCell": {"range": {**body, "startColumnIndex": col, "endColumnIndex": col+1},
             "cell": {"userEnteredFormat": {"wrapStrategy": "WRAP"}},
             "fields": "userEnteredFormat.wrapStrategy"}})
 
-    widths = [82, 215, 86, 46, 76, 80, 155, 280, 145, 165, 105, 62, 140, 76, 200]
+    widths = [82, 225, 88, 46, 78, 82, 165, 300, 150, 175, 110, 150, 80, 220]
     for i, w in enumerate(widths):
         R.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id,
             "dimension": "COLUMNS", "startIndex": i, "endIndex": i+1},
@@ -441,22 +445,15 @@ def tab_requests(sheet_id, nrows):
         "booleanRule": {"condition": {"type": "CUSTOM_FORMULA", "values": [
             {"userEnteredValue": '=AND(LEN($J2)>0,ISERROR(SEARCH("possible",$J2)))'}]},
             "format": {"backgroundColor": BLUE, "textFormat": {"bold": True}}}}, "index": 0}})
-    rcol = {**body, "startColumnIndex": 12, "endColumnIndex": 13}
-    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rcol],
-        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Yes"}]},
-            "format": {"backgroundColor": GREEN}}}, "index": 0}})
-    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rcol],
-        "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "No"}]},
-            "format": {"backgroundColor": AMBER}}}, "index": 0}})
     # a finished row goes grey and struck through, across the whole row
     R.append({"addConditionalFormatRule": {"rule": {"ranges": [body],
         "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
-            "values": [{"userEnteredValue": '=$N2="DONE"'}]},
+            "values": [{"userEnteredValue": '=$M2="DONE"'}]},
             "format": {"backgroundColor": GREY,
                        "textFormat": {"strikethrough": True,
                                       "foregroundColor": rgb("888888")}}}}, "index": 0}})
 
-    for col, vals in ((3, ["Y", "N"]), (13, ["OPEN", "ANSWERED", "DONE", "QUERY"])):
+    for col, vals in ((3, ["Y", "N"]), (12, ["OPEN", "ANSWERED", "DONE", "QUERY"])):
         R.append({"setDataValidation": {"range": {**body, "startColumnIndex": col,
             "endColumnIndex": col+1},
             "rule": {"condition": {"type": "ONE_OF_LIST",
@@ -532,7 +529,7 @@ def build(paths, sheet_id=None):
     for acct, lines in accounts.items():
         rows = build_rows(lines, precedent, paypal, bills, card)
         title = acct[:80]
-        sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:O{len(rows)+1}"
+        sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:N{len(rows)+1}"
                     "?valueInputOption=USER_ENTERED",
              {"values": [HEADERS] + rows}, tok)
         fmt += tab_requests(existing[title], len(rows) + 1)
