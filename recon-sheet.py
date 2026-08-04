@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""
+recon-sheet.py -- the Bank Reconciliation Queries sheet: the replacement for Xero's "Discuss" tab.
+
+what: Turns Xero "Bank Reconciliation" exports into a live, colour-coded Google Sheet with one tab
+      per bank account, every unreconciled line identified (what the merchant IS, not just its
+      name), categorised against Sygma's OWN chart of accounts, and split net / VAT so Andy does
+      not have to ask "is there VAT on this?".
+why:  Xero exposes NO API for unreconciled statement lines or the Discuss comments -- permanently,
+      by policy (see [[xero-api-capability]]). So the conversation with the bookkeeper moves to a
+      sheet we DO control. Built 4 Aug 2026 on Pete's design.
+
+Re-running is the point. Lines that have since been reconciled disappear from the Xero export, so
+they are marked DONE and kept for history rather than deleted -- the sheet is a record of what was
+answered, not just a to-do list.
+
+Usage:
+  python3 recon-sheet.py build  ~/Downloads/Sygma_Solutions_-_Bank_Reconciliation*.xlsx
+  python3 recon-sheet.py build  <files...> --sheet SHEET_ID     # update an existing sheet
+"""
+import sys, os, re, json, glob, zipfile, html, datetime, subprocess
+import urllib.request, urllib.error
+
+VAULT = os.environ.get("VAULT", "/tmp/pbs")
+SHEETS = "https://sheets.googleapis.com/v4/spreadsheets"
+VAT_RATE = 0.20
+
+# ---------------------------------------------------------------------------
+# Sygma's OWN account names. Never invent a category -- Andy codes against these.
+# The rule for each is "which account has Pete actually used for this before".
+# ---------------------------------------------------------------------------
+ACCOUNTS = {
+    "8201": "Subscriptions", "7505": "AMAZON", "7402": "Hotels & Campsites",
+    "7400": "Travelling", "7400C": "Flight - Travel", "7400D": "Toll - Travel",
+    "7400E": "Parking - Travel", "7400B": "Taxi - Travel", "7405": "Overseas Travelling",
+    "7406": "Subsistence", "7300": "Fuel and Oil", "7504": "Office Stationery",
+    "7800": "Repairs and Renewals", "8203": "Staff Training Costs", "6201": "Advertising",
+    "5001": "Venue/room/facility hire", "7100": "Rent", "7502": "Telephone",
+    "6900": "Miscellaneous Expenses", "2301": "Directors Loan Account",
+    "5000a": "Parts purchased", "7501": "Postage and Carriage", "7601": "Audit and Accountancy Fees",
+    "7603": "Professional & Consultancy Fees", "8202": "Clothing Costs", "5100": "Carriage",
+}
+
+# What a merchant IS -- Pete's words: "I'll see a PayPal description and wonder what it is."
+# (pattern, plain-English explanation, account code, vat_treatment)
+#   vat: "std"  -> VAT reclaimable, VAT = gross/6. THIS IS THE DEFAULT for everything.
+#        "none" -> NO VAT, and there must be a stated reason (Pete, 4 Aug 2026: "should default
+#                  always to yes unless i specifically say no"). Reasons that qualify: zero-rated
+#                  (flights, most cold food, rail), outside the scope (foreign supplier, statutory
+#                  fee), exempt (insurance, finance), or not a business cost at all.
+KNOWN = [
+    (r"ANTHROPIC",            "Claude AI subscription (the assistant running this)", "8201", "std"),
+    (r"OPENAI|CHATGPT",       "ChatGPT / OpenAI AI subscription",                    "8201", "std"),
+    (r"GROK|XAI",             "Grok AI subscription (xAI)",                          "8201", "std"),
+    (r"GITHUB",               "GitHub code hosting subscription",                    "8201", "std"),
+    (r"VERCEL",               "Vercel website hosting",                              "8201", "std"),
+    (r"CLOUDTALK",            "CloudTalk cloud phone system",                        "7502", "std"),
+    (r"IONOS",                "IONOS web hosting / domains",                         "8201", "std"),
+    (r"GODADDY",              "GoDaddy domains, SSL and Microsoft 365 licences",     "8201", "std"),
+    (r"GOOGLE CLOUD|GOOGLE WORKSPACE|GSUITE",
+                              "Google Workspace email and storage",                  "8201", "std"),
+    (r"MICROSOFT",            "Microsoft subscription",                              "8201", "std"),
+    (r"CANVA",                "Canva design software subscription",                  "8201", "std"),
+    (r"ASANA",                "Asana project management subscription",               "8201", "std"),
+    (r"LINKEDIN|LINKD",       "LinkedIn advertising / recruiter",                    "6201", "std"),
+    (r"MATTERPORT|MATTER SOFTWARE",
+                              "Matterport 3D site scanning subscription",            "8201", "std"),
+    (r"MERGIN MAPS",          "Mergin Maps GIS field-survey subscription",           "8201", "std"),
+    (r"BLOTATO",              "Blotato social media scheduling tool",                "8201", "std"),
+    (r"STARLINK",             "Starlink satellite internet",                         "8201", "std"),
+    (r"PADDLE|RUNNA",         "Paddle billing (Runna running app) -- looks PERSONAL, check", "2301", "std"),
+    (r"PLAYSTATION|XBOX|NINTENDO",
+                              "Games subscription -- PERSONAL, not a business cost",  "2301", "none"),
+    (r"APPLE",                "Apple services (iCloud / App Store)",                 "8201", "std"),
+    (r"AMAZON|AMZN",          "Amazon purchase",                                     "7505", "std"),
+    (r"RYANAIR|EASYJET|JET2|IBERIA|BRITISH AIRWAYS|BINTER|VUELING",
+                              "Flight",                                              "7400C", "none"),
+    (r"BOOKING\.?COM|BKG\*|HOTELS\.COM|HOTELCOM|PREMIER INN|HOLIDAY INN|TRAVELODGE|IBIS",
+                              "Hotel",                                               "7402", "std"),
+    (r"UBER|UBR\*|BOLT\.EU",  "Taxi",                                                "7400B", "std"),
+    (r"NCP|PARKING|APCOA|AER\.PARKING",
+                              "Parking",                                             "7400E", "std"),
+    (r"M6 TOLL|MERSEYFLOW|DARTFORD",
+                              "Road toll",                                           "7400D", "std"),
+    (r"TRAINLINE|LNER|AVANTI|NORTHERN RAIL|TFL",
+                              "Train / public transport",                            "7400A", "none"),
+    (r"TESCO PFS|MOTO |MFG |SHELL|BP |ESSO|SPENCERS GARAGE|SERVICE ST|ESTACION",
+                              "Fuel",                                                "7300", "std"),
+    (r"TESCO|SAINSBURY|ASDA|MORRISON|CO-OP|BUDGENS|ALDI|LIDL|MARKS|GREGGS|COSTA|MCDONALD|SUBWAY|PRET",
+                              "Food / subsistence (cold food is zero-rated -- check receipt)", "7406", "std"),
+    (r"SCREWFIX|TOOLSTATION|B&Q|WICKES",
+                              "Tools and hardware",                                  "7800", "std"),
+    (r"COMPANIESHOUSE|COMPANIES HOUSE",
+                              "Companies House filing fee",                          "6900", "none"),
+    (r"HUMANFOCUS|BEACCREDITED|NORTHUMBRIA UNIVERSITY",
+                              "Training course / accreditation",                     "8203", "std"),
+    (r"DHL|UPS|FEDEX|PARCELFORCE|ROYAL MAIL",
+                              "Courier / carriage",                                  "5100", "std"),
+    # --- learned 4 Aug 2026: Pete told me, or looked up ---
+    (r"MB TECH",              "MB Tech Warrington -- car servicing (Pete confirmed)", "7301A", "std"),
+    (r"F\.?P\.?SMITH|FP SMITH",
+                              "F.P. Smith -- car servicing (Pete confirmed)",        "7301A", "std"),
+    (r"BUSINESS SPACE SOLUTIONS",
+                              "Business Space Solutions -- extra board room hire (Pete confirmed)",
+                                                                                     "7100", "std"),
+    (r"EMBELLO",              "Embello, Tamworth -- printing, signage and branded workwear",
+                                                                                     "7500", "std"),
+    (r"INFINITE EVOLUTION",   "Infinite Evolution -- staff training (Pete confirmed). NOTE: no bill "
+                              "for this in Xero, their last 3 are all paid -- likely still in Dext",
+                                                                                     "8203", "std"),
+    # our own stack -- these are in the CC's own connector registry
+    (r"AHREFS",               "Ahrefs SEO tool (we use it for the websites)",        "8201", "std"),
+    (r"SURFERSEO|SURFER SEO", "Surfer SEO content tool (we use it)",                 "8201", "std"),
+    (r"RECRAFT",              "Recraft AI image generation (we use it)",             "8201", "std"),
+    (r"SUPABASE",             "Supabase -- the Command Centre database",             "8201", "std"),
+    (r"RAILWAY",              "Railway -- runs the Command Centre automations",      "8201", "std"),
+    (r"PASSKIT",              "PassKit digital wallet passes (the Wallet Pass work)", "8201", "std"),
+    (r"SCRIBE\.HOW",          "Scribe -- how-to documentation tool",                 "8201", "std"),
+    (r"CLOUDINARY",           "Cloudinary image hosting",                            "8201", "std"),
+    (r"OPENROUTER|PERPLEXITY|MIDJOURNEY|ELEVENLABS",
+                              "AI tool subscription",                                "8201", "std"),
+    # vehicles and premises
+    (r"BLACKCIRCLES|KWIK.?FIT|NATIONAL TYRES",
+                              "Tyres / vehicle servicing",                           "7301A", "std"),
+    (r"ALTITUDEFS|ALTITUDE FS|LATITUDE",
+                              "Altitude vehicle finance",                            "7401", "none"),
+    (r"GSY GAS",              "Gas supply",                                          "7201", "std"),
+    (r"B ?& ?Q|WICKES|HOMEBASE",
+                              "Building / hardware supplies",                        "7800", "std"),
+    # money movements -- NOT expenses, do not code as spend
+    (r"PAYMENT MADE VIRTUALBANKTRANSFER|PAYMENT MADE OPENBANKING|BANK TRANSFER",
+                              "Card repayment / transfer between our own accounts -- NOT a cost",
+                                                                                     "", "none"),
+    (r"FP RETURN",            "Failed payment returned to us -- NOT a cost",         "", "none"),
+    (r"GOCARDLESS",           "GoCardless direct-debit collection",                  "7901", "none"),
+    (r"CONTROLACCOUNT",       "Controlaccount -- the FedEx debt arrangement (13 weekly payments)",
+                                                                                     "6900", "none"),
+    (r"ANDY JONES",           "Andy Jones -- our bookkeeper",                        "7601", "none"),
+    (r"CANARY DETECT",        "Canary Detect -- our own other company (intercompany)", "", "none"),
+    # travel odds and ends
+    (r"TRANSFEERO",           "Transfeero airport transfers",                        "7400", "std"),
+    (r"SUPER\.COM",           "Super.com travel booking",                            "7402", "std"),
+    (r"NORWEGIAN CRUISE",     "Norwegian Cruise Line -- looks PERSONAL, check",      "2301", "none"),
+    (r"FARMACIA|CRV\*FARMACIA",
+                              "Spanish pharmacy -- NO UK VAT",                       "6900", "none"),
+    (r"MANSFIELD RD|WESTMINSTER HO|CITY CO-IPS|NYX\*PETROGAS",
+                              "Parking / small local charge",                        "7400E", "std"),
+    (r"HURAK",                "Hurak training courses",                              "8203", "std"),
+    (r"TEXIM EUROPE",         "Texim Europe -- Dutch electronics component distributor (EU, check VAT)",
+                                                                                     "5000a", "none"),
+    (r"CURRY CLUB",           "Curry Club -- food",                                  "7406", "std"),
+    (r"AYUNTAMIENTO|SUMINISTROS|COLCHONE|PEDIDO",
+                              "Spanish supplier -- NO UK VAT to reclaim",            "6900", "none"),
+]
+
+
+def _die(m, c=1):
+    print(m, file=sys.stderr); sys.exit(c)
+
+
+def sheets_token():
+    """Reuse sheets-api.py's service-account auth rather than re-deriving it."""
+    sys.path.insert(0, VAULT)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("sheets_api", os.path.join(VAULT, "sheets-api.py"))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return m.get_token()
+
+
+def sapi(method, path, body=None, tok=None):
+    tok = tok or sheets_token()
+    req = urllib.request.Request(f"{SHEETS}{path}",
+        data=json.dumps(body).encode() if body else None,
+        headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+        method=method)
+    try:
+        r = urllib.request.urlopen(req).read()
+        return json.loads(r) if r else {}
+    except urllib.error.HTTPError as e:
+        _die(f"sheets {method} {path} failed {e.code}: {e.read().decode()[:400]}")
+
+
+# ---------------------------------------------------------------------------
+# Parsing Xero's "Bank Reconciliation" export
+# ---------------------------------------------------------------------------
+def parse_export(path):
+    z = zipfile.ZipFile(path)
+    shared = []
+    if "xl/sharedStrings.xml" in z.namelist():
+        s = z.read("xl/sharedStrings.xml").decode("utf8")
+        shared = [html.unescape(re.sub("<[^>]+>", "", m))
+                  for m in re.findall(r"<si>(.*?)</si>", s, re.S)]
+    rows = re.findall(r"<row[^>]*>(.*?)</row>",
+                      z.read("xl/worksheets/sheet1.xml").decode("utf8"), re.S)
+    recs = []
+    for r in rows:
+        v = {}
+        for col, attrs, val in re.findall(r'<c r="([A-Z]+)\d+"([^>]*)>(?:<v>(.*?)</v>)?', r):
+            if val is None: continue
+            if 't="s"' in attrs:
+                try: val = shared[int(val)]
+                except (ValueError, IndexError): pass
+            v[col] = val
+        recs.append(v)
+
+    def isnum(x):
+        try: float(x); return True
+        except (TypeError, ValueError): return False
+
+    account = recs[3].get("A", "Unknown") if len(recs) > 3 else "Unknown"
+    # The unreconciled list is bounded by its own headings -- do NOT just take every numeric row,
+    # the Totals Summary and Statement Balances sections carry numbers too (that mistake produced
+    # 61 "lines" for an account that has 57).
+    try:
+        start = next(i for i, v in enumerate(recs)
+                     if v.get("A") == "Plus Unreconciled Statement Lines") + 1
+        end = next(i for i, v in enumerate(recs)
+                   if v.get("A") == "Total Unreconciled Statement Lines")
+    except StopIteration:
+        return account, []
+    def d(v): return (datetime.date(1899, 12, 30) + datetime.timedelta(days=float(v))).isoformat()
+    return account, [{"date": d(v["A"]),
+                      "ref": (v.get("C") or v.get("B") or "").strip(),
+                      "amount": float(v["D"])}
+                     for v in recs[start:end] if isnum(v.get("A")) and isnum(v.get("D"))]
+
+
+def merchant(ref):
+    """Both Xero's card feed and the reconciliation export use 'MERCHANT - PLACE - Card Ending: N'."""
+    t = (ref or "").split(" - ")[0].strip()
+    t = re.sub(r"\s{2,}.*$", "", t)              # Natwest style: 'MERCHANT   extra ref'
+    return re.sub(r"[^A-Za-z0-9 &.'*/-]", "", t).strip().upper()[:40]
+
+
+def classify(ref, payee=""):
+    hay = f"{payee} {ref}".upper()
+    for pat, what, acct, vat in KNOWN:
+        if re.search(pat, hay):
+            return what, acct, vat
+    return "", "", "std"   # default YES to VAT -- Pete, 4 Aug 2026
+
+
+def vat_split(gross, treatment):
+    """Default is that VAT IS reclaimable. 'none' needs a stated reason -- see KNOWN."""
+    g = abs(gross)
+    if treatment == "none":
+        return g, 0.0
+    vat = round(g * VAT_RATE / (1 + VAT_RATE), 2)
+    return round(g - vat, 2), vat
+
+
+def _tokens(s):
+    return {w for w in re.split(r"[^A-Za-z0-9]+", (s or "").upper()) if len(w) > 2
+            and w not in {"LTD","LIMITED","THE","AND","UK","COM","PLC","INC","CARD","ENDING"}}
+
+
+def match_bills(amount, date, bills, merchant_text="", window=95):
+    """Is there an OPEN bill in Xero this bank line pays off?
+
+    Pete, 4 Aug 2026: "always check if there is a matching outstanding invoice when we run this."
+
+    Checks one bill, then PAIRS from the same supplier -- a single card payment routinely clears two
+    bills at once (MB Tech Warrington: 034594 GBP 2,018.58 + 034355 GBP 276.00 = the GBP 2,294.58 on
+    the card, which one-to-one matching missed entirely).
+
+    ⚠ Amount alone coincides often enough to be dangerous: an Anthropic GBP 75 "matched" two
+    Business Space Solutions bills on the first run. So the supplier name is scored too, and a match
+    with no name overlap is labelled "possible?" rather than presented as fact. Andy acting on a
+    false match is worse than no match at all.
+    """
+    D = datetime.date.fromisoformat
+    amt = abs(amount)
+    mt = _tokens(merchant_text)
+    near = [b for b in bills if b.get("due_amt") and b.get("date")
+            and -window <= (D(date) - D(b["date"])).days <= window]
+
+    def label(b, extra=""):
+        agree = bool(mt & _tokens(b["contact"]))
+        tag = "" if agree else "possible? "
+        return f"{tag}{b['contact'][:26]} {b['number']}{extra} ({b['date']})"
+
+    exact = [b for b in near if abs(abs(b["due_amt"]) - amt) < 0.005]
+    named = [b for b in exact if mt & _tokens(b["contact"])]
+    if named:
+        return label(named[0])
+    for i, b1 in enumerate(near):
+        for b2 in near[i+1:]:
+            if b1["contact"] == b2["contact"] and \
+               abs(abs(b1["due_amt"]) + abs(b2["due_amt"]) - amt) < 0.005:
+                return label(b1, f" + {b2['number']} (2 bills)")
+    return label(exact[0]) if exact else ""
+
+
+def build_rows(lines, precedent, paypal, bills=()):
+    D = datetime.date.fromisoformat
+    out = []
+    for l in sorted(lines, key=lambda x: x["date"]):
+        payee = whatpp = ""
+        if "PAYPAL" in l["ref"].upper() and paypal:
+            c = [p for p in paypal if p["gbp"] is not None
+                 and abs(p["gbp"] - abs(l["amount"])) < 0.005
+                 and 0 <= (D(l["date"]) - D(p["date"])).days <= 10]
+            if c:
+                p = min(c, key=lambda p: (D(l["date"]) - D(p["date"])).days)
+                payee, whatpp = p["who"] or "", p["what"] or ""
+        what, acct, vat = classify(l["ref"], payee)
+        m = merchant(payee or l["ref"])
+        prev = precedent.get(m)
+        if prev and not acct:                      # how Pete has coded this merchant before
+            acct = prev[0] or ""
+            vat = "std" if prev[1] == "INPUT2" else ("none" if prev[1] else vat)
+        net, vatamt = vat_split(l["amount"], vat)
+        reason = what if vat == "none" else ""
+        desc = " / ".join(x for x in [payee, whatpp] if x) or merchant(l["ref"])
+        out.append([l["date"], l["ref"][:70], round(l["amount"], 2),
+                    "N" if vat == "none" else "Y", net, vatamt,
+                    desc[:60], what, ACCOUNTS.get(acct, acct or ""),
+                    match_bills(l["amount"], l["date"], bills, payee or l["ref"]),
+                    reason if vat == "none" else "", "OPEN", ""])
+    return out
+
+
+HEADERS = ["Date", "Bank reference (as Xero shows it)", "Amount", "VAT?", "Net", "VAT amount",
+           "Who it was paid to", "What it actually is", "Category (Sygma's chart)",
+           "Matching bill in Xero?", "Why no VAT (if N)", "Status", "Andy's notes"]
+
+# Aurora-ish palette: readable, colourful, not a rainbow.
+def rgb(h):
+    h = h.lstrip("#")
+    return {"red": int(h[0:2],16)/255, "green": int(h[2:4],16)/255, "blue": int(h[4:6],16)/255}
+
+HDR_BG, BAND_BG = rgb("1e3a5f"), rgb("f4f6fc")
+AMBER, GREEN, GREY = rgb("fff4d6"), rgb("e6f6ea"), rgb("eeeeee")
+
+
+def tab_requests(sheet_id, nrows):
+    """Formatting: frozen header, widths, money formats, and the colour cues that make it usable."""
+    R = []
+    R.append({"updateSheetProperties": {"properties": {"sheetId": sheet_id,
+        "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}})
+    R.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 0, "endRowIndex": 1},
+        "cell": {"userEnteredFormat": {"backgroundColor": HDR_BG, "horizontalAlignment": "LEFT",
+            "textFormat": {"bold": True, "fontSize": 10,
+                           "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            "wrapStrategy": "WRAP"}},
+        "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,wrapStrategy)"}})
+    for i, w in enumerate([88, 270, 90, 55, 80, 85, 190, 235, 170, 230, 180, 85, 220]):
+        R.append({"updateDimensionProperties": {"range": {"sheetId": sheet_id,
+            "dimension": "COLUMNS", "startIndex": i, "endIndex": i+1},
+            "properties": {"pixelSize": w}, "fields": "pixelSize"}})
+    for col in (2, 4, 5):                                   # Amount, Net, VAT amount
+        R.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
+            "startColumnIndex": col, "endColumnIndex": col+1},
+            "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER",
+                     "pattern": "#,##0.00;[Red]-#,##0.00"}}},
+            "fields": "userEnteredFormat.numberFormat"}})
+    rng = {"sheetId": sheet_id, "startRowIndex": 1, "endRowIndex": max(nrows, 2)}
+    # amber = Andy has to decide the VAT; green = done; grey = closed off
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rng],
+        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
+            "values": [{"userEnteredValue": '=$D2="N"'}]},
+            "format": {"backgroundColor": AMBER}}}, "index": 0}})
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rng],
+        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
+            "values": [{"userEnteredValue": '=$L2="DONE"'}]},
+            "format": {"backgroundColor": GREEN,
+                       "textFormat": {"strikethrough": True, "foregroundColor": rgb("777777")}}}},
+        "index": 0}})
+    R.append({"setDataValidation": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
+        "startColumnIndex": 11, "endColumnIndex": 12},
+        "rule": {"condition": {"type": "ONE_OF_LIST", "values": [
+            {"userEnteredValue": v} for v in ["OPEN", "ANSWERED", "DONE", "QUERY"]]},
+            "showCustomUi": True, "strict": False}}})
+    R.append({"addConditionalFormatRule": {"rule": {"ranges": [rng],
+        "booleanRule": {"condition": {"type": "CUSTOM_FORMULA",
+            "values": [{"userEnteredValue": '=LEN($J2)>0'}]},
+            "format": {"backgroundColor": rgb("e8f0fe")}}}, "index": 0}})
+    R.append({"setDataValidation": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
+        "startColumnIndex": 3, "endColumnIndex": 4},
+        "rule": {"condition": {"type": "ONE_OF_LIST",
+                 "values": [{"userEnteredValue": v} for v in ["Y", "N"]]},
+                 "showCustomUi": True, "strict": False}}})
+    R.append({"repeatCell": {"range": {"sheetId": sheet_id, "startRowIndex": 1,
+        "startColumnIndex": 3, "endColumnIndex": 4},
+        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER",
+                 "textFormat": {"bold": True}}},
+        "fields": "userEnteredFormat(horizontalAlignment,textFormat)"}})
+    R.append({"setBasicFilter": {"filter": {"range": {"sheetId": sheet_id, "startRowIndex": 0}}}})
+    return R
+
+
+def build(paths, sheet_id=None):
+    S = "/private/tmp"
+    accounts = {}
+    for p in paths:
+        acct, lines = parse_export(p)
+        if lines and len(lines) > len(accounts.get(acct, [])):
+            accounts[acct] = lines
+    if not accounts:
+        _die("no unreconciled lines found in those exports")
+
+    # precedent: how each merchant has been coded in Xero before
+    precedent = {}
+    cache = os.path.join(S, "xero_precedent.json")
+    if os.path.exists(cache):
+        precedent = {k: tuple(v) for k, v in json.load(open(cache)).items()}
+
+    paypal = []
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("pp", os.path.join(VAULT, "paypal-api.py"))
+        pp = importlib.util.module_from_spec(spec); spec.loader.exec_module(pp)
+        lo = min(l["date"] for ls in accounts.values() for l in ls)
+        frm = (datetime.date.fromisoformat(lo) - datetime.timedelta(days=14)).isoformat()
+        paypal = pp.payments(pp.list_txns(frm, datetime.date.today().isoformat()))
+    except Exception as e:
+        print(f"  (PayPal lookup unavailable: {e})", file=sys.stderr)
+
+    bills = []
+    bcache = os.path.join(S, "xero_open_bills.json")
+    if os.path.exists(bcache):
+        bills = json.load(open(bcache))
+        print(f"  checking against {len(bills)} open bills in Xero")
+
+    tok = sheets_token()
+    if not sheet_id:
+        r = sapi("POST", "", {"properties": {"title": "Sygma — Bank Reconciliation Queries"}}, tok)
+        sheet_id = r["spreadsheetId"]
+        print(f"created sheet {sheet_id}")
+
+    meta = sapi("GET", f"/{sheet_id}", tok=tok)
+    existing = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+
+    reqs = []
+    for acct in accounts:
+        if acct not in existing:
+            reqs.append({"addSheet": {"properties": {"title": acct[:80]}}})
+    if reqs:
+        sapi("POST", f"/{sheet_id}:batchUpdate", {"requests": reqs}, tok)
+        meta = sapi("GET", f"/{sheet_id}", tok=tok)
+        existing = {s["properties"]["title"]: s["properties"]["sheetId"] for s in meta["sheets"]}
+
+    fmt = []
+    for acct, lines in accounts.items():
+        rows = build_rows(lines, precedent, paypal, bills)
+        title = acct[:80]
+        sapi("PUT", f"/{sheet_id}/values/{urllib.parse.quote(title)}!A1:M{len(rows)+1}"
+                    "?valueInputOption=USER_ENTERED",
+             {"values": [HEADERS] + rows}, tok)
+        fmt += tab_requests(existing[title], len(rows) + 1)
+        no_vat = sum(1 for r in rows if r[3] == "N")
+        named = sum(1 for r in rows if r[7])
+        billed = sum(1 for r in rows if r[9])
+        print(f"  {acct:30} {len(rows):4} lines | {named} identified | {no_vat} no-VAT | {billed} match an open bill")
+    if fmt:
+        sapi("POST", f"/{sheet_id}:batchUpdate", {"requests": fmt}, tok)
+    print(f"\nhttps://docs.google.com/spreadsheets/d/{sheet_id}/edit")
+    return sheet_id
+
+
+if __name__ == "__main__":
+    import urllib.parse
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help"):
+        print(__doc__); sys.exit(0)
+    if a[0] != "build":
+        _die(f"unknown command {a[0]}")
+    sid = a[a.index("--sheet")+1] if "--sheet" in a else None
+    files = [f for f in a[1:] if f.endswith(".xlsx")]
+    if not files:
+        _die("give me at least one Xero Bank Reconciliation .xlsx export")
+    build(files, sid)
