@@ -52,11 +52,25 @@ def load_creds():
     return json.loads(rows[0]["value"])
 
 
-def token():
+REPORTING_SCOPE = "https://uri.paypal.com/services/reporting/search/read"
+
+
+def token(scope=REPORTING_SCOPE):
+    """A client_credentials token.
+
+    ⚠ The reporting scope MUST be asked for EXPLICITLY. A bare client_credentials request returns 26
+    scopes and reporting/search/read is NOT among them, even when 'Transaction search' is ticked and
+    saved on the app. That default token 403s on /v1/reporting/*, which looks exactly like a missing
+    account entitlement -- on 4 Aug 2026 it cost an hour and nearly sent Pete to PayPal support over
+    an account that was fine all along. Pass scope=None only if you want the default set.
+    """
     c = load_creds()
     auth = base64.b64encode(f"{c['client_id']}:{c['secret']}".encode()).decode()
+    form = {"grant_type": "client_credentials"}
+    if scope:
+        form["scope"] = scope
     req = urllib.request.Request(f"{BASE}/v1/oauth2/token",
-        data=urllib.parse.urlencode({"grant_type": "client_credentials"}).encode(),
+        data=urllib.parse.urlencode(form).encode(),
         headers={"Authorization": f"Basic {auth}",
                  "Content-Type": "application/x-www-form-urlencoded"})
     try:
@@ -131,10 +145,11 @@ def main():
         t = token()
         scopes = t.get("scope", "").split()
         rep = [s for s in scopes if "reporting" in s]
-        print(f"token OK, expires in {t.get('expires_in')}s, {len(scopes)} scopes")
+        print(f"token OK, expires in {t.get('expires_in')}s, {len(scopes)} scope(s)")
         print("reporting/search/read:", rep[0] if rep else
-              "NOT PRESENT -- tick 'Transaction search' on the app at developer.paypal.com "
-              "(Apps & Credentials -> Command Centre) and allow time to propagate")
+              "NOT PRESENT -- the scope was requested explicitly and still refused, so this IS an "
+              "app/account problem: check 'Transaction search' is ticked on the app at "
+              "developer.paypal.com (Apps & Credentials -> Command Centre)")
         return 0 if rep else 1
 
     if cmd == "balances":
