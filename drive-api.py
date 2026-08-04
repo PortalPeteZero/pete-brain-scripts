@@ -186,10 +186,29 @@ def get_file(file_id, local_path):
     else:
         url = f"{DRIVE_BASE}/files/{file_id}?alt=media&supportsAllDrives=true"
 
+    # Stream in chunks, never r.read(). A 1.65 GB webinar master pulled the whole file into
+    # memory and wrote nothing until the very end, so it read as a hang (4 Aug 2026) -- the
+    # output file sat at 0 bytes with no way to tell progress from failure. Video work makes
+    # that the normal case, not the exception.
     req = urllib.request.Request(url, headers={"Authorization": f"Bearer {get_token()}"})
     with urllib.request.urlopen(req) as r, open(local_path, "wb") as out:
-        out.write(r.read())
-    print(f"Saved to: {local_path}")
+        total = int(r.headers.get("Content-Length") or 0)
+        done, step, t0 = 0, 0, time.time()
+        while True:
+            chunk = r.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            out.write(chunk)
+            done += len(chunk)
+            # progress every 128 MB, so a big download is visibly alive
+            if done // (128 * 1024 * 1024) > step:
+                step = done // (128 * 1024 * 1024)
+                mb, el = done / 1048576, max(time.time() - t0, 0.001)
+                of = f" / {total/1048576:.0f} MB" if total else ""
+                print(f"  {mb:.0f} MB{of}  ({mb/el:.1f} MB/s)", flush=True)
+    if total and done != total:
+        raise IOError(f"truncated download: got {done} bytes, expected {total}")
+    print(f"Saved to: {local_path} ({done/1048576:.1f} MB)")
 
 def _pay_data_gate(name, folder_id):
     """Refuse employee pay data landing in a staff-shared drive (hub-pay-data-guard).
