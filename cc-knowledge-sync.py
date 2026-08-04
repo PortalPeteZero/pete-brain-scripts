@@ -32,7 +32,12 @@ SEC = f"{VAULT}/Library/processes/secrets"
 REF = "zhexcaflgahdcbzvbyfq"
 CRON_KEY = "knowledge-reindex"
 ALERT_TO = "pete.ashcroft@sygma-solutions.com"
-GATE = {"vault_notes": "embed_input(title,body)", "tasks": "embed_input(name,notes)", "notes": "embed_input(title,body)"}
+# The dirty gate reads each table's STORED generated column `content_hash` (= md5(embed_input(...)),
+# computed once on write) rather than re-hashing every body per call. Same rule, same values — see
+# cc-embedder.py and public.semantic_stale_count(), which must stay in step with this.
+GATE = ("SELECT count(*) AS dirty FROM public.{t} "
+        "WHERE content_hash IS NOT NULL AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM content_hash)")
+GATE_TABLES = ("vault_notes", "tasks", "notes")
 
 def mgmt_sql(q):
     tok = (os.environ.get("SUPABASE_TOKEN") or open(f"{SEC}/supabase-token").read()).strip()
@@ -44,10 +49,9 @@ def mgmt_sql(q):
 
 def gate_counts():
     out = {}
-    for t, ei in GATE.items():
+    for t in GATE_TABLES:
         try:
-            r = mgmt_sql(f"SELECT count(*) AS dirty FROM public.{t} "
-                         f"WHERE length({ei})>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei}))")
+            r = mgmt_sql(GATE.format(t=t))
             out[t] = r[0]["dirty"] if r else -1
         except Exception as e:
             print(f"  gate {t} failed: {str(e)[:120]}"); out[t] = -1

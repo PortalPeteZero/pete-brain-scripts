@@ -101,10 +101,11 @@ def main():
     #    SUCCESS-but-stale alert lives inside that cron, so it shares the cron's failure domain — if the
     #    cron dies entirely, staleness accrues with no alert. This external cross-check closes that gap.
     #    (Source: public.crons only — cron_events carries only lifecycle kinds, no per-run success signal.)
-    GATE = {"vault_notes": "embed_input(title,body)", "tasks": "embed_input(name,notes)", "notes": "embed_input(title,body)"}
+    #    The gate reads each table's STORED generated column content_hash (= md5(embed_input(...)),
+    #    computed on write) — same rule as cc-embedder.py and public.semantic_stale_count().
     stale_bits = []
-    for t, ei in GATE.items():
-        r = q(f"SELECT count(*) c FROM {t} WHERE length({ei})>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei}))")
+    for t in ("vault_notes", "tasks", "notes"):
+        r = q(f"SELECT count(*) c FROM {t} WHERE content_hash IS NOT NULL AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM content_hash)")
         c = int(r[0]["c"]) if r else 0
         if c: stale_bits.append(f"{t}={c}")
     if stale_bits:

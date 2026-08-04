@@ -40,12 +40,13 @@ def semantic_freshness():
     """Hash gate: rows whose stored embedding no longer matches their current content, across the three
     embedding tables. Returns (ok, message). ok True = all fresh, False = stale rows, None = unreadable."""
     import subprocess, json as _json
-    gate = {"vault_notes": "embed_input(title,body)", "tasks": "embed_input(name,notes)", "notes": "embed_input(title,body)"}
+    # Reads the STORED generated column content_hash (= md5(embed_input(...)), computed on write) —
+    # same rule as cc-embedder.py and public.semantic_stale_count(), without re-hashing every body.
     parts, total, unknown = [], 0, False
-    for t, ei in gate.items():
+    for t in ("vault_notes", "tasks", "notes"):
         try:
             r = subprocess.run(["python3", str(SCRIPT_DIR / "cc-sql.py"),
-                f"SELECT count(*) c FROM {t} WHERE length({ei})>0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei}))"],
+                f"SELECT count(*) c FROM {t} WHERE content_hash IS NOT NULL AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM content_hash)"],
                 capture_output=True, text=True, env={**os.environ, "VAULT": VAULT}, timeout=60)
             c = int(_json.loads(r.stdout)[0]["c"])
         except Exception:

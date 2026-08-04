@@ -73,7 +73,7 @@ def main():
            f" AND NOT EXISTS (SELECT 1 FROM corpus v WHERE v.frontmatter->>'variant_of'=m.vault_path)) + "
            f"(SELECT count(*) FROM corpus v JOIN vault_notes m ON m.vault_path=v.frontmatter->>'variant_of' "
            f" WHERE v.frontmatter ? 'variant_of' AND "
-           f" v.frontmatter->>'variant_master_hash' IS DISTINCT FROM md5(embed_input(m.title,m.body))) AS n")[0]["n"]
+           f" v.frontmatter->>'variant_master_hash' IS DISTINCT FROM m.content_hash) AS n")[0]["n"]
 
     g6 = q(f"SELECT (SELECT count(*) FROM vault_notes WHERE tags && ARRAY['{tag}'] "
            f"AND type NOT IN ({tlist})) + "

@@ -35,7 +35,7 @@ def check(name, ok, evidence=""):
 print("Passion Fit Concepts — audit\n")
 
 # 1. all tagged notes embedded AND FRESH (hash gate — catches stale-but-present vectors, not just NULLs)
-row = q("SELECT count(*) total, count(*) FILTER (WHERE embedding IS NOT NULL AND embedded_hash = md5(embed_input(title,body))) emb FROM vault_notes WHERE tags && ARRAY['passionfit-concepts']")[0]
+row = q("SELECT count(*) total, count(*) FILTER (WHERE embedding IS NOT NULL AND embedded_hash = content_hash) emb FROM vault_notes WHERE tags && ARRAY['passionfit-concepts']")[0]
 check("every PassionFit note is embedded & current", row["total"] == row["emb"], f"{row['emb']}/{row['total']} fresh")
 
 # 2. all 19 concept notes present

@@ -2,11 +2,18 @@
 """cc-embedder.py — the ONE embedder for the Command Centre semantic layer.
 
 Owns `embedding` + `embedded_hash` for the three embedding tables (vault_notes, tasks, notes).
-A row is DIRTY when `embedding IS NULL OR embedded_hash IS DISTINCT FROM md5(embed_input(...))`.
-The embedded text is defined ONCE, in SQL, by `public.embed_input(a,b)` — this script SELECTs that
-exact text (never rebuilds normalization in Python), embeds it, and writes `embedding` + `embedded_hash`
-together with an OPTIMISTIC GUARD (`... WHERE md5(embed_input(row)) = <hash_at_read>`) so a row edited
-mid-flight simply loses the write and is re-done on the next pass.
+A row is DIRTY when `embedding IS NULL OR embedded_hash IS DISTINCT FROM content_hash`, where
+`content_hash` is a STORED generated column on each table holding `md5(embed_input(...))`. It is
+computed once, on write, by the database. Reading it instead of re-hashing every body on each pass
+is what keeps the dirty scan cheap — the old `md5(embed_input(...))` form re-read and re-fingerprinted
+all 14 MB of note bodies per call (~4.9s against an 8s statement_timeout) and started returning 500
+under load on 4 Aug 2026 (Sentry COMMAND-CENTRE-22-A). Same rule, same values, ~22x faster.
+The embedded text is still defined ONCE, in SQL, by `public.embed_input(a,b)` — this script SELECTs
+that exact text for the matched rows only (never rebuilds normalization in Python), embeds it, and
+writes `embedding` + `embedded_hash` together with an OPTIMISTIC GUARD (`... WHERE content_hash =
+<hash_at_read>`) so a row edited mid-flight simply loses the write and is re-done on the next pass.
+`content_hash`, this script's gate and `public.semantic_stale_count()` must always agree — change one,
+change all three.
 
 voyage-3.5-lite silently truncates at ~32k tokens (verified 2026-07-02), and embed_input windows to
 100k chars (safely under that), so the stored hash always reflects exactly what was embedded — no
@@ -54,9 +61,10 @@ def voyage(texts):
         raise
 
 def dirty_rows(table, a, b, limit=500):
-    ei = f"embed_input({a},{b})"
-    q = (f"SELECT id::text AS id, {ei} AS t, md5({ei}) AS h FROM public.{table} "
-         f"WHERE length({ei}) > 0 AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM md5({ei})) "
+    # The filter reads the stored content_hash (cheap); embed_input() is then evaluated only for the
+    # rows that survive it. content_hash IS NULL means "nothing to embed" — the old `length(...)>0`.
+    q = (f"SELECT id::text AS id, embed_input({a},{b}) AS t, content_hash AS h FROM public.{table} "
+         f"WHERE content_hash IS NOT NULL AND (embedding IS NULL OR embedded_hash IS DISTINCT FROM content_hash) "
          f"LIMIT {limit}")
     return mgmt_sql(q)
 
@@ -65,14 +73,15 @@ def _veclit(v):
 
 def write_rows(table, a, b, rows, vecs):
     """Write embedding+hash together, guarded so a row changed since read is skipped (re-done next pass).
-    Returns the number of rows actually updated."""
+    Returns the number of rows actually updated. `a`/`b` are kept in the signature for symmetry with
+    dirty_rows; the guard now compares the stored content_hash rather than recomputing it."""
     updated = 0
     for i in range(0, len(rows), WRITE_CHUNK):
         chunk_r = rows[i:i + WRITE_CHUNK]; chunk_v = vecs[i:i + WRITE_CHUNK]
         vals = ",".join(f"('{r['id']}'::uuid, '{_veclit(v)}'::vector, '{r['h']}')" for r, v in zip(chunk_r, chunk_v))
         q = (f"UPDATE public.{table} t SET embedding = d.e, embedded_hash = d.h "
              f"FROM (VALUES {vals}) d(id, e, h) "
-             f"WHERE t.id = d.id AND md5(embed_input(t.{a}, t.{b})) = d.h "
+             f"WHERE t.id = d.id AND t.content_hash = d.h "
              f"RETURNING t.id")
         updated += len(mgmt_sql(q) or [])
     return updated
