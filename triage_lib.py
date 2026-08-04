@@ -44,7 +44,50 @@ def esc(s):
     return str(s).replace("'", "''")
 
 # ---------- thread facts (the ONE home; used by the pull + the acceptance run) ----------
-PETE_EMAIL = "pete.ashcroft@sygma-solutions.com"
+PETE_EMAIL = "pete.ashcroft@sygma-solutions.com"   # the primary; NOT the whole story -- see below
+
+_PETE_EMAILS_CACHE = None
+
+
+def pete_emails():
+    """EVERY address Pete sends as, lower-cased -- read LIVE from his Gmail send-as aliases.
+
+    This was a single hardcoded address until 4 Aug 2026, and it silently broke every thread he
+    answered from one of his other aliases. Pete runs Canary Detect business from
+    pete@canary-detect.com and Sygma from pete.ashcroft@sygma-solutions.com; both are aliases on
+    the SAME mailbox. With only the primary known, a reply he had already sent counted as
+    `external`, so `pete_replied_since` came back False and triage flagged answered CD threads as
+    still waiting on him. Caught on the Keith Donald LeakGuard thread.
+
+    Read from the send-as list rather than hardcoded so a new alias can never go stale here. An
+    inbound message cannot fake this: From: only carries one of these when it was sent FROM this
+    mailbox. Falls back to the primary alone if Gmail cannot be reached, and says so on stderr --
+    a quiet fallback would reintroduce the exact bug.
+    """
+    global _PETE_EMAILS_CACHE
+    if _PETE_EMAILS_CACHE is not None:
+        return _PETE_EMAILS_CACHE
+    out = {PETE_EMAIL}
+    try:
+        import importlib.util
+        import os as _os
+        spec = importlib.util.spec_from_file_location(
+            "_gm", _os.path.join(_os.environ.get("VAULT", "/tmp/pbs"), "gmail-api.py"))
+        gm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gm)
+        # list_send_as() already unwraps the API's {"sendAs": [...]} and hands back the LIST
+        for r in (gm.GmailAPI().list_send_as() or []):
+            addr = (r.get("sendAsEmail") or "").lower()
+            # primary is implicitly ours; an alias counts once Google has verified it
+            if addr and (r.get("isPrimary") or r.get("verificationStatus") == "accepted"):
+                out.add(addr)
+    except Exception as e:
+        print(f"[triage_lib] WARN: could not read Gmail send-as aliases ({e}) -- falling back to "
+              f"{PETE_EMAIL} ONLY. Threads Pete answered from another alias will read as external.",
+              file=sys.stderr)
+    _PETE_EMAILS_CACHE = out
+    return out
+
 
 def team_emails():
     """The Sygma team set for team_replied_since: staff_directory work emails
@@ -54,7 +97,7 @@ def team_emails():
     rows = cc_sql("SELECT lower(work_email) AS e FROM public.staff_directory "
                   "WHERE work_email IS NOT NULL AND work_email <> ''")
     s = {r["e"] for r in rows if r.get("e")}
-    s.discard(PETE_EMAIL)
+    s -= pete_emails()          # every alias, not just the primary -- Pete is never "the team"
     s.add("bookings@sygma-solutions.com")
     return s
 
@@ -63,14 +106,24 @@ def _addr(v):
     m = re.search(r"[\w.+-]+@[\w.-]+", v or "")
     return m.group(0).lower() if m else ""
 
-def compute_thread_facts(messages, team_set, pete=PETE_EMAIL):
+def compute_thread_facts(messages, team_set, pete=None):
     """messages: ordered list of dicts each carrying a 'from' (or 'from_last'/'sender').
     Returns last-sender direction + pete/team replied-since. team_replied_since is
     true when the newest team message is later than the newest external one (so a
-    single team-only message -- e.g. bookings@ answering a web enquiry -- counts)."""
+    single team-only message -- e.g. bookings@ answering a web enquiry -- counts).
+
+    `pete` defaults to ALL of Pete's send-as aliases (pete_emails()), not one address -- he runs
+    Canary Detect from pete@canary-detect.com and Sygma from his primary. A single string is still
+    accepted so existing callers and tests keep working.
+    """
+    if pete is None:
+        pete = pete_emails()
+    elif isinstance(pete, str):
+        pete = {pete.lower()}
+
     def cat(msg):
         a = _addr(msg.get("from") or msg.get("from_last") or msg.get("sender") or "")
-        if a == pete:
+        if a in pete:
             return "pete"
         if a in team_set:
             return "team"
