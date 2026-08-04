@@ -278,13 +278,27 @@ def search_phone_mirror(q, phone):
     def first(v):
         return v[0] if isinstance(v, list) and v else (v if isinstance(v, str) else None)
 
+    def every(v):
+        """Show EVERY address/number on the record, not just the first.
+
+        A phone contact routinely holds two emails (an old work one and the one actually in
+        use). Printing only emails[0] made `find` answer with the STALE address and hide the
+        live one, so the record read as 'not the person I want' and the session fell back to
+        grepping mail -- the exact thing SSOT-first forbids. Cost a wrong turn on 4 Aug 2026
+        looking up Andy Jones, whose hotmail address was sitting in emails[1] all along.
+        """
+        if isinstance(v, list):
+            vals = [s for s in v if s]
+            return " · ".join(vals) if vals else None
+        return v if isinstance(v, str) else None
+
     return [{
         "store": "Google Contacts (via the CC mirror)",
         "owner": "Pete's phone - a VIEW of the record, not a home",
         "name": x.get("display_name"),
         "detail": " / ".join(v for v in [x.get("job_title"), x.get("organization")] if v),
-        "email": first(x.get("emails")),
-        "phone": first(x.get("phones_e164")) or first(x.get("phones")),
+        "email": every(x.get("emails")),
+        "phone": every(x.get("phones_e164")) or every(x.get("phones")),
         "extra": {"resource_name": x.get("resource_name")},
         "_notes": x.get("notes"),          # carried for the [no-nag] check in tidy_gaps
     } for x in json.loads(txt)]
@@ -746,14 +760,18 @@ def _google_hits(q):
         if not txt.startswith("["):
             raise RuntimeError(txt[:200] or "the CC database did not answer")
 
-        def first(v):
-            return v[0] if isinstance(v, list) and v else (v if isinstance(v, str) else None)
+        def every(v):
+            # every address/number, never just the first -- see the note on every() above
+            if isinstance(v, list):
+                vals = [s for s in v if s]
+                return " · ".join(vals) if vals else None
+            return v if isinstance(v, str) else None
 
         return [{
             "store": "Google Contacts (via the CC mirror)",
             "name": x.get("display_name"),
-            "email": first(x.get("emails")),
-            "phone": first(x.get("phones_e164")) or first(x.get("phones")),
+            "email": every(x.get("emails")),
+            "phone": every(x.get("phones_e164")) or every(x.get("phones")),
             "extra": {"resource_name": x.get("resource_name")},
         } for x in json.loads(txt)], []
     results, _, _, _ = lookup(q)
