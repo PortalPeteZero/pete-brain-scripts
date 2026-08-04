@@ -120,6 +120,62 @@ def list_txns(frm, to):
     return out
 
 
+def group_key(t):
+    """Which payment a raw row belongs to.
+
+    PayPal returns a FX payment as ~4 rows: the payment itself (T0003), the funding pull (T0300)
+    and two conversion legs (T0200). Only the payment carries the merchant; the GBP amount that
+    actually left the bank is on a leg. Counting raw rows overstates activity ~4x -- 227 rows for
+    July 2026 is 93 payments.
+
+    The legs carry the payment's transaction_id in paypal_reference_id with reference type TXN, so
+    that is the grouping key. A row that is not a leg is its own group -- which also means a leg
+    whose parent falls outside the query window still becomes a group of its own rather than being
+    silently dropped (61 of July's 166 legs were in exactly that position).
+    """
+    ti = t.get("transaction_info", {}) or {}
+    if ti.get("paypal_reference_id_type") == "TXN" and ti.get("paypal_reference_id"):
+        return ti["paypal_reference_id"]
+    return ti.get("transaction_id")
+
+
+def payments(txns):
+    """Collapse raw rows into one record per real payment."""
+    groups = {}
+    for t in txns:
+        groups.setdefault(group_key(t), []).append(t)
+    out = []
+    for k, v in groups.items():
+        def pick(fn):
+            return next((r for r in (fn(t) for t in v) if r), "")
+        who = pick(lambda t: ((t.get("payer_info") or {}).get("payer_name") or {}).get("alternate_full_name"))
+        what = pick(lambda t: "; ".join(i.get("item_name", "") for i in
+                                        ((t.get("cart_info") or {}).get("item_details") or [])))
+        if not what:
+            what = pick(lambda t: (t["transaction_info"].get("transaction_subject")
+                                   or t["transaction_info"].get("transaction_note")))
+        # what actually left the bank is the GBP leg; prefer the debit
+        gbp = None
+        for t in v:
+            a = t["transaction_info"].get("transaction_amount") or {}
+            if a.get("currency_code") == "GBP" and float(a.get("value", 0)) < 0:
+                gbp = abs(float(a["value"])); break
+        if gbp is None:
+            for t in v:
+                a = t["transaction_info"].get("transaction_amount") or {}
+                if a.get("currency_code") == "GBP":
+                    gbp = abs(float(a.get("value", 0))); break
+        orig = next(((t["transaction_info"].get("transaction_amount") or {})
+                     for t in v if (t["transaction_info"].get("transaction_amount") or {})
+                     .get("currency_code") != "GBP"), None)
+        out.append({"id": k,
+                    "date": min((t["transaction_info"].get("transaction_initiation_date") or "")[:10] for t in v),
+                    "gbp": gbp,
+                    "original": f"{orig['value']} {orig['currency_code']}" if orig else None,
+                    "who": who, "what": what, "rows": len(v)})
+    return sorted(out, key=lambda p: p["date"])
+
+
 def _row(t):
     ti = t.get("transaction_info", {}) or {}
     pi = t.get("payer_info", {}) or {}
@@ -156,14 +212,50 @@ def main():
         print(json.dumps(api("/v1/reporting/balances"), indent=1)); return 0
 
     if cmd == "list":
-        if len(args) < 3: _die("usage: list FROM TO   (YYYY-MM-DD)")
-        rows = [_row(t) for t in list_txns(args[1], args[2])]
+        if len(args) < 3: _die("usage: list FROM TO [--raw]   (YYYY-MM-DD)")
+        txns = list_txns(args[1], args[2])
+        if "--raw" in args:                      # every leg, for debugging
+            rows = [_row(t) for t in txns]
+            if "--json" in args: print(json.dumps(rows, indent=1)); return 0
+            print(f"{len(rows)} RAW rows (legs included) {args[1]} .. {args[2]}\n")
+            for r in rows:
+                print(f"  {r['date']}  {str(r['amount']):>10} {r['currency']}  {r['who'][:30]:32} "
+                      f"{(r['subject'] or r['items'])[:40]}")
+            return 0
+        pays = payments(txns)
         if "--json" in args:
-            print(json.dumps(rows, indent=1)); return 0
-        print(f"{len(rows)} transactions {args[1]} .. {args[2]}\n")
-        for r in rows:
-            print(f"  {r['date']}  {str(r['amount']):>10} {r['currency']}  {r['who'][:30]:32} "
-                  f"{(r['subject'] or r['items'])[:44]}")
+            print(json.dumps(pays, indent=1)); return 0
+        print(f"{len(pays)} payments {args[1]} .. {args[2]}  (from {len(txns)} raw rows)\n")
+        for p in pays:
+            gbp = f"{p['gbp']:.2f}" if p["gbp"] is not None else "?"
+            orig = f" ({p['original']})" if p["original"] else ""
+            print(f"  {p['date']}  {gbp:>9} GBP{orig:<16}  {p['who'][:28]:30} {p['what'][:38]}")
+        return 0
+
+    if cmd == "match":
+        # Reconciliation: given bank lines (date + amount), say what each PayPal payment WAS.
+        # Bank settlement lags the PayPal payment by a few days, so search backwards from the
+        # bank date. Matching is on the GBP amount, which is what hits the statement.
+        if len(args) < 2: _die('usage: match FILE.json   [{"date":"YYYY-MM-DD","amount":-123.45}, ...]')
+        lag = int(args[args.index("--lag") + 1]) if "--lag" in args else 10
+        bank = json.load(open(args[1]))
+        lo = min(b["date"] for b in bank); hi = max(b["date"] for b in bank)
+        frm = (datetime.date.fromisoformat(lo) - datetime.timedelta(days=lag)).isoformat()
+        pays = payments(list_txns(frm, hi))
+        D = datetime.date.fromisoformat
+        hits = 0
+        for b in sorted(bank, key=lambda x: x["date"]):
+            amt = abs(float(b["amount"]))
+            c = [p for p in pays if p["gbp"] is not None and abs(p["gbp"] - amt) < 0.005
+                 and 0 <= (D(b["date"]) - D(p["date"])).days <= lag]
+            if c:
+                hits += 1
+                p = min(c, key=lambda p: (D(b["date"]) - D(p["date"])).days)
+                print(f"  {b['date']} {amt:>9.2f}  OK  {p['who'][:28]:30} {p['what'][:34]:36} "
+                      f"(paid {p['date']})")
+            else:
+                print(f"  {b['date']} {amt:>9.2f}  --  no PayPal payment at this amount within {lag} days")
+        print(f"\nmatched {hits} of {len(bank)}")
         return 0
 
     if cmd == "find":
