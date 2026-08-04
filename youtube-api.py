@@ -3,14 +3,18 @@
 youtube-api.py -- YouTube Analytics + Data API helper
 Auth: service account JWT + DWD (impersonates pete.ashcroft@sygma-solutions.com)
 Requires: SA added as Manager in YouTube Studio → Settings → Permissions
-Scopes: youtube (write), youtube.readonly, yt-analytics.readonly
+Scopes: youtube (write), youtube.readonly, yt-analytics.readonly, force-ssl, upload
 Usage:
   python3 youtube-api.py channels                        # list accessible channels
   python3 youtube-api.py channel CHANNEL_ID [DAYS]       # channel overview stats (default 30d)
   python3 youtube-api.py videos CHANNEL_ID [DAYS]        # top videos by views
   python3 youtube-api.py video VIDEO_ID [DAYS]           # single video deep stats
   python3 youtube-api.py traffic CHANNEL_ID [DAYS]       # traffic sources breakdown
-  python3 youtube-api.py captions VIDEO_ID               # list caption tracks (asr = auto-generated)\n  python3 youtube-api.py transcript VIDEO_ID [OUT] [srt|vtt]  # download the transcript\n  python3 youtube-api.py whoami                          # show auth info
+  python3 youtube-api.py captions VIDEO_ID               # list caption tracks (asr = auto-generated)
+  python3 youtube-api.py transcript VIDEO_ID [OUT] [srt|vtt]  # download the transcript
+  python3 youtube-api.py upload FILE payload.json [CHANNEL]  # resumable upload -- SEO-gated, always PRIVATE
+  python3 youtube-api.py privacy VIDEO_ID public         # flip private|unlisted|public
+  python3 youtube-api.py whoami                          # show auth info
 
 Before uploading or editing metadata, run the gate -- it REFUSES bad/unoptimised metadata:
   python3 youtube-seo-check.py payload.json      |  python3 youtube-seo-check.py --video VIDEO_ID
@@ -33,6 +37,9 @@ SCOPES = " ".join([
     # captions live ONLY behind force-ssl -- the three above do not reach them.
     # Granted in the Workspace admin console 4 Aug 2026 (client 117115682242341369700).
     "https://www.googleapis.com/auth/youtube.force-ssl",
+    # videos.insert and thumbnails.set need upload; the broad `youtube` scope does NOT
+    # cover it. Verified GRANTED against the live token endpoint 4 Aug 2026.
+    "https://www.googleapis.com/auth/youtube.upload",
 ])
 DATA_BASE = "https://www.googleapis.com/youtube/v3"
 ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
@@ -292,6 +299,107 @@ def download_transcript(video_id, fmt="srt", out=None):
     else:
         print(body)
 
+def upload_video(path, payload_file, channel=None):
+    """Resumable upload of a local file via videos.insert.
+
+    GATED. Pete, 4 Aug 2026: "you need to ensure the titles and descriptions and all settings
+    are fully correct and optimised for SEO, we use every angle we get." So youtube-seo-check.py
+    runs FIRST and a BLOCK stops the upload -- there is no --force. Fix the metadata instead.
+
+    Resumable, not multipart: a 948 MB file over a single POST has no way to report progress and
+    no way to resume, and a training master is routinely bigger than that.
+
+    Uploads are ALWAYS created private regardless of what the payload says. Making something
+    public is Pete's call on something he has seen, not a side effect of a script run --
+    flip it afterwards with `youtube-api.py privacy VIDEO_ID public`.
+    """
+    if not os.path.exists(path):
+        print(f"No such file: {path}", file=sys.stderr); sys.exit(2)
+    payload = json.load(open(payload_file))
+
+    # ── the SEO gate, before a single byte moves ─────────────────────────────
+    gate = os.path.join(os.path.dirname(os.path.abspath(__file__)), "youtube-seo-check.py")
+    if os.path.exists(gate):
+        r = subprocess.run([sys.executable, gate, payload_file], capture_output=True, text=True)
+        print(r.stdout or "", end="")
+        if r.returncode == 1:
+            print("REFUSED by youtube-seo-check. Nothing was uploaded.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(f"WARNING: {gate} not found -- metadata NOT checked.", file=sys.stderr)
+
+    requested = (payload.get("status") or {}).get("privacyStatus")
+    payload.setdefault("status", {})["privacyStatus"] = "private"
+    if requested and requested != "private":
+        print(f"NOTE: payload asked for '{requested}'. Uploading PRIVATE anyway -- "
+              f"publish it once you have watched it back.")
+    if channel:
+        payload.setdefault("snippet", {})["channelId"] = resolve_channel(channel)
+
+    size = os.path.getsize(path)
+    body = json.dumps(payload).encode()
+    init = urllib.request.Request(
+        "https://www.googleapis.com/upload/youtube/v3/videos?"
+        + urllib.parse.urlencode({"part": "snippet,status", "uploadType": "resumable"}),
+        data=body, method="POST",
+        headers={"Authorization": f"Bearer {get_token()}",
+                 "Content-Type": "application/json; charset=UTF-8",
+                 "X-Upload-Content-Length": str(size),
+                 "X-Upload-Content-Type": "video/*"})
+    try:
+        session = urllib.request.urlopen(init).headers["Location"]
+    except urllib.error.HTTPError as e:
+        print(f"Could not start upload -- {e.code}: {e.read().decode()[:400]}", file=sys.stderr)
+        sys.exit(1)
+
+    CHUNK, sent, t0 = 8 * 1024 * 1024, 0, time.time()
+    print(f"Uploading {os.path.basename(path)} ({size/1048576:.1f} MB)…")
+    with open(path, "rb") as f:
+        while sent < size:
+            data = f.read(CHUNK)
+            hi = sent + len(data) - 1
+            req = urllib.request.Request(session, data=data, method="PUT",
+                headers={"Content-Length": str(len(data)),
+                         "Content-Range": f"bytes {sent}-{hi}/{size}"})
+            try:
+                resp = urllib.request.urlopen(req)
+                out = json.loads(resp.read())          # 200 = the last chunk landed
+                vid = out["id"]
+                print(f"\n  DONE -- https://www.youtube.com/watch?v={vid}")
+                print(f"  {out['snippet']['title']}  [{out['status']['privacyStatus']}]")
+                return vid
+            except urllib.error.HTTPError as e:
+                if e.code != 308:                       # 308 = resume incomplete, keep going
+                    print(f"\nUpload failed at byte {sent} -- {e.code}: "
+                          f"{e.read().decode()[:300]}", file=sys.stderr)
+                    sys.exit(1)
+                rng = e.headers.get("Range")
+                sent = int(rng.split("-")[1]) + 1 if rng else sent + len(data)
+            el = max(time.time() - t0, 0.001)
+            print(f"  {sent/1048576:>7.0f} / {size/1048576:.0f} MB "
+                  f"({sent/1048576/el:.1f} MB/s)", flush=True)
+
+
+def set_privacy(video_id, status):
+    """Flip a video private / unlisted / public. Separate from upload, deliberately."""
+    if status not in ("private", "unlisted", "public"):
+        print("status must be private, unlisted or public", file=sys.stderr); sys.exit(2)
+    cur = data_api("/videos", {"part": "status,snippet", "id": video_id})
+    if not cur.get("items"):
+        print(f"No such video: {video_id}", file=sys.stderr); sys.exit(2)
+    st = cur["items"][0]["status"]; st["privacyStatus"] = status
+    req = urllib.request.Request(
+        DATA_BASE + "/videos?" + urllib.parse.urlencode({"part": "status"}),
+        data=json.dumps({"id": video_id, "status": st}).encode(), method="PUT",
+        headers={"Authorization": f"Bearer {get_token()}",
+                 "Content-Type": "application/json"})
+    try:
+        r = json.loads(urllib.request.urlopen(req).read())
+        print(f"{video_id} is now {r['status']['privacyStatus']}")
+    except urllib.error.HTTPError as e:
+        print(f"Error {e.code}: {e.read().decode()[:300]}", file=sys.stderr); sys.exit(1)
+
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -318,6 +426,14 @@ def main():
         if len(args) < 2: print("Usage: youtube-api.py transcript VIDEO_ID [OUT_FILE] [srt|vtt]"); sys.exit(1)
         download_transcript(args[1], args[3] if len(args) > 3 else "srt",
                             args[2] if len(args) > 2 else None)
+    elif cmd == "upload":
+        if len(args) < 3:
+            print("Usage: youtube-api.py upload /path/to/video.mp4 payload.json [CHANNEL]")
+            sys.exit(1)
+        upload_video(args[1], args[2], args[3] if len(args) > 3 else None)
+    elif cmd == "privacy":
+        if len(args) < 3: print("Usage: youtube-api.py privacy VIDEO_ID private|unlisted|public"); sys.exit(1)
+        set_privacy(args[1], args[2])
     elif cmd == "whoami":
         whoami()
     else:
