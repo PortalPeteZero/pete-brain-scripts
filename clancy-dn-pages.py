@@ -1264,7 +1264,7 @@ function render(){{
    +'<p class="det desc" style="white-space:pre-wrap;max-width:96ch">'+(r.description||'No description recorded.')+'</p>'
    +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.strike_category||r.utility_class||'Unclassified')+'</b>'+(r.strike_category?' (Depotnet&#8217;s own category)':(r.utility_confirmed?'':' (auto-read)'))+'</span></div></div>';
  // every register field, verbatim
- h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Everything Depotnet holds</h2><span class="note">Incident Register row, in full</span></div><div class="fgrid">'
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>1 &middot; Depotnet &mdash; the incident</h2><span class="note">Clancy&#8217;s own Incident Register row, in full &mdash; their words, never ours</span></div><div class="fgrid">'
    +FLD.map(([k,l])=>'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+((k.includes('date')?fmtTs(r[k]):r[k])||'—')+'</div></div>').join('')+'</div></div>';
  // The investigation, one box per area. Pete, 31 Jul: these are the fields the whole damage
  // argument turns on, so they get their own section rather than a line in a field grid — and an
@@ -1277,7 +1277,7 @@ function render(){{
  ];
  const blank = r.capture_incident==='no-investigation';
  const anyInv = INV.some(([,k])=>r[k]);
- h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Conclusions and lessons</h2>'
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>2 &middot; Depotnet &mdash; the investigation report</h2>'
    +'<span class="note">'+(blank?'investigation report section not completed'
        :(anyInv?'from the investigation report section':'nothing recorded'))+'</span></div>';
  if(blank){{
@@ -1370,7 +1370,7 @@ function render(){{
     +ev.map(e=>'<div class="tle"><span class="mono tld">'+fmtTs(e[0])+'</span><b>'+e[1]+'</b> <span class="muted small">'+e[2]+'</span></div>').join('')+'</div></div>';
  }}
  // actions in full
- h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>Corrective actions'+(acts.length?' ('+acts.length+')':'')+'</h2>'
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>3 &middot; Depotnet &mdash; the action reports'+(acts.length?' ('+acts.length+')':'')+'</h2>'
    +'<span class="note">'+(acts.length?'Action Report rows, in full':'')+'</span></div>';
  if(!acts.length){{h+='<p class="small muted">None — no row in the Action Report references this damage.</p>';}}
  else acts.forEach(a=>{{
@@ -1449,8 +1449,8 @@ function render(){{
  // until then this page showed none of it, so a damage whose Depotnet cause is blank read as
  // unexplained even where a panel review in the same record explains it.
  const dxs=D.dex[id]||[], dcon=r.doc_conclusions||[], dles=r.doc_lessons||[], dfai=r.doc_method_failures||[];
- h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>What the attached documents say</h2>'
-  +'<span class="note">read from the files themselves &mdash; not the Depotnet form</span></div>';
+ h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>4 &middot; Document enrich</h2>'
+  +'<span class="note">what WE found reading their attached files &mdash; never written into a Depotnet field above</span></div>';
  if(dcon.length||dles.length||dfai.length||dxs.length){{
   if(dcon.length)h+='<div class="fl" style="margin-top:4px">Cause, per the documents</div><ul class="kf">'+dcon.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   if(dfai.length)h+='<div class="fl" style="margin-top:10px">Method failures the documents name</div><ul class="kf">'+dfai.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
@@ -1485,7 +1485,7 @@ function render(){{
   h+='</div>';
  }}
  // Sygma layer
- h+='<div class="card"><div class="h2row"><h2>Sygma material</h2><span class="note">panel reviews, findings, documents</span></div>';
+ h+='<div class="card"><div class="h2row"><h2>5 &middot; Sygma findings</h2><span class="note">our own evidence and conclusions &mdash; panel reviews, CAT/Genny data, site work</span></div>';
  if(en){{
   h+=(en.summary?'<p class="det desc">'+en.summary+'</p>':'');
   if(en.key_findings&&en.key_findings.length)h+='<div class="fl" style="margin-top:10px">Key findings</div><ul class="kf">'+en.key_findings.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
