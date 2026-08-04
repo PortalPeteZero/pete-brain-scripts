@@ -155,8 +155,18 @@ def run(apply_mode, since, extra_dirs):
         tokens = logged_token_set(d)
         todays = commits_since(d, since)
         unlogged = [(full, subj) for full, subj in todays if not worklog_sha.is_present(full, tokens)]
+        # WHO owns a commit is a property of the SESSION, not of a directory. WHERE we log it
+        # from is the per-checkout question. Conflating the two made closeout report its own
+        # commits as somebody else's: with several clones of the same repo on disk (there were
+        # 40+ on 4 Aug 2026), a SHA is placed in whichever checkout sorts first, and every OTHER
+        # checkout containing that same commit then classed it "UNATTRIBUTED, confirm before
+        # logging". Four of the session's own commits were surfaced that way, buried among 22
+        # genuine other-session ones -- noise that makes the gate look untrustworthy and invites
+        # a double-log from the wrong clone.
+        #   mine_unlogged   -> scoped to owned_here: log it ONCE, from the checkout it was placed in
+        #   others_unlogged -> scoped to the GLOBAL owned set: never call my own commit a stranger's
         mine_unlogged = [(f, s) for f, s in unlogged if SA.owns(f, owned_here)]
-        others_unlogged = [(f, s) for f, s in unlogged if not SA.owns(f, owned_here)]
+        others_unlogged = [(f, s) for f, s in unlogged if not SA.owns(f, owned)]
         recorded = []
         if apply_mode and mine_unlogged:
             for full, subj in mine_unlogged:
