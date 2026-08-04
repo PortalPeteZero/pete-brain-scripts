@@ -89,6 +89,31 @@ PAGE_CSS = """
  letter-spacing:-.02em}
 .mini .s{font-size:12px;color:var(--faint)}
 .mini a.cur{border-color:var(--green);box-shadow:0 0 0 2px rgba(151,215,0,.25),var(--sh-1)}
+
+/* ── paired doors: one card per section, both readings inside ──
+   Until 4 Aug 2026 the analysis and the report each had TWO separate doors here, and the pairs
+   were not even adjacent — analysis-from-the-form was door 2 and its partner door 4. A reader had
+   no way to see they were the same page read twice. One card per section, two ways in, so the
+   pairing is the first thing you see. The container is a DIV, not an anchor: it holds two links,
+   and nesting anchors is invalid HTML. Borders use the same #c9d2dd measured for the page switch,
+   because #dde and #e4e8ee do not read as a control on this background. */
+.door.pair{cursor:default}
+.door.pair:hover{transform:none;box-shadow:var(--sh-2)}
+.ways{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:14px;padding-top:14px;
+ border-top:1px solid #eef1f5}
+@media(max-width:640px){.ways{grid-template-columns:1fr}}
+.way{display:block;background:#fff;border:1.5px solid #c9d2dd;border-radius:12px;
+ padding:12px 14px 11px;text-decoration:none;color:var(--ink);
+ transition:border-color .16s,background .16s,transform .16s}
+.way:hover{border-color:var(--char);background:#f7f9fc;transform:translateY(-2px)}
+.way .wt{font-size:14px;font-weight:800;letter-spacing:-.01em}
+.way .wd{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.45;min-height:34px}
+.way .wf{font-size:12px;color:var(--mid);margin-top:9px;padding-top:8px;
+ border-top:1px solid #eef1f5;line-height:1.6}
+.way .wf b{font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.way .wgo{margin-top:8px;font-size:12px;font-weight:800;color:var(--green-d)}
+.way:hover .wgo{text-decoration:underline}
+@media(prefers-reduced-motion:reduce){.way:hover{transform:none}}
 """
 
 
@@ -295,58 +320,56 @@ def build():
   </div>
   <div class="go">Open the register &rarr;</div>
  </a>
- <a class="door c" href="/m/{ui.ANALYSIS}">
-  <div class="kicker">The reading</div>
+ <div class="door pair c">
+  <div class="kicker">The reading &middot; two ways</div>
   <div class="t">What the data tells us</div>
-  <div class="d">This year&#8217;s damages read from what Depotnet itself holds: what was struck,
-  at what depth, with what plant, and what its own investigations give as the cause. Including,
-  plainly, what the record cannot answer.</div>
-  <div class="figs">
-   <div><div class="n">{d['cur']}</div><div class="l">damages read</div></div>
-   <div><div class="n">{d['analysed']}</div><div class="l">carry a cause</div></div>
-   <div><div class="n">{d['cur'] - d['analysed']}</div><div class="l">carry none</div></div>
+  <div class="d">This year&#8217;s damages read in full: what was struck, at what depth, with what
+  plant, and what the cause is given as &mdash; including, plainly, what the record cannot answer.
+  The same {d['cur']} damages, read twice. The difference is not the damages, it is what was read.</div>
+  <div class="ways">
+   <a class="way" href="/m/{ui.ANALYSIS}">
+    <div class="wt">From the form</div>
+    <div class="wd">Depotnet&#8217;s own fields only. No attached file opened.</div>
+    <div class="wf"><b>{d['cur']}</b> damages read &middot; <b>{d['analysed']}</b> carry a cause
+     &middot; <b>{d['cur'] - d['analysed']}</b> carry none</div>
+    <div class="wgo">Read the analysis &rarr;</div>
+   </a>
+   <a class="way" href="/m/clancy-damage-analysis-v2">
+    <div class="wt">With the documents read</div>
+    <div class="wd">Every attached file opened: panels, statements, permits, photographs.</div>
+    <div class="wf"><b>{d['enrich_files']:,}</b> files read &middot;
+     <b>{d['enrich_images']:,}</b> photographs &middot;
+     <b>{d['enrich_cause']}</b> explained by a document</div>
+    <div class="wgo">Read what the file held &rarr;</div>
+   </a>
   </div>
-  <div class="go">Read the analysis &rarr;</div>
- </a>
- <a class="door b" href="/m/clancy-damage-board-report">
-  <div class="kicker">The summary for the board</div>
+ </div>
+ <div class="door pair b">
+  <div class="kicker">The summary for the board &middot; two ways</div>
   <div class="t">This year&#8217;s damages: the report</div>
-  <div class="d">The whole year in one page: what is missing, what the record holds in
-  Clancy&#8217;s own words, what can actually be used, the question the form never asks, and
-  what the data is telling us. Built for a reader with ten minutes.</div>
-  <div class="figs">
-   <div><div class="n">{d['cur']}</div><div class="l">damages read</div></div>
-   <div><div class="n">{d['cur'] - d['analysed']}</div><div class="l">report blank</div></div>
-   <div><div class="n">{d['usable']}</div><div class="l">lessons the company could use</div></div>
+  <div class="d">The whole year in one page for a reader with ten minutes: what is missing, what
+  the record holds in Clancy&#8217;s own words, what can actually be used, and the question the
+  form never asks. Written twice &mdash; once from the form, once after the files were read.</div>
+  <div class="ways">
+   <a class="way" href="/m/clancy-damage-board-report">
+    <div class="wt">From the form</div>
+    <div class="wd">The report presented to the STRIVE board, before the files were opened.</div>
+    <div class="wf"><b>{d['cur']}</b> damages read &middot;
+     <b>{d['cur'] - d['analysed']}</b> report blank &middot;
+     <b>{d['usable']}</b> lessons the company could use</div>
+    <div class="wgo">Read the report &rarr;</div>
+   </a>
+   <a class="way" href="/m/clancy-damage-board-report-v2">
+    <div class="wt">With the documents read</div>
+    <div class="wd">The report the first one promised, and the honest limit where the file is
+    as silent as the form.</div>
+    <div class="wf"><b>{d['enrich_recovered']}</b> blanks a document answers &middot;
+     <b>{d['enrich_failures']}</b> with a named failure &middot;
+     <b>{d['enrich_chars']}</b> of text recovered</div>
+    <div class="wgo">Read the second report &rarr;</div>
+   </a>
   </div>
-  <div class="go">Read the report &rarr;</div>
- </a>
- <a class="door c" href="/m/clancy-damage-analysis-v2">
-  <div class="kicker">The same year, read again</div>
-  <div class="t">With the documents read</div>
-  <div class="d">The two pages above read this year from Depotnet&#8217;s own fields. These read it
-  again with every attached file open: the panel reviews, statements, permits, locator data and
-  photographs that were always in the record and never opened. Same damages, far more answer.</div>
-  <div class="figs">
-   <div><div class="n">{d['enrich_files']:,}</div><div class="l">files read</div></div>
-   <div><div class="n">{d['enrich_images']:,}</div><div class="l">photographs looked at</div></div>
-   <div><div class="n">{d['enrich_cause']}</div><div class="l">damages a document explains</div></div>
-  </div>
-  <div class="go">Read what the file held &rarr;</div>
- </a>
- <a class="door b" href="/m/clancy-damage-board-report-v2">
-  <div class="kicker">The second report</div>
-  <div class="t">This year&#8217;s damages, with the documents read</div>
-  <div class="d">The report the first one promised, for the same ten-minute reader: what the
-  reading recovered, the same failures counted across the year, the same damages told twice, and
-  the honest limit where the file is as silent as the form.</div>
-  <div class="figs">
-   <div><div class="n">{d['enrich_recovered']}</div><div class="l">blank records a document answers</div></div>
-   <div><div class="n">{d['enrich_failures']}</div><div class="l">damages with a named failure</div></div>
-   <div><div class="n">{d['enrich_chars']}</div><div class="l">of text recovered</div></div>
-  </div>
-  <div class="go">Read the second report &rarr;</div>
- </a>
+ </div>
  <a class="door b" href="/m/{ui.REPORTS}">
   <div class="kicker">What Sygma produced</div>
   <div class="t">Reports &amp; Reviews</div>
