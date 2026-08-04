@@ -27,7 +27,7 @@ import json, os, re, subprocess, sys, urllib.request
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 REF = "xekedjpotwhhstpwganq"
-STRICT_EMBED = False  # flip to True the day Scout's embedder is live
+STRICT_EMBED = True  # flipped 4 Aug 2026 — Scout is live; an unembedded block is invisible to it
 
 def q(sql):
     tok = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
@@ -76,8 +76,12 @@ def main():
     emb = q("select "
             "(select count(*) from resource where status='published' and embedding is null) as r, "
             "(select count(*) from resource_block where embedding is null) as b")[0]
-    msg = f"{emb['r']} published resources / {emb['b']} blocks with no embedding yet"
-    (fails if STRICT_EMBED else infos).append(("     " if STRICT_EMBED else "") + msg)
+    n_unembedded = emb["r"] + emb["b"]
+    msg = f"{emb['r']} published resources / {emb['b']} blocks with no embedding"
+    if n_unembedded and STRICT_EMBED:
+        fails.append("     " + msg + " — invisible to Scout")
+    else:
+        infos.append(msg)
 
     # ── 1: content smuggled into the repo ────────────────────────────────────
     repo = None
