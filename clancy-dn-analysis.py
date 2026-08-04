@@ -1552,14 +1552,11 @@ def build(edition, label):
     # that actually exist in module_content are offered.
     _pub = {r["module_key"] for r in sql(
         "SELECT module_key FROM module_content WHERE module_key LIKE 'clancy-damage-analysis%'")}
-    _tabs = "".join(
-        f'<a href="/m/{v["mk"]}"' + (' class="on"' if k == FY else "") + f'>{v["label"]}</a>'
-        for k, v in FY_PAGES.items() if v["mk"] in _pub or k == FY)
-    _year_switch = ('<div class="yswitch" style="max-width:1080px;margin:14px auto 0;padding:0 20px">'
-                    '<span style="font-size:13px;color:#667">Edition:</span> ' + _tabs + "</div>"
-                    "<style>.yswitch a{margin-left:10px;font-size:13px;text-decoration:none;"
-                    "color:#446;padding:3px 10px;border:1px solid #dde;border-radius:20px}"
-                    ".yswitch a.on{background:#97D700;border-color:#97D700;color:#222;font-weight:600}</style>")
+    # The hand-styled "Edition:" pill strip lived here until 4 Aug 2026. It is gone: its outline
+    # was 1.24:1 against the page so it did not read as a control at all, it sat above the
+    # breadcrumbs outside the design system, and it called the YEAR an edition while v1/v2 are
+    # also editions. Both axes now live in ui.page_switch, under the masthead.
+    _year_switch = ""
 
     return f"""{ui.head("What the damage data tells us | Genny&#8217;s Damage Depot", PAGE_CSS + (STAGE4_CSS if STAGE2 else ""))}
 {ui.navbar("analysis")}
@@ -1568,6 +1565,7 @@ def build(edition, label):
 {ui.mast_compact("The analysis &middot; " + esc(label), "What the damage data tells us",
    f"Every service damage The Clancy Group logged in {fylabel}, read from what Depotnet itself "
    f"holds. {n} damages, {h['captured']} of them captured in full.")}
+{ui.page_switch("analysis", FY, "v1", _pub) if FY in ("FY26/27", "FY25/26") else ""}
 <div class="wrap body">
 {eds}
 

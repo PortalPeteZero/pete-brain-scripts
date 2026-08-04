@@ -300,6 +300,7 @@ Nothing is typed in. The first report remains exactly as presented.</div>
                       sub="The report the first one promised.",
                       body="Every file attached to this year&#8217;s damages, opened and read: "
                            "panel reviews, statements, permits, locator data and photographs.")
+            + ui.page_switch("report", FY, "v2")
             + "".join(b) + ui.foot(when) + ui.TAIL)
 
 

@@ -674,14 +674,13 @@ limits</a></div>
 </div></div>
 '''
 
-    _tabs = "".join(
-        f'<a class="{"on" if k == FY else ""}" href="/m/{MKS[k]}">{ {"FY26/27": "FY 2026/27", "FY25/26": "FY 2025/26"}[k] }</a>'
-        for k in ("FY26/27", "FY25/26"))
-    yswitch = ('<div class="yswitch" style="max-width:1180px;margin:14px auto 0;padding:0 22px">'
-               '<span style="font-size:13px;color:#667">Edition:</span> ' + _tabs + "</div>"
-               "<style>.yswitch a{margin-left:10px;font-size:13px;text-decoration:none;"
-               "color:#446;padding:3px 10px;border:1px solid #dde;border-radius:20px}"
-               ".yswitch a.on{background:#97D700;border-color:#97D700;color:#222;font-weight:600}</style>")
+    # The "Edition:" pill strip was retired 4 Aug 2026 — see the matching note in
+    # clancy-dn-analysis.py. Year AND reading now come from ui.page_switch, in the design system,
+    # under the masthead, with a fill that actually reads. What survives from it is this query:
+    # the switch must offer only pages that genuinely exist, never a hand-maintained list.
+    _pub = {r["module_key"] for r in sql(
+        "SELECT module_key FROM module_content WHERE module_key LIKE 'clancy-damage-board-report%'")}
+    yswitch = ""
 
     # the 48-square waffles: one square per damage, colour = verdict (Pete: each damage
     # a square you can count). Order: green, amber, red, grey.
@@ -833,6 +832,7 @@ cable.</mark>
    ("This year&#8217;s damages: what the record can tell us" if CURRENT else
     FYLABEL + " damages: what the record can tell us"),
    f"{n} service damages {YEARWORD}, read from Depotnet&#8217;s own fields.")}
+{ui.page_switch("report", FY, "v1", _pub) if FY in ("FY26/27", "FY25/26") else ""}
 
 <div class="band"><div class="rwrap">
 <div class="frame"><b>Where this comes from, and what it is not.</b> Everything on this page

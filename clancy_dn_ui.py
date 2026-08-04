@@ -72,11 +72,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Ar
 .dnav-links{display:flex;gap:2px;align-items:center;margin-left:6px;overflow-x:auto;
  scrollbar-width:none;-ms-overflow-style:none}
 .dnav-links::-webkit-scrollbar{display:none}
+/* Measured 4 Aug 2026 (Pete: "the nav buttons and pills are hard to see"). The TEXT was never the
+   problem — #c8ced6 on the bar is 6.86:1. The "you are here" SHAPE was: rgba(151,215,0,.16) over
+   #353E47 resolves to #45563c, which is 1.37:1 against the bar it sits on, so the highlight was
+   invisible and only the green text carried it, at a marginal 4.54:1. Solid white gives the pill
+   10.87:1 against the bar and its text 16:1 — and, unlike solid green, does not read as a second
+   copy of the Ask Genny button. Inactive lifted #c8ced6 -> #d5dbe2 (6.86 -> 7.80:1). */
 .dnav-links a{display:block;padding:7px 12px;border-radius:8px;text-decoration:none;
- color:#c8ced6;font-size:13.5px;font-weight:600;white-space:nowrap;background:none;
+ color:#d5dbe2;font-size:13.5px;font-weight:600;white-space:nowrap;background:none;
  transition:background .18s,color .18s}
-.dnav-links a:hover{background:rgba(255,255,255,.09);color:#fff}
-.dnav-links a.on{background:rgba(151,215,0,.16);color:#97D700}
+.dnav-links a:hover{background:rgba(255,255,255,.13);color:#fff}
+.dnav-links a.on{background:#fff;color:#182230;font-weight:800;
+ box-shadow:0 1px 3px rgba(0,0,0,.28)}
 .dnav-ask{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;gap:7px;
  background:#97D700;color:#1d2b00;font-size:13.5px;font-weight:800;text-decoration:none;
  padding:8px 15px;border-radius:9px;border:0;cursor:pointer;font-family:inherit;
@@ -211,6 +218,34 @@ body{background:var(--bg);color:var(--ink);line-height:1.5}
 .door .figs .l{font-size:11px;color:var(--faint);margin-top:2px}
 .door .go{margin-top:12px;font-size:13px;font-weight:800;color:var(--green-d)}
 .door:hover .go{text-decoration:underline}
+/* ── the page switch: year + reading + what this is ──
+   Measured 4 Aug 2026. The old pills were a #dde outline on a #f4f6f9 page = 1.24:1, and no light
+   grey border reaches the 3:1 a control needs (#9aa6b5, the darkest tested, still only 2.28:1).
+   So the SHAPE is carried by fill: white for an option you can take, solid charcoal for the one
+   you are on (10.9:1 against the page). Borders only sharpen an edge that fill already made. */
+.psw{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+ padding:16px 0 17px;margin-bottom:26px}
+.psw-in{max-width:1160px;margin:0 auto;padding:0 22px}
+.psw-h{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+ color:var(--faint);margin-bottom:10px}
+.psw-rows{display:flex;flex-direction:column;gap:9px}
+.psw-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.psw-l{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+ color:var(--muted);min-width:64px}
+.psw-opts{display:flex;gap:8px;flex-wrap:wrap}
+.pswb{display:inline-flex;align-items:center;gap:7px;background:#fff;
+ border:1.5px solid #c9d2dd;border-radius:9px;padding:7px 14px;font-size:13.5px;
+ font-weight:700;color:var(--mid);text-decoration:none;white-space:nowrap;
+ transition:border-color .16s,background .16s,color .16s}
+a.pswb:hover{border-color:var(--char);background:#f4f6f9;color:var(--ink)}
+.pswb.on{background:var(--char);border-color:var(--char);color:#fff;font-weight:800}
+.pswb.off{background:#f4f6f9;border-color:#e4e8ee;color:#a6b0bd;cursor:not-allowed}
+.pswb-x{font-style:normal;font-size:9.5px;font-weight:800;letter-spacing:.1em;
+ text-transform:uppercase;background:#e4e8ee;color:#8b95a3;border-radius:999px;padding:2px 7px}
+.psw-what{margin-top:13px;padding-top:12px;border-top:1px solid #eef1f5;
+ font-size:14px;color:var(--mid);line-height:1.5;max-width:82ch}
+.psw-what b{color:var(--ink);font-weight:800}
+@media(max-width:560px){.psw-l{min-width:0;flex-basis:100%}}
 h2.sec{font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
  color:var(--faint);margin:36px 0 13px}
 .dnote{background:var(--card);border:1px solid var(--line);border-left:4px solid #b45309;
@@ -294,15 +329,22 @@ window.GennyCard=(function(){
 
 # ── chrome builders ──────────────────────────────────────────────────────────────────────────
 NAV_ITEMS = [
+    # Labels reworked 4 Aug 2026 (Pete: "the top nav bar labels are confusing"). The worst pair was
+    # "Reports" and "The report" — near-identical words for completely different things: the
+    # library of what Sygma has produced, and the board report on this year's damages. Each label
+    # now says what its page is. "Genny & CAT" is UNCHANGED on purpose: those are Depotnet's own
+    # words for the signal generator and the cable avoidance tool, both carried in clancy_glossary
+    # with whose_word='Depotnet'. Renaming the customer's own terms is exactly what
+    # clancy-vocab-check.py exists to refuse.
     ("overview", "Overview", f"/m/{HUB}"),
     ("damages", "Damages", f"/m/{DAMAGES}"),
-    ("analysis", "What the data tells us", f"/m/{ANALYSIS}"),
-    ("reports", "Reports", f"/m/{REPORTS}"),
+    ("analysis", "Analysis", f"/m/{ANALYSIS}"),
+    ("reports", "Sygma reports", f"/m/{REPORTS}"),
     ("reviews", "Genny &amp; CAT", f"/m/{REVIEWS}"),
     # The glossary is the SSOT for the section's terms (Pete, 2 Aug 2026). A nav change
     # touches EVERY page, so shipping any edit to this list means one full
     # clancy-dn-publish.py run — never a lone page publish.
-    ("report", "The report", "/m/clancy-damage-board-report"),
+    ("report", "Board report", "/m/clancy-damage-board-report"),
     ("glossary", "Glossary", "/m/clancy-damage-glossary"),
 ]
 
@@ -344,6 +386,122 @@ def logos():
     return (f'<div class="logos"><img class="sy" src="{A_SYGMA}" alt="Sygma Solutions">'
             '<div class="mid">Service Damage Partnership</div>'
             f'<img class="cl" src="{A_CLANCY}" alt="The Clancy Group"></div>')
+
+
+# ── the version switch ───────────────────────────────────────────────────────────────────────
+# Two pages answer the same questions about the same year: one from Depotnet's fields alone, one
+# with every attached document opened. Both were live from 3 Aug 2026 and NOTHING linked them —
+# the only route to either v2 page was a door card three-quarters of the way down the hub, and
+# the navbar on a v2 page highlighted the V1 entry as "you are here" and led back to v1. So the
+# pair was invisible and, once found, indistinguishable.
+#
+# Pete, 4 Aug 2026: a toggle rather than more navbar entries, "very clear and prominent how the
+# 2 versions are different" — so this is a full band with both readings described, not a pill.
+# The description is the point; the link is secondary.
+# THE GRID. Only combinations that are actually published belong here — a control offering a page
+# that is not there is worse than no control. FY24/25 and FY23/24 exist in clancy-dn-analysis.py's
+# FY_PAGES as scaffolds and have NEVER been published, so they are deliberately absent.
+PAGES = {
+    "analysis": {("FY26/27", "v1"): "clancy-damage-analysis",
+                 ("FY26/27", "v2"): "clancy-damage-analysis-v2",
+                 ("FY25/26", "v1"): "clancy-damage-analysis-2025-26"},
+    "report":   {("FY26/27", "v1"): "clancy-damage-board-report",
+                 ("FY26/27", "v2"): "clancy-damage-board-report-v2",
+                 ("FY25/26", "v1"): "clancy-damage-board-report-2025-26"},
+}
+YEARS = [("FY26/27", "FY 2026/27"), ("FY25/26", "FY 2025/26")]
+READINGS = [("v1", "From the form"), ("v2", "With the documents read")]
+
+# The "what this is" line, keyed on the reading. Year-agnostic wording, so a new year needs no edit.
+_WHAT = {
+    "v1": ("{y} damages exactly as Depotnet&#8217;s own fields record them &mdash; the form Clancy "
+           "completes and its 18 questions. <b>No attached file was opened.</b>"),
+    "v2": ("The same {y} damages, with <b>every attached file opened and read</b>: the panel "
+           "reviews, statements, permits, locator data and photographs that were always in the "
+           "record and nobody had read."),
+}
+_NOT_READ = ("The attached files for {y} have not been read yet &mdash; only "
+             "FY&nbsp;2026/27 has been through enrichment.")
+
+
+def page_switch(pair, fy, version, published=None):
+    """ONE control carrying BOTH axes: which year, and which reading. Plus a plain sentence saying
+    what the page you are on actually is.
+
+    Replaces two devices that fought each other (Pete, 4 Aug 2026 — "needs clear nav, with a clear
+    what this is on each page"):
+      · the hand-styled "Edition:" pills built inline inside each v1 generator, outside the design
+        system, sitting ABOVE the breadcrumbs. "Edition" named the YEAR while v1/v2 are also
+        editions — the analysis generator writes to a table called `clancy_analysis_editions`.
+      · the two-panel version band, which carried the reading but not the year.
+
+    Visibility is measured, not eyeballed (Pete: "the nav buttons and pills are hard to see"). The
+    old pill outline was #dde on a #f4f6f9 page = 1.24:1, and NO light grey border can reach the
+    3:1 a control needs — the best tested, #9aa6b5, still only makes 2.28:1. So the shape is
+    carried by FILL: white against the page for an option you can take, solid charcoal with white
+    text for the one you are on.
+
+    `pair` is "analysis" or "report"; `fy` is a key in PAGES; `version` is "v1"/"v2".
+    An option with no published page renders disabled with the reason, never as a dead link.
+
+    `published` is an optional set of module_keys that genuinely exist in `module_content`. PASS IT
+    — this module holds no database connection, so without it the grid below is the only authority
+    and it is hand-maintained. The year tabs it replaced queried this live, and the comment above
+    that query records why: on 2 Aug the nav pointed every year at FY26/27 and a reader inside the
+    FY25/26 section could not reach its own analysis. Losing that check to a tidier dict would
+    reintroduce the exact bug, one published year later.
+    """
+    grid = PAGES[pair]
+    if published is not None:
+        grid = {k: v for k, v in grid.items() if v in published}
+    yl = dict(YEARS).get(fy, fy)
+    out = ['<div class="psw"><div class="psw-in">',
+           '<div class="psw-h">You are reading</div>',
+           '<div class="psw-rows">']
+
+    def row(label, opts):
+        cells = []
+        for key, text, href, why in opts:
+            if href is None:
+                cells.append(f'<span class="pswb off" title="{why}">{text}'
+                             f'<i class="pswb-x">not yet</i></span>')
+            elif key == "on":
+                cells.append(f'<span class="pswb on">{text}</span>')
+            else:
+                cells.append(f'<a class="pswb" href="/m/{href}">{text}</a>')
+        return (f'<div class="psw-row"><span class="psw-l">{label}</span>'
+                f'<span class="psw-opts">{"".join(cells)}</span></div>')
+
+    # Year — keep the reading you are on where that combination exists, else fall back to v1.
+    yopts = []
+    for k, lab in YEARS:
+        if k == fy:
+            yopts.append(("on", lab, "x", ""))
+        elif (k, version) in grid:
+            yopts.append(("go", lab, grid[(k, version)], ""))
+        elif (k, "v1") in grid:
+            yopts.append(("go", lab, grid[(k, "v1")], ""))
+        else:
+            yopts.append(("no", lab, None, "not published"))
+    out.append(row("Year", yopts))
+
+    ropts = []
+    for k, lab in READINGS:
+        if k == version:
+            ropts.append(("on", lab, "x", ""))
+        elif (fy, k) in grid:
+            ropts.append(("go", lab, grid[(fy, k)], ""))
+        else:
+            ropts.append(("no", lab, None, f"not available for {yl}"))
+    out.append(row("Reading", ropts))
+
+    out.append("</div>")
+    what = _WHAT[version].replace("{y}", yl)
+    if (fy, "v2") not in grid:
+        what += " " + _NOT_READ.replace("{y}", yl)
+    out.append(f'<div class="psw-what">{what}</div>')
+    out.append("</div></div>")
+    return "".join(out)
 
 
 def hero(kicker="", title="", sub="", body="", extra=""):

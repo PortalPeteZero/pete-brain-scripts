@@ -415,6 +415,7 @@ none of it is typed in.</div></div>""")
                       sub="The same damages. The same year. The files opened.",
                       body="Clancy&#8217;s own panels, statements, permits and photographs, read in "
                            "full and set beside what Depotnet&#8217;s fields recorded.")
+            + ui.page_switch("analysis", FY, "v2")
             + "".join(b) + ui.foot(when) + ui.TAIL)
     return page
 
