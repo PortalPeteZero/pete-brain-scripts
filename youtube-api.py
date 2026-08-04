@@ -17,7 +17,11 @@ import json, time, base64, urllib.request, urllib.parse, urllib.error
 import tempfile, os, subprocess, sys
 from datetime import date, timedelta
 
-KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+KEY = (
+    os.path.join(os.environ["VAULT"], "Library", "processes", "secrets", "google-seo-service-account.json")
+    if os.environ.get("VAULT")                       # $VAULT-aware, same as drive-api.py / gsc-api.py
+    else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
+)
 IMPERSONATE = "pete.ashcroft@sygma-solutions.com"
 SCOPES = "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly"
 DATA_BASE = "https://www.googleapis.com/youtube/v3"
