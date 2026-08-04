@@ -32,7 +32,36 @@ CONNECTIONS_URL = "https://api.xero.com/connections"
 API_BASE      = "https://api.xero.com/api.xro/2.0"
 REPORTS_BASE  = "https://api.xero.com/api.xro/2.0/Reports"
 
-SCOPES = "offline_access openid accounting.contacts accounting.settings accounting.settings.read accounting.invoices accounting.payments accounting.banktransactions accounting.reports.profitandloss.read accounting.reports.balancesheet.read accounting.manualjournals"
+# Xero SCOPES. Two things worth knowing before editing this line (verified against Xero's scopes
+# doc, 4 Aug 2026):
+#   1. Scopes are ADDITIVE. Re-running `auth` adds any new scope to what was already consented.
+#      Removing one is NOT possible on a live token -- that needs a revoke and a fresh consent.
+#   2. The broad `accounting.reports.read` is DEPRECATED (available until Sept 2027) and has been
+#      split into the granular reports.* scopes below. Asking for the broad one is the wrong move
+#      now. Holding only profitandloss + balancesheet is why /Reports 401'd on 4 Aug 2026 and a
+#      session wrongly concluded the endpoint did not exist.
+# `accounting.journals.read` (the general ledger) may be refused: Xero's changelog says journals
+# now needs the Advanced tier plus certification. It is requested anyway -- if consent drops it,
+# everything else still lands, because scopes are additive rather than all-or-nothing.
+SCOPES = " ".join([
+    "offline_access", "openid",
+    # --- write, already held before 4 Aug 2026 ---
+    "accounting.contacts", "accounting.settings", "accounting.invoices",
+    "accounting.payments", "accounting.banktransactions", "accounting.manualjournals",
+    "accounting.settings.read",
+    # --- reports: the granular set (reports are read-only by nature) ---
+    "accounting.reports.profitandloss.read", "accounting.reports.balancesheet.read",
+    "accounting.reports.aged.read",            # AgedPayables/AgedReceivables -- the cashflow one
+    "accounting.reports.trialbalance.read",
+    "accounting.reports.banksummary.read",
+    "accounting.reports.executivesummary.read",
+    "accounting.reports.budgetsummary.read",
+    # --- added 4 Aug 2026 on Pete's instruction (write across the estate) ---
+    "accounting.attachments",                  # read AND attach files to bills/invoices (e.g. a C79)
+    "accounting.budgets.read",
+    "accounting.journals.read",                # general ledger; may be refused, see note above
+    "files", "assets", "projects",
+])
 
 
 # ---------------------------------------------------------------------------
