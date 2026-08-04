@@ -11,6 +11,9 @@ Usage:
   python3 youtube-api.py video VIDEO_ID [DAYS]           # single video deep stats
   python3 youtube-api.py traffic CHANNEL_ID [DAYS]       # traffic sources breakdown
   python3 youtube-api.py captions VIDEO_ID               # list caption tracks (asr = auto-generated)\n  python3 youtube-api.py transcript VIDEO_ID [OUT] [srt|vtt]  # download the transcript\n  python3 youtube-api.py whoami                          # show auth info
+
+Before uploading or editing metadata, run the gate -- it REFUSES bad/unoptimised metadata:
+  python3 youtube-seo-check.py payload.json      |  python3 youtube-seo-check.py --video VIDEO_ID
 """
 
 import json, time, base64, urllib.request, urllib.parse, urllib.error
