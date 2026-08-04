@@ -10,7 +10,7 @@ Usage:
   python3 youtube-api.py videos CHANNEL_ID [DAYS]        # top videos by views
   python3 youtube-api.py video VIDEO_ID [DAYS]           # single video deep stats
   python3 youtube-api.py traffic CHANNEL_ID [DAYS]       # traffic sources breakdown
-  python3 youtube-api.py whoami                          # show auth info
+  python3 youtube-api.py captions VIDEO_ID               # list caption tracks (asr = auto-generated)\n  python3 youtube-api.py transcript VIDEO_ID [OUT] [srt|vtt]  # download the transcript\n  python3 youtube-api.py whoami                          # show auth info
 """
 
 import json, time, base64, urllib.request, urllib.parse, urllib.error
@@ -23,7 +23,14 @@ KEY = (
     else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "secrets", "google-seo-service-account.json")
 )
 IMPERSONATE = "pete.ashcroft@sygma-solutions.com"
-SCOPES = "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/yt-analytics.readonly"
+SCOPES = " ".join([
+    "https://www.googleapis.com/auth/youtube",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+    # captions live ONLY behind force-ssl -- the three above do not reach them.
+    # Granted in the Workspace admin console 4 Aug 2026 (client 117115682242341369700).
+    "https://www.googleapis.com/auth/youtube.force-ssl",
+])
 DATA_BASE = "https://www.googleapis.com/youtube/v3"
 ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
 
@@ -200,6 +207,44 @@ def whoami():
     print(f"Impersonating: {IMPERSONATE}")
     print(f"Channels accessible: {len(items)}")
 
+
+def list_captions(video_id):
+    """Every caption track on a video. trackKind 'asr' = YouTube auto-generated."""
+    r = data_api("/captions", {"part": "snippet", "videoId": video_id})
+    items = r.get("items", [])
+    if not items:
+        print("No caption tracks.")
+        print("NOTE: videos.contentDetails.caption reports only MANUALLY UPLOADED tracks -- it reads")
+        print("      'false' even when auto-generated (ASR) captions exist. This command is the truth.")
+        return
+    print(f"{'TRACK ID':<32} {'LANG':<6} {'KIND':<6} {'AUTO':<5} NAME")
+    print("-" * 78)
+    for t in items:
+        s = t["snippet"]
+        kind = s.get("trackKind", "")
+        print(f"{t['id'][:32]:<32} {str(s.get('language')):<6} {kind:<6} "
+              f"{'yes' if kind == 'asr' else 'no':<5} {s.get('name') or '(unnamed)'}")
+
+
+def download_transcript(video_id, fmt="srt", out=None):
+    """Download a video's transcript. Prefers a manual track over the auto one."""
+    r = data_api("/captions", {"part": "snippet", "videoId": video_id})
+    items = r.get("items", [])
+    if not items:
+        print("No caption track to download."); sys.exit(2)
+    items.sort(key=lambda t: t["snippet"].get("trackKind") == "asr")   # manual first
+    track = items[0]
+    url = f"{DATA_BASE}/captions/{track['id']}?tfmt={fmt}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {get_token()}"})
+    body = urllib.request.urlopen(req).read().decode("utf-8", "ignore")
+    if out:
+        with open(out, "w") as f: f.write(body)
+        words = len(body.split())
+        print(f"Wrote {out} -- {len(body):,} chars, ~{words:,} words "
+              f"({'auto-generated' if track['snippet'].get('trackKind') == 'asr' else 'manual'} track)")
+    else:
+        print(body)
+
 def main():
     args = sys.argv[1:]
     if not args:
@@ -219,6 +264,13 @@ def main():
     elif cmd == "traffic":
         if len(args) < 2: print("Usage: youtube-api.py traffic CHANNEL_ID [DAYS]"); sys.exit(1)
         traffic_sources(args[1], int(args[2]) if len(args) > 2 else 28)
+    elif cmd == "captions":
+        if len(args) < 2: print("Usage: youtube-api.py captions VIDEO_ID"); sys.exit(1)
+        list_captions(args[1])
+    elif cmd == "transcript":
+        if len(args) < 2: print("Usage: youtube-api.py transcript VIDEO_ID [OUT_FILE] [srt|vtt]"); sys.exit(1)
+        download_transcript(args[1], args[3] if len(args) > 3 else "srt",
+                            args[2] if len(args) > 2 else None)
     elif cmd == "whoami":
         whoami()
     else:
