@@ -100,6 +100,11 @@ def check(payload, kws, context="public"):
     if not st.get("privacyStatus"):
         B("no-privacy", "privacyStatus not stated. Never leave this to a default -- say "
                         "private, unlisted or public explicitly.")
+    if st and "embeddable" not in st:
+        B("no-embeddable", "status present without 'embeddable'. videos.update REPLACES the "
+                           "status object, and an omitted embeddable resets to FALSE -- which "
+                           "killed playback on every Bureau embed on 5 Aug 2026. Always send "
+                           "embeddable: true explicitly.")
     if not tags:
         W("no-tags", "No tags. Minor for ranking, but free.")
 
