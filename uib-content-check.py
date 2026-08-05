@@ -66,6 +66,19 @@ def main():
         ("services used on resources that are not in the closed list",
          "select count(*) as n from (select unnest(services) s from resource) x "
          "where not exists (select 1 from service where slug=x.s)"),
+        # Pete's voice carries no em-dashes. Rows quoting a manufacturer or a standard
+        # word for word are exempt: altering a quote is the worse fault (block 121 is
+        # the Radiodetection C.A.T.4 user guide, and says so in the text).
+        ("resource summaries or titles with an em-dash (not Pete's voice)",
+         "select count(*) as n from resource where summary like '%—%' or title like '%—%'"),
+        ("image alt text with an em-dash (not Pete's voice)",
+         "select count(*) as n from resource_asset where alt_text like '%—%'"),
+        ("body blocks with an em-dash outside a verbatim quote",
+         "select count(*) as n from resource_block where text like '%—%' "
+         "and text not ilike '%quoted verbatim%'"),
+        ("course or step text with an em-dash (not Pete's voice)",
+         "select (select count(*) from course where lede like '%—%' or summary like '%—%' or title like '%—%') "
+         "+ (select count(*) from course_step where title like '%—%' or body::text like '%—%') as n"),
     ]
     for label, sql in checks:
         n = q(sql)[0]["n"]
