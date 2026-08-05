@@ -66,20 +66,39 @@ def main():
         ("services used on resources that are not in the closed list",
          "select count(*) as n from (select unnest(services) s from resource) x "
          "where not exists (select 1 from service where slug=x.s)"),
-        # Pete's voice carries no em-dashes. Rows quoting a manufacturer or a standard
-        # word for word are exempt: altering a quote is the worse fault (block 121 is
-        # the Radiodetection C.A.T.4 user guide, and says so in the text).
-        ("resource summaries or titles with an em-dash (not Pete's voice)",
-         "select count(*) as n from resource where summary like '%—%' or title like '%—%'"),
-        ("image alt text with an em-dash (not Pete's voice)",
-         "select count(*) as n from resource_asset where alt_text like '%—%'"),
-        ("body blocks with an em-dash outside a verbatim quote",
-         "select count(*) as n from resource_block where text like '%—%' "
-         "and text not ilike '%quoted verbatim%'"),
-        ("course or step text with an em-dash (not Pete's voice)",
-         "select (select count(*) from course where lede like '%—%' or summary like '%—%' or title like '%—%') "
-         "+ (select count(*) from course_step where title like '%—%' or body::text like '%—%') as n"),
     ]
+
+    # ── em-dashes, across EVERY text column in the schema ─────────────────────
+    # Pete's voice carries no em-dashes. The first sweep (5 Aug 2026) checked the
+    # four columns that came to mind and missed topic blurbs, quiz options, course
+    # source refs and a list block, so this walks information_schema instead of
+    # trusting a hand-written list: a new column is covered the day it is added.
+    # Exempt: rows quoting a manufacturer or standard word for word, because
+    # altering a quote is the worse fault. resource_block 121 is the Radiodetection
+    # C.A.T.4 user guide and says "quoted verbatim" in the text itself.
+    dash_sql = """
+do $$
+declare r record; n bigint; extra text;
+begin
+  create temp table if not exists uib_dash_hits(tbl text, col text, n bigint);
+  delete from uib_dash_hits;
+  for r in select table_name, column_name from information_schema.columns
+           where table_schema='public' and data_type in ('text','character varying','jsonb')
+             and table_name not in ('auth_token','ask_log')
+  loop
+    extra := case when r.table_name='resource_block' and r.column_name='text'
+                  then ' and text not ilike ''%quoted verbatim%''' else '' end;
+    execute format('select count(*) from public.%I where %I::text like ''%%—%%''%s',
+                   r.table_name, r.column_name, extra) into n;
+    if n > 0 then insert into uib_dash_hits values (r.table_name, r.column_name, n); end if;
+  end loop;
+end $$;
+select coalesce(sum(n),0)::bigint as n, coalesce(string_agg(tbl||'.'||col, ', '), '') as where_
+from uib_dash_hits"""
+    d = q(dash_sql)[0]
+    n_dash = int(d["n"])  # sum() comes back numeric, which this API encodes as a string
+    if n_dash:
+        fails.append(f"{n_dash:>3}  em-dashes in content (not Pete's voice): {d['where_']}")
     for label, sql in checks:
         n = q(sql)[0]["n"]
         if n:
