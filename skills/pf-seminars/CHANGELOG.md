@@ -5,6 +5,24 @@
 > `[[CHANGELOG]]`). Entries before v1.3.0 are therefore not reconstructed — inventing them would be
 > worse than the gap. The v1.2.0 skill content is in git history.
 
+## v1.5.0 — 2026-08-05
+- **Step 4a gets a runnable gate: `pf-quote-gate.py`.** v1.4.0 added an adversarial verify pass, and
+  it worked — but it was a *reading* pass, and reading passes converge on summaries that merely read
+  well. Nine summaries survived repeated adversarial rounds until two consecutive auditors returned
+  zero, were declared clean and banked. A mechanical check then failed **71% of their quoted spans**,
+  including one ("written on the wall in the old studio") that appears nowhere on the tape. By
+  contrast, summaries fixed by agents required to mechanically verify their own output came in at
+  7.5%, with seven at zero. The difference is the command, not the care.
+- The gate extracts every quoted span from `<key>-summary.md`, finds `<key>-transcript.txt`, and
+  proves each appears verbatim. Ellipsis joins are checked per side so a weld cannot hide behind one.
+- Two parser traps are handled, because both manufacture failures indistinguishable from real ones:
+  markdown hard-wraps quotations across physical lines (so blocks are reassembled before extraction),
+  and straight quotes must be paired **positionally** — scanning for any `"…"` pair matches the prose
+  *between* two quotes whenever a line carries more than one.
+- Non-zero is a list to adjudicate, not automatically a defect list: stutter removal is accepted
+  practice and fails the gate. In the 4-5 Aug sweep the residue ran ~4 genuine defects per acceptable
+  cleanup. Zero is the only result needing no adjudication.
+
 ## v1.3.0 — 2026-07-30
 - **Step 2 rewritten: the browser-JWT Plaud route is retired.** Plaud shipped official CLI access on
   30 Jul 2026, so transcripts now come from `plaud-api.py` — no Chrome, no headless caveat, and no

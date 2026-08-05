@@ -1,6 +1,6 @@
 ---
 name: pf-seminars
-version: 1.4.0
+version: 1.5.0
 description: >
   Add a Passion Fit seminar to the archive, end to end, from nothing but a link or a
   "here's Monday's seminar". Pulls the verbatim transcript out of Plaud or Google
@@ -144,6 +144,29 @@ a second read (or a subagent per seminar) whose job is to REFUTE the summary, wi
 
 Fix what the pass finds, then bank. If a claim matters and cannot be verified, the summary states
 the ambiguity honestly — same principle as the date rule: never invent certainty.
+
+### The reading pass is NOT enough — run the gate (added 5 Aug 2026)
+
+A reasoning-only verify pass converges on a summary that merely READS well. Proof: nine summaries
+went through repeated adversarial audit rounds until two consecutive auditors returned zero, were
+declared clean and banked — and **71% of their quoted spans still failed a mechanical check**. One
+span that survived every round ("written on the wall in the old studio") appears nowhere on the tape.
+
+So the pass is not complete until the counter prints 0:
+
+```
+VAULT=/tmp/pbs python3 /tmp/pbs/pf-quote-gate.py <dir-with-summaries-and-transcripts>
+```
+
+It extracts every quoted span from each `<key>-summary.md`, finds `<key>-transcript.txt`, and proves
+each span appears verbatim in the tape. Ellipsis joins are checked per side, so a weld cannot hide
+behind one.
+
+**Adjudicating a non-zero count.** These are ASR transcripts, so removing a stutter ("as I we want"
+→ "as I want") is accepted practice and will fail the gate. A non-zero count is therefore a list to
+work through by hand, not automatically a defect list. But go through it span by span — in the
+4-5 Aug sweep the residue ran at roughly four genuine defects for every acceptable cleanup. Zero is
+the only result that needs no adjudication, and seven summaries in that sweep did reach it.
 
 ## Step 5 — Tidy Plaud itself
 If the recording was in the trash or untagged, restore it and move it into the **PF** folder so
