@@ -32,10 +32,37 @@ MARKER = f"/tmp/.leakguard-brief-ack-{_SID}" if _SID else "/tmp/.leakguard-brief
 STALE = []
 
 
+class _Rows(list):
+    """A query result that knows whether it actually ran.
+
+    WHY (5 Aug 2026): this helper used to `return [] if i < 0`, so a query that FAILED and a query
+    that legitimately returned nothing were the same value. On 5 Aug a transient read of vault_notes
+    came back empty and the brief announced "NO SOPs FOUND AT THAT PATH. Something has been moved or
+    deleted", then refused the ack and locked every LeakGuard tool. All five SOPs and the front door
+    were present the whole time. A failed read reported as data loss is the exact error this whole
+    brief exists to prevent, and it was sitting inside the gate that enforces it.
+    """
+    ok = True
+    error = ""
+
+
 def _sql(tool, query):
-    r = subprocess.run(["python3", f"{VAULT}/{tool}", query], capture_output=True, text=True, env=ENV)
-    out = r.stdout.strip(); i = out.find("[")
-    return json.loads(out[i:]) if i >= 0 else []
+    try:
+        r = subprocess.run(["python3", f"{VAULT}/{tool}", query],
+                           capture_output=True, text=True, env=ENV, timeout=120)
+    except Exception as e:
+        bad = _Rows(); bad.ok = False; bad.error = f"{type(e).__name__}: {e}"
+        return bad
+    out = (r.stdout or "").strip(); i = out.find("[")
+    if i < 0:
+        bad = _Rows(); bad.ok = False
+        bad.error = ((r.stderr or "").strip() or out or f"exit {r.returncode}")[:300]
+        return bad
+    try:
+        return _Rows(json.loads(out[i:]))
+    except Exception as e:
+        bad = _Rows(); bad.ok = False; bad.error = f"unparseable reply: {e}"
+        return bad
 
 
 def lg(q):
@@ -548,7 +575,13 @@ sops = cc(f"""SELECT vault_path, title, word_count, updated_at::date AS d, body
 
 SOPS_READ = [s_["vault_path"] for s_ in sops if "leakguard" in s_["vault_path"].lower()]
 
-if not sops:
+if not sops and not getattr(sops, "ok", True):
+    # The read FAILED. That is not evidence the SOPs are gone, and saying so sends the reader
+    # hunting for a deletion that never happened.
+    print("  ⛔ COULD NOT READ THE SOPs — the query failed. This is NOT evidence they are missing.")
+    print(f"     reason: {sops.error}")
+    print("     Retry the brief. If it keeps failing, check the database, not the notes.")
+elif not sops:
     print("  ⛔ NO SOPs FOUND AT THAT PATH. Something has been moved or deleted.")
     print("     Do NOT proceed on memory — find them before you touch anything:")
     print("     cc-sql.py \"SELECT vault_path FROM vault_notes WHERE type=\'sop\'\"")
@@ -575,7 +608,9 @@ print("\n" + "=" * 92)
 print("  THE FRONT DOOR — repos, deploys, the data model, state of play")
 fd = "Projects/CD-LeakGuard/leakguard-crm-front-door.md"
 r = cc(f"SELECT length(body) AS n, updated_at::date AS d FROM vault_notes WHERE vault_path='{fd}'")
-print(f"     {'✓' if r else '✗ NOT FOUND'} {fd}" + (f"  ({r[0]['n']} chars, {r[0]['d']})" if r else ""))
+_fd_state = "✓" if r else ("✗ COULD NOT READ (query failed, NOT proof it is missing)"
+                           if not getattr(r, "ok", True) else "✗ NOT FOUND")
+print(f"     {_fd_state} {fd}" + (f"  ({r[0]['n']} chars, {r[0]['d']})" if r else ""))
 print(f"""     cc-sql.py "SELECT body FROM vault_notes WHERE vault_path='{fd}'"
 """)
 
@@ -606,8 +641,15 @@ if "--ack" in sys.argv:
     # "can we gate it so future you must read all". If none were found, that is a broken system, not
     # a briefed session — refuse rather than unlock into a project with no procedures.
     if not SOPS_READ:
-        print("\n⛔ ACK REFUSED — no SOPs were found, so none could be put in front of you.")
-        print("   The tools stay locked. Find where they went before touching anything.")
+        # Still refuse (fail closed is right), but say WHICH of the two it is. Reporting a failed
+        # read as "they have been moved or deleted" cost a session on 5 Aug 2026.
+        if not getattr(sops, "ok", True):
+            print("\n⛔ ACK REFUSED — the SOP query FAILED, so none could be put in front of you.")
+            print(f"   reason: {sops.error}")
+            print("   The tools stay locked. This does NOT mean the SOPs are missing — retry first.")
+        else:
+            print("\n⛔ ACK REFUSED — no SOPs were found, so none could be put in front of you.")
+            print("   The tools stay locked. Find where they went before touching anything.")
         sys.exit(1)
     with open(MARKER, "w") as fh:
         json.dump({"at": time.time(), "thingslog_reached": True,
