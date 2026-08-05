@@ -36,6 +36,24 @@ sql = _args[0] if _args else sys.stdin.read()
 
 if not sql.strip():
     sys.exit("cc-sql: no SQL given. Pass it as an argument or pipe/redirect it on stdin.")
+
+# REFUSE --ref. cc-sql is hard-wired to the Command Centre project, but six data_map rows said
+# "cc-sql against rsczwfstwkthaybxhszy" (the Sygma Platform) -- so following the routing literally
+# produced `cc-sql.py "<sql>" --ref rsczwfstwkthaybxhszy`, which the flag-stripper above silently
+# swallowed and then answered from the CC. No error. The trap is public.staff_directory, which
+# exists in BOTH databases: the CC's is a contact-card mirror, the platform's is the staff SSOT, so
+# the wrong-database answer comes back populated and plausible. Added 5 Aug 2026 after a session
+# reported fleet and staff facts that had never been looked up in either place.
+if "--ref" in sys.argv[1:]:
+    _rest = sys.argv[1:]
+    _k = _rest.index("--ref")
+    _want = _rest[_k + 1] if _k + 1 < len(_rest) else ""
+    sys.exit(
+        f"cc-sql: REFUSED -- cc-sql.py only ever talks to the Command Centre project ({REF}); it "
+        f"cannot target {_want or 'another project'} and would have answered from the CC instead.\n"
+        f"  Use: VAULT=$VAULT python3 $VAULT/lg-sql.py --ref {_want or '<project-ref>'} \"<sql>\"\n"
+        f"  Sygma Platform (staff, fleet, delegates, certificates, training customers) = rsczwfstwkthaybxhszy"
+    )
 req = urllib.request.Request(
     f"https://api.supabase.com/v1/projects/{REF}/database/query",
     data=json.dumps({"query": sql}).encode(),
