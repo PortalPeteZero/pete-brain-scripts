@@ -153,13 +153,16 @@ def load():
     # this reads the register rather than the retired clancy_damages table. Same shape out.
     enr = rest("clancy_dn_incidents?select=id,job_ref,status,sygma_stage_note,sygma_summary,"
                "sygma_findings,sygma_finding_sources,sygma_next_actions,sygma_drive_folder,"
-               "sygma_report_url,sygma_plain,sygma_plain_at"
+               "sygma_report_url,sygma_plain,sygma_plain_at,sygma_review_status,"
+               "sygma_review_status_at"
                "&sygma_reviewed_at=not.is.null")
     enrich = {e["id"]: {"dn_id": e["id"], "job_ref": e["job_ref"], "status": e["status"],
                         "stage_note": e["sygma_stage_note"], "summary": e["sygma_summary"],
                         "key_findings": e["sygma_findings"], "next_actions": e["sygma_next_actions"],
                         "finding_sources": e.get("sygma_finding_sources"),
                         "plain": e.get("sygma_plain"), "plain_at": e.get("sygma_plain_at"),
+                        "review_status": e.get("sygma_review_status"),
+                        "review_status_at": e.get("sygma_review_status_at"),
                         "drive_folder": e["sygma_drive_folder"], "report_url": e["sygma_report_url"]}
               for e in enr}
     # Everything the capture pulled off Depotnet for each damage: the incident PDF, the photos and
@@ -522,6 +525,14 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .acard{border:1px solid var(--border);border-radius:11px;padding:14px 16px;margin-top:12px;background:#fafbfd}
 ul.kf{margin:6px 0 0 18px;font-size:13.5px}
 .plaincard{border-left:4px solid #97D700}
+.stamp{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:14px 18px;border-radius:8px;border:2px solid;font-size:15px;line-height:1.5}
+.stamp b{display:block;font-size:16.5px;letter-spacing:.01em}
+.stampdot{flex:0 0 12px;height:12px;border-radius:50%;margin-top:5px}
+.stampwhen{display:block;font-size:13px;font-weight:400;margin-top:4px;opacity:.9}
+.stamp-draft{border-color:#E8A33D;background:#FDF6E9;color:#6B4A12}
+.stamp-draft .stampdot{background:#E8A33D}
+.stamp-done{border-color:#5FA800;background:#F2FAE6;color:#2E4A08}
+.stamp-done .stampdot{background:#5FA800}
 .plainh{font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#3a4652;margin:16px 0 4px}
 .plainh:first-of-type{margin-top:4px}
 .plainp{font-size:14.5px;line-height:1.62;margin:0 0 9px;color:#182230;max-width:78ch}
@@ -1284,6 +1295,29 @@ function render(){{
    +'<p class="det desc" style="white-space:pre-wrap;max-width:96ch">'+(r.description||'No description recorded.')+'</p>'
    +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.strike_category||r.utility_class||'Unclassified')+'</b>'+(r.strike_category?' (Depotnet&#8217;s own category)':(r.utility_confirmed?'':' (auto-read)'))+'</span></div></div>';
  // every register field, verbatim
+ // ── THE REVIEW STAMP. First thing on the page, above even the plain summary.
+ // Pete, 5 Aug 2026: "we need a way of marking each record, like a big stamp at the top, 'Still
+ // in review and not final - Draft only', and then anyone at clancy reading knows its our
+ // working copy, then once done it goes green and says 'Sygma Review Complete'."
+ // Clancy read these pages, and a review is a moving thing: on 5 Aug we stopped mid-review of a
+ // damage whose investigation Clancy were still amending that same hour. Without the stamp a
+ // half-finished reading looks exactly like a finished one.
+ // DRAFT is the default in the database, so a record can only become green deliberately.
+ if(en){{
+  const RS=(en.review_status||'draft');
+  if(RS==='complete'){{
+   h+='<div class="stamp stamp-done"><span class="stampdot"></span>'
+    +'<div><b>Sygma Review Complete</b>'
+    +(en.review_status_at?'<span class="stampwhen">signed off '+fmtTs(en.review_status_at)+'</span>':'')
+    +'</div></div>';
+  }} else {{
+   h+='<div class="stamp stamp-draft"><span class="stampdot"></span>'
+    +'<div><b>Still in review and not final &mdash; DRAFT ONLY</b>'
+    +'<span class="stampwhen">This is Sygma&#8217;s working copy. Findings and conclusions may '
+    +'change, and some may be wrong. Please do not act on it or circulate it as our position '
+    +'until it is marked complete.</span></div></div>';
+  }}
+ }}
  // ── THE PLAIN SUMMARY. Sits ABOVE the evidence, because it is what anyone opening this page
  // actually wants, and burying it under five sections means only the diligent reach it.
  // Written WITH Pete, never generated: it is the one part of this page that is a judgement rather
