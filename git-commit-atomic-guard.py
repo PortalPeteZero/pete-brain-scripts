@@ -204,6 +204,61 @@ Reading (git log/show/diff/status) and running tools from /tmp/pbs is fine — o
 Your edited file in /tmp/pbs keeps working for THIS session; the next boot pulls the pushed version."""
 
 
+# --- shared-clone FILE writes (added 5 Aug 2026) --------------------------------------------------
+# The git-mutation block above stops `git add/commit/reset` in /tmp/pbs, but nothing stopped a plain
+# `cp my-tool.py /tmp/pbs/`. That leaves the file MODIFIED/UNTRACKED in the one checkout every live
+# session shares, so it surfaces in their `git status` as dirt they cannot attribute or safely
+# revert. On 5 Aug 2026 a Passion Fit session left `skills/pf-seminars.skill` and its SKILL.md
+# modified there; two other sessions reported it to Pete as "a mess left behind", and one logged
+# "pf-seminars.skill sits modified/uncommitted in /tmp/pbs - NOT this session's".
+#
+# Deliberately narrow, because a gate that blocks real work is worse than no gate (Pete, 22 Jul):
+# it fires ONLY on a copy/move/redirect/tee whose DESTINATION is inside /tmp/pbs. Reading from
+# /tmp/pbs, running its tools, and the boot kernel (a python script, not a shell copy) are untouched.
+_IN_PBS_RE = re.compile(r"^(?:/private)?/tmp/pbs(?:/|$)")
+_COPY_CMD_RE = re.compile(r"(?:^|[\s(])(?:cp|mv|rsync|install|ln)\b")
+# `> path`, `>> path`, `tee [-flags] path` — here the path IS the destination.
+_REDIRECT_RE = re.compile(r"(?:>>?\s*|\btee\b(?:\s+-\S+)*\s+)((?:/private)?/tmp/pbs(?:/\S*)?)")
+
+_SHARED_WRITE_MSG = """BLOCKED: do not write files into /tmp/pbs — it is ONE checkout SHARED by every live session.
+
+A copy into /tmp/pbs leaves the file modified/untracked in every other session's `git status`, as dirt
+they cannot attribute or safely revert. That happened on 5 Aug 2026 and two sessions reported it to
+Pete as a mess left behind.
+
+What to do instead:
+  • Just RUN the tool from your own clone by path — it does not need to live in /tmp/pbs:
+      VAULT=/tmp/pbs python3 /tmp/pbs-work-<yourtask>/<tool>.py …
+    (VAULT=/tmp/pbs still resolves the secrets; only the CODE comes from your clone.)
+  • Committing? Do it in the session-local clone, push, and let the next boot pull it.
+
+Also watch the case no command-line guard can see: a GENERATOR run out of /tmp/pbs (e.g.
+`python3 /tmp/pbs/package-skill.py`) writes into ITS OWN directory, not your cwd. Run it from your
+clone. Before you close, confirm none of the dirt is yours:  git -C /tmp/pbs status --short"""
+
+
+def shared_clone_write(cmd: str):
+    """A shell copy/move/redirect whose DESTINATION is inside the shared /tmp/pbs checkout.
+
+    Judges the destination only. `cp /tmp/pbs/tool.py /tmp/mine/` copies OUT and is fine — an
+    earlier draft matched the path anywhere after `cp` and would have blocked it, which is the
+    false-positive class this guard's whole design forbids.
+    """
+    masked = _mask(cmd)  # quoted text is DATA — a path inside a string is not a redirect
+    for seg in _SPLIT_RE.split(masked):
+        seg = seg.strip()
+        if not seg:
+            continue
+        if _REDIRECT_RE.search(seg):
+            return _SHARED_WRITE_MSG
+        if _COPY_CMD_RE.search(seg):
+            # destination of cp/mv/rsync/ln is the LAST non-flag token
+            args = [t for t in seg.split() if not t.startswith("-")]
+            if len(args) >= 3 and _IN_PBS_RE.match(args[-1]):
+                return _SHARED_WRITE_MSG
+    return None
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -218,6 +273,10 @@ def main() -> int:
         shared = shared_clone_mutation(cmd)
         if shared:
             sys.stderr.write(shared + "\n")
+            return 2
+        shared_w = shared_clone_write(cmd)
+        if shared_w:
+            sys.stderr.write(shared_w + "\n")
             return 2
         if is_chained_commit(cmd):
             sys.stderr.write(_MSG + "\n")
