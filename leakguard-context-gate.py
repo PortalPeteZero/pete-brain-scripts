@@ -65,6 +65,21 @@ _LG_REPO_WRITE_RE = re.compile(
 
 _UNLOCK_RE = re.compile(r"lg-brief\.py")
 
+# lg-sql.py is a MULTI-PROJECT tool: it defaults to the LeakGuard CRM but `--ref <project>` points it
+# at any Supabase project in the estate. This gate is about LeakGuard, so it must only fire when the
+# command is actually aimed there. Added 5 Aug 2026 after a Sygma Platform migration (hub schema,
+# ref rsczwfstwkthaybxhszy, nothing to do with LeakGuard) was refused as "a database change through
+# lg-sql.py" and the remedy offered was lg-brief.py --ack, which reconciles ThingsLog against the
+# LeakGuard CRM -- real work, demanded of a session building a training page.
+LEAKGUARD_REF = "uuhzjytscifrpuqpfrdc"
+_REF_RE = re.compile(r"--ref[=\s]+([a-z0-9]{20})")
+
+
+def _targets_leakguard(cmd):
+    """No --ref means lg-sql's default, which IS LeakGuard. An explicit --ref decides it."""
+    m = _REF_RE.search(cmd)
+    return True if not m else m.group(1) == LEAKGUARD_REF
+
 # lg-sql.py is on the tool list because a WRITE through it is a live database change. A plain SELECT
 # is how you find things out, so it is allowed through unread -- the point of the gate is to stop
 # blind ACTION, not blind curiosity.
@@ -358,13 +373,20 @@ def main():
             return 0
 
         hit = None
-        if _LG_SQL_RE.search(cmd):
+        if _LG_SQL_RE.search(cmd) and _targets_leakguard(cmd):
             # a SELECT is fine; a write is not
             if _MUTATING_SQL_RE.search(cmd):
                 hit = "a database change through lg-sql.py"
         if not hit and _LG_EXEC_RE.search(cmd):
             m = _LG_EXEC_RE.search(cmd)
-            if not (m.group(1) == "lg-sql" and not _MUTATING_SQL_RE.search(cmd)):
+            if m.group(1) == "lg-sql":
+                # Same two conditions as the branch above: it must be a WRITE, and it must be
+                # aimed at the LeakGuard project. This branch was missed by the 5 Aug --ref scoping
+                # fix and re-blocked the very next Sygma Platform migration, which is why both
+                # branches now share _targets_leakguard rather than each deciding for itself.
+                if _MUTATING_SQL_RE.search(cmd) and _targets_leakguard(cmd):
+                    hit = "lg-sql.py"
+            else:
                 hit = f"{m.group(1)}.py"
         if not hit and _LG_REPO_WRITE_RE.search(cmd):
             hit = "a write to the LeakGuard repo or an edge-function deploy"
