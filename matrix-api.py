@@ -43,8 +43,15 @@ PLATFORM_REF = "rsczwfstwkthaybxhszy"          # Sygma Platform -- where hub.fle
 
 
 # ---------------------------------------------------------------- auth
+def _creds():
+    """env-first, file-fallback. A Railway cron may carry the login as MATRIX_TELEMATICS_LOGIN in
+    the environment rather than as a materialised file."""
+    env = (os.environ.get("MATRIX_TELEMATICS_LOGIN") or "").strip()
+    return json.loads(env) if env else json.load(open(CRED_FILE))
+
+
 def _fresh_token():
-    c = json.load(open(CRED_FILE))
+    c = _creds()
     body = json.dumps({"client_id": "0", "grant_type": "password",
                        "username": c["username"], "password": c["password"]}).encode()
     req = urllib.request.Request(BASE + "OAuth/token", data=body,

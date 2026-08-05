@@ -68,7 +68,11 @@ sheets = _load("sheets", f"{VAULT}/sheets-api.py")
 
 # ------------------------------------------------------------------ platform
 def _pf_token():
-    return open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
+    """env-first, file-fallback -- the same convention cc-sql.py uses. On Railway the token arrives
+    as SUPABASE_TOKEN in the environment and no file is materialised, so a file-only read crashed
+    the first cron run."""
+    return ((os.environ.get("SUPABASE_TOKEN") or "").strip()
+            or open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip())
 
 
 def pf_sql(sql, _tries=4):
