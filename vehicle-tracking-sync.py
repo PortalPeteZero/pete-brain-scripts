@@ -342,12 +342,18 @@ def collect(days_wanted, people):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    g = ap.add_mutually_exclusive_group(required=True)
+    # Deliberately NOT required: the Railway cron invokes this script bare, so a bare run has to be
+    # the nightly job. With a required group it would have exited 2 on an argparse error every night
+    # and written nothing, which looks identical to "no courses that day".
+    g = ap.add_mutually_exclusive_group()
     g.add_argument("--month", help="YYYY-MM, backfill a whole month")
-    g.add_argument("--days", type=int, help="recompute the last N days (the nightly shape)")
+    g.add_argument("--days", type=int, help="recompute the last N days (default, the nightly shape)")
     ap.add_argument("--dry", action="store_true", help="compute and print, write nothing")
     a = ap.parse_args()
 
+    if not a.month and not a.days:
+        a.days = 3            # bare run = the nightly job: redo the last 3 days so a late sheet
+                              # edit or a delayed journey upload gets picked up.
     if a.month:
         yr, mo = (int(x) for x in a.month.split("-"))
         last = (datetime.date(yr + (mo == 12), (mo % 12) + 1, 1) - datetime.timedelta(days=1)).day
