@@ -36,6 +36,7 @@ car park to the gate is often shorter than a mile.
 # entity: sygma
 # schedule: 0 2 * * *
 # timezone: Europe/London
+# secrets: GOOGLE_SA_JSON, SUPABASE_TOKEN, SECRETFILE__matrix-telematics-portal-login
 # CRON-META-END
 """
 import argparse, datetime, importlib.util, json, math, os, re, sys, urllib.request, urllib.error
