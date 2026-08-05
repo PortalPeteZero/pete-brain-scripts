@@ -9,7 +9,7 @@ partly, or reported done on the wrong evidence. Each is now a check that runs, a
 thing exits non-zero until every one passes.
 
 The stages are the section's own vocabulary, unchanged: CAPTURE -> FILE -> ENRICH -> PUBLISH.
-Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Eleven
+Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Twelve
 checks sit under those four stages.
 
   VAULT=/tmp/pbs python3 clancy-dd-workflow.py                 # check FY26/27, print the board
@@ -29,27 +29,31 @@ checks sit under those four stages.
                        GetImIncident payload carries an `actions` list beside the questions, the
                        report and the timeline, so one call brings them and there is no separate
                        Depotnet section to visit. Nothing checked it until 5 Aug.
-  FILE     4 to Drive  every attachment filed to Drive or the private bucket.
+  FILE     4 referenced what the record SAYS exists that we do not hold. Every other check asks
+                       whether we read what we have; this asks the opposite, and it is the one
+                       that finds a missing video. Added 5 Aug after a video named in a signed
+                       witness statement reached no finding.
+           5 to Drive  every attachment filed to Drive or the private bucket.
   ENRICH   5 read      every file has an enrich-ledger status of read / read+vision /
                        routed-vision. NOT "has a doc_extracts row" — on 5 Aug counting rows said
                        566/566 read while 3 files had never been fetched at all. A scanned .docx
                        extract holds the literal string "[document]" and a photo holds "[image]";
                        both survive a row count AND a length check. The ledger is the only
                        honest source.
-           6 see       every image routed to vision has a reading meeting the anti-skim contract
+           7 see       every image routed to vision has a reading meeting the anti-skim contract
                        (a real description, a has_text verdict, a transcription where has_text).
-           7 roll up   doc_* promoted AND current. Specifically a damage with transcribed scanned
+           8 roll up   doc_* promoted AND current. Specifically a damage with transcribed scanned
                        paperwork must carry doc_transcripts. Until 5 Aug vision output was used
                        only to COUNT images, so a photographed permit was read and thrown away
                        and the damage looked thinly evidenced when it was not.
-           8 embed     every damage embedded, or Genny cannot retrieve it.
-  PUBLISH  9 classify  every non-empty lessons_learnt has a reviewed bucket.
+           9 embed     every damage embedded, or Genny cannot retrieve it.
+  PUBLISH 10 classify  every non-empty lessons_learnt has a reviewed bucket.
                        clancy-dn-board-report.py asserts this and refuses to invent one, so ONE
                        new Depotnet answer breaks the whole publish until it is classified
                        (happened 5 Aug on 153523, answer "TBC").
-          10 sourced   every Sygma finding links to the document it came from, so a claim can be
+          11 sourced   every Sygma finding links to the document it came from, so a claim can be
                        checked without asking anyone.
-          11 publish   every page newer than the newest data change, and all within
+          12 publish   every page newer than the newest data change, and all within
                        PUBLISH_SPREAD_MIN of each other. The section is built by TEN scripts; on
                        5 Aug one was run directly after a data change and the other eleven pages
                        stayed 19 hours old, still rendering a finding that had been corrected.
@@ -138,7 +142,7 @@ def page_ordered(table, select, ids, order):
 
 
 def check(fy):
-    """Run all eleven steps for one financial year. Returns a list of step dicts."""
+    """Run all twelve steps for one financial year. Returns a list of step dicts."""
     fyq = urllib.parse.quote(fy, safe="")
     inc = get(f"clancy_dn_incidents?select=id,location,raw_api_at,doc_enriched_at,doc_transcripts,"
               f"doc_conclusions,embedding,lessons_learnt,sygma_findings,sygma_finding_sources,"
@@ -238,7 +242,35 @@ def check(fy):
          "re-ingest the payload for the named damages: "
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-ingest.py /tmp/dnapi")
 
-    step(4, "FILE", "to Drive", bad, f"{len(files) - len(bad)}/{len(files)} attachments filed to Drive")
+    # 4 REFERENCED — what does the record SAY exists that we do not hold?
+    # Every other check here asks "did we read what we have". This asks the opposite, and it is
+    # the one that finds a missing video. Pete, 5 Aug 2026, on a video named in a witness
+    # statement that no finding mentioned: "so why didnt you raise this key finding in your
+    # conclusions you wrote?" Because nothing compared what the documents REFERENCE against what
+    # the file list HOLDS. Detail and the fix list: clancy-dd-missing-evidence.py.
+    import subprocess as _sp
+    bad = []
+    try:
+        _r = _sp.run(["python3", f"{VAULT}/clancy-dd-missing-evidence.py", "--fy", fy, "--json"],
+                     capture_output=True, text=True, env={**os.environ, "VAULT": VAULT}, timeout=900)
+        if _r.returncode in (0, 1) and _r.stdout.strip():
+            for d in json.loads(_r.stdout).get("detail", []):
+                for mm in d["missing"]:
+                    bad.append(f"{d['id']} [{mm['kind']}] {mm['what'][:56]} "
+                               f"— named in {mm['where'][:44]}")
+        elif _r.returncode == 2:
+            bad.append("could not run clancy-dd-missing-evidence.py — this is NOT a pass")
+    except Exception as _e:
+        bad.append(f"could not run clancy-dd-missing-evidence.py ({_e}) — this is NOT a pass")
+    step(4, "FILE", "referenced", bad,
+         f"{'nothing' if not bad else len(bad)} referenced by the record but not held",
+         "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-missing-evidence.py  (then ask Clancy for the "
+         "named artefact, or record why it cannot be had)")
+
+    unfiled = [f"{f['incident_id']} {f['name'][:40]}"
+               for f in files if not (f.get("drive_id") or f.get("storage_path"))]
+    step(5, "FILE", "to Drive", unfiled,
+         f"{len(files) - len(unfiled)}/{len(files)} attachments filed to Drive")
 
     # 3 READ — ledger status, never a row count
     byname = {}
@@ -255,7 +287,7 @@ def check(fy):
     missing = [f"{f['incident_id']} (no ledger row) {f['name'][:40]}"
                for f in files if (f["incident_id"], f["name"]) not in byname]
     bad = unread + missing
-    step(5, "ENRICH", "read", bad, f"{len(led) - len(unread)}/{len(files)} files read "
+    step(6, "ENRICH", "read", bad, f"{len(led) - len(unread)}/{len(files)} files read "
                          f"({dict(Counter(L['status'] for L in led))})",
          "re-fetch the named files from Depotnet, then "
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-enrich-index.py --read")
@@ -266,7 +298,7 @@ def check(fy):
            if not (i.get("description") or "").strip()
            or "has_text" not in i
            or (i.get("has_text") and not (i.get("transcription") or "").strip())]
-    step(6, "ENRICH", "see", bad, f"{len(imgs) - len(bad)}/{len(imgs)} image readings carry a real "
+    step(7, "ENRICH", "see", bad, f"{len(imgs) - len(bad)}/{len(imgs)} image readings carry a real "
                         f"description and a transcription where there is text")
 
     # 5 ROLL UP — including the scanned-paperwork hole
@@ -283,14 +315,14 @@ def check(fy):
     bad += [f"{r['id']} {(r['location'] or '')[:26]} — {scanned.get(r['id'])} transcribed scans, "
             f"doc_transcripts EMPTY (promote predates the 5 Aug fix)"
             for r in inc if scanned.get(r["id"]) and not r.get("doc_transcripts")]
-    step(7, "ENRICH", "roll up", bad,
+    step(8, "ENRICH", "roll up", bad,
          f"{n - len([b for b in bad if 'not promoted' in b])}/{n} promoted; "
          f"{sum(1 for r in inc if r.get('doc_transcripts'))} of the {n_scanned} damages with "
          f"scanned paperwork carry its transcripts", FIX_PROMOTE)
 
     # 6 EMBED
     bad = [f"{r['id']} {(r['location'] or '')[:26]}" for r in inc if not r.get("embedding")]
-    step(8, "ENRICH", "embed", bad, f"{n - len(bad)}/{n} damages embedded for Genny",
+    step(9, "ENRICH", "embed", bad, f"{n - len(bad)}/{n} damages embedded for Genny",
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-import.py --embed-only")
 
     # 7 CLASSIFY — the one that breaks the board report
@@ -299,7 +331,7 @@ def check(fy):
     withl = [r for r in inc if (r.get("lessons_learnt") or "").strip()]
     bad = [f"{r['id']} lessons_learnt={r['lessons_learnt'][:40]!r}"
            for r in withl if r["id"] not in bucketed]
-    step(9, "PUBLISH", "classify", bad, f"{len(withl) - len(bad)}/{len(withl)} damages with a lessons answer "
+    step(10, "PUBLISH", "classify", bad, f"{len(withl) - len(bad)}/{len(withl)} damages with a lessons answer "
                              f"have a reviewed bucket",
          "insert a clancy_report_lesson_buckets row (concrete / restatement / non-answer) — a "
          "REVIEWED judgement, never auto-assigned; the board report will not publish without it")
@@ -335,12 +367,12 @@ def check(fy):
             if i >= len(srcs) or not srcs[i]:
                 unsourced.append(f"{r['id']} finding {i}: {str(f)[:64]}")
     n_f = sum(len(r.get("sygma_findings") or []) for r in inc)
-    step(10, "PUBLISH", "sourced", unsourced,
+    step(11, "PUBLISH", "sourced", unsourced,
          f"{n_f - len(unsourced)}/{n_f} Sygma findings link to the document they came from",
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-source-links.py --apply  (a finding that still "
          "will not resolve needs the document naming in its own words)")
 
-    step(11, "PUBLISH", "publish", bad, f"{len(have)}/{len(PAGE_KEYS)} pages present, spread {spread} min, "
+    step(12, "PUBLISH", "publish", bad, f"{len(have)}/{len(PAGE_KEYS)} pages present, spread {spread} min, "
                             f"newest data change {round(newest_data) if newest_data < 10**9 else '?'} "
                             f"min ago", FIX_PUBLISH)
     return steps, inc
@@ -375,14 +407,14 @@ def main():
 
     for fy, steps in allsteps.items():
         print(f"\n=== DAMAGE DEPOT WORKFLOW — {fy} ===")
-        print(f"  {'STAGE':<9}{'#':<3}{'STEP':<10}{'':<13}{'WHERE IT STANDS'}")
+        print(f"  {'STAGE':<9}{'#':<3}{'STEP':<12}{'':<13}{'WHERE IT STANDS'}")
         print("  " + "-" * 96)
         last = None
         for s_ in steps:
             stage = s_["stage"] if s_["stage"] != last else ""
             last = s_["stage"]
             mark = "PASS" if s_["ok"] else "INCOMPLETE"
-            print(f"  {stage:<9}{s_['n']:<3}{s_['name']:<10}{mark:<13}{s_['detail']}")
+            print(f"  {stage:<9}{s_['n']:<3}{s_['name']:<12}{mark:<13}{s_['detail']}")
             if not s_["ok"]:
                 for b in s_["bad"]:
                     print(f"  {'':<22}   - {b}")
