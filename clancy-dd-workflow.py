@@ -9,7 +9,7 @@ partly, or reported done on the wrong evidence. Each is now a check that runs, a
 thing exits non-zero until every one passes.
 
 The stages are the section's own vocabulary, unchanged: CAPTURE -> FILE -> ENRICH -> PUBLISH.
-Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Ten
+Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Eleven
 checks sit under those four stages.
 
   VAULT=/tmp/pbs python3 clancy-dd-workflow.py                 # check FY26/27, print the board
@@ -25,27 +25,31 @@ checks sit under those four stages.
                        Depotnet has no last-modified at list level, but its per-incident timeline
                        is an audit trail, so "we are behind" is a ledger event dated after our
                        raw_api_at. Work the list with clancy-dd-recapture.py.
-  FILE     3 to Drive  every attachment filed to Drive or the private bucket.
-  ENRICH   4 read      every file has an enrich-ledger status of read / read+vision /
+           3 actions   the corrective actions we hold match what the payload DECLARED. Every
+                       GetImIncident payload carries an `actions` list beside the questions, the
+                       report and the timeline, so one call brings them and there is no separate
+                       Depotnet section to visit. Nothing checked it until 5 Aug.
+  FILE     4 to Drive  every attachment filed to Drive or the private bucket.
+  ENRICH   5 read      every file has an enrich-ledger status of read / read+vision /
                        routed-vision. NOT "has a doc_extracts row" — on 5 Aug counting rows said
                        566/566 read while 3 files had never been fetched at all. A scanned .docx
                        extract holds the literal string "[document]" and a photo holds "[image]";
                        both survive a row count AND a length check. The ledger is the only
                        honest source.
-           5 see       every image routed to vision has a reading meeting the anti-skim contract
+           6 see       every image routed to vision has a reading meeting the anti-skim contract
                        (a real description, a has_text verdict, a transcription where has_text).
-           6 roll up   doc_* promoted AND current. Specifically a damage with transcribed scanned
+           7 roll up   doc_* promoted AND current. Specifically a damage with transcribed scanned
                        paperwork must carry doc_transcripts. Until 5 Aug vision output was used
                        only to COUNT images, so a photographed permit was read and thrown away
                        and the damage looked thinly evidenced when it was not.
-           7 embed     every damage embedded, or Genny cannot retrieve it.
-  PUBLISH  8 classify  every non-empty lessons_learnt has a reviewed bucket.
+           8 embed     every damage embedded, or Genny cannot retrieve it.
+  PUBLISH  9 classify  every non-empty lessons_learnt has a reviewed bucket.
                        clancy-dn-board-report.py asserts this and refuses to invent one, so ONE
                        new Depotnet answer breaks the whole publish until it is classified
                        (happened 5 Aug on 153523, answer "TBC").
           10 sourced   every Sygma finding links to the document it came from, so a claim can be
                        checked without asking anyone.
-           9 publish   every page newer than the newest data change, and all within
+          11 publish   every page newer than the newest data change, and all within
                        PUBLISH_SPREAD_MIN of each other. The section is built by TEN scripts; on
                        5 Aug one was run directly after a data change and the other eleven pages
                        stayed 19 hours old, still rendering a finding that had been corrected.
@@ -134,12 +138,12 @@ def page_ordered(table, select, ids, order):
 
 
 def check(fy):
-    """Run all ten steps for one financial year. Returns a list of step dicts."""
+    """Run all eleven steps for one financial year. Returns a list of step dicts."""
     fyq = urllib.parse.quote(fy, safe="")
     inc = get(f"clancy_dn_incidents?select=id,location,raw_api_at,doc_enriched_at,doc_transcripts,"
               f"doc_conclusions,embedding,lessons_learnt,sygma_findings,sygma_finding_sources,"
               f"sygma_reviewed_at,"
-              f"import_changed_at&fy=eq.{fyq}&order=id.asc&limit=4000")
+              f"import_changed_at,capture_actions,raw_api&fy=eq.{fyq}&order=id.asc&limit=4000")
     steps, n = [], len(inc)
     if not n:
         return [{"n": 0, "stage": "CAPTURE", "name": "NO DAMAGES", "ok": False, "detail": f"no damages found for {fy}",
@@ -152,6 +156,8 @@ def check(fy):
                     "id,incident_id,file_id,origin,description,has_text,transcription", ids)
     ans = page_ordered("clancy_dn_answers", "incident_id,section,q_no", ids,
                        "incident_id.asc,section.asc,q_no.asc")
+    act_n = Counter(x["incident_id"] for x in
+                    page_all("clancy_dn_actions", "id,incident_id", ids))
 
     def step(i, stage, name, bad, detail, fix=None):
         steps.append({"n": i, "stage": stage, "name": name, "ok": not bad, "count": len(bad),
@@ -207,7 +213,32 @@ def check(fy):
     # 2 FILE
     bad = [f"{f['incident_id']} {f['name'][:40]}"
            for f in files if not (f.get("drive_id") or f.get("storage_path"))]
-    step(3, "FILE", "to Drive", bad, f"{len(files) - len(bad)}/{len(files)} attachments filed to Drive")
+    # 3 ACTIONS — reconcile what we hold against what the payload DECLARED.
+    # Pete, 5 Aug 2026: "does it check if any actions raised when it checks and syncs?... i cant
+    # remember if we need to go look there in depotnet or if the incident report tells us".
+    # It tells us: every GetImIncident payload carries an `actions` list beside the questions, the
+    # report and the timeline, so one call brings them and there is no separate place to visit.
+    # Nothing was CHECKING that, though. It reconciled on 5 Aug by luck, not by test, and a
+    # silently-missing corrective action is exactly the kind of gap that surfaces months later.
+    # Note imIncident.raiseAction is false on every damage including the two that HAVE actions:
+    # it is a template flag, never a per-damage "an action is needed here".
+    bad = []
+    for r in inc:
+        raw = r.get("raw_api") or {}
+        d = (raw.get("data") or {}) if isinstance(raw, dict) else {}
+        declared = len(d.get("actions") or [])
+        held = act_n.get(r["id"], 0)
+        if declared != held:
+            bad.append(f"{r['id']} {(r['location'] or '')[:26]} — payload declares {declared} "
+                       f"action(s), we hold {held} (capture_actions={r.get('capture_actions')})")
+    n_dec = sum(len((((r.get("raw_api") or {}).get("data")) or {}).get("actions") or [])
+                for r in inc if isinstance(r.get("raw_api"), dict))
+    step(3, "CAPTURE", "actions", bad,
+         f"{n_dec} corrective action(s) declared across the year, {sum(act_n.values())} held",
+         "re-ingest the payload for the named damages: "
+         "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-ingest.py /tmp/dnapi")
+
+    step(4, "FILE", "to Drive", bad, f"{len(files) - len(bad)}/{len(files)} attachments filed to Drive")
 
     # 3 READ — ledger status, never a row count
     byname = {}
@@ -224,7 +255,7 @@ def check(fy):
     missing = [f"{f['incident_id']} (no ledger row) {f['name'][:40]}"
                for f in files if (f["incident_id"], f["name"]) not in byname]
     bad = unread + missing
-    step(4, "ENRICH", "read", bad, f"{len(led) - len(unread)}/{len(files)} files read "
+    step(5, "ENRICH", "read", bad, f"{len(led) - len(unread)}/{len(files)} files read "
                          f"({dict(Counter(L['status'] for L in led))})",
          "re-fetch the named files from Depotnet, then "
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-enrich-index.py --read")
@@ -235,7 +266,7 @@ def check(fy):
            if not (i.get("description") or "").strip()
            or "has_text" not in i
            or (i.get("has_text") and not (i.get("transcription") or "").strip())]
-    step(5, "ENRICH", "see", bad, f"{len(imgs) - len(bad)}/{len(imgs)} image readings carry a real "
+    step(6, "ENRICH", "see", bad, f"{len(imgs) - len(bad)}/{len(imgs)} image readings carry a real "
                         f"description and a transcription where there is text")
 
     # 5 ROLL UP — including the scanned-paperwork hole
@@ -252,14 +283,14 @@ def check(fy):
     bad += [f"{r['id']} {(r['location'] or '')[:26]} — {scanned.get(r['id'])} transcribed scans, "
             f"doc_transcripts EMPTY (promote predates the 5 Aug fix)"
             for r in inc if scanned.get(r["id"]) and not r.get("doc_transcripts")]
-    step(6, "ENRICH", "roll up", bad,
+    step(7, "ENRICH", "roll up", bad,
          f"{n - len([b for b in bad if 'not promoted' in b])}/{n} promoted; "
          f"{sum(1 for r in inc if r.get('doc_transcripts'))} of the {n_scanned} damages with "
          f"scanned paperwork carry its transcripts", FIX_PROMOTE)
 
     # 6 EMBED
     bad = [f"{r['id']} {(r['location'] or '')[:26]}" for r in inc if not r.get("embedding")]
-    step(7, "ENRICH", "embed", bad, f"{n - len(bad)}/{n} damages embedded for Genny",
+    step(8, "ENRICH", "embed", bad, f"{n - len(bad)}/{n} damages embedded for Genny",
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-import.py --embed-only")
 
     # 7 CLASSIFY — the one that breaks the board report
@@ -268,7 +299,7 @@ def check(fy):
     withl = [r for r in inc if (r.get("lessons_learnt") or "").strip()]
     bad = [f"{r['id']} lessons_learnt={r['lessons_learnt'][:40]!r}"
            for r in withl if r["id"] not in bucketed]
-    step(8, "PUBLISH", "classify", bad, f"{len(withl) - len(bad)}/{len(withl)} damages with a lessons answer "
+    step(9, "PUBLISH", "classify", bad, f"{len(withl) - len(bad)}/{len(withl)} damages with a lessons answer "
                              f"have a reviewed bucket",
          "insert a clancy_report_lesson_buckets row (concrete / restatement / non-answer) — a "
          "REVIEWED judgement, never auto-assigned; the board report will not publish without it")
@@ -309,7 +340,7 @@ def check(fy):
          "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-source-links.py --apply  (a finding that still "
          "will not resolve needs the document naming in its own words)")
 
-    step(9, "PUBLISH", "publish", bad, f"{len(have)}/{len(PAGE_KEYS)} pages present, spread {spread} min, "
+    step(11, "PUBLISH", "publish", bad, f"{len(have)}/{len(PAGE_KEYS)} pages present, spread {spread} min, "
                             f"newest data change {round(newest_data) if newest_data < 10**9 else '?'} "
                             f"min ago", FIX_PUBLISH)
     return steps, inc
