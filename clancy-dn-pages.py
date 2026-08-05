@@ -153,12 +153,13 @@ def load():
     # this reads the register rather than the retired clancy_damages table. Same shape out.
     enr = rest("clancy_dn_incidents?select=id,job_ref,status,sygma_stage_note,sygma_summary,"
                "sygma_findings,sygma_finding_sources,sygma_next_actions,sygma_drive_folder,"
-               "sygma_report_url"
+               "sygma_report_url,sygma_plain,sygma_plain_at"
                "&sygma_reviewed_at=not.is.null")
     enrich = {e["id"]: {"dn_id": e["id"], "job_ref": e["job_ref"], "status": e["status"],
                         "stage_note": e["sygma_stage_note"], "summary": e["sygma_summary"],
                         "key_findings": e["sygma_findings"], "next_actions": e["sygma_next_actions"],
                         "finding_sources": e.get("sygma_finding_sources"),
+                        "plain": e.get("sygma_plain"), "plain_at": e.get("sygma_plain_at"),
                         "drive_folder": e["sygma_drive_folder"], "report_url": e["sygma_report_url"]}
               for e in enr}
     # Everything the capture pulled off Depotnet for each damage: the incident PDF, the photos and
@@ -520,6 +521,18 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .tle .tld{display:inline-block;min-width:126px;color:var(--muted)}
 .acard{border:1px solid var(--border);border-radius:11px;padding:14px 16px;margin-top:12px;background:#fafbfd}
 ul.kf{margin:6px 0 0 18px;font-size:13.5px}
+.plaincard{border-left:4px solid #97D700}
+.plainh{font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#3a4652;margin:16px 0 4px}
+.plainh:first-of-type{margin-top:4px}
+.plainp{font-size:14.5px;line-height:1.62;margin:0 0 9px;color:#182230;max-width:78ch}
+.plainq{font-size:14px;line-height:1.58;margin:0 0 9px;padding:8px 12px;background:#f6f8fa;border-left:3px solid #c9d2dd;max-width:78ch}
+.plainq span{color:#4a5563}
+.plainbox{margin:18px 0 2px;border:1px solid #d8e08a;background:#fbfdf0;border-radius:6px;padding:14px 16px}
+.plainboxh{font-weight:700;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;color:#5d6b1f;margin-bottom:10px}
+.plainbq{display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;font-size:14px;line-height:1.55}
+.plainbq:last-child{margin-bottom:0}
+.plainbn{flex:0 0 20px;height:20px;border-radius:50%;background:#97D700;color:#25301c;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.plainbw{font-weight:400;color:#4a5563;font-size:13.5px;margin-top:2px}
 ul.kf li{margin-bottom:7px}
 .srcline{font-size:11.5px;color:#5b6875;margin:3px 0 0}
 .srcline a{color:#2a6ca8;text-decoration:none;border-bottom:1px solid #b9d2e8}
@@ -1271,6 +1284,38 @@ function render(){{
    +'<p class="det desc" style="white-space:pre-wrap;max-width:96ch">'+(r.description||'No description recorded.')+'</p>'
    +'<div class="legend" style="margin-top:12px"><span class="lg">Utility: <b>'+(r.strike_category||r.utility_class||'Unclassified')+'</b>'+(r.strike_category?' (Depotnet&#8217;s own category)':(r.utility_confirmed?'':' (auto-read)'))+'</span></div></div>';
  // every register field, verbatim
+ // ── THE PLAIN SUMMARY. Sits ABOVE the evidence, because it is what anyone opening this page
+ // actually wants, and burying it under five sections means only the diligent reach it.
+ // Written WITH Pete, never generated: it is the one part of this page that is a judgement rather
+ // than a reading of the data, and on 5 Aug the first draft of it was wrong until he challenged
+ // it. Clancy see this, so a fact is stated plainly and anything about a person is put as a
+ // question. It closes with what the record cannot tell us, inside the narrative, not bolted on.
+ if(en&&en.plain&&en.plain.blocks&&en.plain.blocks.length){{
+  h+='<div class="card plaincard" style="margin-bottom:16px"><div class="h2row"><h2>In plain English</h2>'
+   +'<span class="note">what happened, why, and what is still open &mdash; Sygma&#8217;s reading of the whole record</span></div>';
+  en.plain.blocks.forEach(b=>{{
+   if(b.h)h+='<div class="plainh">'+b.h+'</div>';
+   (b.p||[]).forEach(t=>{{h+='<p class="plainp">'+t+'</p>';}});
+   (b.q||[]).forEach(x=>{{
+     h+='<div class="plainq"><b>'+x.q+'</b>'+(x.why?'<span> '+x.why+'</span>':'')+'</div>';
+   }});
+  }});
+  // The open questions appear in the narrative where they belong AND again together at the end.
+  // Pete, 5 Aug 2026: "repeat the open questons at the end in a highlighted area, like a repeat
+  // but reminder so they are together." Read in flow they carry their context; gathered at the
+  // end they are the ask, and nobody has to scroll back to collect them.
+  const AQ=[]; en.plain.blocks.forEach(b=>(b.q||[]).forEach(x=>AQ.push(x)));
+  if(AQ.length){{
+   h+='<div class="plainbox"><div class="plainboxh">The questions still open &mdash; '+AQ.length+'</div>';
+   AQ.forEach((x,i)=>{{
+    h+='<div class="plainbq"><span class="plainbn">'+(i+1)+'</span><div><b>'+x.q+'</b>'
+     +(x.why?'<div class="plainbw">'+x.why+'</div>':'')+'</div></div>';
+   }});
+   h+='</div>';
+  }}
+  if(en.plain_at)h+='<div class="legend" style="margin-top:10px"><span class="lg">Written '+fmtTs(en.plain_at)+'</span></div>';
+  h+='</div>';
+ }}
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>1 &middot; Depotnet &mdash; the incident</h2><span class="note">Clancy&#8217;s own Incident Register row, in full &mdash; their words, never ours</span></div><div class="fgrid">'
    +FLD.map(([k,l])=>'<div class="f"><div class="fl">'+l+'</div><div class="fv">'+((k.includes('date')?fmtTs(r[k]):r[k])||'—')+'</div></div>').join('')+'</div></div>';
  // The investigation, one box per area. Pete, 31 Jul: these are the fields the whole damage
