@@ -118,7 +118,8 @@ def load():
                 # What the ATTACHED DOCUMENTS say (enrichment, 3 Aug 2026). Added 4 Aug: this page
                 # is where somebody lands when they say "let's look at 153523", and until now the
                 # 543 files we read reached NONE of it — the same gap Genny had.
-                "doc_conclusions,doc_lessons,doc_method_failures,doc_sources,doc_enriched_at")
+                "doc_conclusions,doc_lessons,doc_method_failures,doc_sources,doc_transcripts,"
+                "doc_enriched_at")
     inc = rest_all(f"clancy_dn_incidents?select={INC_COLS}&order=incident_date.desc")
     act = rest_all("clancy_dn_actions?select=*&order=date_raised.desc")
     for r in inc:
@@ -1449,9 +1450,10 @@ function render(){{
  // until then this page showed none of it, so a damage whose Depotnet cause is blank read as
  // unexplained even where a panel review in the same record explains it.
  const dxs=D.dex[id]||[], dcon=r.doc_conclusions||[], dles=r.doc_lessons||[], dfai=r.doc_method_failures||[];
+ const dtr=r.doc_transcripts||[];
  h+='<div class="card" style="margin-bottom:16px"><div class="h2row"><h2>4 &middot; Document enrich</h2>'
   +'<span class="note">what WE found reading their attached files &mdash; never written into a Depotnet field above</span></div>';
- if(dcon.length||dles.length||dfai.length||dxs.length){{
+ if(dcon.length||dles.length||dfai.length||dxs.length||dtr.length){{
   if(dcon.length)h+='<div class="fl" style="margin-top:4px">Cause, per the documents</div><ul class="kf">'+dcon.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   if(dfai.length)h+='<div class="fl" style="margin-top:10px">Method failures the documents name</div><ul class="kf">'+dfai.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   if(dles.length)h+='<div class="fl" style="margin-top:10px">Lessons the documents give</div><ul class="kf">'+dles.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
@@ -1463,6 +1465,20 @@ function render(){{
     (d.quotes||[]).slice(0,4).forEach(q=>{{h+='<blockquote class="dxq">'+q+'</blockquote>';}});
     // An absence has to be as visible as a value: "the document is silent" is a finding.
     if((d.not_stated||[]).length)h+='<div class="dxn"><b>This document does not state:</b> '+d.not_stated.join('; ')+'</div>';
+    h+='</div>';
+   }});
+  }}
+  // The site pack that was PHOTOGRAPHED rather than typed. Without this the whole of a scanned
+  // permit, induction record or pre-dig form is invisible here — see clancy-dn-enrich-index.py.
+  if(dtr.length){{
+   h+='<div class="fl" style="margin-top:14px">What the scanned paperwork says</div>'
+    +'<p class="small muted" style="margin:2px 0 8px">These documents hold no text &mdash; they are photographs of paper. Transcribed from the images, word for word where legible.</p>';
+   dtr.forEach(d=>{{
+    h+='<div class="dxdoc"><div class="dxname">'+d.name+' <span class="muted">(scanned)</span></div>';
+    (d.pages||[]).forEach(p=>{{
+     if(p.desc)h+='<div class="dxf">'+p.desc+'</div>';
+     if(p.text)h+='<blockquote class="dxq">'+p.text+'</blockquote>';
+    }});
     h+='</div>';
    }});
   }}

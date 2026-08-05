@@ -312,6 +312,7 @@ def promote():
       ADD COLUMN IF NOT EXISTS doc_lessons text[],
       ADD COLUMN IF NOT EXISTS doc_method_failures text[],
       ADD COLUMN IF NOT EXISTS doc_sources jsonb,
+      ADD COLUMN IF NOT EXISTS doc_transcripts jsonb,
       ADD COLUMN IF NOT EXISTS doc_enriched_at timestamptz,
       ADD COLUMN IF NOT EXISTS doc_parser_version text;
     NOTIFY pgrst, 'reload schema';
@@ -333,7 +334,9 @@ def promote():
                     f"conclusions,lessons,method_failures&parser_version=eq.{PARSER_VERSION}"
                     f"&order=incident_id,file_id")
     imgs = rest_all(f"clancy_dn_image_readings?select=incident_id,file_id,has_text,transcription,"
-                    f"description&parser_version=eq.{PARSER_VERSION}&order=incident_id,file_id")
+                    f"description,origin&parser_version=eq.{PARSER_VERSION}&order=incident_id,file_id")
+    names = {f["id"]: f["name"] for f in
+             rest_all("clancy_dn_files?select=id,name&order=id")}
     by_inc = {}
     for d in docs:
         b = by_inc.setdefault(d["incident_id"], {"c": [], "l": [], "m": [], "src": []})
@@ -345,6 +348,37 @@ def promote():
     img_n = {}
     for i in imgs:
         img_n[i["incident_id"]] = img_n.get(i["incident_id"], 0) + 1
+
+    # SCANNED PAPERWORK — the transcripts, grouped by the document they came out of.
+    #
+    # Why this exists (5 Aug 2026). A permit, RAMS, daily brief or induction record that was
+    # PHOTOGRAPHED rather than typed has no text layer, so python-docx returns nothing and the
+    # doc extract holds the literal string "[document]". The pictures inside it went to vision
+    # and were read properly — but until now vision output was used only to COUNT images, so
+    # every word of that paperwork stopped here and never reached the damage record. A damage
+    # whose site pack was scanned therefore showed an almost-empty Document enrich section
+    # while an identical damage with typed evidence showed a full one. Measured on FY 2026/27:
+    # damage 153523 had 19 transcribed scans and ONE conclusion; 152586, whose evidence is a
+    # text PDF and a PPTX, had 11 conclusions off 6 files.
+    #
+    # These are TRANSCRIPTS, not conclusions — what the paper says, kept apart from what we
+    # concluded from it, and apart again from Depotnet's own fields. `docx-media` only: a
+    # native photo of the excavation is site evidence and is already shown as a photograph.
+    tr = {}
+    for i in imgs:
+        if i.get("origin") != "docx-media":
+            continue
+        txt = (i.get("transcription") or "").strip()
+        if not i.get("has_text") or len(txt) < 25:
+            continue                       # a logo or a map pin is not paperwork
+        d = tr.setdefault(i["incident_id"], {})
+        d.setdefault(i["file_id"], []).append(
+            {"desc": (i.get("description") or "")[:400], "text": txt[:1200]})
+    transcripts = {
+        iid: [{"file_id": fid, "name": names.get(fid, "(file)"), "pages": pages[:8]}
+              for fid, pages in sorted(files.items())][:14]
+        for iid, files in tr.items()
+    }
     n = 0
     for iid, b in by_inc.items():
         def dedupe(xs):
@@ -359,6 +393,7 @@ def promote():
             "doc_lessons": dedupe(b["l"]) or None,
             "doc_method_failures": sorted(set(b["m"])) or None,
             "doc_sources": {"documents": b["src"], "images_read": img_n.get(iid, 0)},
+            "doc_transcripts": transcripts.get(iid) or None,
             "doc_enriched_at": "now()",
             "doc_parser_version": PARSER_VERSION,
         }
