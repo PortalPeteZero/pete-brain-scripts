@@ -25,6 +25,9 @@ checks sit under those four stages.
                        Depotnet has no last-modified at list level, but its per-incident timeline
                        is an audit trail, so "we are behind" is a ledger event dated after our
                        raw_api_at. Work the list with clancy-dd-recapture.py.
+                       AND the ledger is a MIRROR: it can only prove currency up to its own last
+                       sweep, so this step FAILS when the sweep is stale rather than reporting a
+                       clean bill of health it has not earned.
            3 actions   the corrective actions we hold match what the payload DECLARED. Every
                        GetImIncident payload carries an `actions` list beside the questions, the
                        report and the timeline, so one call brings them and there is no separate
@@ -82,6 +85,7 @@ PAGE_KEYS = [
     "clancy-damage-year-v2",
 ]
 PUBLISH_SPREAD_MIN = 90          # a full publish run takes ~8 min; 90 is generous, not blind
+LEDGER_STALE_HOURS = 6           # beyond this the audit-trail mirror cannot vouch for "current"
 READ_OK = ("read", "read+vision", "routed-vision")
 FIX_PUBLISH = "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-publish.py"
 FIX_PROMOTE = "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-enrich-index.py --promote"
@@ -210,9 +214,40 @@ def check(fy):
            f"(latest: {max(_t(e['changed_at']) for e in evs).isoformat()[:16]} "
            f"{sorted(evs, key=lambda e: e['changed_at'])[-1]['history_type']})"
            for i, evs in sorted(since_cap.items())]
+
+    # THE LEDGER IS A MIRROR, AND A MIRROR CAN ONLY PROVE CURRENCY UP TO ITS LAST REFRESH.
+    #
+    # This check compares raw_api_at against clancy_dn_change_ledger, which is filled by
+    # clancy-dn-change-sweep.py. If the sweep has not run since we captured, the ledger holds
+    # NOTHING about the period in question, so an empty result means "the mirror has not looked",
+    # not "nothing happened". Reporting that as level is a gate claiming confidence it has not
+    # earned, which is worse than having no gate.
+    #
+    # Caught live 5 Aug 2026. This step reported "48/48 level with Depotnet's audit trail" while
+    # the last sweep was 25.5 hours old. Pete asked whether the timeline was checked at all; a
+    # live pull found Daniel Wilson had amended damage 153523 three times that same evening —
+    # rewriting the incident summary to name an LV cable supply, recording that no trial hole was
+    # carried out, and replacing the "TBC" lessons field. None of it was visible here.
+    swept = get("clancy_dn_change_ledger?select=spotted_at&order=spotted_at.desc&limit=1")
+    swept_at = _t(swept[0]["spotted_at"]) if swept else None
+    newest_capture = max([c for c in capat.values() if c], default=None)
+    age_h = (datetime.datetime.now(datetime.timezone.utc) - swept_at).total_seconds() / 3600 \
+        if swept_at else None
+    if not swept_at:
+        bad.insert(0, "the change ledger is EMPTY — this step can prove nothing")
+    elif newest_capture and swept_at < newest_capture:
+        bad.insert(0, f"the change sweep last ran {swept_at.isoformat()[:16]}, BEFORE our newest "
+                      f"capture at {newest_capture.isoformat()[:16]} — it has not looked since, so "
+                      f"'no changes' here means NOTHING WAS CHECKED")
+    elif age_h > LEDGER_STALE_HOURS:
+        bad.insert(0, f"the change sweep last ran {round(age_h,1)}h ago (limit "
+                      f"{LEDGER_STALE_HOURS}h) — anything Clancy did since is invisible to this step")
+
     step(2, "CAPTURE", "current", bad,
-         f"{n - len(bad)}/{n} damages are level with Depotnet's audit trail",
-         "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-recapture.py  (then recapture the listed IDs)")
+         f"{n - len([b for b in bad if b[:1].isdigit()])}/{n} level with the audit trail, "
+         f"which was last swept {round(age_h,1) if age_h is not None else '?'}h ago",
+         "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-change-sweep.py   (refresh the mirror FIRST), "
+         "then clancy-dd-recapture.py and recapture the listed IDs")
 
     # 2 FILE
     bad = [f"{f['incident_id']} {f['name'][:40]}"

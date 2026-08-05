@@ -93,6 +93,26 @@ def plan(fy, days):
     by = defaultdict(list)
     for e in led:
         by[e["incident_id"]].append(e)
+
+    # THE LEDGER IS A MIRROR. It can only tell you about changes it has actually LOOKED for, and
+    # clancy-dn-change-sweep.py is what makes it look. If the sweep has not run since our newest
+    # capture, an empty "changed since" list means the mirror never looked, not that Depotnet has
+    # been quiet — and this tool would hand back a work list saying there is nothing to fetch.
+    # Caught 5 Aug 2026 with the sweep 25.5h stale while Clancy were amending a damage that hour.
+    swept = get("clancy_dn_change_ledger?select=spotted_at&order=spotted_at.desc&limit=1")
+    swept_at = ts(swept[0]["spotted_at"]) if swept else None
+    newest_cap = max([ts(r.get("raw_api_at")) for r in inc if r.get("raw_api_at")], default=None)
+    stale = None
+    if not swept_at:
+        stale = "the change ledger is EMPTY - nothing here can be trusted"
+    elif newest_cap and swept_at < newest_cap:
+        stale = (f"the change sweep last ran {swept_at.isoformat()[:16]}, BEFORE our newest capture "
+                 f"at {newest_cap.isoformat()[:16]}. It has not looked since, so section 2 below "
+                 f"is NOT a clean bill of health. Run clancy-dn-change-sweep.py first.")
+    elif (now := datetime.datetime.now(datetime.timezone.utc)) and \
+            (now - swept_at).total_seconds() / 3600 > 6:
+        stale = (f"the change sweep last ran {round((now - swept_at).total_seconds()/3600,1)}h ago. "
+                 f"Anything Clancy has done since is invisible here.")
     now = datetime.datetime.now(datetime.timezone.utc)
     cutoff = now - datetime.timedelta(days=days)
 
@@ -122,7 +142,7 @@ def plan(fy, days):
         if d and d > cutoff:
             recent.append({"id": r["id"], "loc": loc, "raised": d.isoformat()[:10]})
     return {"fy": fy, "damages": len(inc), "never": never, "changed": changed,
-            "investigation_open": open_inv, "recent": recent}
+            "investigation_open": open_inv, "recent": recent, "stale": stale}
 
 
 def main():
@@ -141,13 +161,16 @@ def main():
               file=sys.stderr)
         sys.exit(2)
 
-    work = any(p["never"] or p["changed"] or p["investigation_open"] for p in plans)
+    work = any(p["never"] or p["changed"] or p["investigation_open"] or p.get("stale")
+               for p in plans)
     if a.json:
         print(json.dumps({"work": work, "plans": plans}, indent=1))
         sys.exit(1 if work else 0)
 
     for p in plans:
         print(f"\n=== RECAPTURE PLAN — {p['fy']} ({p['damages']} damages) ===")
+        if p.get("stale"):
+            print(f"\n  !! MIRROR STALE — {p['stale']}")
         if p["never"]:
             print(f"\n  1 NEVER CAPTURED — {len(p['never'])}")
             for x in p["never"]:
