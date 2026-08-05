@@ -46,8 +46,14 @@ def main():
     checks = [
         ("image assets without alt text",
          "select count(*) as n from resource_asset where kind='image' and coalesce(alt_text,'')=''"),
+        # A handful of the on-site clips are instrument audio with nobody speaking. Those are
+        # exempt when they say so (meta.no_speech) AND still carry a block describing what is
+        # audible, so Agent Hertz can see them. Silence is a reason; a missing transcript is not.
         ("video resources published without a transcript flag",
-         "select count(*) as n from resource where kind='video' and status='published' and coalesce((meta->>'has_transcript')::boolean,false)=false"),
+         "select count(*) as n from resource r where r.kind='video' and r.status='published' "
+         "and coalesce((r.meta->>'has_transcript')::boolean,false)=false "
+         "and not (coalesce((r.meta->>'no_speech')::boolean,false) "
+         "         and exists (select 1 from resource_block b where b.resource_id=r.id))"),
         ("course questions without a source_ref",
          "select count(*) as n from course_question where coalesce(source_ref,'')=''"),
         ("course steps without a source_ref",
@@ -60,6 +66,12 @@ def main():
          "and not exists (select 1 from resource_block b where b.resource_id=r.id)"),
         ("image blocks whose asset row is missing",
          "select count(*) as n from resource_block b where block_type='image' and asset_id is null"),
+        # /videos renders a clip under its pair group. A group that does not exist means the
+        # video renders nowhere at all: it is live, published, and invisible. Caught exactly
+        # that way on 5 Aug 2026 after a typo'd group slug.
+        ("videos pointing at a clip_pair group that does not exist (invisible on /videos)",
+         "select count(*) as n from resource r where r.meta->>'pair_group' is not null "
+         "and not exists (select 1 from clip_pair p where p.slug = r.meta->>'pair_group')"),
         ("topics used on resources that are not in the closed list",
          "select count(*) as n from (select unnest(topics) t from resource) x "
          "where not exists (select 1 from topic where slug=x.t)"),
