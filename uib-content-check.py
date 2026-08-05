@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """uib-content-check.py -- the gate that keeps the Underground Intelligence Bureau
-database-driven and Scout-answerable. Prints 0 when clean; exits 1 with a list when not.
+database-driven and Agent-Hertz-answerable. Prints 0 when clean; exits 1 with a list when not.
 
 Born 4 Aug 2026, the day the first build shipped with content in a TypeScript seed file
 instead of the database. Pete: "why the fuck is it not in supabase?? everything was
 supposed to be database driven" — and then: "how do we ensure anything we add, any small
-thing no matter what it is goes into the database for scout". This is the answer that
+thing no matter what it is goes into the database for scout" (the agent, since renamed Agent Hertz). This is the answer that
 is not a promise.
 
 Three classes of failure it catches:
 
   1. CONTENT SMUGGLED INTO THE REPO -- prose hardcoded in page files instead of rows.
      The app has no static seed; anything that looks like one is a regression.
-  2. ROWS SCOUT CANNOT USE -- published resources with no blocks and no summary payload,
+  2. ROWS AGENT HERTZ CANNOT USE -- published resources with no blocks and no summary payload,
      image assets without alt text, video resources without a transcript flag, course
      questions with no source_ref. (The DB publish gate blocks most of these at write
      time; this re-checks from outside in case anything got in around the trigger.)
   3. UNANSWERABLE CORPUS -- once the embedder exists: published blocks/resources with a
-     null embedding. Reported as INFO until Scout ships, FAIL after (flip STRICT_EMBED).
+     null embedding. Reported as INFO until the agent ships, FAIL after (flip STRICT_EMBED).
 
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/uib-content-check.py            # check the DB
@@ -27,7 +27,7 @@ import json, os, re, subprocess, sys, urllib.request
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 REF = "xekedjpotwhhstpwganq"
-STRICT_EMBED = True  # flipped 4 Aug 2026 — Scout is live; an unembedded block is invisible to it
+STRICT_EMBED = True  # flipped 4 Aug 2026 — the agent (now Agent Hertz) is live; an unembedded block is invisible to it
 
 def q(sql):
     tok = open(f"{VAULT}/Library/processes/secrets/supabase-token").read().strip()
@@ -42,7 +42,7 @@ def q(sql):
 def main():
     fails, infos = [], []
 
-    # ── 2: rows Scout cannot use ─────────────────────────────────────────────
+    # ── 2: rows Agent Hertz cannot use ─────────────────────────────────────────────
     checks = [
         ("image assets without alt text",
          "select count(*) as n from resource_asset where kind='image' and coalesce(alt_text,'')=''"),
@@ -72,14 +72,14 @@ def main():
         if n:
             fails.append(f"{n:>3}  {label}")
 
-    # ── 3: the corpus behind Scout ───────────────────────────────────────────
+    # ── 3: the corpus behind Agent Hertz ───────────────────────────────────────────
     emb = q("select "
             "(select count(*) from resource where status='published' and embedding is null) as r, "
             "(select count(*) from resource_block where embedding is null) as b")[0]
     n_unembedded = emb["r"] + emb["b"]
     msg = f"{emb['r']} published resources / {emb['b']} blocks with no embedding"
     if n_unembedded and STRICT_EMBED:
-        fails.append("     " + msg + " — invisible to Scout")
+        fails.append("     " + msg + " — invisible to Agent Hertz")
     else:
         infos.append(msg)
 
@@ -104,7 +104,7 @@ def main():
         for f in fails:
             print(f"  ✗ {f}")
         sys.exit(1)
-    print("  0 failures. Everything a reader sees, Scout can see.")
+    print("  0 failures. Everything a reader sees, Agent Hertz can see.")
     sys.exit(0)
 
 if __name__ == "__main__":
