@@ -55,6 +55,26 @@ def repo_slug(git_dir):
 
 
 def contains_sha(git_dir, sha):
+    """Is this commit REACHABLE FROM HEAD here — not merely present as an object?
+
+    These are different questions and conflating them silently lost a commit on 5 Aug 2026.
+    `git fetch` brings objects in without moving HEAD, so a checkout can hold a commit it
+    cannot see. Placement used `cat-file -e` (object exists) while the actual scan uses
+    `git log` (reachable from HEAD). Owned commit 5e6a35a existed in BOTH checkouts, so it
+    was placed in the first by sort order — /private/tmp/pbs, HEAD 26b5b27, where it is a
+    CHILD of HEAD and therefore invisible to `git log`. It was never listed, never logged,
+    and the run still printed UNLOGGED-OWNED REMAINING: 0.
+
+    Reachability is the honest test, because it is the same one the scan uses.
+    """
+    return subprocess.run(["git", "-C", git_dir, "merge-base", "--is-ancestor", sha, "HEAD"],
+                          capture_output=True, text=True).returncode == 0
+
+
+def object_present(git_dir, sha):
+    """Weaker test — the object is here, reachable or not. Used only to tell 'this repo isn't
+    on disk' apart from 'it is here but not on this checkout's branch', which need different
+    advice."""
     return subprocess.run(["git", "-C", git_dir, "cat-file", "-e", f"{sha}^{{commit}}"],
                           capture_output=True, text=True).returncode == 0
 
@@ -141,9 +161,21 @@ def run(apply_mode, since, extra_dirs):
                 ambiguous.append((s, ds))
     unplaced = sorted(s for s, ds in dirs_for.items() if not ds)
     if unplaced:
-        report["warnings"].append(
-            f"{len(unplaced)} owned commit(s) not found in any scanned checkout ({', '.join(unplaced)}); "
-            "their repo isn't on disk here, so they can't be reconciled. Surface, don't assume logged.")
+        # Two very different causes, so say which. "Not on disk" is nothing we can do here;
+        # "here but ahead of HEAD" is a checkout that just needs pulling, and used to be the
+        # silent-loss case (see contains_sha).
+        absent = [s for s in unplaced if not any(object_present(d, s) for d in checkouts)]
+        ahead = [s for s in unplaced if s not in absent]
+        if absent:
+            report["warnings"].append(
+                f"{len(absent)} owned commit(s) not found in any scanned checkout ({', '.join(absent)}); "
+                "either their repo isn't on disk here, or they were amended/rebased away and a successor "
+                "carries the work. Each is checked against the work log below — not assumed logged.")
+        if ahead:
+            report["warnings"].append(
+                f"{len(ahead)} owned commit(s) exist on disk but are NOT reachable from any checkout's "
+                f"HEAD ({', '.join(ahead)}) — the clone is behind, or the commit was amended/rebased away. "
+                "They are checked against the work log directly below; they are NOT assumed logged.")
     for s, ds in ambiguous:
         report["warnings"].append(
             f"owned SHA {s} resolves in {len({repo_slug(x) for x in ds})} DIFFERENT repos "
@@ -190,16 +222,71 @@ def run(apply_mode, since, extra_dirs):
                 f"{repo}: {len(failed)} work_log write(s) FAILED ({', '.join(x['sha'] for x in failed)}) "
                 "-- these commits are NOT recorded and still count as unlogged. "
                 + "; ".join(x.get("out", "") for x in failed)[:220])
+    # Settle the headline number HERE, where the owned set and the checkouts are both in scope,
+    # so every caller reports the same verified figure rather than re-deriving it from the walk.
+    report["remaining"] = _remaining(report, owned, checkouts)
     return report
 
 
-def _remaining(report):
-    """Owned commits still NOT in the work log after this run: mine_unlogged minus the writes
-    that ACTUALLY succeeded. A FAILED work_log write must never count as recorded -- otherwise
-    the gate would report 'clean' while a commit silently went unlogged (the exact failure the
-    skill exists to prevent)."""
-    return sum(len(rp["mine_unlogged"]) - len([x for x in rp["recorded"] if x.get("ok")])
+def _remaining(report, owned=None, checkouts=None):
+    """Owned commits still NOT in the work log after this run.
+
+    TWO measures, and the second is the one that can be trusted.
+
+    (a) The WALK measure — mine_unlogged minus the writes that actually succeeded. A FAILED
+        work_log write must never count as recorded. But this only ever sees commits the walk
+        reached, so a placement or date-window bug makes a lost commit look like no commit.
+    (b) The DIRECT measure — ask the work log about EVERY owned SHA, whatever the walk did.
+
+    (b) exists because (a) reported a clean sheet on 5 Aug 2026 while owned commit 5e6a35a had
+    no work_log row at all: it was placed in a checkout where it was unreachable, so it never
+    entered `mine_unlogged`, so subtracting from that count could only ever yield zero. A gate
+    that infers its result from its own traversal cannot catch a fault in that traversal. This
+    one asks the question the gate actually exists to answer — "is every commit I own recorded?"
+    — against the record itself.
+    """
+    walk = sum(len(rp["mine_unlogged"]) - len([x for x in rp["recorded"] if x.get("ok")])
                for rp in report["repos"])
+    if not owned:
+        return walk
+    try:
+        res = worklog.ccq("SELECT COALESCE(source_ref,'') AS s, COALESCE(detail,'') AS d FROM work_log")
+        text = " ".join(((r.get("s") or "") + " " + (r.get("d") or "")) for r in (res or []))
+    except Exception as e:
+        report["warnings"].append(
+            f"could not re-read the work log to verify owned commits ({e}) — this run is NOT proven clean.")
+        return max(walk, 1)
+    # Expand ranges against every checkout we know, so a commit logged as part of a range in
+    # ANY of them still counts as recorded.
+    tokens = set()
+    for d in (checkouts or []):
+        try:
+            tokens |= set(worklog_sha.logged_tokens(text, d))
+        except Exception:
+            pass
+    if not tokens:
+        tokens = set(worklog_sha.sha_tokens(text))
+    missing = sorted(s for s in owned if not worklog_sha.is_present(s, tokens))
+    # SUPERSEDED IS NOT MISSING. `git commit --amend` and rebase leave the ORIGINAL sha stamped
+    # in the transcript, so it stays "owned" forever while its object disappears and its content
+    # lives on under a new sha that IS logged. Counting those would leave the gate permanently
+    # non-zero after any amend — and a gate that cries wolf every run is one you stop reading,
+    # which is worse than no gate. A commit whose object exists nowhere cannot be live work.
+    # An object that IS still present and still unlogged is a real gap and is counted.
+    real, superseded = [], []
+    for s in missing:
+        (superseded if not any(object_present(d, s) for d in (checkouts or [])) else real).append(s)
+    for s in real:
+        report["warnings"].append(
+            f"OWNED COMMIT NOT IN THE WORK LOG: {s[:9]} — log it, or say why it should not be.")
+    if superseded:
+        report["notes"] = report.get("notes", []) + [
+            f"{len(superseded)} owned sha(s) no longer exist in any checkout "
+            f"({', '.join(x[:9] for x in superseded)}) — amended or rebased away, so their work is "
+            "carried by a successor commit. Not counted as unlogged."]
+    report["owned_missing_from_worklog"] = [s[:9] for s in real]
+    report["owned_superseded"] = [s[:9] for s in superseded]
+    return max(walk, len(real))
 
 
 def _human(r):
@@ -208,6 +295,8 @@ def _human(r):
     print(f"owned commits this session: {', '.join(s[:9] for s in r['owned_shas']) or '(none)'}")
     for w in r["warnings"]:
         print(f"  ! {w}")
+    for n in r.get("notes", []):
+        print(f"  · {n}")
     if not r.get("ownership_verifiable", True):
         print("\nOWNERSHIP UNVERIFIABLE — nothing checked or recorded. NOT a clean pass.")
         return
@@ -228,7 +317,7 @@ def _human(r):
             else:
                 print(f"   -> WRITE FAILED {rec['sha']}: {rec['out']}  (still unlogged)")
     # the runnable-gate one-liner (a failed write is NOT recorded -- see _remaining)
-    print(f"\nUNLOGGED-OWNED REMAINING: {_remaining(r)}")
+    print(f"\nUNLOGGED-OWNED REMAINING: {r.get('remaining', _remaining(r))}")
 
 
 def main():
@@ -261,8 +350,10 @@ def main():
     # stayed unlogged (incl. a failed write, see _remaining). exit 0 = clean.
     if not rep.get("ownership_verifiable", True):
         sys.exit(3)
-    if apply_mode:
-        sys.exit(2 if _remaining(rep) else 0)
+    # Same exit contract whether or not we wrote: 2 = an owned commit is still unlogged.
+    # A dry run that printed REMAINING: 1 and exited 0 made `echo $?` untrustworthy, which is
+    # how a gate quietly stops being a gate.
+    sys.exit(2 if rep.get('remaining', _remaining(rep)) else 0)
 
 
 if __name__ == "__main__":
