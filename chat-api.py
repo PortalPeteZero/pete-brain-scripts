@@ -18,6 +18,8 @@ CLI usage:
   python3 chat-api.py members SPACE_ID                        # list members of a space
   python3 chat-api.py messages SPACE_ID [LIMIT]               # list recent messages in a space (default 25)
   python3 chat-api.py message SPACE_ID MESSAGE_ID             # get a single message
+  python3 chat-api.py attachments SPACE_ID MESSAGE_ID         # list a message's attachments
+  python3 chat-api.py download-attachment RESOURCE_NAME PATH  # save an attachment to disk
   python3 chat-api.py send SPACE_ID "TEXT"                    # send a text message to a space
   python3 chat-api.py update MESSAGE_NAME "NEW TEXT"          # update a message (name = full path: spaces/X/messages/Y)
   python3 chat-api.py delete MESSAGE_NAME                     # delete a message
@@ -185,6 +187,44 @@ class ChatAPI:
         # message_name like "spaces/AAAA/messages/BBBB"
         return self._call("GET", f"/{message_name}")
 
+    # --- attachments ----------------------------------------------------------
+    # ADDED 5 Aug 2026. Jim sent a 10-page PDF plan into the Claude Exchange and this helper
+    # could not read it — `messages` prints an empty `text` for an attachment-only message, so
+    # the file looked like a blank post. The session had to hand-roll the media call to answer
+    # the question. That is a gap the next session would have paid for again, so it lives here.
+    #
+    # Two separate things, easy to confuse:
+    #   * message.attachment[].attachmentDataRef.resourceName  -> USER-uploaded file (this path)
+    #   * message.attachment[].driveDataRef                    -> a Drive file; fetch via drive-api.py
+    # The media endpoint sits on a different path prefix to the rest of the API (/v1/media/...),
+    # so it deliberately does not go through _call().
+
+    def list_attachments(self, message_name):
+        """[{contentName, contentType, resourceName|driveFileId}] for one message. [] if none."""
+        msg = self.get_message(message_name)
+        out = []
+        for a in (msg.get("attachment") or []):
+            ref = (a.get("attachmentDataRef") or {}).get("resourceName")
+            drive = (a.get("driveDataRef") or {}).get("driveFileId")
+            out.append({"contentName": a.get("contentName"), "contentType": a.get("contentType"),
+                        "resourceName": ref, "driveFileId": drive})
+        return out
+
+    def download_attachment(self, resource_name, save_path):
+        """Download an uploaded attachment by its resourceName. Returns {path, bytes}.
+
+        resourceName is already base64-ish and contains '/' and '=', so it MUST be percent-encoded
+        with safe='' — leaving it raw builds a wrong path and returns 404, which reads exactly like
+        'the file is gone'.
+        """
+        url = f"{BASE}/media/{urllib.parse.quote(resource_name, safe='')}?alt=media"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self._get_token()}"})
+        with urllib.request.urlopen(req) as r:
+            data = r.read()
+        with open(save_path, "wb") as fh:
+            fh.write(data)
+        return {"path": save_path, "bytes": len(data)}
+
     def send_message(self, space_name, text):
         if not space_name.startswith("spaces/"):
             space_name = f"spaces/{space_name}"
@@ -226,7 +266,16 @@ def _fmt_msg(m):
     sender = m.get("sender", {}).get("name", "?")
     created = m.get("createTime", "?")
     text = (m.get("text") or "").replace("\n", " ")[:80]
-    return f"  {created[:19]}  {sender:30s}  {text}"
+    # An attachment-only message has NO text, so the listing printed a blank line and the file was
+    # invisible. On 5 Aug 2026 that nearly lost a 10-page plan PDF Jim had sent for review — it
+    # showed as an empty post between two chatty ones. Name the file so it cannot be scrolled past.
+    atts = m.get("attachment") or []
+    if atts:
+        names = ", ".join(a.get("contentName") or a.get("contentType") or "file" for a in atts)
+        marker = f"[ATTACHMENT: {names}]"
+        text = f"{marker} {text}".strip()
+    return f"  {created[:19]}  {sender:30s}  {text}" + (
+        f"   <{name.rsplit('/', 1)[-1]}>" if atts and name else "")
 
 
 def main():
@@ -269,6 +318,20 @@ def main():
     elif cmd == "message":
         m = c.get_message(f"{sys.argv[2]}/messages/{sys.argv[3]}")
         print(json.dumps(m, indent=2))
+
+    elif cmd == "attachments":
+        # attachments SPACE_ID MESSAGE_ID
+        atts = c.list_attachments(f"{sys.argv[2]}/messages/{sys.argv[3]}")
+        if not atts:
+            print("No attachments on that message.")
+        for a in atts:
+            where = a["resourceName"] or f"drive:{a['driveFileId']}"
+            print(f"  {a['contentName']}  ({a['contentType']})\n    {where}")
+
+    elif cmd == "download-attachment":
+        # download-attachment RESOURCE_NAME SAVE_PATH
+        out = c.download_attachment(sys.argv[2], sys.argv[3])
+        print(f"Saved {out['bytes']} bytes -> {out['path']}")
 
     elif cmd == "send":
         out = c.send_message(sys.argv[2], sys.argv[3])
