@@ -46,14 +46,27 @@ C = "clancy"
 DRY = "--dry-run" in sys.argv
 CLANCY_DOMAINS = ("theclancygroup.co.uk", "anglianwater.co.uk")
 DOC_EXT = {"pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt"}
-ADDR_RE = re.compile(r'(?:"?([^"<>@]+?)"?\s*)?<?([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})>?')
+# A display name is only accepted when the address is in angle brackets. Without that guard the
+# optional name group (non-greedy, \s* so it needs no whitespace) happily eats the first letter of a
+# BARE address: "ross.farnes@..." parsed as name "r" + address "oss.farnes@...". That produced 16
+# corrupt account_people rows before it was caught on 5 Aug 2026 — each a duplicate of a good record,
+# with a one-character name and an address missing its first letter.
+ADDR_RE = re.compile(
+    r'(?:"([^"]+)"|([^",<>@]+?))?\s*<([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})>'
+    r'|(?<![\w.<"])([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})')
 
 
 def parse_addrs(val):
+    """Return [(display_name, address)]. A bare address yields an EMPTY name, never a fragment of
+    its own local part — see the ADDR_RE comment."""
     out = []
     for m in ADDR_RE.finditer(val or ""):
-        name = (m.group(1) or "").strip().strip('"').strip()
-        out.append((name, m.group(2).lower()))
+        quoted, bare_name, bracketed, plain = m.groups()
+        if bracketed:
+            name = (quoted or bare_name or "").strip().strip('"').strip(" ,;")
+            out.append((name, bracketed.lower()))
+        elif plain:
+            out.append(("", plain.lower()))
     return out
 
 
