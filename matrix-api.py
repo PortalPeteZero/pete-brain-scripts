@@ -25,9 +25,9 @@ and got both the vehicle type (a Kia Sportage called a van) and the fleet member
 register is hub.fleet on the Sygma Platform. Use `reconcile` before believing anything about which
 vehicles exist. The tracker answers WHERE A UNIT IS; hub.fleet answers WHAT WE RUN AND WHO DRIVES IT.
 
-RATE LIMITS, asked for by Matrix in writing: no date range longer than a month per request (this
-tool refuses over 31 days), and no repeated identical requests at high frequency. There is no cron
-on this and there should not be one without asking them.
+FOR THE RECORD, from Matrix's email of 5 Aug 2026: they prefer requests of a month or less at a
+time, and asked to be contacted before any high-frequency polling. Recorded as information, not
+enforced here -- how we use our own supplier's API is Pete's call.
 
 271 of the 706 documented endpoints are OAuth-era (the rest use the retired auth). 41 of the 45
 relevant reads were reachable on our account when probed 5 Aug 2026. Anything not wrapped below is
@@ -40,7 +40,6 @@ BASE = "https://restapi.matrixtelematics.com/"
 CRED_FILE = f"{VAULT}/Library/processes/secrets/matrix-telematics-portal-login"
 TOKEN_CACHE = "/tmp/.matrix-token.json"
 PLATFORM_REF = "rsczwfstwkthaybxhszy"          # Sygma Platform -- where hub.fleet lives
-MAX_DAYS = 31                                   # Matrix's own request
 
 
 # ---------------------------------------------------------------- auth
@@ -96,9 +95,6 @@ def window(args):
         frm = datetime.datetime.strptime(args.frm, "%Y-%m-%d")
     if args.to:
         to = datetime.datetime.strptime(args.to, "%Y-%m-%d") + datetime.timedelta(days=1)
-    if (to - frm).days > MAX_DAYS:
-        sys.exit(f"matrix-api: refusing a {(to-frm).days}-day range. Matrix asked for a month or "
-                 f"less per request -- split it.")
     return frm.strftime("%Y%m%d%H%M%S"), to.strftime("%Y%m%d%H%M%S")
 
 
