@@ -20,7 +20,12 @@ DELIBERATELY NARROW so it can never block an unrelated session:
 
 Override, when stopping really is right (Pete says leave it, the model is out of context, the
 source system is down):
-  VAULT=/tmp/pbs python3 /tmp/pbs/gate_override.py grant enrich-unfinished --reason "<why>"
+  VAULT=/tmp/pbs python3 /tmp/pbs/gate_override.py grant enrich-unfinished-stop-hook --reason "<why>"
+
+The gate key is the SCRIPT BASENAME, because that is what gate-report.py derives from the wiring in
+settings.json. It was `enrich-unfinished` until 5 Aug 2026, which meant the registry row and the
+wired hook could never match: every boot reported the same gate twice, once as UNREGISTERED and once
+as REGISTERED-BUT-NOT-WIRED. A check that cries wolf on every run is one you stop reading.
 """
 import json, os, re, subprocess, sys, time
 
@@ -114,7 +119,7 @@ def outstanding():
 def overridden() -> bool:
     try:
         r = subprocess.run([sys.executable, os.path.join(VAULT, "gate_override.py"),
-                            "check", "enrich-unfinished"], capture_output=True, text=True,
+                            "check", "enrich-unfinished-stop-hook"], capture_output=True, text=True,
                            env={**os.environ, "VAULT": VAULT}, timeout=60)
         return r.returncode == 0 and "granted" in (r.stdout or "").lower()
     except Exception:
