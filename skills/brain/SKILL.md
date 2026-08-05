@@ -196,7 +196,26 @@ VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_sl
 - **Empty is a result, not a reason to skip**: say "Today: nothing in the diary, no tasks due" rather than dropping the block. Silence reads as "not checked".
 - Flag a **clash** (two events overlapping, or a task due on a day already full) in one line.
 - Travel days: show the event in the timezone it physically happens (see [[diary-conventions]]), and say which.
-- This is READ-ONLY. Never create, move, or complete anything here.
+- This is READ-ONLY for the diary itself. Never create, move, or complete an event here.
+
+**⛔ HARVEST THE ATTENDEES. Every meeting, every time — this is NOT optional and it is NOT read-only.**
+
+A calendar invite is the single richest source of customer contacts in the whole system, and nothing was reading it. Pete, 5 Aug 2026: *"I told you to get all the names from Clancy every time we come across a Clancy meeting... get the contacts from the meeting and put them in a proper contact."* Measured that day: an 11-person Clancy invite had run that morning and **not one attendee existed in any store** — including Paul Cruse, who Sygma were meeting on site 48 hours later. `people find` had answered "not in any of the four stores", which was true and useless, because **nobody had ever looked at the invite.**
+
+For every event in the today/tomorrow window that carries `attendees`:
+```
+VAULT=/tmp/pbs python3 -c "…CalendarAPI().list_events('primary', <from>, <to>)"   # read attendees[]
+VAULT=/tmp/pbs python3 /tmp/pbs/people.py find "<attendee email>"                  # one per external attendee
+```
+- **External attendees only** (skip `@sygma-solutions.com` / `@canary-detect.com` — they are staff).
+- Anyone `people find` does not know: **add them, do not just report them.**
+  `people add "Name" --entity sygma|cd --email E [--phone P] --company C --role customer`
+  then `people phone "Name"` so they reach Pete's Google Contacts. **Pete, 5 Aug 2026: "if somebody's worthy of a home in the CC, they can go in my Google contacts."** A platform record he cannot see on his phone is half a job.
+- `people add` REFUSES without an email, so take the address off the invite while you have it.
+- A partial-name refusal is usually a DIFFERENT person (a bare "David" in Odoo blocked "David Fellows"); check, then `--allow-duplicate` when they are genuinely not the same human.
+- Report the harvest in one line: `Contacts: N new from today's invites (names)`. Silence means it was skipped.
+
+**`people find` searching four stores and finding nothing is NOT the end of the search.** The calendar, the email thread and the meeting invite all hold people the stores do not. Ending at "not found" is the failure this step exists to stop.
 
 **The same block is mandatory at CLOSEOUT** (the `closeout` skill's hand-back), so Pete ends every session knowing what tomorrow holds.
 
