@@ -9,8 +9,9 @@
 - **Step 4a gets a runnable gate: `pf-quote-gate.py`.** v1.4.0 added an adversarial verify pass, and
   it worked — but it was a *reading* pass, and reading passes converge on summaries that merely read
   well. Nine summaries survived repeated adversarial rounds until two consecutive auditors returned
-  zero, were declared clean and banked. A mechanical check then failed **71% of their quoted spans**,
-  including one ("written on the wall in the old studio") that appears nowhere on the tape. By
+  zero, were declared clean and banked. A mechanical check then failed **69% of their quoted spans**,
+  including one (*"we can only react to the communication we get from you"*) with no substantive
+  fragment anywhere on its tape. By
   contrast, summaries fixed by agents required to mechanically verify their own output came in at
   7.5%, with seven at zero. The difference is the command, not the care.
 - The gate extracts every quoted span from `<key>-summary.md`, finds `<key>-transcript.txt`, and

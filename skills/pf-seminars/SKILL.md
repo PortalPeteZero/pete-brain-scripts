@@ -149,8 +149,14 @@ the ambiguity honestly — same principle as the date rule: never invent certain
 
 A reasoning-only verify pass converges on a summary that merely READS well. Proof: nine summaries
 went through repeated adversarial audit rounds until two consecutive auditors returned zero, were
-declared clean and banked — and **71% of their quoted spans still failed a mechanical check**. One
-span that survived every round ("written on the wall in the old studio") appears nowhere on the tape.
+declared clean and banked — and **69% of their quoted spans still failed a mechanical check**. One
+span that survived every round — *"we can only react to the communication we get from you"* — has
+no substantive fragment anywhere on its tape.
+
+**Search the transcript by flattening whitespace across the whole file, never with `grep`.** These
+quotes routinely span line breaks, and grep is line-based, so it reports real quotes as absent. That
+mistake was made twice in the 5 Aug sweep, once badly enough to nearly accuse an auditor of
+inventing a transcript line that was genuinely there.
 
 So the pass is not complete until the counter prints 0:
 
