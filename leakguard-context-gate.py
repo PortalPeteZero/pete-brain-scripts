@@ -68,7 +68,17 @@ _UNLOCK_RE = re.compile(r"lg-brief\.py")
 # lg-sql.py is on the tool list because a WRITE through it is a live database change. A plain SELECT
 # is how you find things out, so it is allowed through unread -- the point of the gate is to stop
 # blind ACTION, not blind curiosity.
-_LG_SQL_RE = re.compile(r"python3?\s+(?:[^\n;|&]*?/)?lg-sql\.py\b")
+#
+# ANCHORED TO COMMAND POSITION (5 Aug 2026) -- the fourth time this same class has been fixed in this
+# file, and the one pattern that was left out of the previous three. See _LG_EXEC_RE above and
+# _DEVICE_WRITE_RE below: "Quoted text is data; only a command position is a command."
+# Unanchored, this matched the tool name ANYWHERE in the command string, including inside a quoted
+# value or a heredoc. So `cc-sql.py < file` writing an UPDATE into the Command Centre's data_map --
+# a different database, nothing to do with LeakGuard -- was blocked, purely because the routing text
+# being STORED quoted an lg-sql command. It also blocked writing any note or skill that documents an
+# lg-sql write. A wrongly-fired gate then demands lg-brief.py --ack, which pulls live LeakGuard state
+# and reconciles ThingsLog: real work, in a session with no LeakGuard in it.
+_LG_SQL_RE = re.compile(r"(?:^|[\n;&|]\s*)(?:\w+=\S*\s+)*python3?\s+(?:[^\n;|&]*?/)?lg-sql\.py\b")
 _MUTATING_SQL_RE = re.compile(
     r"\b(insert\s+into|update\s+\w|delete\s+from|drop\s+|alter\s+|create\s+|truncate\s+|grant\s+|revoke\s+)",
     re.I,
