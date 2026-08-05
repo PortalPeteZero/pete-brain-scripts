@@ -40,7 +40,7 @@ CURLY_RE = re.compile(r'“([^“”]+)”')
 # stamp left in the haystack silently breaks continuity mid-quote and reads as a
 # weld — so strip it, but ONLY line-anchored, or a race split ("2:45") goes too.
 TIMESTAMP_RE = re.compile(r"\[\d{1,2}:\d{2}(?::\d{2})?\]")
-BARE_TS_RE = re.compile(r"^\s*\d{1,2}:\d{2}(?::\d{2})?\s*$", re.M)
+BARE_TS_RE = re.compile(r"^\s*\d{1,2}:\d{2}(?::\d{2})?(?=\s|$)", re.M)
 # Labels appear as "Speaker 3:", "None:" (export never identified the speaker) or
 # "?:". Strip all of them, or the literal token survives mid-sentence and reads as
 # a weld — one transcript carried "None:" 198 times, once per chunk boundary.
@@ -66,7 +66,14 @@ BLOCK_START_RE = re.compile(r"(#{1,6} |[-*+] |\d+\. |\|)")
 SPELLING = (("behaviour", "behavior"), ("organisation", "organization"),
             ("realise", "realize"), ("recognise", "recognize"),
             ("prioritise", "prioritize"), ("individualise", "individualize"),
-            ("apologise", "apologize"), ("summarise", "summarize"))
+            ("apologise", "apologize"), ("summarise", "summarize"),
+            ("optimise", "optimize"), ("analyse", "analyze"),
+            ("fulfilment", "fulfillment"), ("fulfil", "fulfill"),
+            ("programme", "program"), ("practise", "practice"),
+            ("centre", "center"), ("metre", "meter"), ("defence", "defense"),
+            ("offence", "offense"), ("licence", "license"),
+            ("catalogue", "catalog"), ("travelling", "traveling"),
+            ("modelling", "modeling"), ("cancelled", "canceled"))
 
 
 def norm(s):
