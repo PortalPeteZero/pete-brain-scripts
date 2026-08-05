@@ -285,6 +285,14 @@ def check(fy):
     # the file list HOLDS. Detail and the fix list: clancy-dd-missing-evidence.py.
     import subprocess as _sp
     bad = []
+    # THE CHECKER MUST PROVE ITSELF BEFORE ITS COUNT IS USED. Its first run reported 22 of 48
+    # damages with a gap; one fix — reading what vision saw INSIDE an image rather than only its
+    # filename — took that to 12. A number that moves after someone has been given it is worse
+    # than no number. Pete, 5 Aug 2026: "we need some locks and gates in here or something
+    # because you're turning this process into something really unreliable."
+    _st = _sp.run(["python3", f"{VAULT}/clancy-dd-missing-evidence.py", "--selftest"],
+                  capture_output=True, text=True, env={**os.environ, "VAULT": VAULT}, timeout=600)
+    selftest_ok = _st.returncode == 0
     try:
         _r = _sp.run(["python3", f"{VAULT}/clancy-dd-missing-evidence.py", "--fy", fy, "--json"],
                      capture_output=True, text=True, env={**os.environ, "VAULT": VAULT}, timeout=900)
@@ -297,10 +305,22 @@ def check(fy):
             bad.append("could not run clancy-dd-missing-evidence.py — this is NOT a pass")
     except Exception as _e:
         bad.append(f"could not run clancy-dd-missing-evidence.py ({_e}) — this is NOT a pass")
-    step(4, "FILE", "referenced", bad,
-         f"{'nothing' if not bad else len(bad)} referenced by the record but not held",
-         "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-missing-evidence.py  (then ask Clancy for the "
-         "named artefact, or record why it cannot be had)")
+    if not selftest_ok:
+        # SUPPRESS the count entirely. A checker that cannot reproduce verdicts already verified
+        # by hand is not evidence, and printing its number anyway is how an unreliable figure
+        # reaches a customer.
+        bad = ["the checker FAILED ITS OWN SELF-TEST, so NO COUNT is reported here"] + \
+              [ln.strip() for ln in (_st.stderr or "").splitlines() if ln.strip().startswith("✗")]
+        step(4, "FILE", "referenced", bad,
+             "SUPPRESSED — the checker could not reproduce its known verdicts",
+             "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-missing-evidence.py --selftest  "
+             "(fix the rule, then add the damage that exposed it as a case)")
+    else:
+        step(4, "FILE", "referenced", bad,
+             f"{'nothing' if not bad else len(bad)} referenced by the record but not held "
+             f"(checker self-test passed)",
+             "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-missing-evidence.py  (then ask Clancy for "
+             "the named artefact, or record why it cannot be had)")
 
     unfiled = [f"{f['incident_id']} {f['name'][:40]}"
                for f in files if not (f.get("drive_id") or f.get("storage_path"))]

@@ -95,23 +95,41 @@ OUR_MARKER = re.compile(r"\[attachment:|routed to vision|\[image\b|\[document\b|
 # "Hollow Lane 152586 - CAT and Genny data review.pdf". The claim was unverifiable and nothing
 # said so.
 #
-# (question matches, answer counts as YES, what the artefact looks like in a filename, plain name)
+# THE ARTEFACT IS OFTEN A PHOTOGRAPH OF A SCREEN, NOT A NAMED FILE.
+# Pete, 5 Aug 2026: "this could be like screenshots of dashboards that have been missed in
+# pictures or something, so just be careful with this. Sometimes the version you've captured any
+# day to download is literally a picture of a fucking dashboard or a screenshot."
+# He was right and the first run proved it: damage 116798 holds the CAT download as
+# "Screenshot of a cable avoidance tool usage report" and "a cable avoidance tool management
+# system showing the detailed survey log", filed under a meaningless gallery name. Matching on
+# FILENAME alone reported it missing. So the held-test also reads what vision saw INSIDE every
+# image and what the document extracts say — the same evidence a person flicking through the
+# folder would use.
+# The content patterns are deliberately tighter than the filename ones: "Genny & Cat scans
+# completed" ticked on a pre-start form is a claim, not the download, and must not suppress it.
+# (question matches, answer counts as YES, filename pattern, CONTENT pattern, plain name)
 ASSERTED = [
     (re.compile(r"cat data download|data downloaded and reviewed|download review", re.I),
      re.compile(r"^\s*(yes|y)\b", re.I),
      re.compile(r"cat|genny|locator|scan|download", re.I),
+     re.compile(r"c\.?a\.?t\.? manager|cable avoidance tool (usage|management|report)|"
+                r"usage report|survey log|months? use|cat manager|locator (report|log|download)|"
+                r"scan (log|history|record)", re.I),
      "the CAT/Genny data download it says was reviewed"),
     (re.compile(r"trial hole", re.I),
      re.compile(r"^\s*(yes|y)\b", re.I),
      re.compile(r"trial ?hole|hsf-?163|record sheet", re.I),
+     re.compile(r"trial hole (record|sheet|form|log)|hsf-?163", re.I),
      "the trial hole record it says was completed"),
     (re.compile(r"drugs and alcohol|d&a test", re.I),
      re.compile(r"^\s*(yes|y)\b", re.I),
      re.compile(r"drug|alcohol|d&a", re.I),
+     re.compile(r"drugs?\s*(and|&)\s*alcohol (test|result|record|screen)", re.I),
      "the drugs and alcohol test result it says was carried out"),
     (re.compile(r"witness statement", re.I),
      re.compile(r"^\s*(yes|y)\b", re.I),
      re.compile(r"statement", re.I),
+     re.compile(r"(incident )?statement record|witness statement|statement of", re.I),
      "the witness statement it says was taken"),
 ]
 VIDEO_EXT = re.compile(r"\.(mp4|mov|avi|3gp|mkv|wmv|m4v)$", re.I)
@@ -156,13 +174,23 @@ def scan(iid):
     found, seen = [], set()
 
     # 3 ASSERTED — an answer says an artefact exists, and nothing on the record could be it.
+    # What vision saw inside every image, plus what the documents say: this is where a
+    # photographed dashboard lives, and it has no filename worth matching.
+    content = " \n ".join(
+        (i.get("description") or "") + " " + (i.get("transcription") or "")
+        for i in get(f"clancy_dn_image_readings?incident_id=eq.{iid}"
+                     f"&select=description,transcription&order=id.asc&limit=600"))
+    content += " \n " + " ".join(t for _, t in sources)
+
     for a in answers:
         q, ans = a.get("question") or "", str(a.get("answer") or "")
-        for qrx, arx, frx, label in ASSERTED:
+        for qrx, arx, frx, crx, label in ASSERTED:
             if not qrx.search(q) or not arx.match(ans.strip()):
                 continue
             if any(frx.search(f["name"]) for f in files):
                 continue
+            if crx.search(content):
+                continue                      # held as a screenshot / inside a document
             key = ("asserted", label)
             if key in seen:
                 continue
@@ -214,13 +242,74 @@ def scan(iid):
     return files, found
 
 
+# ---------------------------------------------------------------- self-test
+#
+# Pete, 5 Aug 2026: "we need some locks and gates in here or something because you're turning
+# this process into something really unreliable."
+#
+# He is right. The first run of this checker reported 22 of 48 damages with a gap. A single
+# correction — reading what vision saw INSIDE an image, not just its filename — took it to 12.
+# A number that moves like that after it has been given to someone is worse than no number, and
+# the fault was shipping a checker without making it reproduce answers already known to be true.
+#
+# So it now has to pass these before its output counts. Each case is a verdict verified by hand
+# against the record. --selftest is run by clancy-dd-workflow.py BEFORE it reports any count, and
+# a failure there suppresses the count rather than printing one nobody should trust.
+#
+# Adding a case is how a false positive gets retired permanently: fix the rule, add the damage
+# that exposed it, and it can never come back silently.
+CASES = [
+    # (damage, substring of the finding, must it be reported?, why this case exists)
+    (153523, "CAT/Genny data download", True,
+     "answers YES to Q18 and all four mode reviews, holds no CAT data in any form"),
+    (153523, "a video is said to exist", True,
+     "Widnall's statement: 'Video of the area was taken before any cutting or digging took place'"),
+    (153523, "Main street pic Brett Ward.jpg", True,
+     "named as the pre-start video-call evidence, not held"),
+    (152586, "CAT/Genny data download", False,
+     "holds 'Hollow Lane 152586 - CAT and Genny data review.pdf' — a named file"),
+    (116798, "CAT/Genny data download", False,
+     "holds it as a SCREENSHOT with a meaningless gallery name; only vision's description of it "
+     "as a 'cable avoidance tool usage report' proves it. This is the case that caught the "
+     "filename-only bug and it must never regress"),
+    (116819, "trial hole record", True,
+     "answers YES to Q21, whose own wording is 'if yes upload related document', and holds none"),
+]
+
+
+def selftest():
+    bad = []
+    for iid, needle, expected, why in CASES:
+        try:
+            _files, found = scan(iid)
+        except Exception as e:
+            bad.append(f"{iid}: could not scan ({e})")
+            continue
+        got = any(needle.lower() in (f["what"] or "").lower() for f in found)
+        if got != expected:
+            bad.append(f"{iid}: expected {'a report of' if expected else 'NO report of'} "
+                       f"'{needle}', got the opposite\n        because: {why}")
+    if bad:
+        print("SELF-TEST FAILED — this checker's numbers must NOT be used:", file=sys.stderr)
+        for b in bad:
+            print(f"  ✗ {b}", file=sys.stderr)
+        return False
+    print(f"self-test: {len(CASES)}/{len(CASES)} cases behave as verified.")
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--id", type=int)
     ap.add_argument("--fy", default="FY26/27")
     ap.add_argument("--all-years", action="store_true")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--selftest", action="store_true",
+                    help="prove the checker still reproduces known verdicts")
     a = ap.parse_args()
+
+    if a.selftest:
+        sys.exit(0 if selftest() else 1)
 
     try:
         if a.id:
