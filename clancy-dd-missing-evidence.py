@@ -26,8 +26,10 @@ WHAT IT REPORTS, by strength
                    no file we hold matches it. Strongest: someone wrote down a specific artefact.
   2 MEDIUM CLAIMED the text asserts a recording exists ("video of the area was taken", "footage",
                    "dashcam") and we hold NO file of that kind on the damage at all.
-  3 UPLOAD FIELD   a Depotnet answer to an upload question is a filename or "see attached" and
-                   nothing of that name is held.
+  3 ASSERTED       a Depotnet answer says an artefact was PRODUCED or REVIEWED (a CAT data
+                   download, a trial hole record, a D&A test, a witness statement) and nothing
+                   on the record could be it. Needs nobody to have written a filename down,
+                   which is why it catches what the other two miss.
 
 WHAT IT DELIBERATELY IGNORES
   Generic plurals. "photographs were taken" against a damage that holds photographs is not a gap,
@@ -81,6 +83,37 @@ NOT_FOOTAGE = re.compile(r"video ?(call|conference|link|meeting)", re.I)
 # Matching our own bookkeeping and reporting it as a gap is how a useful check becomes noise --
 # 20 of the first 22 hits across FY26/27 were exactly this.
 OUR_MARKER = re.compile(r"\[attachment:|routed to vision|\[image\b|\[document\b|\[embedded", re.I)
+
+# ASSERTED ARTEFACTS — the third and most important shape, and the one that needs nobody to have
+# written a filename down. A Depotnet answer says a thing was PRODUCED or REVIEWED; if it was,
+# there should be something on the record to look at.
+#
+# Pete, 5 Aug 2026: "again i dunno why you dindt pick up there was no data download."
+# Damage 153523 answers YES to "CAT data downloaded and reviewed in the portal?" and YES to all
+# four per-mode reviews (Genny / Power / Radio / Avoidance), with every mode's usage time recorded
+# as 00:00 — and holds NO CAT data file of any kind. Damage 152586, the control, holds
+# "Hollow Lane 152586 - CAT and Genny data review.pdf". The claim was unverifiable and nothing
+# said so.
+#
+# (question matches, answer counts as YES, what the artefact looks like in a filename, plain name)
+ASSERTED = [
+    (re.compile(r"cat data download|data downloaded and reviewed|download review", re.I),
+     re.compile(r"^\s*(yes|y)\b", re.I),
+     re.compile(r"cat|genny|locator|scan|download", re.I),
+     "the CAT/Genny data download it says was reviewed"),
+    (re.compile(r"trial hole", re.I),
+     re.compile(r"^\s*(yes|y)\b", re.I),
+     re.compile(r"trial ?hole|hsf-?163|record sheet", re.I),
+     "the trial hole record it says was completed"),
+    (re.compile(r"drugs and alcohol|d&a test", re.I),
+     re.compile(r"^\s*(yes|y)\b", re.I),
+     re.compile(r"drug|alcohol|d&a", re.I),
+     "the drugs and alcohol test result it says was carried out"),
+    (re.compile(r"witness statement", re.I),
+     re.compile(r"^\s*(yes|y)\b", re.I),
+     re.compile(r"statement", re.I),
+     "the witness statement it says was taken"),
+]
 VIDEO_EXT = re.compile(r"\.(mp4|mov|avi|3gp|mkv|wmv|m4v)$", re.I)
 # Lines that are the FORM's own wording, not an assertion by a person.
 TEMPLATE = re.compile(r"insert (photos?|images?)|upload (a |the )?(screenshot|photo|document|video)"
@@ -121,6 +154,23 @@ def scan(iid):
             sources.append((f"Depotnet answer Q{a['q_no']} [{a['section']}]", str(a["answer"])))
 
     found, seen = [], set()
+
+    # 3 ASSERTED — an answer says an artefact exists, and nothing on the record could be it.
+    for a in answers:
+        q, ans = a.get("question") or "", str(a.get("answer") or "")
+        for qrx, arx, frx, label in ASSERTED:
+            if not qrx.search(q) or not arx.match(ans.strip()):
+                continue
+            if any(frx.search(f["name"]) for f in files):
+                continue
+            key = ("asserted", label)
+            if key in seen:
+                continue
+            seen.add(key)
+            found.append({"kind": "ASSERTED, NOT HELD", "what": label,
+                          "where": f"Depotnet answer Q{a['q_no']} [{a['section']}]",
+                          "quote": f"{q.strip()[:130]} -> {ans.strip()[:60]}"})
+
     for where, text in sources:
         if not text:
             continue
