@@ -262,6 +262,67 @@ def _is_substantive(fin):
             or verb.startswith(("Reply", "Task", "Hand to")))
 
 
+def _ee_intake(dec, lines, manifest):
+    """Capture a routed enquiry's ARRIVAL into the Enquiry Engine. True / None / False.
+
+    Deliberately NOT a blind te-log call. `ee-payload.py` derives what the record can give (thread,
+    message_id, subject, every inbound message, and the contact WHEN the thread carries a customer
+    address). For a WEBSITE FORM it cannot: the envelope sender is info@sygma-solutions.com, so
+    full_name and email come back empty and te-log would die on contacts.full_name NOT NULL -- and a
+    web form is the commonest enquiry shape. Guessing a contact out of form text is a judgement, and
+    a wrong CRM contact is worse than a missing one.
+
+    So: capture when the record can answer, and REFUSE TO BE SILENT when it cannot -- print the exact
+    command with what is missing, and fail the run. Either way the caller post-checks for the row.
+    """
+    tid = dec.get("thread_id")
+    if not tid:
+        return None
+    if tl.cc_sql("SELECT 1 FROM enquiry_touches WHERE thread_id='%s' LIMIT 1" % tl.esc(tid)):
+        lines.append("  = ee-intake: already captured for this thread — no duplicate")
+        return True
+    try:
+        import tempfile
+        out = os.path.join(tempfile.gettempdir(), f"ee-intake-{tid}.json")
+        subprocess.run([sys.executable, os.path.join(VAULT, "ee-payload.py"),
+                        "--thread", tid, "--kind", "enquiry", "--out", out],
+                       capture_output=True, text=True, timeout=180)
+        p = json.load(open(out))
+    except Exception as e:
+        lines.append(f"  ✗ ee-intake: could not build the payload ({type(e).__name__}: {str(e)[:70]}) "
+                     f"— the enquiry is LABELLED BUT NOT IN THE ENGINE. Capture it by hand.")
+        return False
+
+    if not (p.get("full_name") and p.get("email")):
+        why = p.get("_derivation", {}).get("contact", "no customer address on the thread")
+        lines.append(f"  ✗ ee-intake: NOT captured — the contact cannot be derived ({why}). This is "
+                     f"normal for a website form, where the sender is info@. The enquiry is labelled "
+                     f"and trayed but exists in NO EE system. Capture it with the customer's own "
+                     f"name/email from the form body:")
+        lines.append(f"      VAULT={VAULT} python3 {VAULT}/te-log.py --in <payload>.json --apply "
+                     f"--no-file --no-gmail     # thread_id={tid}, draft at {out}")
+        return False
+
+    p["activity"] = {**(p.get("activity") or {}), "kind": "enquiry"}
+    for k in ("classification", "retrieval_refs"):      # judgement placeholders te-log does not need
+        if isinstance(p.get(k), str) and "JUDGEMENT" in p[k]:
+            p.pop(k)
+    json.dump(p, open(out, "w"), indent=1)
+    # --no-file/--no-gmail are load-bearing: a bare --apply would auto-file the thread and de-tray
+    # the enquiry the same action just trayed.
+    r = subprocess.run([sys.executable, os.path.join(VAULT, "te-log.py"), "--in", out,
+                        "--apply", "--no-file", "--no-gmail"],
+                       capture_output=True, text=True, timeout=300)
+    if r.returncode != 0:
+        lines.append(f"  ✗ ee-intake: te-log failed (exit {r.returncode}) — "
+                     f"{(r.stderr or r.stdout or '').strip().splitlines()[-1][:120] if (r.stderr or r.stdout) else 'no output'}")
+        return False
+    lines.append(f"  ✓ ee-intake: arrival captured for {p['email']} (CRM + ledger + knowledge)")
+    if manifest:
+        manifest.write(json.dumps({"step": "ee-intake", "thread_id": tid, "email": p["email"]}) + "\n")
+    return True
+
+
 def _knowledge_note(dec, fin, lines):
     """Write the JUDGED substance of a substantive touch into the entity's knowledge note.
 
@@ -589,6 +650,16 @@ def capture(dec, apply=False, manifest=None):
         # nothing in the pipeline performing it. Same side-effect status as the enrich above: it runs
         # here or it never runs.
         if _is_substantive(fin) and _knowledge_note(dec, fin, lines) is False:
+            ok = False
+
+    # 4b) EE INTAKE -- a Route is not finished when the labels land.
+    # inbox-triage Step 4.6 has said since P4.3 that routing an enquiry has THREE side-effects: the
+    # TE label, the Replies label, AND the te-log intake that puts it in the CRM, the ledger and the
+    # corpus. Only the labels were code. On 4 Aug 2026 two routed enquiries plus one older trayed one
+    # existed in NONE of the three EE systems; ee-signoff caught it at closeout with "touches this
+    # session: 0". Same shape as the vault-enricher gap above: a rule no code runs is not a rule.
+    if (fin.get("verb") or "").strip().lower().startswith("route") and (dec.get("engine") or "ee") == "ee":
+        if _ee_intake(dec, lines, manifest) is False:
             ok = False
 
     # flip applied

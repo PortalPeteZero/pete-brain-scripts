@@ -169,6 +169,36 @@ def _tracked_py():
     except Exception:
         return None
 
+def _checkout_is_current():
+    """(is_current, detail) — is this checkout at the same commit as origin/main?
+
+    Born 4 Aug 2026. `/tmp/pbs` is a SHARED checkout and can sit behind origin: that day its HEAD
+    was c291b82 while origin was 841a968. `_tracked_py()` above then read paypal-api.py and
+    recon-sheet.py — both committed by another session FROM ITS OWN CLONE — as untracked scratch,
+    and the prune below deleted their registry rows. The existing PRUNE_MIN_LIVE / PRUNE_MAX_SHARE
+    guards did not fire: 2 stale rows out of 338 is a perfectly plausible-looking deletion. Only
+    the staleness of the tree gave it away.
+
+    `git ls-remote` asks the remote directly and writes NOTHING locally, so this is safe in the
+    shared checkout where git mutations are forbidden. Returns (None, why) when it cannot tell.
+    """
+    try:
+        head = subprocess.run(["git", "-C", HERE, "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=15)
+        rem = subprocess.run(["git", "-C", HERE, "ls-remote", "origin", "refs/heads/main"],
+                             capture_output=True, text=True, timeout=45)
+        if head.returncode or rem.returncode:
+            return None, "git unavailable"
+        local = head.stdout.strip()
+        remote = (rem.stdout.split() or [""])[0].strip()
+        if not local or not remote:
+            return None, "could not resolve both commits"
+        return (local == remote), f"local {local[:7]} vs origin/main {remote[:7]}"
+    except Exception as e:
+        return None, f"{type(e).__name__}: {str(e)[:60]}"
+
+
+_is_current, _current_why = _checkout_is_current()
 _tracked = _tracked_py()
 _skipped_untracked = []
 helpers, connectors = [], []
@@ -257,7 +287,17 @@ PRUNE_MIN_LIVE = 50
 PRUNE_MAX_SHARE = 0.10
 
 live_helper_names = {h["name"] for h in helpers}
-if len(live_helper_names) >= PRUNE_MIN_LIVE:
+# FRESHNESS GATE — only the DESTRUCTIVE half is gated. Registering from a slightly-behind tree is
+# additive and harmless; DELETING a row because this checkout has not seen the commit that adds the
+# file is not. Refuse on "behind" AND on "cannot tell": an unprunable stale row is visible to the
+# locator and costs nothing, a wrongly-deleted helper is silent.
+if _is_current is not True:
+    _state = "is BEHIND origin/main" if _is_current is False else "could not be verified against origin/main"
+    print(f"helper-prune REFUSED: this checkout {_state} ({_current_why}). A stale tree reports "
+          f"another session's committed files as untracked, and pruning on that deletes live "
+          f"helpers (paypal-api.py + recon-sheet.py, 4 Aug 2026). Registration still ran. "
+          f"To prune, run this from a fresh clone.")
+elif len(live_helper_names) >= PRUNE_MIN_LIVE:
     try:
         req = urllib.request.Request(f"{URL}/rest/v1/helpers?select=name,path",
             headers={"apikey": KEY, "Authorization": f"Bearer {KEY}"})
