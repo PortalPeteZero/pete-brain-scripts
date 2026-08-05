@@ -71,11 +71,23 @@ def cc_patch(path, body):
 # ─────────────────────────── PD auto-roll (2026-07 task model) ───────────────────────────
 # A missed PD (a dated commitment past its day) auto-rolls to the next realistic day so it never silently
 # slips, and gets morning-flagged here. Payment PDs skip weekends. A "waiting-on-someone" snooze pauses the
-# roll. After ROLL_GUARD automatic rolls the roll STOPS and the PD is flagged for a real decision instead of
-# rolling forever (decision 2). Only automatic missed-day rolls increment roll_count; a manual re-date or a
-# complete resets it (handled in the CC app write-path). Idempotent within a day: once rolled to today, a PD
-# is no longer due_on<today, so a second run the same day won't re-increment.
-ROLL_GUARD = 3
+# roll. After ROLL_GUARD automatic rolls the PD is CONVERTED to an undated P1 and flagged, rather than being
+# left stranded on a date it will never meet. Only automatic missed-day rolls increment roll_count; a manual
+# re-date or a complete resets it (handled in the CC app write-path). Idempotent within a day: once rolled to
+# today, a PD is no longer due_on<today, so a second run the same day won't re-increment.
+#
+# GUARD = 14 (Pete, 5 Aug 2026). It was 3, which he called correctly: "three rolls is like three days, it's
+# nothing". Three rolls left 13 PDs stranded on dates weeks old, the oldest 19 days past, because the guard
+# stopped the roll but nothing moved the task. Fourteen rolls is a real fortnight of being ignored, which IS
+# evidence the date was wrong.
+#
+# AND THE GUARD NOW ACTS instead of just stopping. Hitting it clears the date and makes the task a P1, so it
+# leaves the dated-commitment world entirely and rejoins the undated do-next tier. The date is the switch
+# (trg_tasks_date_switch): clearing due_on while priority is still 'PD' makes the trigger fall back to
+# base_priority, so we set priority AND base_priority to P1 explicitly and never rely on what was there
+# before. Converting is self-idempotent: the row stops matching priority=eq.PD, so it can only convert once.
+ROLL_GUARD = 14
+GUARD_LANDS_ON = "P1"   # what a PD becomes when it has been rolled ROLL_GUARD times
 
 def _roll_to(d, skip_weekend):
     nd = d
@@ -97,7 +109,15 @@ def auto_roll_pds(today):
         if snz and snz >= iso:               # still snoozed (blocked / waiting) — don't roll
             continue
         rc = t.get("roll_count") or 0
-        if rc >= ROLL_GUARD:                  # rolled too often — needs a decision, not another roll
+        if rc >= ROLL_GUARD:
+            # Rolled a full fortnight of working days and still not done: the DATE is the thing that is
+            # wrong, so drop it. This is a conversion, not a stop — the task becomes an undated P1 and
+            # competes in the do-next tier on merit instead of rotting on a date nobody believes.
+            # priority AND base_priority are both set: the date-switch trigger reverts a cleared date to
+            # base_priority, so leaving base_priority alone would land the task on its old tier, not P1.
+            cc_patch(f"tasks?id=eq.{t['id']}",
+                     {"due_on": None, "priority": GUARD_LANDS_ON, "base_priority": GUARD_LANDS_ON})
+            t["_converted_from"] = t.get("due_on")
             stuck.append(t); continue
         is_payment = ("to-pay" in (t.get("tags") or [])) or (t.get("project_slug") == "Team-Finances")
         nd = _roll_to(today, skip_weekend=is_payment)
@@ -245,8 +265,9 @@ def render(today, lesson, tray, due, overdue, events, garmin, ga4, rolled=None, 
             rows += f'<div style="padding:5px 0;border-bottom:1px solid {BG}">{_badge(t.get("priority"))} {esc(t.get("name"))}{ent}</div>'
     else:
         rows = '<div style="padding:4px 0">No tasks due today.</div>'
-    od = str(sum(overdue.values())) if overdue else "0"   # overdue tasks are PDs that hit the roll-guard or are snoozed
-    rows += f'<div style="margin-top:8px;color:{GREY}">Overdue (PDs held at the roll-guard / snoozed): {od}</div>'
+    od = str(sum(overdue.values())) if overdue else "0"   # a still-dated PD only sits here while snoozed: the
+    # guard no longer parks tasks on a stale date, it converts them to undated P1s.
+    rows += f'<div style="margin-top:8px;color:{GREY}">Overdue (PDs snoozed, or missed since the last roll): {od}</div>'
     parts.append(_card("PRIORITY TASKS, due today", rows))
     # PD auto-roll morning-flag: what rolled overnight + what has rolled too many times and needs a decision.
     if rolled or stuck:
@@ -254,7 +275,10 @@ def render(today, lesson, tray, due, overdue, events, garmin, ga4, rolled=None, 
         for t in (rolled or []):
             rr += f'<div style="padding:4px 0;border-bottom:1px solid {BG}">↻ <b>{esc(t.get("name"))}</b> rolled to {esc(t.get("_new_due"))}</div>'
         for t in (stuck or []):
-            rr += f'<div style="padding:4px 0;border-bottom:1px solid {BG}"><span style="color:{RED};font-weight:700">⚠ {esc(t.get("name"))}</span> has rolled {ROLL_GUARD}+ times, held at {esc(t.get("due_on"))}, needs a decision (do it / break it up / delegate / drop the date)</div>'
+            rr += (f'<div style="padding:4px 0;border-bottom:1px solid {BG}"><span style="color:{RED};font-weight:700">'
+                   f'⚠ {esc(t.get("name"))}</span> was rolled {ROLL_GUARD} times and never done, so the date has been '
+                   f'dropped and it is now an undated {GUARD_LANDS_ON} (it was sat on {esc(t.get("_converted_from"))}). '
+                   f'Give it a real date when you mean it, or do it, delegate it, or bin it.</div>')
         parts.append(_card("PDs, auto-rolled overnight", rr))
     # Calendar
     if events:
@@ -316,7 +340,7 @@ def main():
     # Roll missed PDs FIRST (they then surface in today's list), then read tasks so `due` includes them.
     rolled, stuck = safe(auto_roll_pds, today) or ([], [])
     if rolled or stuck:
-        print(f"  PD auto-roll: {len(rolled)} rolled, {len(stuck)} held at guard")
+        print(f"  PD auto-roll: {len(rolled)} rolled, {len(stuck)} converted to undated {GUARD_LANDS_ON} at the guard")
     due, overdue = safe(tasks_today, today) or ([], {})
     events = safe(calendar_today, today) or []
     garmin = safe(garmin_recovery)

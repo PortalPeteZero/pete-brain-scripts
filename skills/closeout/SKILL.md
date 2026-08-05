@@ -108,6 +108,24 @@ need to…"** (hands-on). Destructive items (delete / send / bin a note or plan)
 > 11 Jul 2026: "I don't want to hear about PD tasks again until they are due or overdue.")
 > This binds H1/H2/H3 too — a not-yet-due PD is never a surface item.
 
+> [!important] ⛔ THE DIARY BLOCK — print it at every closeout, above the menu.
+> Pete's calendar app hides tasks behind an extra button, so he misses them (his words, 5 Aug
+> 2026). The `brain` skill's Resume Step 3z prints today + tomorrow at session START; **closeout
+> prints the same block at session END**, so he never leaves a session without knowing what
+> tomorrow holds. Same two reads, same shape:
+> ```
+> VAULT=/tmp/pbs python3 /tmp/pbs/calendar-api.py events primary {today} {today+2}
+> VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug FROM tasks
+>   WHERE status='todo' AND due_on IN ('{today}','{tomorrow}') ORDER BY due_on"
+> ```
+> Print **Today** and **Tomorrow** with their events (times in Atlantic/Canary) and the tasks due
+> on each. **Always print it, even when both days are empty** — "nothing in the diary, no tasks
+> due" is the answer; omitting it reads as not having looked.
+> **This does NOT override the future-dated-PD rule above.** That rule governs the *menu*: a PD
+> that is not yet due is never a "your call" item. The diary block is a different thing — it is
+> Pete's day ahead, so a task due TOMORROW belongs in it. Tomorrow's PDs appear here and nowhere
+> else in the closeout.
+
 ### Step 6 — Optional light resume note
 
 Offer once: "Save a resume note too? (y)". If yes, write a light `daily_log` resume note

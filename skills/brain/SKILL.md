@@ -173,6 +173,33 @@ Reconstruct full context so Pete picks up where he left off.
 2b. **Surface the CC Locator result (where-things-live drift)** -- read the most recent locator report: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT created_at, content FROM daily_log WHERE cron_name='cc-locator-audit' ORDER BY created_at DESC LIMIT 1"` (order by `created_at` — `daily_log.id` is a UUID, so `ORDER BY id` sorts RANDOMLY and will hand you a stale 'all clear'). The daily `cc-locator-audit` cron (06:30 Atlantic/Canary) writes this row, so **read it — never re-run the check at resume** (it takes ~50s). If the headline says `✓ all homed`, say nothing. If it says `⚠ N gap(s)`, surface ONE plain line: *"Locator: N thing(s) added but not filed anywhere — {first subject}."* Then, per Pete's standing decision (18 Jul 2026): **file the obvious ones yourself and TELL him what you filed; ASK only when the right home is genuinely his call; ALWAYS ask before any deletion.** A `couldnt-check` finding — or a report whose headline says `aborted` — means the check could not run, NOT that everything is fine; say so plainly. **ALSO check the cron itself actually ran** — a crashed run writes NO row, so the newest row can be yesterday's tick served as today's answer: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT last_run_at, last_status FROM crons WHERE key='cc-locator-audit'"`. If `last_status` is not SUCCESS, or `last_run_at` is not today, say so — that is a failed check, not a clean one. **Staleness + source check (read `created_at`, which the query above selects — NOT `date`):** if no row exists, or the newest `created_at` is older than yesterday, or its headline is stamped `[manual]` rather than `[scheduled]`, say "the locator check hasn't reported since {created_at}" rather than implying all-clear — a `[manual]` row is someone's hand-run and can mask a silently-dead 06:30 cron.
 
 3. **Pull task state from public.tasks** -- list Pete's open tasks: `VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' ORDER BY CASE priority WHEN 'PD' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END, due_on ASC NULLS LAST"`. (Project/entity context lives in the CC + Drive.) **Before presenting an open task as a live priority, sanity-check it for shipped-evidence** (a commit, a README line, the artefact already existing, a `daily_log` entry) — the same source-of-truth discipline as the Pending line (Step 8). If a task looks already done, do NOT list it as a to-do: surface it as **"Looks shipped — close? {task}"** for Pete to confirm. Never auto-close a task at resume — tasks are Pete's.
+3z. **⛔ THE DIARY — today AND tomorrow, events AND tasks. NON-NEGOTIABLE, every resume.**
+
+Pete's calendar app puts tasks behind an extra button he has to click, so he **keeps missing them** (his words, 5 Aug 2026: *"I keep missing the tasks because it's an extra button I've got to click in my diary. You should be telling me."*). Claude reads both surfaces and hands him one merged picture, unprompted, every single time.
+
+**Run BOTH, for BOTH days:**
+```
+VAULT=/tmp/pbs python3 /tmp/pbs/calendar-api.py events primary {today} {today+2}
+VAULT=/tmp/pbs python3 /tmp/pbs/cc-sql.py "SELECT name,priority,due_on,entity_slug,project_slug FROM tasks WHERE status='todo' AND due_on IN ('{today}','{tomorrow}') ORDER BY due_on, entity_slug"
+```
+(the `events` end date is EXCLUSIVE, so pass `today+2` to get today and tomorrow.)
+
+**Present as its own block, always, before the rest of the briefing — never folded into the task list and never skipped when quiet:**
+```
+**Today ({day date})** — {N} in the diary · {M} task(s) due
+  {HH:MM} {event}          ← times in Atlantic/Canary
+  ▸ PD {task} · {entity}
+**Tomorrow ({day date})** — {N} in the diary · {M} task(s) due
+  {HH:MM} {event}
+  ▸ PD {task} · {entity}
+```
+- **Empty is a result, not a reason to skip**: say "Today: nothing in the diary, no tasks due" rather than dropping the block. Silence reads as "not checked".
+- Flag a **clash** (two events overlapping, or a task due on a day already full) in one line.
+- Travel days: show the event in the timezone it physically happens (see [[diary-conventions]]), and say which.
+- This is READ-ONLY. Never create, move, or complete anything here.
+
+**The same block is mandatory at CLOSEOUT** (the `closeout` skill's hand-back), so Pete ends every session knowing what tomorrow holds.
+
 3a. **Detect manually-added tasks** -- Surface tasks added to `public.tasks` since the last session, so Claude absorbs their context before settling on the day's focus.
 
 **Mechanic:**
@@ -220,6 +247,9 @@ When the most recent daily note covers today (rare edge case where Claude resume
    ```
    Welcome back, Pete.
 
+   **Today** ({day date}): [events, times in Atlantic/Canary] · [tasks due today]
+   **Tomorrow** ({day date}): [events] · [tasks due tomorrow]
+
    **Last session** (date): [Brief summary -- link [[projects]] mentioned]
    **Replies tray**: [N waiting (M aging >3d): item Xd · item Yd — say "actions" to walk them]
    **Task priorities**: [P1/P2 tasks from public.tasks]
@@ -232,7 +262,7 @@ When the most recent daily note covers today (rare edge case where Claude resume
 
    What would you like to focus on today?
    ```
-   Skip any line whose count is zero (don't print "Manual tasks since last session: 0").
+   Skip any line whose count is zero (don't print "Manual tasks since last session: 0"). **The two exceptions are Today and Tomorrow: those ALWAYS print, even when both are empty** — "nothing in the diary, no tasks due" is the answer, and dropping the line reads as not having looked (Step 3z).
 
    **How to derive the Pending line** -- daily notes are a SECOND source. To build the Pending block:
    1. Collect candidate items from yesterday's daily note + today's earlier session logs: every `> [!todo] Pending Tasks` block, every "Live carry-overs" / "Pending into next chunk" / "Pending into next session" list.
