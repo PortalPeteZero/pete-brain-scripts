@@ -152,11 +152,13 @@ def load():
     # Sygma's own review of a damage is merged onto the incident itself (the sygma_* fields), so
     # this reads the register rather than the retired clancy_damages table. Same shape out.
     enr = rest("clancy_dn_incidents?select=id,job_ref,status,sygma_stage_note,sygma_summary,"
-               "sygma_findings,sygma_next_actions,sygma_drive_folder,sygma_report_url"
+               "sygma_findings,sygma_finding_sources,sygma_next_actions,sygma_drive_folder,"
+               "sygma_report_url"
                "&sygma_reviewed_at=not.is.null")
     enrich = {e["id"]: {"dn_id": e["id"], "job_ref": e["job_ref"], "status": e["status"],
                         "stage_note": e["sygma_stage_note"], "summary": e["sygma_summary"],
                         "key_findings": e["sygma_findings"], "next_actions": e["sygma_next_actions"],
+                        "finding_sources": e.get("sygma_finding_sources"),
                         "drive_folder": e["sygma_drive_folder"], "report_url": e["sygma_report_url"]}
               for e in enr}
     # Everything the capture pulled off Depotnet for each damage: the incident PDF, the photos and
@@ -518,6 +520,10 @@ tr.det td{background:#f9fafc;border-bottom:1px solid var(--border);padding:14px 
 .tle .tld{display:inline-block;min-width:126px;color:var(--muted)}
 .acard{border:1px solid var(--border);border-radius:11px;padding:14px 16px;margin-top:12px;background:#fafbfd}
 ul.kf{margin:6px 0 0 18px;font-size:13.5px}
+ul.kf li{margin-bottom:7px}
+.srcline{font-size:11.5px;color:#5b6875;margin:3px 0 0}
+.srcline a{color:#2a6ca8;text-decoration:none;border-bottom:1px solid #b9d2e8}
+.srcline a:hover{border-bottom-color:#2a6ca8}
 /* what the attached documents say (4 Aug 2026) */
 .dxdoc{border-left:3px solid #2f5fd0;background:#f7f9fc;border-radius:0 10px 10px 0;
  padding:10px 14px;margin:9px 0}
@@ -1504,7 +1510,21 @@ function render(){{
  h+='<div class="card"><div class="h2row"><h2>5 &middot; Sygma findings</h2><span class="note">our own evidence and conclusions &mdash; panel reviews, CAT/Genny data, site work</span></div>';
  if(en){{
   h+=(en.summary?'<p class="det desc">'+en.summary+'</p>':'');
-  if(en.key_findings&&en.key_findings.length)h+='<div class="fl" style="margin-top:10px">Key findings</div><ul class="kf">'+en.key_findings.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
+  // Every finding carries a link to the document it came from, so a claim can be checked without
+  // asking anyone. Pete, 5 Aug 2026: "wherever that came from, there is a natural link in there to
+  // the drive document so I can check it myself." Resolved by clancy-dd-source-links.py.
+  if(en.key_findings&&en.key_findings.length){{
+   const FS=en.finding_sources||[];
+   h+='<div class="fl" style="margin-top:10px">Key findings</div><ul class="kf">'
+    +en.key_findings.map((k,i)=>{{
+      const ss=(FS[i]||[]).filter(x=>x&&x.name);
+      if(!ss.length)return '<li>'+k+'</li>';
+      const links=ss.map(x=>x.url
+        ? '<a href="'+x.url+'" target="_blank" rel="noopener" title="'+(x.why||'')+'">'+x.name+'</a>'
+        : '<span class="muted" title="'+(x.why||'')+'">'+x.name+'</span>').join(' &middot; ');
+      return '<li>'+k+'<div class="srcline">Check it: '+links+'</div></li>';
+    }}).join('')+'</ul>';
+  }}
   if(en.next_actions&&en.next_actions.length)h+='<div class="fl" style="margin-top:10px">Agreed next actions</div><ul class="kf">'+en.next_actions.map(k=>'<li>'+k+'</li>').join('')+'</ul>';
   const links=[];
   // ONE Drive link per damage — WHEN the panel-review material lives inside the damage folder

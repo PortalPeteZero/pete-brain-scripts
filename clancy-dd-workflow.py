@@ -9,7 +9,7 @@ partly, or reported done on the wrong evidence. Each is now a check that runs, a
 thing exits non-zero until every one passes.
 
 The stages are the section's own vocabulary, unchanged: CAPTURE -> FILE -> ENRICH -> PUBLISH.
-Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Nine
+Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Ten
 checks sit under those four stages.
 
   VAULT=/tmp/pbs python3 clancy-dd-workflow.py                 # check FY26/27, print the board
@@ -43,6 +43,8 @@ checks sit under those four stages.
                        clancy-dn-board-report.py asserts this and refuses to invent one, so ONE
                        new Depotnet answer breaks the whole publish until it is classified
                        (happened 5 Aug on 153523, answer "TBC").
+          10 sourced   every Sygma finding links to the document it came from, so a claim can be
+                       checked without asking anyone.
            9 publish   every page newer than the newest data change, and all within
                        PUBLISH_SPREAD_MIN of each other. The section is built by TEN scripts; on
                        5 Aug one was run directly after a data change and the other eleven pages
@@ -132,10 +134,11 @@ def page_ordered(table, select, ids, order):
 
 
 def check(fy):
-    """Run all nine steps for one financial year. Returns a list of step dicts."""
+    """Run all ten steps for one financial year. Returns a list of step dicts."""
     fyq = urllib.parse.quote(fy, safe="")
     inc = get(f"clancy_dn_incidents?select=id,location,raw_api_at,doc_enriched_at,doc_transcripts,"
-              f"doc_conclusions,embedding,lessons_learnt,sygma_findings,sygma_reviewed_at,"
+              f"doc_conclusions,embedding,lessons_learnt,sygma_findings,sygma_finding_sources,"
+              f"sygma_reviewed_at,"
               f"import_changed_at&fy=eq.{fyq}&order=id.asc&limit=4000")
     steps, n = [], len(inc)
     if not n:
@@ -289,6 +292,23 @@ def check(fy):
     if spread > PUBLISH_SPREAD_MIN:
         bad.append(f"pages are {spread} min apart — part of the section was published without "
                    f"the rest")
+    # 10 SOURCED — a finding Pete cannot check is worth less than no finding.
+    # Pete, 5 Aug 2026: "wherever that came from, there is a natural link in there to the drive
+    # document so I can check it myself." Resolved by clancy-dd-source-links.py from the finding's
+    # own words, so it survives an edit; a finding that resolves to nothing is named here.
+    unsourced = []
+    for r in inc:
+        fnds = r.get("sygma_findings") or []
+        srcs = r.get("sygma_finding_sources") or []
+        for i, f in enumerate(fnds):
+            if i >= len(srcs) or not srcs[i]:
+                unsourced.append(f"{r['id']} finding {i}: {str(f)[:64]}")
+    n_f = sum(len(r.get("sygma_findings") or []) for r in inc)
+    step(10, "PUBLISH", "sourced", unsourced,
+         f"{n_f - len(unsourced)}/{n_f} Sygma findings link to the document they came from",
+         "VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dd-source-links.py --apply  (a finding that still "
+         "will not resolve needs the document naming in its own words)")
+
     step(9, "PUBLISH", "publish", bad, f"{len(have)}/{len(PAGE_KEYS)} pages present, spread {spread} min, "
                             f"newest data change {round(newest_data) if newest_data < 10**9 else '?'} "
                             f"min ago", FIX_PUBLISH)
