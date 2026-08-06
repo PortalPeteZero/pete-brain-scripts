@@ -273,6 +273,31 @@ def overnight(service_id, day):
     return {"lat": last["EndLat"], "lon": last["EndLong"], "town": last.get("EndTown") or ""}
 
 
+_GEO = {}
+
+
+def site_point(address):
+    """Geocode a booked site address, cached per run. Returns (lat, lon, confidence) or None.
+
+    This runs AFTER the times are decided and never feeds into them. It exists to LABEL a stop --
+    matches the booking, or sits N km from it -- so a bad geocode costs a visible wrong label rather
+    than an invisible wrong time.
+    """
+    key = (address or "").strip().lower()
+    if not key:
+        return None
+    if key not in _GEO:
+        try:
+            geo = _load("geo", f"{VAULT}/geocoding-api.py")
+            # UK, explicitly. geocoding-api.py defaults to Lanzarote/Spain (it was built for Canary
+            # Detect) and will happily append ", Lanzarote, Spain" to a Wigan address.
+            hit = geo.geocode(address, region="uk", bias_country="GB", auto_lanzarote=False)
+            _GEO[key] = (hit["lat"], hit["lon"], hit.get("location_type") or "") if hit else None
+        except Exception:
+            _GEO[key] = None
+    return _GEO[key]
+
+
 def home_points():
     rows = pf_sql("SELECT employee_ref, lat, lon FROM hub.trainer_home_point")
     return {r["employee_ref"]: (r["lat"], r["lon"]) for r in rows}
@@ -281,35 +306,42 @@ def home_points():
 HOME_RADIUS_M = 500      # a postcode-level geocode is routinely this far from the actual driveway
 
 
-def usual_rest_places(service_ids, upto, lookback=60):
-    """Where each van USUALLY spends the night, learned from its own behaviour.
+def usual_rest_places(service_ids, upto, lookback=90):
+    """HOME IS WHERE THE VAN SLEEPS AT THE WEEKEND (Pete, 6 Aug 2026).
 
-    The HR home address is not good enough to judge this on. Measured 5 Aug 2026 over July: five
-    trainers' vans rested a median 0.0 km from their geocoded home, but Andy Bartholomew's sat 0.3 km
-    away and Gareth Phillips' 0.6 km -- both postcode-level geocodes, so a tight radius called every
-    single night "away from home". Paul Baxter's van rests a median 44.7 km from the address on file,
-    every night, which is a genuine discrepancy rather than a rounding one.
+    Weekend nights are the clean signal: mid-week a trainer may be away for several nights running,
+    so a plain all-nights mode drifts toward wherever they happen to work most. Friday and Saturday
+    nights, the van should be at home.
 
-    So the van's own habit decides, exactly as it does for arrivals, and the HR address is kept only
-    as a cross-check. Returns {service_id: (lat, lon, nights_seen)}.
+    Verified over 90 nights before adopting it: all 8 tracked trainer vans park in ONE place on 70%
+    or more of weekend nights, four of them on 100% of them. Paul Baxter's is the most consistent of
+    the lot at 26 of 26 -- and it sits 44.7 km from the address held in hub.staff_hr. So his HR
+    record is wrong, not his behaviour, which is exactly why the address must never be the judge.
+
+    Falls back to all nights only when a van has fewer than 4 weekend samples.
+    Returns {service_id: (lat, lon, weekend_nights_same, weekend_nights_seen)}.
     """
     out = {}
     for sid in service_ids:
-        seen = []
+        wknd, everything = [], []
         for i in range(1, lookback + 1):
-            r = overnight(sid, upto - datetime.timedelta(days=i))
-            if r:
-                seen.append(r)
-        if not seen:
+            d = upto - datetime.timedelta(days=i)
+            r = overnight(sid, d)
+            if not r:
+                continue
+            everything.append(r)
+            if d.weekday() in (4, 5):          # Friday and Saturday nights
+                wknd.append(r)
+        pool = wknd if len(wknd) >= 4 else everything
+        if not pool:
             continue
-        # the biggest cluster of overnight positions is where it lives
         best, best_n = None, 0
-        for cand in seen:
-            n = sum(1 for o in seen
+        for cand in pool:
+            n = sum(1 for o in pool
                     if hav(cand["lat"], cand["lon"], o["lat"], o["lon"]) <= HOME_RADIUS_M)
             if n > best_n:
                 best, best_n = cand, n
-        out[sid] = (best["lat"], best["lon"], best_n)
+        out[sid] = (best["lat"], best["lon"], best_n, len(pool))
     return out
 
 
@@ -417,6 +449,11 @@ def main():
                                         "to": s["depart"].strftime("%H:%M"), "mins": s["mins"],
                                         "where": f'{s["street"]}, {s["town"]}'.strip(", ")}
                                        for s in st])
+                    # Cross-check only: how far the van's stop sits from the BOOKED address.
+                    pt = site_point(dl["address"])
+                    if pt:
+                        base["address_match_km"] = round(
+                            hav(pt[0], pt[1], site["lat"], site["lon"]) / 1000, 1)
         counts[base["status"]] = counts.get(base["status"], 0) + 1
         rows.append(base)
 
@@ -435,7 +472,8 @@ def main():
     written = 0
     COLS = ("(visit_date, employee_ref, trainer_name, vehicle_reg, service_id, booked_start, "
             "arrived_at, left_at, minutes_on_site, site_lat, site_lon, site_town, site_street, "
-            "booked_address, delivery_key, courses, stops, status, note, computed_at)")
+            "booked_address, delivery_key, address_match_km, courses, stops, status, note, "
+            "computed_at)")
     UPSERT = ("ON CONFLICT (visit_date, employee_ref, delivery_key) DO UPDATE SET "
               "arrived_at=EXCLUDED.arrived_at, left_at=EXCLUDED.left_at, "
               "minutes_on_site=EXCLUDED.minutes_on_site, courses=EXCLUDED.courses, "
@@ -443,6 +481,7 @@ def main():
               "booked_start=EXCLUDED.booked_start, booked_address=EXCLUDED.booked_address, "
               "site_lat=EXCLUDED.site_lat, site_lon=EXCLUDED.site_lon, site_town=EXCLUDED.site_town, "
               "site_street=EXCLUDED.site_street, vehicle_reg=EXCLUDED.vehicle_reg, "
+              "address_match_km=EXCLUDED.address_match_km, "
               "computed_at=now()")
     for i in range(0, len(rows), 40):
         chunk = rows[i:i + 40]
@@ -451,7 +490,8 @@ def main():
             f"{q(r['vehicle_reg'])}, {q(r['service_id'])}, {q(r['booked_start'])}, "
             f"{q(r['arrived_at'])}, {q(r['left_at'])}, {q(r['minutes_on_site'])}, "
             f"{q(r['site_lat'])}, {q(r['site_lon'])}, {q(r['site_town'])}, {q(r['site_street'])}, "
-            f"{q(r['booked_address'])}, {q(r['delivery_key'])}, {q(json.dumps(r['courses']))}::jsonb, "
+            f"{q(r['booked_address'])}, {q(r['delivery_key'])}, {q(r['address_match_km'])}, "
+            f"{q(json.dumps(r['courses']))}::jsonb, "
             f"{q(json.dumps(r['stops']))}::jsonb, {q(r['status'])}, {q(r['note'])}, now())"
             for r in chunk)
         pf_sql(f"INSERT INTO hub.vehicle_site_visit {COLS} VALUES\n{values}\n{UPSERT}")
@@ -462,9 +502,21 @@ def main():
                    if p["service_id"] and p["is_trainer"]})
     print(f"  learning each van's usual overnight place from the 60 days before {days[0]} ...")
     usual = usual_rest_places(sids, days[0])
-    for sid, (_, _, n) in sorted(usual.items()):
+    for sid, (hlat, hlon, same, seen) in sorted(usual.items()):
         who = next((k for k, v in people.items() if v["service_id"] == sid), "?")
-        print(f"    {who:<22} usual overnight place seen on {n} of the last 60 nights")
+        ref = next((v["employee_ref"] for v in people.values() if v["service_id"] == sid), None)
+        hr = homes.get(ref)
+        km = round(hav(hr[0], hr[1], hlat, hlon) / 1000, 1) if hr else None
+        flag = ""
+        if km is not None and km > 5:
+            flag = (f"  <-- the HR home address is {km} km from where this van actually sleeps. "
+                    f"The van is the reliable one; the HR record needs correcting.")
+        print(f"    {who:<22} home place matched on {same} of {seen} weekend nights{flag}")
+        if ref is not None:
+            pf_sql(f"""
+UPDATE hub.trainer_home_point SET habitual_lat={hlat}, habitual_lon={hlon},
+  weekend_nights_same={same}, weekend_nights_seen={seen}, km_hr_vs_habitual={q(km)},
+  habitual_updated_at=now() WHERE employee_ref={ref}""")
     night_rows = []
     for day in days:
         for name, p in people.items():
