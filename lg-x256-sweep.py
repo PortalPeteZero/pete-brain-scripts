@@ -7,7 +7,7 @@
 # entity: canary-detect
 # schedule: 40 */6 * * *
 # timezone: Atlantic/Canary
-# secrets: LEAKGUARD_SUPABASE_KEYS
+# secrets: SECRETFILE__supabase-token
 # note: runs 15 minutes after thingslog-sync-6h (25 */6) so it always sees freshly-imported data.
 # note: RETIRE THIS once ThingsLog fix the fault (ticket 4474). It is a mitigation, not a fix — it cleans up after a supplier defect and should not outlive it.
 # CRON-META-END
