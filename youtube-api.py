@@ -162,9 +162,17 @@ def brand_token():
     return r["access_token"]
 
 
-def data_api(path, params):
+def data_api(path, params, token=None):
+    """Read from the Data API. Pass `token` to read as somebody other than the service account.
+
+    Why that argument exists (6 Aug 2026): the service account and the Sygma brand account are
+    two different Google Cloud projects, so they carry two SEPARATE daily quotas. A script that
+    uploads with brand_token() but reads with the default here can be refused on the read while
+    the write path still has thousands of units left, and the refusal says "quota exceeded",
+    which reads as "come back tomorrow". A whole morning was written off to that.
+    """
     url = DATA_BASE + path + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {get_token()}"})
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token or get_token()}"})
     try:
         return json.loads(urllib.request.urlopen(req).read())
     except urllib.error.HTTPError as e:
@@ -305,7 +313,10 @@ def whoami():
 
 def list_captions(video_id):
     """Every caption track on a video. trackKind 'asr' = YouTube auto-generated."""
-    r = data_api("/captions", {"part": "snippet", "videoId": video_id})
+    # captions.list is owner-scoped, so a video on the Sygma brand channel has to be read with
+    # the brand credentials. brand_token() returns None when that is not set up, which falls
+    # back to the old behaviour.
+    r = data_api("/captions", {"part": "snippet", "videoId": video_id}, token=brand_token())
     items = r.get("items", [])
     if not items:
         print("No caption tracks.")
@@ -323,14 +334,15 @@ def list_captions(video_id):
 
 def download_transcript(video_id, fmt="srt", out=None):
     """Download a video's transcript. Prefers a manual track over the auto one."""
-    r = data_api("/captions", {"part": "snippet", "videoId": video_id})
+    cap_tok = brand_token() or get_token()
+    r = data_api("/captions", {"part": "snippet", "videoId": video_id}, token=cap_tok)
     items = r.get("items", [])
     if not items:
         print("No caption track to download."); sys.exit(2)
     items.sort(key=lambda t: t["snippet"].get("trackKind") == "asr")   # manual first
     track = items[0]
     url = f"{DATA_BASE}/captions/{track['id']}?tfmt={fmt}"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {get_token()}"})
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {cap_tok}"})
     body = urllib.request.urlopen(req).read().decode("utf-8", "ignore")
     if out:
         with open(out, "w") as f: f.write(body)
@@ -439,7 +451,11 @@ def set_privacy(video_id, status):
     if status not in ("private", "unlisted", "public"):
         print("status must be private, unlisted or public", file=sys.stderr); sys.exit(2)
     tok = brand_token() or get_token()
-    cur = data_api("/videos", {"part": "status,snippet", "id": video_id})
+    # read with the SAME token the write uses. Reading with the default sent this through the
+    # service-account project, whose quota is separate; on 6 Aug 2026 that project was flat out
+    # and every privacy flip died on the read with "quota exceeded" while the brand project,
+    # which does the actual write, had its whole day untouched.
+    cur = data_api("/videos", {"part": "status,snippet", "id": video_id}, token=tok)
     if not cur.get("items"):
         print(f"No such video: {video_id}", file=sys.stderr); sys.exit(2)
     st = cur["items"][0]["status"]; st["privacyStatus"] = status
