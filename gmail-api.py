@@ -61,6 +61,37 @@ DEFAULT_USER = "pete.ashcroft@sygma-solutions.com"
 SCOPE = "https://mail.google.com/ https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing"
 BASE = "https://gmail.googleapis.com/gmail/v1/users"
 
+# Recipient domains whose mail gateway rejects anything carrying Pete's HTML signature.
+# Every send/draft to one of these goes out UNSIGNED, whatever the caller asked for, so that
+# ee-send, the triage skill, reply_thread and a bare `gmail-api.py send` all behave the same and
+# nobody has to remember. Measured 6 Aug 2026 across 20 sends to M Group over 60 days: 5 of 16
+# signed messages were blocked with Mimecast `554 Host network not allowed`, 0 of 4 unsigned ones
+# were. Same API send path on both sides, so the path was never the variable. The lesson note
+# [[M Group Mimecast: it is the SIGNATURE that gets blocked, not the API send path]] carries the
+# full evidence and the untested hypothesis about why.
+# To add a domain: put it here, lowercase, no @. To retire one: prove a signed send lands first.
+NO_SIGNATURE_DOMAINS = {
+    "mgroupltd.com",         # M Group Water
+    "mgroupservices.com",    # M Group Services / Train With Us
+    "morrisonus.com",        # Morrison Utility Services (Welsh Water ops)
+}
+
+
+def _blocked_signature_domains(*recipient_fields):
+    """Return the sorted NO_SIGNATURE_DOMAINS hit by any address in the given to/cc/bcc values.
+    Each value may be a string ('a@x, b@y'), a list, or None."""
+    import re as _re
+    found = set()
+    for field in recipient_fields:
+        if not field:
+            continue
+        text = ", ".join(field) if isinstance(field, (list, tuple, set)) else str(field)
+        for addr in _re.findall(r"[\w.+-]+@[\w.-]+", text):
+            dom = addr.rsplit("@", 1)[-1].lower().strip(".")
+            if dom in NO_SIGNATURE_DOMAINS:
+                found.add(dom)
+    return sorted(found)
+
 
 def _b64u(data):
     if isinstance(data, str):
@@ -556,6 +587,20 @@ class GmailAPI:
         import re as _re
         return _re.sub(r"[^a-z0-9]", "", _re.sub(r"<[^>]+>", " ", s or "").lower())
 
+    def _signature_allowed(self, signature, to, cc=None, bcc=None):
+        """Force the signature OFF for recipients in NO_SIGNATURE_DOMAINS, whatever the caller asked.
+        Central on purpose: send/create_draft are the only two places that sign, and reply_thread
+        funnels through them, so every path (ee-send, triage, the CLI, a library call) is covered
+        without a single call site having to know. Never turns a signature ON."""
+        if not signature:
+            return False
+        hits = _blocked_signature_domains(to, cc, bcc)
+        if hits:
+            print(f"gmail-api: signature suppressed for {', '.join(hits)} "
+                  f"(their gateway blocks signed mail)", file=sys.stderr)
+            return False
+        return True
+
     def _apply_signature(self, body, html, from_):
         """Append the alias's Gmail signature to the body, unless it's already present (re-run, or the
         caller embedded it) — so it never double-signs. Forces HTML output when appending, converting a
@@ -587,6 +632,7 @@ class GmailAPI:
         (common footgun that silently mailed the plain `body` instead — guarded here)."""
         if isinstance(html, str):
             body, html = html, True
+        signature = self._signature_allowed(signature, to, cc, bcc)
         if signature:
             body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references, attachments)
@@ -604,6 +650,7 @@ class GmailAPI:
         NOTE: `html` is a FLAG, not content. If you pass an HTML *string* to `html`, it is treated as the body."""
         if isinstance(html, str):
             body, html = html, True
+        signature = self._signature_allowed(signature, to, cc, bcc)
         if signature:
             body, html = self._apply_signature(body, html, from_)
         raw = self._raw_rfc822(to, subject, body, cc, bcc, from_, html, in_reply_to, references, attachments)
