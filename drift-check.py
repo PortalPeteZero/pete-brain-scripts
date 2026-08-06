@@ -35,7 +35,7 @@ someone thinks to run it would have missed it exactly as the humans did.
 # schedule: 0 9 * * 0
 # timezone: Atlantic/Canary
 # CRON-META-END
-import os, sys, json, subprocess, datetime
+import os, sys, json, re, subprocess, datetime
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 CC_SQL = os.path.join(VAULT, "cc-sql.py")
@@ -167,6 +167,31 @@ def main():
                                   f"no overlap, Briefings still Mode A)"))
     except Exception as e:
         findings.append(("⚠", f"Gmail-filter parity: check did not run ({e}) — this is NOT a pass"))
+
+    # Known-wrong names — REPORT-ONLY. Added 6 Aug 2026.
+    # A Plaud transcript rendered Kier as "Kears" on 23 July. It escaped into Roy Cotterill's
+    # contact record and two Clancy write-ups and sat there as fact for a fortnight, while the SAME
+    # account spelled Kier correctly on two other contacts. One company, one account, two names, so
+    # a search for Kier found half the picture.
+    # A lesson note about Plaud mangling names already existed and did not stop it, because it
+    # covered PEOPLE and this was a COMPANY, and because a note is something somebody has to
+    # remember to read. Pete: "Don't make a memory -- FIX THE PROCESS." So it runs weekly here.
+    try:
+        nr = subprocess.run([sys.executable, os.path.join(VAULT, "entity-name-check.py")],
+                            capture_output=True, text=True, timeout=300,
+                            env={**os.environ, "VAULT": VAULT})
+        out = nr.stdout or ""
+        if "0 known-wrong names" in out:
+            findings.append(("✓", "Known-wrong names: none anywhere they would be read as fact"))
+        else:
+            m = re.search(r"(\d+) place\(s\) still carrying", out)
+            n = m.group(1) if m else "some"
+            findings.append(("⚠", f"Known-wrong names: {n} place(s) carry a name we KNOW is wrong "
+                                  f"(a customer or person mis-transcribed). Run "
+                                  f"`entity-name-check.py` for the list. Verbatim transcripts are "
+                                  f"exempt and must never be edited."))
+    except Exception as e:
+        findings.append(("⚠", f"Known-wrong names: check did not run ({e}) — this is NOT a pass"))
 
     # People hygiene — REPORT-ONLY, same contract as the two parity checks above. Added 6 Aug 2026.
     # Odoo (Canary Detect's accounting system) was carrying 340 contact rows whose NAME was a bare
