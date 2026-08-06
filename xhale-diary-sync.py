@@ -26,7 +26,7 @@ THE EXCLUSIONS, in order:
   4. travel to/from a pool  -- the drive attached to a training session
   5. already in xhale_gcal_link
 
-Measured on the first 90-day window: 132 events in, 49 out.
+Measured on the first 90-day window: 132 events in, 46 out.
 
 THE RENDER, as Pete specified it:
   "{start} - {end} {what}, {where}"   e.g.  "3pm - 4pm Vislock meeting, Hindley Business Centre"
@@ -83,13 +83,17 @@ def sql(query):
     return json.loads(out) if out.startswith("[") else []
 
 
-def xhale_post(path, data):
-    tok = json.load(open(VAULT / "Library/processes/secrets/xhale-oauth-tokens.json"))
-    h = {"Authorization": "Bearer " + tok["access_token"],
-         "Content-Type": "application/x-www-form-urlencoded"}
-    req = urllib.request.Request("https://trainxhale.com" + path, method="POST",
-                                 headers=h, data=urllib.parse.urlencode(data).encode())
-    return json.loads(urllib.request.urlopen(req, timeout=45).read().decode())
+_XH = None
+
+
+def xh():
+    """Go through xhale-api.py, NOT a raw request. It checks the stored expiry, refreshes, and
+    retries once on a 401. An earlier version read the token file directly and would simply have
+    failed all 49 posts inside the ten-hour window after the token went stale."""
+    global _XH
+    if _XH is None:
+        _XH = load("xhale-api.py", "xhale_api")
+    return _XH
 
 
 def clock(iso):
@@ -213,11 +217,21 @@ def main():
         print(f"   -{v:3}  {k}")
     print(f"   ={len(keep):3}  to Loren, across {len(byday)} days\n")
 
+    # Xhale already holds sessions on many of these days. Numbering only over what WE write
+    # collides with them -- a 7pm rehearsal written at order 1 sits alongside an 8am swim also at
+    # order 1, and the tie breaks by whichever was created first. Start above the day's existing
+    # maximum instead. Stats are unaffected: they live at -1.
+    existing = collections.defaultdict(int)
+    for s_ in xh().call("GET", f"/api/sessions/?start_date={a.frm}&end_date={a.to}"):
+        if not s_.get("deleted") and s_.get("order") is not None and s_["order"] > 0:
+            existing[s_["date"]] = max(existing[s_["date"]], s_["order"])
+
     order_of = {}
     for d in sorted(byday):
         rows = sorted(byday[d], key=lambda q: q["start"].get("dateTime") or "")
+        base = existing.get(d, 0)
         for i, e in enumerate(rows, start=1):
-            order_of[e["id"]] = i
+            order_of[e["id"]] = base + i
         print(f"{d} {datetime.date.fromisoformat(d).strftime('%a')}")
         for e in rows:
             print(f'   {order_of[e["id"]]}  "{render(e)}"')
@@ -232,12 +246,12 @@ def main():
         for e in sorted(byday[d], key=lambda q: q["start"].get("dateTime") or ""):
             title = render(e)[:200]
             try:
-                x = xhale_post("/api/sessions/", {"date": d, "discipline_id": DIARY_DISCIPLINE_ID,
-                                                  "brief_description": title,
-                                                  "order": order_of[e["id"]]})
-            except urllib.error.HTTPError as exc:
+                x = xh().call("POST", "/api/sessions/",
+                              {"date": d, "discipline_id": DIARY_DISCIPLINE_ID,
+                               "brief_description": title, "order": order_of[e["id"]]})
+            except (urllib.error.HTTPError, urllib.error.URLError, SystemExit) as exc:
                 failed += 1
-                print(f"   FAILED {d} {title[:44]}: {exc.code} {exc.read().decode()[:120]}")
+                print(f"   FAILED {d} {title[:44]}: {str(exc)[:140]}")
                 continue
             sql("INSERT INTO xhale_gcal_link (xhale_session_id, gcal_event_id, gcal_series_id, "
                 "on_date, title, origin) VALUES (%d, $q$%s$q$, %s, $q$%s$q$, $q$%s$q$, 'gcal') "
