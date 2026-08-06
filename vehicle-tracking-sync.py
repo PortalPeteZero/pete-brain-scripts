@@ -166,7 +166,13 @@ def parse_time(s):
 
 # ------------------------------------------------------------------ people + vans
 def roster():
-    """trainer name -> (employee_ref, vehicle_reg, matrix service id, is_subcontractor)."""
+    """trainer name -> (employee_ref, vehicle_reg, matrix service id, is_subcontractor).
+
+    Anyone listed in hub.vehicle_tracking_exempt is left out. That table is the editable answer to
+    "who should not be in this", so the list can change without touching this script.
+    """
+    exempt = {r["employee_ref"] for r in
+              pf_sql("SELECT employee_ref FROM hub.vehicle_tracking_exempt")}
     rows = pf_sql(
         "SELECT s.employee_ref, s.full_name, s.worker_type, s.trainer_id, f.vehicle_reg "
         "FROM hub.staff_directory s "
@@ -184,6 +190,8 @@ def roster():
                 svc_by_reg[r["vehicle_reg"]] = u["serviceID"]
     out = {}
     for r in rows:
+        if r["employee_ref"] in exempt:
+            continue
         out[r["full_name"]] = {
             "employee_ref": r["employee_ref"],
             "vehicle_reg": r["vehicle_reg"],
