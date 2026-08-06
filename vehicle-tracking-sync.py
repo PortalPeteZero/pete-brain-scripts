@@ -276,6 +276,13 @@ def arrive_leave(st):
             continue                     # not the working area; does not end the day, does not extend it
         if (later["arrive"] - leave).total_seconds() / 60 > RETURN_MIN:
             break                        # gone long enough that the working day is over
+        if later["depart"].date() != later["arrive"].date():
+            # This stop runs through the night, so it is where the van SLEPT, not somewhere it
+            # worked. The day ended when it got there. Without this the extension walks into the
+            # overnight rest and reports the next morning's departure as the finish time --
+            # Andy Bartholomew, 6 Jul 2026, parked 16:16 and "left site" came out as 00:51.
+            leave = later["arrive"]
+            break
         leave = later["depart"]
     return site["arrive"], leave, site
 
