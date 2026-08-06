@@ -1235,8 +1235,65 @@ def hygiene():
     lines.append("  Fix with: people tidy <people/c...> --name \"FULL NAME\" --confirm-replace "
                  "| --email E | --phone P   (touch it, tidy it — Pete's rule)")
     lines.append("  (address the RECORD, not the name: a bare first name matches several)")
+    # ── THE BUSINESS STORES, not just the phone ──────────────────────────────────────────────
+    # Everything above reads the Google Contacts mirror. That is one of four stores, and it is the
+    # DOWNSTREAM one. On 6 Aug 2026 the two upstream business systems were carrying 340 rows whose
+    # NAME was a bare email address, and no check in this file could see any of them.
+    junk, junk_lines = _address_shaped_names()
+    counters["address_shaped_names"] = junk
+    lines.extend(junk_lines)
+    gaps += junk
+
     counters["gaps"] = gaps
     return counters, lines
+
+
+def _address_shaped_names():
+    """A contact whose NAME is an email address is not a contact, it is an unprocessed import.
+
+    BORN 6 Aug 2026. Odoo (Canary Detect) held 308 rows created in a single second on 23 Feb 2026,
+    every one named by a bare email, every one with customer_rank 0 AND supplier_rank 0, and none
+    referenced by any invoice, order, lead or event. The domains were Sygma's world, not Canary
+    Detect's: Cadent, BAM, Scottish Water, Clancy, Morrison, Openreach, EU Skills. A second, older
+    batch of 32 came in on 15 Mar 2023 and included Sygma's own trainers.
+
+    It was never a cosmetic problem. `people find` searches four stores and names which one
+    answered, so it truthfully reported Clancy staff as living in Canary Detect's accounting
+    system, and a bare first-name row in Odoo BLOCKED the creation of a real Clancy manager as a
+    duplicate. Junk in one business's system was obstructing work in another's.
+
+    Nothing detected it for six months because every hygiene check here read the phone mirror.
+    Pete, 6 Aug 2026: "why does odoo hold clancy info, that shouldnt happen."
+
+    Reports only. Deleting a row in a live accounting system is Pete's call, and the fix on 6 Aug
+    was snapshotted to vault_notes (Library/snapshots/odoo-orphan-partners-2026-08-06.md) before a
+    single row was removed.
+    """
+    out, total = [], 0
+    try:
+        env = dict(os.environ); env.setdefault("VAULT", VAULT)
+        r = subprocess.run([sys.executable, f"{VAULT}/odoo-api.py", "search-read", "res.partner",
+                            "[]", "id,name,email,customer_rank,supplier_rank,create_date",
+                            "--limit", "5000"], capture_output=True, text=True, env=env, timeout=120)
+        rows = json.loads(r.stdout) if r.stdout.strip().startswith("[") else None
+        if rows is None:
+            # Unreachable is NOT clean. Say so, the same way find reports a store that errored.
+            out.append("  Odoo: COULD NOT CHECK for address-shaped names (store unreachable)")
+        else:
+            bad = [x for x in rows if "@" in (x.get("name") or "")
+                   and not x.get("customer_rank") and not x.get("supplier_rank")]
+            total += len(bad)
+            if bad:
+                days = collections.Counter(x["create_date"][:10] for x in bad)
+                out.append(f"  ⚠ Odoo (Canary Detect): {len(bad)} contact(s) NAMED BY AN EMAIL "
+                           f"ADDRESS with no customer or supplier rank — unprocessed import, not people")
+                for day, n in days.most_common(5):
+                    out.append(f"      {n} created {day}")
+                out.append("      These corrupt every people lookup. Check nothing references them "
+                           "(account.move / sale.order / crm.lead / calendar.event), snapshot, then ask Pete.")
+    except Exception as e:
+        out.append(f"  Odoo: COULD NOT CHECK for address-shaped names ({str(e)[:80]})")
+    return total, out
 
 
 def cmd_check(a):
