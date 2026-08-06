@@ -248,6 +248,7 @@ def stops(js):
 
 WORK_AREA_KM = 25.0   # a practical area is a different place, but it is the same working day
 REST_MIN = 90         # the last long sit of the day is where the van parked up, not more work
+REST_ENDS_AFTER_HOUR = 18   # ...and a van parked for the night is still parked at teatime
 
 
 def _is_rest(stop, all_stops):
@@ -266,7 +267,13 @@ def _is_rest(stop, all_stops):
     """
     if stop["depart"].date() != stop["arrive"].date():
         return True
-    return stop is all_stops[-1] and stop["mins"] >= REST_MIN
+    # It must also END LATE. "Last stop and long" alone was too crude and cost a real day:
+    # Geoff Astley, 31 Jul 2026, worked The Drive in Penrith 08:06-13:41 -- the last stop of the
+    # day and 335 minutes, so it was called a rest and his day was reported as 06:55-07:53, one
+    # hour. A van parked up for the night is still parked at teatime; one that drives off at 13:41
+    # was working.
+    return (stop is all_stops[-1] and stop["mins"] >= REST_MIN
+            and stop["depart"].hour >= REST_ENDS_AFTER_HOUR)
 
 
 def arrive_leave(st):
