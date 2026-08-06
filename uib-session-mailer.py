@@ -61,19 +61,23 @@ def q(sql):
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120 Safari/537.36")
 
-# Named in preference order. The FIRST version of this did
-# `WHERE name ILIKE '%resend%' LIMIT 1`, which is a bug dressed as convenience: the CC holds four
-# Resend keys for four different products, and LIMIT 1 handed back Canary Detect's -- a key for a
+# Named in preference order, never a wildcard. The FIRST version did
+# `WHERE name ILIKE '%resend%' LIMIT 1`, which is a bug dressed as convenience: the CC holds
+# several Resend keys for several products, and LIMIT 1 handed back Canary Detect's -- a key for a
 # different sending domain. The cron would have failed silently every morning.
 #
-# There is no Bureau-specific key in the CC yet. The Vercel deployment has its own RESEND_API_KEY,
-# which is why the website's own emails work; this script cannot read that (Vercel encrypts it).
-# The Passion Fit key is on the same sygma-solutions Resend account and is verified to send as
-# bureau@sygma-solutions.com (tested 6 Aug 2026), so it is the working fallback until a dedicated
-# Bureau key is issued. Recorded here rather than left as a coincidence.
+# The Bureau now has its OWN key (stored 6 Aug 2026). It is the same key the website itself uses:
+# read out of the Vercel project env `RESEND_API_KEY` via the v9 single-env endpoint with
+# `decrypt=true`, verified to send as bureau@sygma-solutions.com, then stored in the CC secrets
+# table. Because it is the same key, the site and this script can never drift apart.
+#
+# The Passion Fit entry stays as a last resort only. It is on the same sygma-solutions Resend
+# account and does send correctly, but it belongs to another product and would die if that product
+# rotated its key. If you ever see the mailer fall through to it, the Bureau key has gone missing
+# and that is the thing to fix.
 RESEND_SECRETS = [
-    "underground-intelligence-bureau-resend-api-key",   # preferred, does not exist yet
-    "passion-fit-resend-api-key",                       # same Sygma account, proven to send
+    "underground-intelligence-bureau-resend-api-key",   # the Bureau's own, same key as the site
+    "passion-fit-resend-api-key",                       # last resort; another product's key
 ]
 
 
