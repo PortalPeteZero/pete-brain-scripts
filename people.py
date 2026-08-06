@@ -705,6 +705,30 @@ def cmd_add(a):
     name = a["name"]
     hits, unreachable = find_existing(name, a.get("email"), a.get("phone"))
     _guard_stores_answered(unreachable, a.get("allow_duplicate"))
+
+    # ── THE PHONE IS A VIEW, SO IT CANNOT BLOCK A BUSINESS RECORD ────────────────────────────
+    # Found 6 Aug 2026, and it is the reason the contact system has felt broken for months.
+    # Every line this tool prints says the phone is "a VIEW of the record, not a home" and that
+    # provenance stays UPSTREAM in each business's own system. The duplicate guard did not know
+    # that: it treated a Google Contacts hit as proof the person exists, so `people add --entity
+    # sygma` REFUSED to create the business record for anyone already on Pete's phone.
+    #
+    # Measured: 47 of 47 real business contacts - Tony Garlinge, Michael Cape, Wayne Clarke and
+    # 15 more Clancy managers, Anglian Water, KierBAM, YTL, Wales & West, plus ThingsLog and Eco
+    # Finish on the Canary Detect side - were ALL refused, every one of them solely because they
+    # were on the phone. The guard was not protecting against duplicates; it was preventing the
+    # business systems from ever being filled in.
+    #
+    # So a downstream-only match no longer blocks an upstream write. It is reported instead,
+    # because that is the useful fact: they are on the phone and had no business record, and now
+    # the phone entry becomes a view of a real one. --entity personal is unchanged: for a friend
+    # or a neighbour, Google Contacts IS the home, so a match there is a genuine duplicate.
+    PHONE_STORE = "Google Contacts (via the CC mirror)"
+    phone_only = []
+    if a["entity"] in ("sygma", "cd") and hits:
+        phone_only = [h for h in hits if h.get("store") == PHONE_STORE]
+        hits = [h for h in hits if h.get("store") != PHONE_STORE]
+
     if hits and not a.get("allow_duplicate"):
         print(f"REFUSED — {len(hits)} existing record(s) already match '{name}':\n")
         for h in hits[:8]:
@@ -734,6 +758,10 @@ def cmd_add(a):
                     print(f"      • {h.get('name')} — in {h.get('store')}; complete it there")
         print("\nIf this really IS a different person, re-run with --allow-duplicate.")
         return 1
+    if phone_only:
+        print(f"  note: {name} was already on Pete's phone with no business record. The phone is a "
+              f"VIEW, so it does not block this — creating the business record now, and the phone "
+              f"entry becomes a view of it.")
     home, payload = ADDERS[a["entity"]](name, a.get("email"), a.get("phone"),
                                         a.get("company"), a.get("role"), a.get("dry"))
     verb = "WOULD create" if a.get("dry") else "CREATED"
