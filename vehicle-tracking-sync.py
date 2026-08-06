@@ -246,20 +246,37 @@ def stops(js):
     return merged
 
 
+WORK_AREA_KM = 25.0   # a practical area is a different place, but it is the same working day
+
+
 def arrive_leave(st):
-    """First stop of 30 minutes or more is the site. Leaving means not coming back within 2.5h."""
+    """Arrived = first stop of 30 minutes or more. Left = the last time the van leaves the WORKING
+    AREA and does not come back within two and a half hours.
+
+    The area, not the exact spot, is what matters. A trainer runs the classroom session and then
+    takes delegates to a practical area down the road; the van moves, but the day has not ended.
+    The first version compared each later stop to the arrival spot and stopped at the first one more
+    than 300 m away, so it called the day over the moment they went out to practical.
+
+    Proven on Gareth Phillips, 8 Jul 2026, every stop inside Hamilton:
+        08:01-10:05 Almada Street (classroom) · 10:12-11:51 Douglas Street (practical)
+        12:01-13:11 Almada Street (back)      · 13:20-14:20 Hutchison Street (practical)
+    Reported 10:05. He left at 14:20.
+
+    So: anchor on the arrival stop, then keep extending through any stop within 25 km of it while
+    the gap since the last departure stays inside the 2.5 hours Pete set. Stops outside the area
+    (the drive home, a services stop 200 miles away) never extend it.
+    """
     site = next((s for s in st if s["mins"] >= DWELL_MIN), None)
     if not site:
         return None, None, None
-    i = st.index(site)
     leave = site["depart"]
-    for later in st[i + 1:]:
-        same = hav(site["lat"], site["lon"], later["lat"], later["lon"]) <= SAME_PLACE_M
-        gap = (later["arrive"] - leave).total_seconds() / 60
-        if same and gap <= RETURN_MIN:
-            leave = later["depart"]
-        else:
-            break
+    for later in st[st.index(site) + 1:]:
+        if hav(site["lat"], site["lon"], later["lat"], later["lon"]) / 1000 > WORK_AREA_KM:
+            continue                     # not the working area; does not end the day, does not extend it
+        if (later["arrive"] - leave).total_seconds() / 60 > RETURN_MIN:
+            break                        # gone long enough that the working day is over
+        leave = later["depart"]
     return site["arrive"], leave, site
 
 
