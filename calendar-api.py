@@ -136,21 +136,47 @@ class CalendarAPI:
     # --- events ---------------------------------------------------------------
 
     def list_events(self, calendar_id="primary", time_min=None, time_max=None,
-                    q=None, max_results=250, single_events=True):
-        """Time params are RFC3339 strings (e.g. '2026-05-01T00:00:00Z' or
-           '2026-05-01T00:00:00+01:00'). Defaults: next 30 days from now."""
+                    q=None, max_results=None, single_events=True, page_limit=40):
+        """EVERY event in the window — this PAGES, it does not hand back page one.
+
+           Time params are RFC3339 strings (e.g. '2026-05-01T00:00:00Z' or
+           '2026-05-01T00:00:00+01:00'). Defaults: from now, no end.
+
+           `max_results` caps the TOTAL returned (None = everything in the window).
+           `page_limit` is a runaway guard on the number of API pages, not a cap you
+           should be tuning.
+
+           Fixed 2026-08-06. Until then this asked Google for one page of 250 and
+           threw `nextPageToken` away, so any window holding more than 250 events
+           silently returned a fraction and every count taken off it was wrong. It
+           was caught reading Pete's own diary: a three-year window reported 250
+           events and ZERO matches for a series that has run weekly since June,
+           because page one stopped in early 2025. A truncated read is worse than a
+           failed one — it looks like an answer."""
         if time_min is None:
             time_min = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-        query = {
-            "timeMin": time_min,
-            "maxResults": max_results,
-            "singleEvents": "true" if single_events else "false",
-            "orderBy": "startTime" if single_events else "updated",
-        }
-        if time_max: query["timeMax"] = time_max
-        if q: query["q"] = q
-        return self._call("GET", f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events",
-                          query=query).get("items", [])
+        items, token, pages = [], None, 0
+        while True:
+            query = {
+                "timeMin": time_min,
+                "maxResults": 2500,          # Google's per-page ceiling; we page regardless
+                "singleEvents": "true" if single_events else "false",
+                "orderBy": "startTime" if single_events else "updated",
+            }
+            if time_max: query["timeMax"] = time_max
+            if q: query["q"] = q
+            if token: query["pageToken"] = token
+            resp = self._call("GET",
+                              f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events",
+                              query=query)
+            items.extend(resp.get("items", []))
+            if max_results is not None and len(items) >= max_results:
+                return items[:max_results]
+            token = resp.get("nextPageToken")
+            pages += 1
+            if not token or pages >= page_limit:
+                break
+        return items
 
     def get_event(self, event_id, calendar_id="primary"):
         return self._call("GET", f"/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{event_id}")

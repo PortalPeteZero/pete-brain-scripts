@@ -692,6 +692,69 @@ def duration_for(subject: str) -> int:
     return DEFAULT_DURATION_MIN
 
 
+# ============================================================
+# Door-to-door blocks — ONE event per session, never a stack
+# ============================================================
+# Pete, 2026-08-06: "it's a bit silly using multiple events to represent one time
+# slot ... can you just make it Swim inc travel, and for the full time of the whole
+# thing from travel to home".
+#
+# Until now a Monday swim was THREE diary entries (travel out / swim / travel home)
+# and a Thursday swim was three as well (travel out / swim / coffee with Kimbo).
+# The travel and coffee halves were hand-made weekly recurring events sitting either
+# side of the Xhale-synced session. That is one commitment drawn as three blocks, and
+# it made the day look busier than it is.
+#
+# Now the SYNCED SESSION IS THE WHOLE BLOCK: its start is pulled back by the travel
+# out, its end pushed to getting home (including the shower, and on Thursday the
+# coffee), and it is renamed. The separate travel/coffee series were ended
+# 2026-08-06 — see the snapshot note `snapshot-swim`.
+#
+# Add a row here for any other session that should show door-to-door.
+# (subject regex, minutes BEFORE the session, minutes AFTER, summary override)
+# Same title on every one of them (Pete, 6 Aug 2026) — the block is "Swim Inc Travel"
+# whatever is inside it, so the diary reads the same each week.
+DOOR_TO_DOOR = [
+    # Monday: 07:00 leave -> 08:00-09:00 pool -> home + shower by 10:30
+    (re.compile(r"pool swim", re.I), 60, 90, "🏊 Swim Inc Travel"),
+    # Thursday: 08:00 leave -> 09:30-10:30 open water -> coffee with Kimbo, home by 11:45
+    (re.compile(r"\bkimbo\b", re.I), 90, 75, "🏊 Swim Inc Travel"),
+]
+
+
+def door_to_door(subject: str):
+    """(minutes_before, minutes_after, summary_override) for a door-to-door session,
+    or (0, 0, None) when the session is just the session."""
+    for rx, before, after, label in DOOR_TO_DOOR:
+        if rx.search(subject or ""):
+            return before, after, label
+    return 0, 0, None
+
+
+def _shift_hhmm(hhmm: str, minutes: int) -> str:
+    """Shift HH:MM by +/- minutes, clamped inside the same day so a padded block can
+    never silently roll onto the day before or after."""
+    h, m = map(int, hhmm.split(":"))
+    total = max(0, min(24 * 60 - 1, h * 60 + m + minutes))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def block_times(subject: str, start_hhmm: str, end_hhmm: str) -> tuple:
+    """The times that actually go in the diary: the session padded out to door-to-door
+    where a rule matches, otherwise exactly what was parsed."""
+    before, after, _ = door_to_door(subject)
+    if not (before or after):
+        return start_hhmm, end_hhmm
+    return _shift_hhmm(start_hhmm, -before), _shift_hhmm(end_hhmm, after)
+
+
+def block_summary(subject: str) -> str:
+    """The title that goes in the diary: the door-to-door name where a rule matches,
+    otherwise the normal emoji-decorated Xhale subject."""
+    _, _, label = door_to_door(subject)
+    return label or decorated_summary(subject)
+
+
 # Emoji rules for event summaries — Pete likes the icons at a glance (2026-06-14;
 # extended beyond sport to cover diary entries too). Ordered, first whole-word
 # match wins. Matched on word tokens (not substring) so "brunch" can't trip "run".
@@ -746,12 +809,13 @@ def _event_description(uid: str, source_desc: str) -> str:
 
 def build_event_payload(subject: str, date_iso: str, start_hhmm: str, end_hhmm: str,
                        uid: str, classification: str, source_desc: str = "") -> dict:
+    start_hhmm, end_hhmm = block_times(subject, start_hhmm, end_hhmm)   # door-to-door
     sh, sm = map(int, start_hhmm.split(":"))
     eh, em = map(int, end_hhmm.split(":"))
     start_iso = f"{date_iso}T{sh:02d}:{sm:02d}:00"
     end_iso = f"{date_iso}T{eh:02d}:{em:02d}:00"
     return {
-        "summary": decorated_summary(subject),
+        "summary": block_summary(subject),
         "description": _event_description(uid, source_desc),
         "start": {"dateTime": start_iso, "timeZone": TIMEZONE},
         "end":   {"dateTime": end_iso, "timeZone": TIMEZONE},
@@ -1154,12 +1218,13 @@ def run(dry: bool = False):
                     if dry:
                         print(f"  DRY PATCH: {uid} {subject!r}")
                     else:
+                        patch_start, patch_end = block_times(subject, start_hhmm, end_hhmm)
                         api.update_event(
                             entry["gcal_event_id"], "primary",
-                            summary=decorated_summary(subject),
+                            summary=block_summary(subject),
                             description=_event_description(uid, desc),
-                            start={"dateTime": f"{date.isoformat()}T{start_hhmm}:00", "timeZone": TIMEZONE},
-                            end={"dateTime": f"{date.isoformat()}T{end_hhmm}:00", "timeZone": TIMEZONE},
+                            start={"dateTime": f"{date.isoformat()}T{patch_start}:00", "timeZone": TIMEZONE},
+                            end={"dateTime": f"{date.isoformat()}T{patch_end}:00", "timeZone": TIMEZONE},
                         )
                     entry["xhale_subject"] = subject
                     entry["xhale_description"] = desc
