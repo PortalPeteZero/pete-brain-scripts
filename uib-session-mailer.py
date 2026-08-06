@@ -5,11 +5,16 @@
                   sessions were added since the last announcement.
   2. REMINDER   — the morning of a session, to everyone holding a place, with the joining link.
 
-Deliberately NOT deployed as a cron. Pete's standing rule is that a background job gets flagged
-before it is switched on, so this runs by hand until he says otherwise:
+Runs 06:00 Europe/London daily (deployed 6 Aug 2026 on Pete's "execute the plan in full").
+Early enough that a reminder for an 08:30 session is genuinely useful, and the same run carries
+the batched announcement for anything added the day before. Pause it with:
+
+    VAULT=/tmp/pbs python3 /tmp/pbs/cc-cron.py pause uib-session-mailer
+
+By hand, either way:
 
     VAULT=/tmp/pbs python3 /tmp/pbs/uib-session-mailer.py            # dry run, prints what it WOULD send
-    VAULT=/tmp/pbs python3 /tmp/pbs/uib-session-mailer.py --send     # actually sends
+    VAULT=/tmp/pbs python3 /tmp/pbs/uib-session-mailer.py --send     # actually sends (what the cron does)
 
 Two rules built in rather than left to judgement:
 
@@ -22,6 +27,16 @@ Two rules built in rather than left to judgement:
 Unsubscribing is one click and it is in every announcement, because the list is consent-based
 marketing under PECR and an announcement without a way out is not defensible.
 """
+# CRON-META
+# what: The two timed emails for the Sygma online support sessions
+# why: New dates need announcing to the keep-me-posted list, and anyone booked needs the joining link on the morning
+# reads: UIB Supabase support_session / support_session_request / support_session_notify
+# writes: email via Resend; support_session_announce watermark
+# entity: sygma
+# report:
+# schedule: 0 6 * * *
+# timezone: Europe/London
+# CRON-META-END
 import argparse, json, os, sys, urllib.request, urllib.error, datetime
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
