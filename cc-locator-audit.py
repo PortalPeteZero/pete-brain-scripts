@@ -669,6 +669,7 @@ def check_rows(gaps, dm_text, dm_rows):
 def main():
     as_json = "--json" in sys.argv
     gaps = []
+    info_notes = []          # expected-state facts: reported, never counted as gaps
 
     dm = q("SELECT domain, home, access, notes, backing_ref FROM data_map ORDER BY sort")
     tbls = q("SELECT c.relname AS name, c.relkind AS kind FROM pg_class c "
@@ -736,13 +737,22 @@ def main():
         elif not cnt:                        # readable but shapeless -> could not check, NOT empty
             gaps.append({"rule": "couldnt-check", "subject": r["domain"], "detail": f"{ref}: row count came back unreadable — status unknown", "severity": "high"})
         elif cnt[0]["n"] == 0:
-            gaps.append({"rule": "empty-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table is EMPTY (home points at a table with no data)", "severity": "high"})
+            # A QUEUE is legitimately empty until its first event, and calling that a HIGH gap every
+            # morning trains everyone to ignore the report. Opt-in per row: put [empty-ok] in the
+            # data_map row's notes, WITH the reason, and this reports it as information instead.
+            # Deliberately opt-in and never inferred — an unmarked empty home is still a real fault,
+            # which is the whole point of the rule. (Added 6 Aug 2026 for health_coach_message, whose
+            # cron only ingests messages sent after its cutover stamp, so empty is correct.)
+            if "[empty-ok]" in (r.get("notes") or ""):
+                info_notes.append({"subject": r["domain"], "detail": f"{ref} is empty, expected: {(r.get('notes') or '').strip()[:160]}"})
+            else:
+                gaps.append({"rule": "empty-home", "subject": r["domain"], "detail": f"backing_ref {ref}, but that table is EMPTY (home points at a table with no data)", "severity": "high"})
 
     # (r) ROW-GRANULAR — the everyday adds (a skill, a helper, a project, a bucket)
     check_rows(gaps, dm_text, dm)
 
     ordered = sorted(gaps, key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["severity"], 3))
-    info = [{"subject": "coverage", "detail": SCOPE_NOTE}]
+    info = [{"subject": "coverage", "detail": SCOPE_NOTE}] + info_notes
 
     if as_json:
         # THE HOUSE CONSUMER CONTRACT — drift-check.py reads exactly this shape from
