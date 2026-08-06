@@ -88,6 +88,14 @@ def main():
     # Exempt: rows quoting a manufacturer or standard word for word, because
     # altering a quote is the worse fault. resource_block 121 is the Radiodetection
     # C.A.T.4 user guide and says "quoted verbatim" in the text itself.
+    #
+    # Also exempt: the three support_session* tables (added 6 Aug 2026). This gate
+    # exists to police OUR voice in OUR content. Those tables hold what a delegate
+    # typed into a booking form -- their name, their job title, their contract, a
+    # note about what they are bringing. A delegate pasting a job title with an
+    # em-dash in it is not a voice failure, and letting it fail the gate would mean
+    # the Bureau's own check goes red on data Pete does not control and cannot fix
+    # without editing somebody else's words.
     dash_sql = """
 do $$
 declare r record; n bigint; extra text;
@@ -96,7 +104,8 @@ begin
   delete from uib_dash_hits;
   for r in select table_name, column_name from information_schema.columns
            where table_schema='public' and data_type in ('text','character varying','jsonb')
-             and table_name not in ('auth_token','ask_log')
+             and table_name not in ('auth_token','ask_log',
+                                    'support_session','support_session_request','support_session_notify')
   loop
     extra := case when r.table_name='resource_block' and r.column_name='text'
                   then ' and text not ilike ''%quoted verbatim%''' else '' end;
