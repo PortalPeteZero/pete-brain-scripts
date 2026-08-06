@@ -247,6 +247,26 @@ def stops(js):
 
 
 WORK_AREA_KM = 25.0   # a practical area is a different place, but it is the same working day
+REST_MIN = 90         # the last long sit of the day is where the van parked up, not more work
+
+
+def _is_rest(stop, all_stops):
+    """Is this stop the van parking up for the night rather than working?
+
+    Two shapes, both seen in July 2026 and both of which walked the finish time into the evening:
+      - it runs through midnight (Andy Bartholomew, 6 Jul, 16:16 to 00:51, reported "left 00:51")
+      - it is the LAST stop of the day and a long sit (Andy Bartholomew, 2 Jul: worked at Canal
+        Wharf 08:01-15:02, then sat at Daryngton Drive 15:50-22:21, reported "left 22:21";
+        Gareth Phillips, 28 Jul: worked around Grantham to 16:30, then sat at Toll Bar Road
+        16:36-22:15, reported "left 22:15")
+
+    Both are the same thing: the day's work ended, the van went somewhere and stayed. Note the
+    threshold only applies to the FINAL stop -- a 90 minute sit in the middle of the day is lunch
+    or a practical session, and must not end the day.
+    """
+    if stop["depart"].date() != stop["arrive"].date():
+        return True
+    return stop is all_stops[-1] and stop["mins"] >= REST_MIN
 
 
 def arrive_leave(st):
@@ -276,13 +296,8 @@ def arrive_leave(st):
             continue                     # not the working area; does not end the day, does not extend it
         if (later["arrive"] - leave).total_seconds() / 60 > RETURN_MIN:
             break                        # gone long enough that the working day is over
-        if later["depart"].date() != later["arrive"].date():
-            # This stop runs through the night, so it is where the van SLEPT, not somewhere it
-            # worked. The day ended when it got there. Without this the extension walks into the
-            # overnight rest and reports the next morning's departure as the finish time --
-            # Andy Bartholomew, 6 Jul 2026, parked 16:16 and "left site" came out as 00:51.
-            leave = later["arrive"]
-            break
+        if _is_rest(later, st):
+            break                        # the van has parked up for the night; the work is over
         leave = later["depart"]
     return site["arrive"], leave, site
 
