@@ -103,12 +103,47 @@ class TeamsAPI:
         return {"user": self.cfg["user"], "tenant": self.cfg["tenant_id"],
                 "app": self.cfg["app_name"], "token": "refreshed OK"}
 
-    def create_meeting(self, subject, start, end):
-        """start/end: ISO 8601. A naive string is treated as UTC."""
+    def create_meeting(self, subject, start, end, open_presenters=False, open_lobby=False):
+        """start/end: ISO 8601. A naive string is treated as UTC.
+
+        open_presenters / open_lobby default to False, so every existing caller keeps the exact
+        behaviour it had. Pass both True for an OPEN CLINIC -- a meeting where guests from outside
+        the tenant must be able to join without being admitted, and must be able to share their
+        screen. Proved against live Graph on 6 Aug 2026 (both settings accepted and echoed back on
+        v1.0); see [[Clancy Online Support Sessions]].
+
+        MEASURED DEFAULTS, 6 Aug 2026 -- a meeting created with neither flag comes back as
+        `allowedPresenters: everyone` and `lobbyBypassSettings.scope: organization`. So:
+
+          * Screen sharing was never actually broken. This tenant already lets any joiner present.
+            `open_presenters=True` PINS that rather than fixing it, which is still worth doing:
+            the default is tenant policy and tenant policy can be changed by someone else.
+          * The LOBBY is the real one. `organization` scope means guests from outside the tenant
+            wait in a lobby. On an open clinic for a customer's staff that is fatal -- they sit
+            outside and, if nobody with rights is in the meeting yet, nobody can let them in.
+            `open_lobby=True` is what makes an external-guest meeting work.
+
+        An earlier reading of this file concluded attendees could not share because create_meeting
+        sends no roles. Sending no roles is not the same as the roles being restrictive -- the
+        tenant default filled them in. Measure before concluding.
+
+        NOT settable from here: the `coorganizer` role. Graph accepts the attendee and resolves the
+        UPN to a real object id, but returns role `unknownFutureValue` on BOTH v1.0 and beta, so it
+        does not stick (tested 6 Aug 2026). `open_presenters=True` is the working substitute: it
+        gives the trainer share, mute and admit rights. It does not give them "end meeting for all".
+
+        Trade-off to state out loud: presenter rights also carry recording rights, so with
+        open_presenters=True any participant could start a recording if tenant policy allows.
+        Where a session is promised as not recorded, that promise is a commitment, not a lock.
+        """
         def z(x):
             return x if x.endswith("Z") or "+" in x[10:] else x + "Z"
-        return self._call("POST", "/me/onlineMeetings",
-                          {"subject": subject, "startDateTime": z(start), "endDateTime": z(end)})
+        body = {"subject": subject, "startDateTime": z(start), "endDateTime": z(end)}
+        if open_presenters:
+            body["allowedPresenters"] = "everyone"
+        if open_lobby:
+            body["lobbyBypassSettings"] = {"scope": "everyone", "isDialInBypassEnabled": True}
+        return self._call("POST", "/me/onlineMeetings", body)
 
     def delete_meeting(self, meeting_id):
         self._call("DELETE", f"/me/onlineMeetings/{meeting_id}")
