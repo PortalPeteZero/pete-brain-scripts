@@ -451,7 +451,10 @@ def main():
         days = [datetime.date(yr, mo, d) for d in range(1, last + 1)]
     else:
         today = datetime.date.today()
-        days = [today - datetime.timedelta(days=i) for i in range(1, a.days + 1)]
+        # Back a few days to settle what has happened, and FORWARD a fortnight so the current and
+        # next week show their bookings as scheduled rather than as a page with nothing on it.
+        days = ([today - datetime.timedelta(days=i) for i in range(1, a.days + 1)]
+                + [today + datetime.timedelta(days=i) for i in range(0, 15)])
 
     print(f"vehicle-tracking-sync: {len(days)} day(s), {days[0]} to {days[-1]}")
     people = roster()
@@ -473,7 +476,23 @@ def main():
                 "arrived_at": None, "left_at": None, "minutes_on_site": None,
                 "site_lat": None, "site_lon": None, "site_town": None, "site_street": None,
                 "address_match_km": None, "note": None}
-        if p["subcontractor"]:
+        today = datetime.date.today()
+        if day > today:
+            # The course has not happened. Saying "the tracker reported no journeys" about a day in
+            # the future reads as a fault, or as the trainer not turning up (Pete, 6 Aug 2026).
+            base["status"] = "scheduled"
+            base["note"] = "Booked. The course has not run yet."
+        elif day == today:
+            # Still running. Any times so far are provisional; the nightly job settles it.
+            st_now = stops(journeys(p["service_id"], day)) if p["service_id"] else []
+            arr = arrive_leave(st_now)[0] if st_now else None
+            base["status"] = "in-progress"
+            base["note"] = ("Running today. Arrived {}; the finish time lands after tonight's "
+                            "update.".format(arr.strftime("%H:%M")) if arr
+                            else "Running today. Times land after tonight's update.")
+            if arr:
+                base["arrived_at"] = arr.isoformat()
+        elif p["subcontractor"]:
             base["status"] = "subcontractor"
             base["note"] = "Drives their own vehicle, so there is no tracker to read."
         elif not p["service_id"]:
