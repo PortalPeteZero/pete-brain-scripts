@@ -68,7 +68,7 @@ INGEST_MESSAGES_FROM = "2026-08-06T21:38:00Z"
 # reads: CC garmin_daily; Xhale sessions + both message channels (per-session messages[] and the direct thread with contact 3280)
 # writes: Xhale diary sessions (the stats line, order -1); CC public.health_coach_message; an email to Pete
 # entity: personal
-# schedule: 0 5,9,12,15,19,22 * * *
+# schedule: 0 6,10,13,16,20,23 * * *
 # timezone: Atlantic/Canary
 # secrets: SECRETFILE__xhale-oauth-app.json, SECRETFILE__xhale-oauth-tokens.json, GOOGLE_SA_JSON, SUPABASE_TOKEN
 # CRON-META-END
