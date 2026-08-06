@@ -122,6 +122,9 @@ def announce(key, dry):
     q("""create table if not exists support_session_announce (
            id int primary key default 1, last_announced_at timestamptz not null default now(),
            constraint one_row check (id = 1))""")
+    # Every other table in this schema runs RLS. A table created on the fly by a script does not
+    # inherit that, which is exactly how one ends up as the odd one out. Caught in the 6 Aug audit.
+    q("alter table support_session_announce enable row level security")
     q("insert into support_session_announce (id) values (1) on conflict (id) do nothing")
     mark = q("select last_announced_at from support_session_announce where id=1")[0]["last_announced_at"]
 
