@@ -56,17 +56,43 @@ def q(sql):
     return json.loads(urllib.request.urlopen(req, timeout=120).read())
 
 
+# Resend sits behind Cloudflare and refuses a bare urllib user agent with a 403 and a
+# Cloudflare error code, which reads exactly like a rejected API key and is not one.
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/120 Safari/537.36")
+
+# Named in preference order. The FIRST version of this did
+# `WHERE name ILIKE '%resend%' LIMIT 1`, which is a bug dressed as convenience: the CC holds four
+# Resend keys for four different products, and LIMIT 1 handed back Canary Detect's -- a key for a
+# different sending domain. The cron would have failed silently every morning.
+#
+# There is no Bureau-specific key in the CC yet. The Vercel deployment has its own RESEND_API_KEY,
+# which is why the website's own emails work; this script cannot read that (Vercel encrypts it).
+# The Passion Fit key is on the same sygma-solutions Resend account and is verified to send as
+# bureau@sygma-solutions.com (tested 6 Aug 2026), so it is the working fallback until a dedicated
+# Bureau key is issued. Recorded here rather than left as a coincidence.
+RESEND_SECRETS = [
+    "underground-intelligence-bureau-resend-api-key",   # preferred, does not exist yet
+    "passion-fit-resend-api-key",                       # same Sygma account, proven to send
+]
+
+
 def resend_key():
-    """The key lives in the CC secrets table, never on disk here."""
+    """The key lives in the CC secrets table, never on disk here. Never guessed by wildcard."""
     import subprocess
-    r = subprocess.run(["python3", f"{VAULT}/cc-sql.py",
-                        "SELECT value FROM secrets WHERE name ILIKE '%resend%' LIMIT 1"],
-                       capture_output=True, text=True, env={**os.environ, "VAULT": VAULT})
-    try:
-        v = json.loads(r.stdout)[0]["value"]
+    for name in RESEND_SECRETS:
+        r = subprocess.run(["python3", f"{VAULT}/cc-sql.py",
+                            f"SELECT value FROM secrets WHERE name='{name}'"],
+                           capture_output=True, text=True, env={**os.environ, "VAULT": VAULT})
+        try:
+            rows = json.loads(r.stdout)
+        except Exception:
+            continue
+        if not rows:
+            continue
+        v = rows[0]["value"]
         return json.loads(v)["api_key"] if v.strip().startswith("{") else v.strip()
-    except Exception:
-        return None
+    return None
 
 
 def send(key, to, subject, text, dry):
@@ -76,7 +102,8 @@ def send(key, to, subject, text, dry):
     req = urllib.request.Request(
         "https://api.resend.com/emails",
         data=json.dumps({"from": FROM, "to": [to], "subject": subject, "text": text}).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                 "User-Agent": UA},
         method="POST")
     try:
         urllib.request.urlopen(req, timeout=60)
