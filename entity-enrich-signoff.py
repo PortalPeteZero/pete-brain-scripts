@@ -26,25 +26,48 @@ with a list when any is outstanding. So it is a runnable gate:
 Usage:
     entity-enrich-signoff.py [--since today|<ISO-ts>] [--json]
 """
-import os, sys, json, subprocess
+import os, sys, json, subprocess, time
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 
 
-def q(sql):
-    r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
-                       env={**os.environ, "VAULT": VAULT},
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        sys.stderr.write(f"[entity-enrich-signoff] query failed: {r.stderr[:200]}\n")
-        return []
-    out = (r.stdout or "").strip()
-    if not out:
-        return []
-    try:
-        return json.loads(out)
-    except Exception:
-        return []
+FAILED_QUERIES = []          # a gate that could not read its inputs must never print all-clear
+
+
+def q(sql, attempts=4):
+    """Run a query, retrying a rate-limited one, and RECORD any query that never succeeded.
+
+    Two faults fixed 6 Aug 2026, both of which made this gate report green while blind:
+      1. cc-sql.py prints its error to STDOUT and exits 1, so reading r.stderr gave a blank
+         reason ("query failed: " with nothing after it) and no clue what went wrong.
+      2. A failed query returned [] and the caller read that as "no touches this session",
+         so a transient HTTP 429 from the Supabase API produced a confident
+         "All substantive customer touches enriched ✓" having checked nothing. Observed live
+         during a closeout: two of the gate's own input queries were throttled and it passed.
+    """
+    last = ""
+    for i in range(attempts):
+        r = subprocess.run(["python3", f"{VAULT}/cc-sql.py", sql],
+                           env={**os.environ, "VAULT": VAULT},
+                           capture_output=True, text=True)
+        out = (r.stdout or "").strip()
+        err = ((r.stderr or "").strip() or out)[:200]     # cc-sql writes errors to stdout
+        if r.returncode == 0 and not out.startswith("ERROR"):
+            if not out:
+                return []
+            try:
+                return json.loads(out)
+            except Exception:
+                last = f"unparseable response: {out[:120]}"
+                break
+        last = err
+        if "429" in err or "Too Many Requests" in err or "Throttler" in err:
+            time.sleep(2 * (i + 1))                      # transient: back off and retry
+            continue
+        break
+    sys.stderr.write(f"[entity-enrich-signoff] query failed after {attempts} attempt(s): {last}\n")
+    FAILED_QUERIES.append({"sql": " ".join(sql.split())[:160], "error": last})
+    return []
 
 
 def lit(s):
@@ -159,22 +182,31 @@ def main():
     outstanding = [f for f in findings if f["enriched"] is False]
 
     if as_json:
-        print(json.dumps({"findings": findings, "outstanding": len(outstanding)}, indent=1))
+        print(json.dumps({"findings": findings, "outstanding": len(outstanding),
+                          "could_not_check": FAILED_QUERIES}, indent=1))
     else:
         print(f"=== entity-enrich sign-off (since {since_sql}) ===")
-        if not findings:
+        if not findings and not FAILED_QUERIES:
             print("  no substantive customer/supplier/project touches this session -- nothing to enrich.")
         for f in findings:
             mark = "✓" if f["enriched"] else ("–" if f["enriched"] is None else "✗")
             print(f"  {mark} {f['entity']:<32} {f['detail']}")
+        if FAILED_QUERIES:
+            # Never dress a blind run as a clean one. An empty result from a query that never ran
+            # is indistinguishable from "nothing to do", so say so loudly and fail the gate.
+            print(f"\n⚠ COULD NOT CHECK: {len(FAILED_QUERIES)} of this gate's own input queries failed.")
+            for f in FAILED_QUERIES:
+                print(f"    {f['error']}")
+                print(f"      query: {f['sql']}")
+            print("  This run is INCOMPLETE, not clean. Re-run it before closing the session.")
         if outstanding:
             print(f"\nOUTSTANDING: {len(outstanding)} CC-present entity(ies) touched but NOT enriched.")
             print("  Update each one's knowledge section with the substantive new facts, then re-embed:")
             print("    (edit the vault_notes home note + run cc-embedder.py), then re-run this gate.")
-        else:
+        elif not FAILED_QUERIES:
             print("\nAll substantive customer touches enriched. ✓")
 
-    sys.exit(2 if outstanding else 0)
+    sys.exit(2 if (outstanding or FAILED_QUERIES) else 0)
 
 
 if __name__ == "__main__":
