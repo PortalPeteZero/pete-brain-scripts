@@ -24,6 +24,7 @@ Report-only. Exits 0 clean / 2 with findings, so it can gate a session as well a
 Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/doc-command-check.py [--json]
 """
+import time
 import os, re, sys, json, subprocess
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
@@ -55,17 +56,37 @@ HISTORICAL_TYPES = {"snapshot"}
 HISTORICAL_PLAN_STATUSES = {"completed", "executed", "scrapped", "done", "superseded"}
 
 
+Q_FAILED = []          # a read that ERRORED is not a read that found nothing
+
+
 def q(sql):
-    r = subprocess.run([sys.executable, CC_SQL, sql], capture_output=True, text=True,
-                       env={**os.environ, "VAULT": VAULT}, timeout=90)
-    if r.returncode != 0:
-        sys.stderr.write(f"cc-sql error: {(r.stderr or r.stdout)[:300]}\n")
-        return []
-    try:
-        d = json.loads((r.stdout or "").strip())
-        return d if isinstance(d, list) else []
-    except Exception:
-        return []
+    """A failed read is recorded, never silently returned as an empty result.
+
+    Same class as the entity-enrich-signoff fault fixed 6 Aug 2026: on a throttle or a network
+    blip this returned [], the caller counted zero findings, and the verdict line said all clear
+    having checked nothing. The stderr line alone is not enough -- nobody reads a cron's stderr
+    when its report says everything is fine. Retries a throttled read first.
+    """
+    last = ""
+    for attempt in range(4):
+        r = subprocess.run([sys.executable, CC_SQL, sql], capture_output=True, text=True,
+                           env={**os.environ, "VAULT": VAULT}, timeout=90)
+        out = (r.stdout or "").strip()
+        if r.returncode == 0 and not out.startswith("ERROR"):
+            try:
+                d = json.loads(out)
+                return d if isinstance(d, list) else []
+            except Exception:
+                last = f"unreadable reply: {out[:120]}"
+                break
+        last = ((r.stderr or "").strip() or out)[:200]   # cc-sql prints its errors to stdout
+        if "429" in last or "Too Many Requests" in last or "Throttler" in last:
+            time.sleep(2 * (attempt + 1))
+            continue
+        break
+    sys.stderr.write(f"cc-sql error: {last}\n")
+    Q_FAILED.append(last)
+    return []
 
 
 def main():
@@ -136,7 +157,13 @@ def main():
 
     if as_json:
         print(json.dumps({"findings": findings, "count": len(findings),
-                          "notes_scanned": len(rows), "exempted": exempted}, indent=2))
+                          "notes_scanned": len(rows), "exempted": exempted,
+                          "could_not_check": Q_FAILED}, indent=2))
+    elif Q_FAILED:
+        # Zero findings from a scan that could not read its notes is not a pass.
+        print(f"doc-command-check: COULD NOT CHECK — {len(Q_FAILED)} database read(s) failed, so this "
+              f"run scanned {len(rows)} note(s) and proves nothing. First error: {Q_FAILED[0][:140]}")
+        print("Re-run it before treating the docs as clean.")
     elif not findings:
         print(f"doc-command-check: 0 findings — every documented command exists "
               f"({len(rows)} notes scanned, {len(exempted)} historical).")
@@ -150,7 +177,7 @@ def main():
             else:
                 print(f"  ⚠ DEAD FLAG       {f['script']} {f['flag']:20s} note: {f['note']}")
         print("\nFix the NOTE (the script is the source of truth), or restore the flag if the doc was right.")
-    return 2 if findings else 0
+    return 2 if (findings or Q_FAILED) else 0
 
 
 if __name__ == "__main__":

@@ -35,22 +35,43 @@ someone thinks to run it would have missed it exactly as the humans did.
 # schedule: 0 9 * * 0
 # timezone: Atlantic/Canary
 # CRON-META-END
+import time
 import os, sys, json, re, subprocess, datetime
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 CC_SQL = os.path.join(VAULT, "cc-sql.py")
 
+Q_FAILED = []          # a read that ERRORED is not a read that found nothing
+
+
 def q(sql):
-    r = subprocess.run([sys.executable, CC_SQL, sql], capture_output=True, text=True,
-                       env={**os.environ, "VAULT": VAULT}, timeout=90)
-    if r.returncode != 0:
-        sys.stderr.write(f"cc-sql error: {(r.stderr or r.stdout)[:300]}\n")
-        return []
-    out = (r.stdout or "").strip()
-    try:
-        d = json.loads(out); return d if isinstance(d, list) else []
-    except json.JSONDecodeError:
-        return []
+    """A failed read is recorded, never silently returned as an empty result.
+
+    Same class as the entity-enrich-signoff fault fixed 6 Aug 2026: on a throttle or a network
+    blip this returned [], the caller counted zero findings, and the verdict line said all clear
+    having checked nothing. The stderr line alone is not enough -- nobody reads a cron's stderr
+    when its report says everything is fine. Retries a throttled read first.
+    """
+    last = ""
+    for attempt in range(4):
+        r = subprocess.run([sys.executable, CC_SQL, sql], capture_output=True, text=True,
+                           env={**os.environ, "VAULT": VAULT}, timeout=90)
+        out = (r.stdout or "").strip()
+        if r.returncode == 0 and not out.startswith("ERROR"):
+            try:
+                d = json.loads(out)
+                return d if isinstance(d, list) else []
+            except Exception:
+                last = f"unreadable reply: {out[:120]}"
+                break
+        last = ((r.stderr or "").strip() or out)[:200]   # cc-sql prints its errors to stdout
+        if "429" in last or "Too Many Requests" in last or "Throttler" in last:
+            time.sleep(2 * (attempt + 1))
+            continue
+        break
+    sys.stderr.write(f"cc-sql error: {last}\n")
+    Q_FAILED.append(last)
+    return []
 
 def main():
     # 0. refresh expected_interval_hours (idempotent)
@@ -251,9 +272,16 @@ def main():
     except Exception as e:
         findings.append(("⚠", f"Documented commands: check did not run ({e})"))
 
+    if Q_FAILED:
+        # A read that errored is not a check that passed. Say so IN THE REPORT, not just on stderr.
+        findings.append(("⚠", f"THIS REPORT IS INCOMPLETE: {len(Q_FAILED)} database read(s) failed, so "
+                              f"some checks above ran against no data and cannot be trusted. "
+                              f"First error: {Q_FAILED[0][:120]}. Re-run drift-check."))
     warns = [f for f in findings if f[0] == "⚠"]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    header = (f"DRIFT-CHECK {stamp} — {'⚠ ' + str(len(warns)) + ' need attention' if warns else '✓ all clear'}")
+    header = (f"DRIFT-CHECK {stamp} — "
+              + (f"⚠ INCOMPLETE, {len(warns)} need attention" if Q_FAILED
+                 else (f"⚠ {len(warns)} need attention" if warns else "✓ all clear")))
     body = header + "\n" + "\n".join(f"  {sev} {line}" for sev, line in findings)
     print(body)
 
