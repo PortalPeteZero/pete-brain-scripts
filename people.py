@@ -1317,8 +1317,13 @@ def cmd_check(a):
         if rc != 0:
             print(f"  ⚠ could not record to daily_log: {out[:120]}")
     if a.get("json"):
-        print(json.dumps({"records": counters["contacts"], "gaps": counters["gaps"],
-                          "half_finished": counters["half_finished"]}))
+        # address_shaped_names added 6 Aug 2026 so drift-check can fold it in. It is counted in
+        # `gaps`, and reported separately because it means something different from a duplicate:
+        # rows in a live accounting system that were never people in the first place.
+        print(json.dumps({"records": counters["contacts"], "contacts": counters["contacts"],
+                          "gaps": counters["gaps"],
+                          "half_finished": counters["half_finished"],
+                          "address_shaped_names": counters.get("address_shaped_names", 0)}))
     return 0
 
 

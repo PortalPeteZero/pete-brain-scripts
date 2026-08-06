@@ -28,7 +28,7 @@ someone thinks to run it would have missed it exactly as the humans did.
 # CRON-META
 # what: weekly self-check of the Command Centre's own health (drift-check)
 # why: surface migration/health regressions (drive mislabels, failed/overdue crons, stalled drives, un-embedded notes) automatically instead of by accident
-# reads: drive_files, crons, drive_change_tokens, vault_notes, secrets, helpers (via connection-parity.py), Gmail filter settings (via gmail-filter-parity.py)
+# reads: drive_files, crons, drive_change_tokens, vault_notes, secrets, helpers (via connection-parity.py), Gmail filter settings (via gmail-filter-parity.py), Google Contacts mirror + Odoo res.partner (via people.py check)
 # writes: daily_log (drift-check summary) + refreshes crons.expected_interval_hours
 # entity: cc
 # report: automations-log
@@ -167,6 +167,44 @@ def main():
                                   f"no overlap, Briefings still Mode A)"))
     except Exception as e:
         findings.append(("⚠", f"Gmail-filter parity: check did not run ({e}) — this is NOT a pass"))
+
+    # People hygiene — REPORT-ONLY, same contract as the two parity checks above. Added 6 Aug 2026.
+    # Odoo (Canary Detect's accounting system) was carrying 340 contact rows whose NAME was a bare
+    # email address, with no customer or supplier rank: 308 created in a single second on 23 Feb
+    # 2026 and 32 more on 15 Mar 2023. The domains were Sygma's world — Cadent, BAM, Scottish Water,
+    # Clancy, Morrison, Openreach. It sat there for six months because `people check` only ever read
+    # the Google Contacts mirror, which is the DOWNSTREAM store, so the two upstream business
+    # systems were never examined by anything.
+    # It was not cosmetic: `people find` truthfully reported Clancy staff as living in Canary
+    # Detect's system, and a bare first-name row BLOCKED creating a real Clancy manager as a
+    # duplicate. Pete, 6 Aug 2026: "why does odoo hold clancy info, that shouldnt happen."
+    # A weekly machine check is the only thing that finds an import nobody remembers running.
+    try:
+        # --no-record: people check writes its own daily_log row, and drift-check already writes one.
+        # It prints the HUMAN report first and the JSON last, unlike the parity tools above, so take
+        # the last JSON-looking line rather than parsing the whole of stdout.
+        pr2 = subprocess.run([sys.executable, os.path.join(VAULT, "people.py"), "check", "--json", "--no-record"],
+                             capture_output=True, text=True, timeout=180,
+                             env={**os.environ, "VAULT": VAULT})
+        jline = next((l for l in reversed((pr2.stdout or "").splitlines()) if l.strip().startswith("{")), "")
+        if not jline:
+            findings.append(("⚠", f"People hygiene: check produced no JSON — treat as NOT RUN ({(pr2.stderr or '')[:160]})"))
+        else:
+            pdata = json.loads(jline)
+            addr = pdata.get("address_shaped_names", 0)
+            dupes = pdata.get("gaps", 0) - addr
+            if addr:
+                findings.append(("⚠", f"People hygiene: {addr} business-store contact(s) NAMED BY AN EMAIL ADDRESS "
+                                      f"with no customer/supplier rank — unprocessed import sitting in a live "
+                                      f"accounting system. Run `people check` for the dates, then verify nothing "
+                                      f"references them before removing anything."))
+            if dupes > 0:
+                findings.append(("⚠", f"People hygiene: {dupes} duplicate/overlap gap(s) on the phone mirror — run `people check`"))
+            if not addr and dupes <= 0:
+                findings.append(("✓", f"People hygiene: 0 gaps ({pdata.get('contacts', 0)} phone records, "
+                                      f"no address-shaped names in the business stores)"))
+    except Exception as e:
+        findings.append(("⚠", f"People hygiene: check did not run ({e}) — this is NOT a pass"))
 
     # Documented-command rot — do the commands our own notes tell sessions to run still exist?
     # A dead flag is silent (an argparse-less script swallows it and does something else), so this
