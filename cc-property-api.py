@@ -25,6 +25,11 @@ Canonical --set keys (written clean, no quotes):
   gsc          -> f.declared.gsc_property        (+ f.gsc)
   ga4          -> f.declared.ga4_property_id      (+ f.ga4)
   any other key=value is merged verbatim into f.declared.
+
+front_door is VALIDATED: it must be a vault_path that resolves to a real note, because every
+reader that follows a front door (whereis, the property-state hook, property-signoff P3, the
+locator) lands on nothing otherwise. Write the note first, then set the card. Pass
+--force-front-door to point at a note you have not written yet.
 """
 import os, sys, json, urllib.request, urllib.error
 
@@ -66,6 +71,39 @@ def ccq(sql):
         return json.loads(urllib.request.urlopen(req, timeout=90).read().decode())
     except urllib.error.HTTPError as e:
         sys.stderr.write(f"SQL ERROR {e.code}: {e.read().decode()[:400]}\n"); raise
+
+
+def check_front_door(path):
+    """`front_door` must be a vault_path that RESOLVES, not a description of one.
+
+    Born 6 Aug 2026: a session wrote the prose string
+        "vault_notes: Clancy Resource Web App-overview (title: ...) + repo CLAUDE.md"
+    into this field on the Underground Intelligence Bureau card. Every reader that follows a
+    front door — whereis, the property-state hook, property-signoff P3, the locator's
+    property-front-door-broken rule — then pointed at nothing, and the next session to open
+    that property had no read-first note. The locator caught it as HIGH the same day, which is
+    the backstop working; this is the thing that stops it being written at all.
+
+    Measured against every card before being made fail-closed: 21 of 23 declare a front door
+    and all 21 resolve exactly, so this refuses nothing that is already in use. The other two
+    declare none, which is the P4 warning case and is not touched here.
+    """
+    rows = ccq("SELECT count(*) AS n FROM vault_notes WHERE vault_path = " + lit(path))
+    n = int((rows[0] if isinstance(rows, list) else rows).get("n", 0))
+    if n:
+        return
+    near = ccq("SELECT vault_path FROM vault_notes WHERE vault_path ILIKE "
+               + lit("%" + path.strip().split("/")[-1] + "%") + " LIMIT 5")
+    hint = ""
+    if isinstance(near, list) and near:
+        hint = "\n  did you mean:\n    " + "\n    ".join(r["vault_path"] for r in near)
+    sys.exit(
+        f"cc-property: REFUSED — front_door must be a vault_path that resolves.\n"
+        f"  given: {path!r}\n"
+        f"  no vault_notes row has that vault_path, so every reader that follows this front "
+        f"door would land on nothing.{hint}\n"
+        f"  Write the note FIRST, then set the card. If you really mean to point at a note "
+        f"that does not exist yet, pass --force-front-door.")
 
 
 def lit(s):
@@ -131,6 +169,8 @@ def main():
         print(f"cc-property: created card '{name}'" + (f" ({ent})" if ent else "")); return
 
     if a[0] == "--set":
+        force = "--force-front-door" in a
+        a = [x for x in a if x != "--force-front-door"]
         name = a[1]
         card = get_card(name)
         if not card or card == "AMBIGUOUS":
@@ -142,6 +182,8 @@ def main():
             if "=" not in kv:
                 continue
             k, v = kv.split("=", 1)
+            if k == "front_door" and not force:
+                check_front_door(v)
             dkey, ftop = FIELD_MAP.get(k, (k, None))
             declared[dkey] = v
             if ftop:
