@@ -70,7 +70,7 @@ INGEST_MESSAGES_FROM = "2026-08-06T21:38:00Z"
 # entity: personal
 # schedule: 0 6,10,13,16,20,23 * * *
 # timezone: Atlantic/Canary
-# secrets: SECRETFILE__xhale-oauth-app.json, SECRETFILE__xhale-oauth-tokens.json, GOOGLE_SA_JSON, SUPABASE_TOKEN
+# secrets: SECRETFILE__xhale-oauth-app__json, SECRETFILE__xhale-oauth-tokens__json, GOOGLE_SA_JSON, SUPABASE_TOKEN
 # CRON-META-END
 
 
