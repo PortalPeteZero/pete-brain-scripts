@@ -306,6 +306,7 @@ def arrive_leave(st):
     if not site:
         return None, None, None
     leave = site["depart"]
+    rest_from = _rest_begins(st)
     for later in st[st.index(site) + 1:]:
         if hav(site["lat"], site["lon"], later["lat"], later["lon"]) / 1000 > WORK_AREA_KM:
             continue                     # not the working area; does not end the day, does not extend it
@@ -314,7 +315,35 @@ def arrive_leave(st):
         if _is_rest(later, st):
             break                        # the van has parked up for the night; the work is over
         leave = later["depart"]
+    # The day ends when the van FIRST reaches where it spends the night, not when it stops moving.
+    # Pete, 6 Aug 2026, on Gareth Phillips 28 Jul: "this one, to me, is a 1539 finish". Toll Bar
+    # Road appears at 15:39-16:06 AND 16:36-22:15 -- the same place. He got to where he was staying
+    # at 15:39, nipped out to Great North Road, came back. Testing only the FINAL stop missed that
+    # and reported 16:30. Same shape on Andy Bartholomew 22 Jul: Rotherham until 14:55, Hurst Lane
+    # Doncaster from 15:19, out and back, asleep there 17:12-00:54. Reported 17:05, actually 15:19.
+    if rest_from and site["arrive"] < rest_from < leave:
+        leave = rest_from
     return site["arrive"], leave, site
+
+
+def _rest_begins(st):
+    """When the van FIRST arrived at the place it spends the night, or None.
+
+    Only meaningful when the final stop actually is a rest -- gated on _is_rest, because without
+    that a day whose last stop IS the work collapses to its own arrival (Geoff Astley, 31 Jul,
+    worked The Drive in Penrith 08:06-13:41; the ungated walk-back made his finish 08:06).
+    """
+    if not st or not _is_rest(st[-1], st):
+        return None
+    last = st[-1]
+    first = last["arrive"]
+    for s in reversed(st[:-1]):
+        if hav(last["lat"], last["lon"], s["lat"], s["lon"]) <= SAME_PLACE_M:
+            first = s["arrive"]
+        elif not [x for x in st[st.index(s) + 1:]
+                  if hav(last["lat"], last["lon"], x["lat"], x["lon"]) <= SAME_PLACE_M]:
+            break                    # nothing after this returns to the rest place; stop walking
+    return first
 
 
 # ------------------------------------------------------------------ overnight
