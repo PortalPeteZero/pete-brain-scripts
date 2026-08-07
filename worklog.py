@@ -36,6 +36,11 @@ VAULT = os.environ.get("VAULT", "/tmp/pbs")
 REF = "zhexcaflgahdcbzvbyfq"
 SEC = f"{VAULT}/Library/processes/secrets"
 AREAS = ("seo", "content", "dev", "backlinks", "ads", "design", "finance", "ops")
+# Mirrors work_log_status_chk. Unvalidated until 7 Aug 2026: --area was checked here but --status
+# was not, so the obvious-looking `--status done` sailed through and died in the DB as an HTTP 400
+# plus a 20-line urllib traceback -- and a session that had just shipped could not tell whether it
+# had hit a bad argument or a broken tool. Every enum the DB constrains gets checked here.
+STATUSES = ("shipped", "in-progress", "reverted")
 EVIDENCE_AREAS = ("seo", "dev", "ads")
 ENTITIES = ("Sygma", "Canary Detect", "Personal", "One System", "El Atico")
 
@@ -122,6 +127,8 @@ def main():
 
     if a.area not in AREAS:
         sys.exit(f"worklog: --area must be one of {AREAS}")
+    if a.status not in STATUSES:
+        sys.exit(f"worklog: --status must be one of {STATUSES} (got '{a.status}')")
     if a.area in EVIDENCE_AREAS and not (a.evidence and a.outcome):
         sys.exit(f"worklog: --area '{a.area}' REQUIRES --evidence and --outcome "
                  f"(what changed + worked/no-change/regressed/too-early/unknown). This mirrors the DB rule.")
