@@ -181,7 +181,7 @@ def run(repo: Path, ref: str, token: str) -> list:
         return list(pool.map(lambda f: check_one(f, repo, ref, token), functions))
 
 
-def self_test(results: list) -> bool:
+def self_test(results: list, stream=sys.stdout) -> bool:
     """Functions whose source settled STRICTLY BEFORE the deploy MUST come back MATCH.
 
     Deliberately not "same date". Dates here are day-granular, so a shared file committed
@@ -197,17 +197,17 @@ def self_test(results: list) -> bool:
                   and (r.get("shared_commit", "-") == "-"
                        or r["shared_commit"] < r["deployed"])]
     if not known_good:
-        print("SELF-TEST INCONCLUSIVE: no function has deploy date == source date.")
-        print("Cannot prove the method here. Treat any result below as unverified.")
+        print("SELF-TEST INCONCLUSIVE: no function has deploy date == source date.", file=stream)
+        print("Cannot prove the method here. Treat any result below as unverified.", file=stream)
         return False
     failures = [r for r in known_good if r["status"] != "MATCH"]
-    print(f"SELF-TEST: {len(known_good)} function(s) whose source settled before their deploy.")
+    print(f"SELF-TEST: {len(known_good)} function(s) whose source settled before their deploy.", file=stream)
     for r in known_good:
-        print(f"  {'ok  ' if r['status'] == 'MATCH' else 'FAIL'}  {r['slug']} ({r['deployed']})")
+        print(f"  {'ok  ' if r['status'] == 'MATCH' else 'FAIL'}  {r['slug']} ({r['deployed']})", file=stream)
     if failures:
-        print("\nSELF-TEST FAILED -- the comparison is wrong, not the estate. Do not trust the run.")
+        print("\nSELF-TEST FAILED -- the comparison is wrong, not the estate. Do not trust the run.", file=stream)
         return False
-    print("SELF-TEST PASSED -- the comparison is sound on known-good cases.\n")
+    print("SELF-TEST PASSED -- the comparison is sound on known-good cases.\n", file=stream)
     return True
 
 
@@ -231,7 +231,7 @@ def main() -> None:
     except Exception as exc:                                   # noqa: BLE001
         sys.exit(f"edge-parity: could not reach the Management API: {exc} (exit 2)")
 
-    ok = self_test(results)
+    ok = self_test(results, stream=sys.stderr if args.json else sys.stdout)
     if args.self_test:
         sys.exit(0 if ok else 1)
 
