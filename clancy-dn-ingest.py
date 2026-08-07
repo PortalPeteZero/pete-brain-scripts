@@ -368,6 +368,24 @@ def write(parsed):
         # PostgREST refuses a batch whose rows carry different key sets (PGRST102, seen live
         # 3 Aug 2026 on a mixed photo/video/action-file batch). Group by key set and upsert
         # each group — no None-padding, so absent keys never null a column.
+        # HEAL BEFORE UPSERT (added 7 Aug 2026, damage 153523). The conflict target is
+        # (incident_id, storage_path), but rows written by the older PDF-era capture carry a NULL
+        # storage_path, and in Postgres NULL never equals NULL — so such a row can never match the
+        # target. PostgREST therefore tries an INSERT, which collides with the OTHER unique index,
+        # clancy_dn_files_depotnet_id_uq on (incident_id, depotnet_file_id), and the whole batch
+        # dies with a 409. 23 rows across the register are in that state. Depotnet's own file id is
+        # the stable identity, so use it to backfill the missing storage_path first; after this the
+        # upsert matches the existing row and updates it instead of duplicating it.
+        want = {r["depotnet_file_id"]: r["storage_path"]
+                for r in rows if r.get("depotnet_file_id") and r.get("storage_path")}
+        if want:
+            stale = rest(f"clancy_dn_files?incident_id=eq.{iid}&storage_path=is.null"
+                         f"&depotnet_file_id=not.is.null&select=id,depotnet_file_id") or []
+            for s in stale:
+                sp = want.get(s["depotnet_file_id"])
+                if sp:
+                    rest(f"clancy_dn_files?id=eq.{s['id']}", "PATCH", {"storage_path": sp},
+                         {"Prefer": "return=minimal"})
         by_keys = {}
         for r in rows:
             by_keys.setdefault(tuple(sorted(r.keys())), []).append(r)

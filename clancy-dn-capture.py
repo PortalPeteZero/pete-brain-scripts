@@ -244,8 +244,32 @@ def main():
                     "drive_folder": f"https://drive.google.com/drive/folders/{root}"})
         print(f"    up: {f}")
     if idx:
-        rest("clancy_dn_files?on_conflict=incident_id,kind,name,uploaded_on_depotnet", "POST", idx,
-             {"Prefer": "resolution=merge-duplicates"})
+        # MATCH-THEN-WRITE, not a blind upsert (fixed 7 Aug 2026, damage 153523). This used to
+        # POST with on_conflict=incident_id,kind,name,uploaded_on_depotnet — a key combination
+        # that HAS NO UNIQUE INDEX on the table, so PostgREST answered 400 and the whole index
+        # write died AFTER the files had already gone up to Drive. The result was the worst kind
+        # of half-done: the evidence filed, and nothing in the database pointing at it.
+        #
+        # The rows may already exist (clancy-dn-ingest.py creates them from the Depotnet payload,
+        # which is now the usual order), and those rows carry the identity columns this tool does
+        # not have — storage_path and depotnet_file_id — so they must be UPDATED, never replaced.
+        # Match on what this tool does know, (incident_id, kind, name), and insert only what is
+        # genuinely new.
+        existing = {}
+        for r in (rest(f"clancy_dn_files?incident_id=eq.{iid}&select=id,kind,name") or []):
+            existing[(r["kind"], r["name"])] = r["id"]
+        fresh = []
+        for row in idx:
+            rid = existing.get((row["kind"], row["name"]))
+            if rid:
+                rest(f"clancy_dn_files?id=eq.{rid}", "PATCH",
+                     {"drive_id": row["drive_id"], "drive_folder": row["drive_folder"]},
+                     {"Prefer": "return=minimal"})
+            else:
+                fresh.append(row)
+        if fresh:
+            rest("clancy_dn_files", "POST", fresh, {"Prefer": "return=minimal"})
+        print(f"    indexed: {len(idx) - len(fresh)} updated, {len(fresh)} new")
 
     # ---- PDF → answers + promoted fields --------------------------------
     for p in pdfs:
