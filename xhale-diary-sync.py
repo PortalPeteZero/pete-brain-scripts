@@ -157,25 +157,44 @@ def origin_city(loc):
     return head or None
 
 
+TITLE_CAP = 50   # Xhale DECLARES max_length 200 on brief_description but stores 50. Measured
+                 # 7 Aug 2026: sent 120 chars, read back 50. Not a bug - a sensible cap - but
+                 # cramming the location in cut ten entries mid-word. Pete: "what we should be
+                 # doing is a short title with the rest in description."
+
+
 def render(e):
+    """Returns (title, body). SHORT title with the time; everything else in the body."""
     raw = e.get("summary") or ""
     s = clean(raw)
     st, en = e["start"].get("dateTime"), e["end"].get("dateTime")
     t = f"{clock(st)} - {clock(en)}" if st and en else "all day"
 
     if "NOT BOOKED" in raw.upper():
-        return f"{s} (not booked yet)"        # Pete: a place marker, updated once booked
+        return f"{s} (not booked yet)"[:TITLE_CAP], ""
 
     fl = FLY.match(EMOJI.sub("", raw).strip())
     if fl:
         orig = origin_city(e.get("location"))
         dest = fl.group(1).strip()
-        return f"{t} Fly {orig} to {dest}" if orig else f"{t} Fly to {dest}"
+        title = f"{t} Fly {orig} to {dest}" if orig else f"{t} Fly to {dest}"
+        return title[:TITLE_CAP], ""
 
     if (e.get("attendees") or is_online(e)) and not HAS_KIND.search(s):
         s = f"{s} meeting"
+    title = f"{t} {s}"
+    body = ""
     w = where(e, s)
-    return f"{t} {s}" + (f", {w}" if w else "")
+    if w == "online":
+        body = "Online."
+    elif w:
+        body = f"At {(e.get('location') or w).strip()}."
+    if len(title) > TITLE_CAP:
+        # trim on a word boundary, never mid-word, and keep the full name in the body
+        cut = title[:TITLE_CAP].rsplit(" ", 1)[0]
+        body = (f"{s}. " + body).strip()
+        title = cut
+    return title, body
 
 
 def main():
@@ -234,7 +253,8 @@ def main():
             order_of[e["id"]] = base + i
         print(f"{d} {datetime.date.fromisoformat(d).strftime('%a')}")
         for e in rows:
-            print(f'   {order_of[e["id"]]}  "{render(e)}"')
+            ttl, bdy = render(e)
+            print(f'   {order_of[e["id"]]}  "{ttl}"' + (f'   [{bdy}]' if bdy else ""))
 
     if not a.apply:
         print(f"\n>>> {len(keep)} notifications to Loren if applied. Re-run with --apply.")
@@ -244,11 +264,13 @@ def main():
     done = failed = 0
     for d in sorted(byday):
         for e in sorted(byday[d], key=lambda q: q["start"].get("dateTime") or ""):
-            title = render(e)[:200]
+            title, body = render(e)
+            payload = {"date": d, "discipline_id": DIARY_DISCIPLINE_ID,
+                       "brief_description": title, "order": order_of[e["id"]]}
+            if body:
+                payload["athlete_feedback"] = body
             try:
-                x = xh().call("POST", "/api/sessions/",
-                              {"date": d, "discipline_id": DIARY_DISCIPLINE_ID,
-                               "brief_description": title, "order": order_of[e["id"]]})
+                x = xh().call("POST", "/api/sessions/", payload)
             except (urllib.error.HTTPError, urllib.error.URLError, SystemExit) as exc:
                 failed += 1
                 print(f"   FAILED {d} {title[:44]}: {str(exc)[:140]}")
