@@ -78,6 +78,11 @@ def load_keys(live=False, account=DEFAULT_ACCOUNT):
 
 def stripe(method, path, params=None, live=False, account=DEFAULT_ACCOUNT):
     sk = load_keys(live, account)
+    # Normalise the verb. This used to compare `method == "GET"` literally, so a library caller
+    # passing "get" fell through to the POST branch, sent its filters in the BODY of a GET, and got
+    # HTTP 400 from Stripe — with no clue why. It cost a real debugging round on 7 Aug 2026 when
+    # every payout query came back empty. The CLI always upper-cased, so only library callers hit it.
+    method = (method or "").upper()
     url = BASE + path
     body = None
     if method == "GET":
