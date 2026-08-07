@@ -30,6 +30,7 @@ Exit code 1 if a payout could not be matched to a bank line, so it can gate a sc
 # writes: payment_ref / ref / narration on unreconciled Odoo bank statement lines (no journal entries, no reconciliation)
 # entity: canary-detect
 # report:
+# secrets: SECRETFILE__stripe-camello-blanco__json, SECRETFILE__stripe-canary-detect__json, SECRETFILE__odoo-credentials__json
 # schedule: 25 7 * * *
 # timezone: Atlantic/Canary
 # CRON-META-END
