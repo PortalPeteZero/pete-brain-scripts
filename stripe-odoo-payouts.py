@@ -191,13 +191,158 @@ def run(days, apply_changes, accounts):
     return 1 if unmatched else 0
 
 
+# ---------------------------------------------------------------------------
+# PHASE 3 — reconcile the payout line automatically.
+#
+# GATED ON PURPOSE. This is the only part that posts accounting entries, so it
+# refuses to run until the labelling in Phase 1 has been proven on at least
+# PROOF_REQUIRED real payouts. The gate is a live count out of Odoo, not a
+# comment somebody can ignore.
+#
+# KNOWN OPEN QUESTION — READ BEFORE ENABLING (7 Aug 2026)
+# This logic was written for the PRE-Phase-2 shape, where a card payment sat as
+# an outstanding line in 572991 and the payout had to be matched against each of
+# them. Phase 2 repointed the Stripe provider at its own bank journal, so a
+# payment now posts straight to 572006 and Odoo may treat it as already landed —
+# in which case the payout is a simple transfer (one Cr 572006 + the fee line)
+# and no per-payment matching is needed at all.
+# The next payout still covers charges booked the OLD way, so this code is right
+# for it. What happens to the FIRST payment booked the new way has NOT been
+# observed and must be checked against a real one before this is trusted there.
+# ---------------------------------------------------------------------------
+PROOF_REQUIRED = 2
+FEE_ACCOUNT_CODE = "626000"          # Servicios bancarios y similares
+OUTSTANDING_ACCOUNTS = ["572991", "572006"]   # pre- and post-Phase-2 homes
+
+
+def _account_id(code):
+    rows = odoo_api._execute("account.account", "search_read",
+                             [[["code", "=", code]]], {"fields": ["id"], "limit": 1})
+    if not rows:
+        raise SystemExit(f"account {code} not found in the chart")
+    return rows[0]["id"]
+
+
+def proof_count():
+    """How many payouts have already been labelled by Phase 1? The gate."""
+    return odoo_api._execute(
+        "account.bank.statement.line", "search_count",
+        [[["payment_ref", "=like", f"{MARKER}%"]]])
+
+
+def outstanding_line_for(payment_intent, account_ids):
+    """The unreconciled outstanding line for one Stripe charge.
+
+    Joined on the Stripe payment-intent id, which Odoo writes into the payment
+    move's name (e.g. 'PBNK4/2026/00046 (INV/2026/00283 - pi_3TyuIg…)'). An exact
+    key, not an amount guess — two customers can pay the same amount on one day.
+    """
+    rows = odoo_api._execute(
+        "account.move.line", "search_read",
+        [[["account_id", "in", account_ids], ["reconciled", "=", False],
+          ["parent_state", "=", "posted"], ["move_id.name", "like", payment_intent]]],
+        {"fields": ["id", "debit", "credit", "move_id", "partner_id"], "limit": 5})
+    if len(rows) != 1:
+        return None
+    return rows[0]
+
+
+def reconcile(days, apply_changes, accounts):
+    have = proof_count()
+    if have < PROOF_REQUIRED:
+        print(f"REFUSED: reconciliation is gated until Phase 1 has been proven on "
+              f"{PROOF_REQUIRED} real payouts. Odoo shows {have} labelled so far.")
+        print("Label the next payout first (run without --reconcile), then come back.")
+        return 2
+
+    fee_account = _account_id(FEE_ACCOUNT_CODE)
+    out_accounts = [_account_id(c) for c in OUTSTANDING_ACCOUNTS]
+    since = int((dt.datetime.now(dt.UTC) - dt.timedelta(days=days)).timestamp())
+    failed = 0
+
+    for account in accounts:
+        payouts = stripe_api.stripe("GET", "/v1/payouts",
+                                    {"limit": 100, "status": "paid", "created[gte]": since},
+                                    live=True, account=account).get("data", [])
+        for p in payouts:
+            line = find_statement_line(_money(p["amount"]), p["arrival_date"])
+            if not line or "_ambiguous" in line or line.get("is_reconciled"):
+                continue
+            if not (line.get("payment_ref") or "").startswith(MARKER):
+                continue                                   # label it before reconciling it
+
+            txns = stripe_api.stripe("GET", "/v1/balance_transactions",
+                                     {"payout": p["id"], "limit": 100},
+                                     live=True, account=account).get("data", [])
+            charges = [t for t in txns if t["type"] == "charge"]
+            fees = sum(_money(-t["net"]) for t in txns
+                       if t["type"] in ("stripe_fee", "application_fee", "fee"))
+            fees += sum(_money(t["fee"]) for t in charges)
+
+            # resolve every charge to its outstanding line BEFORE writing anything
+            matched, missing = [], []
+            for c in charges:
+                pi = c.get("payment_intent")
+                ol = outstanding_line_for(pi, out_accounts) if pi else None
+                (matched if ol else missing).append((c, ol))
+            if missing:
+                print(f"  {p['id']}: {len(missing)} charge(s) have no single outstanding "
+                      f"line in Odoo — left alone, nothing written")
+                failed += 1
+                continue
+
+            print(f"  {p['id']}  line {line['id']}  {len(matched)} payment(s), "
+                  f"{_fmt(fees)} fees -> {FEE_ACCOUNT_CODE}")
+            if not apply_changes:
+                continue
+
+            suspense = [l for l in odoo_api._execute(
+                "account.move.line", "search_read",
+                [[["move_id", "=", line["move_id"][0] if isinstance(line.get("move_id"), list)
+                   else line["move_id"]]]],
+                {"fields": ["id", "account_id", "debit", "credit"]})
+                if l["account_id"][0] not in out_accounts and l["credit"] > 0]
+
+            cmds = [(2, s["id"]) for s in suspense]
+            for c, ol in matched:
+                cmds.append((0, 0, {"account_id": ol["account_id"][0] if isinstance(
+                    ol.get("account_id"), list) else out_accounts[0],
+                    "credit": _money(c["amount"]), "debit": 0.0,
+                    "partner_id": ol["partner_id"][0] if ol.get("partner_id") else False,
+                    "name": c.get("description") or c["id"]}))
+            if fees:
+                cmds.append((0, 0, {"account_id": fee_account, "debit": fees, "credit": 0.0,
+                                    "name": f"Stripe fees {p['id']}"}))
+
+            move_id = line["move_id"][0] if isinstance(line.get("move_id"), list) else line["move_id"]
+            odoo_api._execute("account.move", "write", [[move_id], {"line_ids": cmds}])
+
+            # now match the new credit lines against the payments' own debit lines
+            fresh = odoo_api._execute(
+                "account.move.line", "search_read",
+                [[["move_id", "=", move_id], ["account_id", "in", out_accounts],
+                  ["reconciled", "=", False]]], {"fields": ["id", "credit"]})
+            for (c, ol), f in zip(matched, sorted(fresh, key=lambda x: -x["credit"])):
+                odoo_api._execute("account.move.line", "reconcile", [[f["id"], ol["id"]]])
+            print("      RECONCILED")
+
+    if not apply_changes:
+        print("\nDRY RUN — nothing posted. Re-run with --reconcile --apply.")
+    return 1 if failed else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--apply", action="store_true", help="write to Odoo (default is a dry run)")
     ap.add_argument("--days", type=int, default=45, help="payout lookback window (default 45)")
     ap.add_argument("--account", choices=STRIPE_ACCOUNTS, help="one Stripe account only")
+    ap.add_argument("--reconcile", action="store_true",
+                    help="PHASE 3: also post the reconciliation (gated on 2 proven payouts)")
     a = ap.parse_args()
-    sys.exit(run(a.days, a.apply, [a.account] if a.account else STRIPE_ACCOUNTS))
+    accounts = [a.account] if a.account else STRIPE_ACCOUNTS
+    if a.reconcile:
+        sys.exit(reconcile(a.days, a.apply, accounts))
+    sys.exit(run(a.days, a.apply, accounts))
 
 
 if __name__ == "__main__":
