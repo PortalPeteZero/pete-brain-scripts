@@ -742,6 +742,56 @@ class GmailAPI:
         return fn(to, subject, body, cc=cc, from_=from_, html=html, thread_id=thread_id,
                   signature=signature, in_reply_to=msg_id or None, references=references)
 
+    def forward_message(self, msg_id, to, note, subject=None, cc=None, from_=None, as_draft=False):
+        """FORWARD a message with the ORIGINAL ATTACHED INTACT (message/rfc822) — what a mail
+        client does. Attachments, headers and formatting all survive, and the recipient can open
+        or reply to the real thing.
+
+        Built 7 Aug 2026. A triage session was told to forward two threads to Sue, found no
+        forward helper, and instead RETYPED both bodies into a fresh email. That is not a
+        forward: every attachment was lost, the headers were lost, and the recipient got a
+        paraphrase they could not trust or act on. Pete: "you need to forward to keep the thread
+        intact, and if no forward helper build one". So it exists, and nobody has to improvise it
+        again.
+
+        `note` is your covering line, ABOVE the standard forwarded-message header block.
+        Returns the API response. Use forward_thread() to forward a thread's latest message."""
+        import base64 as _b64
+        from email import message_from_bytes as _from_bytes, policy as _policy
+        from email.message import EmailMessage as _EmailMessage
+
+        raw = self.get_message(msg_id, fmt="raw")["raw"]
+        orig = _from_bytes(_b64.urlsafe_b64decode(raw), policy=_policy.default)
+
+        outer = _EmailMessage()
+        outer["To"] = to
+        if cc:
+            outer["Cc"] = cc
+        outer["From"] = from_ or "pete.ashcroft@sygma-solutions.com"
+        outer["Subject"] = subject or ("Fwd: " + (orig.get("Subject") or "(no subject)"))
+        outer.set_content(
+            f"{note}\n\n"
+            "---------- Forwarded message ----------\n"
+            f"From: {orig.get('From','')}\n"
+            f"Date: {orig.get('Date','')}\n"
+            f"Subject: {orig.get('Subject','')}\n"
+            f"To: {orig.get('To','')}\n"
+        )
+        # message/rfc822 — the whole original, byte for byte
+        outer.add_attachment(orig, filename=((orig.get("Subject") or "message")[:60] + ".eml"))
+
+        encoded = _b64.urlsafe_b64encode(outer.as_bytes()).decode()
+        if as_draft:
+            return self._call("POST", "/drafts", body={"message": {"raw": encoded}})
+        return self._call("POST", "/messages/send", body={"raw": encoded})
+
+    def forward_thread(self, thread_id, to, note, subject=None, cc=None, from_=None, as_draft=False):
+        """Forward a thread's LATEST message, original attached intact. See forward_message()."""
+        msgs = self.get_thread(thread_id).get("messages", [])
+        if not msgs:
+            raise ValueError(f"thread {thread_id} has no messages")
+        return self.forward_message(msgs[-1]["id"], to, note, subject, cc, from_, as_draft)
+
     def list_drafts(self, max_results=20, q=None):
         query = {"maxResults": max_results}
         if q: query["q"] = q
