@@ -373,7 +373,15 @@ def promote():
             continue                       # a logo or a map pin is not paperwork
         d = tr.setdefault(i["incident_id"], {})
         d.setdefault(i["file_id"], []).append(
-            {"desc": (i.get("description") or "")[:400], "text": txt[:1200]})
+            # 4000, not 1200 (raised 7 Aug 2026). The old cap cut 8 of the 31 scanned-paperwork
+            # transcripts, over a quarter of them, and it cut them mid-sentence with nothing to
+            # say it had. It was caught on damage 153523's signed Permit to Dig, whose transcript
+            # ended at exactly 1200 characters on "Notes: The CAT and Ge" — swallowing the note
+            # that says CAT and Genny usage will consist of Genny, POWER and RADIO modes, which
+            # is the line the recorded mode times (Power 00:00, Radio 00:00) have to be read
+            # against. The longest real transcript is 2,538 characters, so this clears every one
+            # held today with headroom and still guards against a runaway reading.
+            {"desc": (i.get("description") or "")[:400], "text": txt[:4000]})
     transcripts = {
         iid: [{"file_id": fid, "name": names.get(fid, "(file)"), "pages": pages[:8]}
               for fid, pages in sorted(files.items())][:14]
