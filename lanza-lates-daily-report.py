@@ -695,7 +695,7 @@ def build_html(target_date, sc_changes, upcoming, ga4_data, gsc_data, health):
     # --- Footer ---
     html += f"""
 <hr style="margin-top:32px;border:0;border-top:1px solid #ddd">
-<p style="font-size:12px;color:#999">
+<p style="font-size:12px;color:#757575">
 Auto-generated for <b>www.lanzarotelates.com</b>. Recipients: Pete (Sygma Solutions, SEO) · Dave (MVP Group) · Arabella (owner).
 <br><br>
 <b>Data windows in this report:</b>
