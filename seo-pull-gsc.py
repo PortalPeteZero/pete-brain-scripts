@@ -58,8 +58,27 @@ def _q(s):
     return "$x$" + (s or "") + "$x$"
 
 
+USAGE = ("Usage: VAULT=/tmp/pbs python3 seo-pull-gsc.py [--property <key>] [--days N]\n"
+         "  --property <key>  one property (default: EVERY in-scope property)\n"
+         "  --days N          how far back to pull (default: the %d-day rolling window)\n"
+         "  -h / --help       this message\n" % WINDOW)
+
+
 def main():
     args = sys.argv[1:]
+    # ⚠ An UNRECOGNISED flag used to be silently ignored, so `--help` ran a full pull across all
+    # 9 in-scope properties instead of printing usage (hit 7 Aug 2026 during a Lanzarote Lates
+    # report). Anything that spends this much time on the estate must never be started by a typo.
+    if "-h" in args or "--help" in args:
+        print(USAGE); return
+    known = {"--property", "--days"}
+    flags = [a for a in args if a.startswith("-")]
+    unknown = [f for f in flags if f not in known]
+    if unknown:
+        raise SystemExit(f"FAIL: unrecognised flag(s) {' '.join(unknown)}.\n{USAGE}")
+    for f in known:
+        if f in args and (args.index(f) + 1 >= len(args) or args[args.index(f) + 1].startswith("-")):
+            raise SystemExit(f"FAIL: {f} needs a value.\n{USAGE}")
     only = args[args.index("--property") + 1] if "--property" in args else None
     days = int(args[args.index("--days") + 1]) if "--days" in args else WINDOW
 
@@ -77,6 +96,7 @@ def main():
     start = (today - datetime.timedelta(days=days)).isoformat()
     end = (today - datetime.timedelta(days=1)).isoformat()
     total = 0
+    total_pages = 0
     for p in props:
         key, site = p["key"], p["gsc"]
         try:
@@ -134,7 +154,12 @@ def main():
              f"VALUES ('gsc','searchanalytics/query',0,false,200,'seo-pull-gsc',{_q(key)},$x$rows={len(rows)}$x$)")
         print(f"  {key}: {len(rows)} query-rows + {len(prows)} page-rows upserted")
         total += len(rows)
-    print(f"done -- {total} rows across {len(props)} propert{'y' if len(props)==1 else 'ies'}")
+        # ⚠ The total used to count query-rows ONLY while the per-property line showed both, so a
+        # backfill reported "70555 rows" when it had actually written 70555 + 4529. Page rows are
+        # the CLICK source (see the note at the page-level pass) -- never leave them out of a count.
+        total_pages += len(prows)
+    print(f"done -- {total} query-rows + {total_pages} page-rows "
+          f"across {len(props)} propert{'y' if len(props)==1 else 'ies'}")
 
 
 if __name__ == "__main__":
