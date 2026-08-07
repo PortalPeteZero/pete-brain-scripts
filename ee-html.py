@@ -24,6 +24,7 @@ _spec = importlib.util.spec_from_file_location("email_html", _HOUSE)
 _m = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_m)
 
+VoiceViolation = _m.VoiceViolation   # re-exported so ee-send can catch it from this module
 NAVY, INK = _m.NAVY, _m.INK
 FONT = _m.BODY
 MARKER = _m.MARKER

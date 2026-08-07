@@ -631,7 +631,12 @@ class GmailAPI:
         Only plain text is touched. A body that is already HTML — the 46 report generators that
         build their own markup, and anything passing html=True — is returned untouched, so this
         cannot restyle something that was already designed. Best-effort: any failure returns the
-        body exactly as it came in, because a formatting problem must never block a send."""
+        body exactly as it came in, because a formatting problem must never block a send.
+
+        THE ONE EXCEPTION is email_html.VoiceViolation (a forbidden em/en/double dash), which is
+        re-raised so it actually stops the send. That is the whole point of a gate: swallowing it
+        here would render the email unformatted and mail the dash anyway."""
+        m = None
         try:
             if html is True or (html is None and self._looks_like_html(body)):
                 return body, html
@@ -644,7 +649,11 @@ class GmailAPI:
             spec = importlib.util.spec_from_file_location("email_html", p)
             m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
             return m.to_html(body), True
-        except Exception:
+        except Exception as e:
+            # duck-typed, NOT isinstance: loading email-html by path twice makes two distinct
+            # classes, so identity comparison silently fails and the gate would be swallowed
+            if getattr(e, "is_voice_violation", False):
+                raise
             return body, html
 
     def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,

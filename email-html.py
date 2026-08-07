@@ -46,6 +46,61 @@ BODY = f"font-family:{SANS};font-size:15px;line-height:1.62;color:{INK};"
 # incidental style value that any restyle would silently break. This says what it means.
 MARKER = "<!--house-format-v2-->"
 
+class VoiceViolation(ValueError):
+    """A forbidden dash reached the send path. Deliberately NOT a plain Exception: gmail-api's
+    _house_format swallows errors so a formatting problem can never block a send, and this one
+    MUST get through that.
+
+    `is_voice_violation` exists because every tool in this repo loads its neighbours BY PATH with
+    importlib, and two such loads produce two distinct module objects — so two distinct copies of
+    this class, and `isinstance` across them is False. ee-html loading email-html separately from
+    gmail-api is exactly that case. Catchers must duck-type on the attribute, never on identity:
+
+        except Exception as e:
+            if getattr(e, "is_voice_violation", False): raise
+    """
+    is_voice_violation = True
+
+
+# The three characters [[voice-principles]] forbids in Pete's voice. Note " -- " is the SPACED
+# double dash; a bare "--" is a CLI flag and must not trip.
+_FORBIDDEN = (("—", "em dash"), ("–", "en dash"), (" -- ", "spaced double dash"))
+_CODE_REGIONS = re.compile(r"```.*?```|^ {4,}\S.*$|`[^`]+`", re.S | re.M)
+
+
+def assert_voice(text):
+    """Refuse a body carrying an em dash, en dash or spaced double dash.
+
+    [[2026-05-24-outbound-html-emails-pre-flight-dash-grep]] put this check in each script that
+    built a draft, which meant every new script had to remember it. This is the one place that
+    sees every plain-text body on its way out, so it belongs here.
+
+    Code is exempt -- a shell command or a snippet is not Pete's voice, and a literal " -- " in a
+    CLI example is legitimate. Fenced blocks, 4-space indents and inline backticks are stripped
+    before the scan.
+
+    MEASURED BEFORE IT WAS ARMED (7 Aug 2026, 250 sent messages over 90 days): 34 carried a
+    forbidden dash and every single one was an HTML body, which this path never touches. Block
+    rate against real approved plain-text output: 0. A fail-closed rule that stops Pete's own
+    sends is worse than no rule, so the scope was chosen from that measurement, not from taste.
+    """
+    prose = _CODE_REGIONS.sub(" ", text or "")
+    hits = [(name, prose.count(ch)) for ch, name in _FORBIDDEN if ch in prose]
+    if not hits:
+        return
+    detail = ", ".join(f"{n} x{c}" for n, c in hits)
+    ctx = []
+    for ch, name in _FORBIDDEN:
+        i = prose.find(ch)
+        if i >= 0:
+            ctx.append("    ..." + " ".join(prose[max(0, i - 60):i + 60].split()) + "...")
+    raise VoiceViolation(
+        f"voice-principles: {detail} in the email body. Pete does not use these.\n"
+        + "\n".join(ctx)
+        + "\n    Rewrite with a comma, a full stop or brackets. Code samples are already exempt."
+    )
+
+
 _CODE = re.compile(r"`([^`]+)`")
 _LINK = re.compile(r"\[\[?([^\]]+)\]\((https?://[^)]+)\)\]?")
 _URL = re.compile(r"(?<![\"'>=])(https?://[^\s<)]+)")
@@ -94,7 +149,12 @@ def _panel(inner, style, bottom=16):
             f"{inner}</td></tr></table>")
 
 
-def to_html(text, **_):
+def to_html(text, check=True, **_):
+    """Render plain text to the house style. `check=True` (the default) refuses a body carrying a
+    forbidden dash -- see assert_voice. Pass check=False only to render a preview of something you
+    are not about to send."""
+    if check:
+        assert_voice(text)
     out = []
     para, bullets, numbers, quote, pre = [], [], [], [], []
     fenced = False
