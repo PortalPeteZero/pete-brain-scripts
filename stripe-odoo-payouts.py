@@ -340,9 +340,19 @@ def main():
                     help="PHASE 3: also post the reconciliation (gated on 2 proven payouts)")
     a = ap.parse_args()
     accounts = [a.account] if a.account else STRIPE_ACCOUNTS
+
+    # Interactively the default is a dry run, so nobody writes to Odoo by accident.
+    # Under the Railway cron there is no one to type --apply, and a scheduled job that
+    # silently writes nothing is worse than no job at all — it reports SUCCESS every
+    # morning while every payout stays unlabelled. CRON_SCRIPT is set only by
+    # railway-bootstrap.py, so it is a reliable "am I the cron" signal.
+    apply_changes = a.apply or bool(os.environ.get("CRON_SCRIPT"))
+    if apply_changes and not a.apply:
+        print("running under the cron — applying (labelling only; --reconcile stays gated)")
+
     if a.reconcile:
-        sys.exit(reconcile(a.days, a.apply, accounts))
-    sys.exit(run(a.days, a.apply, accounts))
+        sys.exit(reconcile(a.days, apply_changes, accounts))
+    sys.exit(run(a.days, apply_changes, accounts))
 
 
 if __name__ == "__main__":
