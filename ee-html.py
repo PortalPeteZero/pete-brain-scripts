@@ -1,54 +1,43 @@
 #!/usr/bin/env python3
-"""ee-html.py — render an EE reply as a CLEAN, SIMPLE email. No banners, no cards, no heavy template.
+"""ee-html.py — enquiry-engine reply renderer. Now a thin delegate to the house renderer.
 
-Pete, 2026-07-07: a normal email, not a designed newsletter. Just readable paragraphs, a bold line for
-any `## heading`, simple bullets, worded underlined links, bold £ figures. Pete's Gmail signature is
-appended by gmail-api (the footer), so this adds none — end the body with "Many thanks" / no name.
+HISTORY, because the reversal matters. On 2026-07-07 Pete rejected a heavy template for enquiry
+replies: "a normal email, not a designed newsletter. No banners, no cards." This file held that
+plain renderer. On 2026-08-07, having seen the house style on a long technical email, he asked for
+one format everywhere and explicitly chose to bring EE quotes in with it.
 
-Usage: m.to_html(text) → simple HTML body string.
+So the rendering now lives in email-html.py and this file just forwards. Kept as a file rather than
+deleted because ee-send.py loads it BY PATH (`_load("eeh", f"{VAULT}/ee-html.py")`), as does the
+te-log format check, and a dangling path is a silent breakage in the send path.
+
+The July decision is not fully undone, and deliberately so. Every EE reply ever sent uses `## ` for
+its headings, and `## ` still renders as exactly what it rendered as then — a bold line, no banner.
+The heavier treatment is opt-in on `# `. Measured before shipping against the real approved quotes
+in Sent: the only visible change to a live quote was numbered lists becoming real numbered lists.
 """
-import re, html as _h
+import importlib.util
+import os
 
-NAVY, INK = "#003366", "#1a1a2e"
-FONT = "font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:%s;" % INK
+_HOUSE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "email-html.py")
 
-def _inline(s):
-    # [[label](url)] and [text](url) both → a simple underlined worded link (no buttons)
-    parts = re.split(r"(\[\[?[^\]]+\]\(https?://[^)]+\)\]?)", s)
-    out = []
-    for seg in parts:
-        m = re.match(r"\[\[?([^\]]+)\]\((https?://[^)]+)\)\]?", seg)
-        if m:
-            out.append(f'<a href="{m.group(2)}" style="color:{NAVY};text-decoration:underline;">{_h.escape(m.group(1))}</a>')
-        else:
-            t = _h.escape(seg)
-            t = re.sub(r"(https?://[^\s<]+)", rf'<a href="\1" style="color:{NAVY};text-decoration:underline;">\1</a>', t)
-            t = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", t)
-            t = re.sub(r"(£[\d,]+(?:\.\d+)?(?:\s*\+\s*VAT)?)", r"<strong>\1</strong>", t)
-            out.append(t)
-    return "".join(out)
+_spec = importlib.util.spec_from_file_location("email_html", _HOUSE)
+_m = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_m)
 
-def to_html(text, **_):
-    out, para, bullets = [], [], []
-    def fp():
-        if para:
-            out.append(f'<p style="margin:0 0 12px;">' + "<br>".join(_inline(l) for l in para) + "</p>"); para.clear()
-    def fb():
-        if bullets:
-            lis = "".join(f"<li style='margin:0 0 4px;'>{_inline(l)}</li>" for l in bullets)
-            out.append(f"<ul style='margin:0 0 12px;padding-left:22px;'>{lis}</ul>"); bullets.clear()
-    for raw in (text or "").strip().splitlines():
-        l = raw.rstrip()
-        if not l.strip(): fb(); fp(); continue
-        hm = re.match(r"^\s*##\s+(.+?)\s*$", l)
-        if hm:
-            fb(); fp(); out.append(f'<p style="margin:16px 0 4px;"><strong>{_h.escape(hm.group(1))}</strong></p>')
-        elif l.lstrip().startswith("- "):
-            fp(); bullets.append(l.lstrip()[2:])
-        else:
-            fb(); para.append(l)
-    fb(); fp()
-    return f'<div style="{FONT}">' + "".join(out) + "</div>"
+NAVY, INK = _m.NAVY, _m.INK
+FONT = _m.BODY
+MARKER = _m.MARKER
+
+
+def to_html(text, **kw):
+    """Render an EE reply. Signature unchanged from the 2026-07 version so every caller still works."""
+    return _m.to_html(text, **kw)
+
+
+def looks_formatted(html):
+    """True if this HTML came from the house renderer (or the pre-Aug-2026 EE one)."""
+    return _m.looks_formatted(html)
+
 
 if __name__ == "__main__":
     import sys

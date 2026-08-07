@@ -620,6 +620,33 @@ class GmailAPI:
         except Exception:
             return body, html
 
+    def _house_format(self, body, html):
+        """Render a PLAIN-TEXT body into the house HTML style (email-html.py). Pete, 7 Aug 2026:
+        "every time you send an email, do it in this nice HTML format."
+
+        Central on purpose, exactly like the signature below it: send() and create_draft() are the
+        only two callers and reply_thread() funnels through them, so every path (ee-send, triage,
+        the CLI, a cron, a library call) is covered without a single call site knowing.
+
+        Only plain text is touched. A body that is already HTML — the 46 report generators that
+        build their own markup, and anything passing html=True — is returned untouched, so this
+        cannot restyle something that was already designed. Best-effort: any failure returns the
+        body exactly as it came in, because a formatting problem must never block a send."""
+        try:
+            if html is True or (html is None and self._looks_like_html(body)):
+                return body, html
+            if html is False:                      # caller explicitly demanded plain text
+                return body, html
+            import importlib.util, os
+            p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "email-html.py")
+            if not os.path.exists(p):
+                return body, html
+            spec = importlib.util.spec_from_file_location("email_html", p)
+            m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+            return m.to_html(body), True
+        except Exception:
+            return body, html
+
     def send(self, to, subject, body, cc=None, bcc=None, from_=None, html=None, thread_id=None, signature=True,
              in_reply_to=None, references=None, attachments=None):
         """Send an email. `html` defaults to None = auto-detect from body content.
@@ -632,6 +659,7 @@ class GmailAPI:
         (common footgun that silently mailed the plain `body` instead — guarded here)."""
         if isinstance(html, str):
             body, html = html, True
+        body, html = self._house_format(body, html)   # plain text -> house style; HTML untouched
         signature = self._signature_allowed(signature, to, cc, bcc)
         if signature:
             body, html = self._apply_signature(body, html, from_)
@@ -650,6 +678,7 @@ class GmailAPI:
         NOTE: `html` is a FLAG, not content. If you pass an HTML *string* to `html`, it is treated as the body."""
         if isinstance(html, str):
             body, html = html, True
+        body, html = self._house_format(body, html)   # plain text -> house style; HTML untouched
         signature = self._signature_allowed(signature, to, cc, bcc)
         if signature:
             body, html = self._apply_signature(body, html, from_)

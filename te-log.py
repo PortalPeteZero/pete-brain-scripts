@@ -283,8 +283,18 @@ def _latest_outbound_is_formatted(thread_id, sender_match="sygma-solutions"):
                 if r: return r
             return None
         html = find_html(outbound[-1].get("payload", {})) or ""
-        # ee-html's clean-email signal: its paragraph style. A crude gmail auto-<br> body won't have it.
-        return "margin:0 0 12px;" in html
+        # Ask the renderer itself whether this is its output, rather than sniffing a style value.
+        # Until 7 Aug 2026 this tested for "margin:0 0 12px;" — an incidental paragraph margin that
+        # any restyle would silently break, turning the gate green on an unformatted reply.
+        # email-html.looks_formatted() checks an explicit marker AND still accepts the old signal,
+        # so historical threads keep validating.
+        try:
+            import importlib.util as _iu
+            _s = _iu.spec_from_file_location("email_html", f"{VAULT}/email-html.py")
+            _m = _iu.module_from_spec(_s); _s.loader.exec_module(_m)
+            return _m.looks_formatted(html)
+        except Exception:
+            return "margin:0 0 12px;" in html
     except Exception:
         return None
 
