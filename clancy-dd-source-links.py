@@ -60,14 +60,43 @@ ALIASES = [
     (r"induction",                                    r"induction"),
     (r"northern powergrid|utility plan|electricity plan|the plans|the drawing",
                                                       r"^elec|drawing"),
-    (r"panel review",                                 r"panel review"),
-    (r"cat and genny data|genny and cat data|locator data",
-                                                      r"cat and genny|genny and cat"),
+    # "panel pack" is what everyone calls it in conversation and in findings; the FILE is named
+    # "Panel Review Slides…". Added 7 Aug 2026 — the phrase side was missing it, so findings citing
+    # the pack resolved to nothing while the document sat right there on the damage.
+    (r"panel review|panel pack|panel slides",         r"panel review"),
+    (r"cat and genny data|genny and cat data|locator data|cat (data )?(download|report)|"
+     r"cat\d?[_ ]?replay",
+                                                      r"cat and genny|genny and cat|cat download|"
+                                                      r"cat.?replay|^cat "),
     (r"photograph|photo\b|site photo|the images",     r"\.jpe?g$|\.png$"),
 ]
+# A finding whose fact IS a Depotnet field links the damage's own record rather than an
+# attachment. Extended 7 Aug 2026 — each addition below names a field the investigation actually
+# holds, verified against clancy_dn_answers, so the claim "cites Depotnet's own fields" is true
+# rather than a guess:
+#   night working / weather  -> Incident Date & Time + "Confirm the weather conditions"
+#   D&A                      -> "Post Incident Drugs And Alcohol Tests" + its result question
+#   caused by <plant>        -> "Damage Caused By"
+#   depth in mm              -> "Depth Of Utility (Approx) - Unit In MM"
+#   job ref                  -> the incident's job_ref
+#   subcontractor / direct   -> "Was The Damage Caused By A Subcontractor"
+#   Genny/CAT training dates -> "Date(s) of Genny and CAT training"
+#
+# A fuzzy word-overlap test against the record text was BUILT AND REJECTED the same day: measured
+# across all 66 unsourced findings, no threshold separated record-derived facts from Sygma
+# judgements ("1 property lost supply" scored 0.33, "Cable not fully protected once exposed" 0.20),
+# so any setting would have put a wrong citation under a finding Clancy read. Precise field names
+# only — if a fact is not in a Depotnet field, it stays unsourced and the gate keeps saying so.
 DEPOTNET_HINTS = re.compile(
     r"depotnet|investigation (report|answers?)|the record|sub-?category|question \d+|"
-    r"lessons_learnt|root cause field|service interrupted|nearest light column", re.I)
+    r"lessons_learnt|root cause field|service interrupted|nearest light column|"
+    r"night working|\bd&a\b|drugs? and alcohol|"
+    r"caused by (a |an |the )?(pecker|breaker|excavator|digger|saw|grafter|shovel|spade|plant|"
+    r"mini digger|insulated)|"
+    r"\bat ~?\d{2,4}\s?mm\b|\(\s?~?\d{2,4}\s?mm\s?\)|\b\d{2,4}mm\b|"
+    r"\bjob ref\b|"
+    r"\bsubcontractor\b|\bdirect team\b|"
+    r"in-?date on cat|cat (&|and) genny training|genny and cat training", re.I)
 
 
 def get(path):
