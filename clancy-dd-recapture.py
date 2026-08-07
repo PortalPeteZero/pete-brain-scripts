@@ -145,6 +145,46 @@ def plan(fy, days):
             "investigation_open": open_inv, "recent": recent, "stale": stale}
 
 
+# The browser half, printed with the work list so nobody re-derives it. Worked out 7 Aug 2026 on
+# damage 153523; the fetch cannot be scripted because the token lives encrypted in the app.
+HOW = """
+  ---- HOW TO FETCH ONE (Pete's signed-in Chrome, on the incident page) ---------------------
+  Open  https://clancy.depotnet.co.uk/#/incidentmanager/imincident/<ID>  then location.reload()
+  and CONFIRM the header reads "Incident #<ID>" — the app is hash-routed, so changing the URL
+  alone does NOT change the record on screen.
+
+  Do NOT try to read the bearer token: it is encrypted in localStorage (secure-ls), and using it
+  raises "String contains non ISO-8859-1 code point" because you are sending ciphertext. Capture
+  the app's OWN response instead. Paste this, then the navigation below it:
+
+  window.__cap={};
+  const XO=XMLHttpRequest.prototype.open, XS=XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open=function(m,u){this.__u=u;return XO.apply(this,arguments);};
+  XMLHttpRequest.prototype.send=function(){this.addEventListener('load',function(){
+    if(this.__u&&/GetImIncident\\b/i.test(this.__u)&&this.responseText)window.__cap.payload=this.responseText;});
+    return XS.apply(this,arguments);};
+  const of_=window.fetch; window.fetch=async function(...a){const r=await of_.apply(this,a);
+    const u=(typeof a[0]==='string'?a[0]:a[0].url)||'';
+    if(/GetImIncident\\b/i.test(u))window.__cap.payload=await r.clone().text(); return r;};
+
+  // make the app re-fetch WITHOUT a reload (a reload wipes the hooks above)
+  location.hash='#/incidentmanager/incidentregister'; await new Promise(r=>setTimeout(r,3000));
+  location.hash='#/incidentmanager/imincident/<ID>';  await new Promise(r=>setTimeout(r,6000));
+
+  // save it
+  const b=new Blob([window.__cap.payload],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download='dnapi__<ID>.json'; document.body.appendChild(a); a.click(); a.remove();
+
+  Then, ON DISK — Chrome does NOT overwrite, so a second capture lands as 'dnapi__<ID> (1).json':
+      ls -lt ~/Downloads/dnapi__<ID>*          <-- take the NEWEST BY TIMESTAMP
+      VAULT=/tmp/pbs python3 /tmp/pbs/clancy-dn-ingest.py <that file>
+  The ingest refuses a payload older than the record it would overwrite, so a stale file is
+  caught rather than silently banked. Finish with clancy-dn-change-sweep.py, then
+  clancy-dd-workflow.py.
+  ------------------------------------------------------------------------------------------"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fy", default="FY26/27")
@@ -198,6 +238,8 @@ def main():
         if not (p["never"] or p["changed"] or p["investigation_open"]):
             print("  nothing to recapture — every damage is current with Depotnet's audit trail.")
     print("\nEvery change listed above is reported to Pete verbatim, never silently banked.")
+    if work:
+        print(HOW)
     sys.exit(1 if work else 0)
 
 

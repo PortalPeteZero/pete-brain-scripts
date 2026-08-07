@@ -344,9 +344,47 @@ def parse(doc):
                        "actions": len(d.get("actions") or []), "files": len(files)}}, warn
 
 
+def _refuse_if_stale(iid, inc):
+    """REFUSE a payload older than what we already hold (added 7 Aug 2026).
+
+    Chrome does not overwrite a download. A second capture of damage 153523 saved as
+    `dnapi__153523 (1).json` while `dnapi__153523.json` stayed the copy from two days earlier — the
+    one saying the lessons field was "TBC" and the investigation was not complete. Ingesting the
+    path you first thought of would have overwritten a FINISHED investigation with the stale
+    version and printed a success line. Nothing in the filename tells you which is which, and the
+    note warning about it only works if you happen to read it.
+
+    Depotnet's per-incident timeline is an append-only audit trail, so the newest entry in the
+    payload is its age. If the incoming payload's newest entry predates the newest we already
+    hold, the file is behind our own record and is refused. Equal is fine — that is a re-parse.
+    """
+    tl_new = [e.get("at") for e in (inc.get("timeline") or []) if e.get("at")]
+    if not tl_new:
+        return
+    try:
+        held = rest(f"clancy_dn_incidents?id=eq.{iid}&select=timeline,raw_api_at")
+    except Exception:
+        return                                  # never block the write on a lookup failure
+    if not held:
+        return
+    tl_old = [e.get("at") for e in (held[0].get("timeline") or []) if e.get("at")]
+    if not tl_old:
+        return
+    newest_in, newest_held = max(tl_new), max(tl_old)
+    if newest_in < newest_held:
+        raise SystemExit(
+            f"REFUSED — this payload is OLDER than the record it would overwrite.\n"
+            f"  damage {iid}\n"
+            f"  payload's newest timeline entry : {newest_in}\n"
+            f"  what we already hold            : {newest_held}   (captured {held[0].get('raw_api_at')})\n"
+            f"  Chrome does not overwrite downloads. Check ~/Downloads for a '(1)' copy and take the\n"
+            f"  NEWEST by timestamp:  ls -lt ~/Downloads/dnapi__{iid}*")
+
+
 def write(parsed):
     """Persist. Idempotent — re-running the same payload changes nothing but the timestamps."""
     inc, iid = parsed["incident"], parsed["incident"]["id"]
+    _refuse_if_stale(iid, inc)
     rest(f"clancy_dn_incidents?id=eq.{iid}", "PATCH",
          {k: v for k, v in inc.items() if k != "id"}, {"Prefer": "return=minimal"})
     if parsed["answers"]:

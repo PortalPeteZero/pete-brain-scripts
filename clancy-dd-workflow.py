@@ -9,7 +9,7 @@ partly, or reported done on the wrong evidence. Each is now a check that runs, a
 thing exits non-zero until every one passes.
 
 The stages are the section's own vocabulary, unchanged: CAPTURE -> FILE -> ENRICH -> PUBLISH.
-Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Twelve
+Filing MOVES (Depotnet -> Drive). Enrichment READS (it never writes a Depotnet field). Thirteen
 checks sit under those four stages.
 
   VAULT=/tmp/pbs python3 clancy-dd-workflow.py                 # check FY26/27, print the board
@@ -54,6 +54,13 @@ checks sit under those four stages.
                        clancy-dn-board-report.py asserts this and refuses to invent one, so ONE
                        new Depotnet answer breaks the whole publish until it is classified
                        (happened 5 Aug on 153523, answer "TBC").
+         10b current   our judgements are still about text that EXISTS. Step 10 proves a bucket is
+                       there; it cannot tell whether it is still true. Both the lesson bucket and
+                       the plain-English write-up judge a specific piece of Clancy text, and Clancy
+                       rewrite it. On 5 Aug 153523 was bucketed `non-answer` off a lessons field
+                       reading "TBC"; Clancy replaced it that evening and the stale verdict kept
+                       passing step 10 with a green tick while calling their work a non-answer.
+                       A Depotnet "Amended" event dated after the judgement fails this step.
           11 sourced   every Sygma finding links to the document it came from, so a claim can be
                        checked without asking anyone.
           12 publish   every page newer than the newest data change, and all within
@@ -150,7 +157,7 @@ def check(fy):
     fyq = urllib.parse.quote(fy, safe="")
     inc = get(f"clancy_dn_incidents?select=id,location,raw_api_at,doc_enriched_at,doc_transcripts,"
               f"doc_conclusions,embedding,lessons_learnt,sygma_findings,sygma_finding_sources,"
-              f"sygma_reviewed_at,"
+              f"sygma_reviewed_at,sygma_plain,sygma_plain_at,"
               f"import_changed_at,capture_actions,raw_api&fy=eq.{fyq}&order=id.asc&limit=4000")
     steps, n = [], len(inc)
     if not n:
@@ -391,6 +398,43 @@ def check(fy):
          "insert a clancy_report_lesson_buckets row (concrete / restatement / non-answer) — a "
          "REVIEWED judgement, never auto-assigned; the board report will not publish without it")
 
+    # 7b CURRENT — step 10 checks a judgement EXISTS. It cannot tell whether it is still TRUE.
+    #
+    # Both of our judgements — the lesson bucket and the plain-English write-up — are about a
+    # specific piece of Clancy text, and Clancy rewrite that text. On 5 Aug 153523 was bucketed
+    # `non-answer` because its lessons field said "TBC"; Clancy replaced it the same evening with a
+    # real answer, and the stale verdict kept passing step 10 with a green tick while calling their
+    # work a non-answer. The write-up alongside it had a whole section that became false, including
+    # two questions asking them to finish things they had finished — on a page they can see.
+    #
+    # So: a Depotnet "Amended" event dated after the judgement means the judgement was made against
+    # text that no longer exists. Precise rather than nagging — measured 7 Aug across FY26/27, it
+    # flags 2 damages, not 48.
+    amended = {}
+    for c in get("clancy_dn_change_ledger?select=incident_id,changed_at"
+                 "&history_type=ilike.*Amended*&order=changed_at.desc&limit=20000"):
+        i_ = c["incident_id"]
+        if i_ not in amended:                       # ordered desc, so first seen is the newest
+            amended[i_] = c["changed_at"]
+    buckets = {b["incident_id"]: b.get("reviewed_on") for b in
+               get("clancy_report_lesson_buckets?select=incident_id,reviewed_on&limit=2000")}
+    bad = []
+    for r in inc:
+        amend = amended.get(r["id"])
+        if not amend:
+            continue
+        rev = buckets.get(r["id"])
+        if rev and amend[:10] > str(rev)[:10]:
+            bad.append(f"{r['id']} bucket judged {rev}, Clancy amended {amend[:10]} — re-judge it")
+        pl = r.get("sygma_plain_at")
+        if r.get("sygma_plain") and pl and amend > pl:
+            bad.append(f"{r['id']} plain-English written {pl[:10]}, Clancy amended {amend[:10]} — re-read it")
+    step("10b", "PUBLISH", "current", bad,
+         f"{len(bad)} judgement(s) made against text Clancy has since rewritten",
+         "re-read the damage, then update clancy_report_lesson_buckets (bucket + reason + "
+         "reviewed_on) and/or clancy_dn_incidents.sygma_plain (+ sygma_plain_at). Both are "
+         "point-in-time judgements — a recapture that changes the investigation invalidates them.")
+
     # 8 PUBLISH — pages newer than the newest data change, and in step with each other
     pages = get("module_content?select=module_key,updated_at&module_key=in.("
                 + ",".join(f'"{k}"' for k in PAGE_KEYS) + ")")
@@ -462,14 +506,14 @@ def main():
 
     for fy, steps in allsteps.items():
         print(f"\n=== DAMAGE DEPOT WORKFLOW — {fy} ===")
-        print(f"  {'STAGE':<9}{'#':<3}{'STEP':<12}{'':<13}{'WHERE IT STANDS'}")
+        print(f"  {'STAGE':<9}{'#':<4}{'STEP':<12}{'':<13}{'WHERE IT STANDS'}")
         print("  " + "-" * 96)
         last = None
         for s_ in steps:
             stage = s_["stage"] if s_["stage"] != last else ""
             last = s_["stage"]
             mark = "PASS" if s_["ok"] else "INCOMPLETE"
-            print(f"  {stage:<9}{s_['n']:<3}{s_['name']:<12}{mark:<13}{s_['detail']}")
+            print(f"  {stage:<9}{str(s_['n']):<4}{s_['name']:<12}{mark:<13}{s_['detail']}")
             if not s_["ok"]:
                 for b in s_["bad"]:
                     print(f"  {'':<22}   - {b}")
