@@ -45,7 +45,7 @@ Usage:
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-log.py --in decisions.json --apply
   VAULT=/tmp/pbs python3 /tmp/pbs/triage-log.py --demo                         # P2 gate
 """
-import os, sys, json, re, subprocess, datetime as dt
+import os, sys, json, re, subprocess, traceback, datetime as dt
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 sys.path.insert(0, VAULT)
@@ -619,22 +619,41 @@ def capture(dec, apply=False, manifest=None):
         if manifest:
             manifest.write(json.dumps({"step": "task-close", "task_id": dec["close_task_id"]}) + "\n")
     if dec.get("create_task"):
+        # Wrapped + asserted since 7 Aug 2026. Two ways this step used to lose a task SILENTLY:
+        # (a) it had no try/except (unlike the Gmail step), so a bad payload -- a create_task passed
+        #     as a STRING instead of a dict -- threw AttributeError straight out of capture() and
+        #     killed the whole batch mid-flight; (b) when the INSERT returned no row, task_id just
+        #     became None and nothing complained, because the post-check below only verified a task
+        #     it believed it had created (`if task_id:`). A task REQUESTED but never created was
+        #     invisible to every check. Pete asked for two tasks on 7 Aug, the tool printed
+        #     "ALL OK ✓ tasks: state verified", and neither task existed.
         t = dec["create_task"]
-        # due_on was hardcoded NULL until 4 Aug 2026, so a DATED bill could not be created through
-        # this path at all: three bills (ProQual, Rausch, Revolut) landed as undated P2s and had to
-        # be re-dated by hand. The date is the switch -- a due_on makes it a PD via the DB trigger --
-        # so dropping it silently downgrades every bill triage files. base_priority carries the tier
-        # the task reverts to when the date is cleared.
-        tier = t.get("priority") or "P3"
-        rows = tl.cc_sql("INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, "
-                         "project_slug, status, source, tags, notes) VALUES (gen_random_uuid(), "
-                         f"{q(t['name'])}, {q(tier)}, {q(tier)}, "
-                         f"{q(t.get('due_on'))}, {q(t.get('entity_slug'))}, {q(t.get('project_slug') or 'General')}, "
-                         f"'todo', 'claude', {a(t.get('tags'))}, {q(t.get('notes'))}) RETURNING id")
-        task_id = rows[0]["id"] if rows else None
-        tl.cc_sql(f"UPDATE triage_decisions SET task_id={q(task_id)} WHERE message_id='{tl.esc(mid)}'")
-        if manifest:
-            manifest.write(json.dumps({"step": "task-create", "task_id": task_id}) + "\n")
+        try:
+            if not isinstance(t, dict):
+                raise TypeError("create_task must be a dict with at least {'name': ...}, got "
+                                f"{type(t).__name__}: {t!r}")
+            # due_on was hardcoded NULL until 4 Aug 2026, so a DATED bill could not be created
+            # through this path at all: three bills (ProQual, Rausch, Revolut) landed as undated P2s
+            # and had to be re-dated by hand. The date is the switch -- a due_on makes it a PD via
+            # the DB trigger -- so dropping it silently downgrades every bill triage files.
+            # base_priority carries the tier the task reverts to when the date is cleared.
+            tier = t.get("priority") or "P3"
+            rows = tl.cc_sql("INSERT INTO tasks (id, name, priority, base_priority, due_on, entity_slug, "
+                             "project_slug, status, source, tags, notes) VALUES (gen_random_uuid(), "
+                             f"{q(t['name'])}, {q(tier)}, {q(tier)}, "
+                             f"{q(t.get('due_on'))}, {q(t.get('entity_slug'))}, {q(t.get('project_slug') or 'General')}, "
+                             f"'todo', 'claude', {a(t.get('tags'))}, {q(t.get('notes'))}) RETURNING id")
+            task_id = rows[0]["id"] if rows else None
+            if not task_id:
+                raise RuntimeError("INSERT INTO tasks returned no id -- the statement was rejected "
+                                   "(check quoting/columns); NO task exists")
+            tl.cc_sql(f"UPDATE triage_decisions SET task_id={q(task_id)} WHERE message_id='{tl.esc(mid)}'")
+            if manifest:
+                manifest.write(json.dumps({"step": "task-create", "task_id": task_id}) + "\n")
+        except Exception as e:
+            ok = False
+            task_id = None
+            lines.append(f"  ✗ tasks: create FAILED, no task exists -- {type(e).__name__}: {e}")
 
     # 4) vault enrichment -- pull the thread's attachments + body extract into the entity's Drive home.
     # The skill has called this non-negotiable on every filing-label thread since 1 Jul 2026, but
@@ -686,7 +705,14 @@ def capture(dec, apply=False, manifest=None):
     lines.append(f"  {'✓' if c2 else '✗'} gmail: labels verified" if gmail_done
                  else "  ✓ gmail: no mutation requested")
     c3 = True
-    if task_id:
+    # A task that was REQUESTED but never created is the failure this check missed for months:
+    # the old code was `if task_id:` alone, so when creation failed task_id was None, the whole
+    # check was SKIPPED, and it printed "✓ tasks: state verified". Verify the ASK, not the artefact.
+    if dec.get("create_task") and not task_id:
+        c3 = False
+        lines.append("  ✗ tasks: a task was REQUESTED for this decision but none was created "
+                     "(task_id is NULL) -- re-run this decision")
+    elif task_id:
         c3 = bool(tl.cc_sql(f"SELECT 1 FROM tasks WHERE id='{task_id}'"))
     if dec.get("close_task_id"):
         c3 = c3 and bool(tl.cc_sql("SELECT 1 FROM tasks WHERE id='%s' AND status='done'"
@@ -711,17 +737,50 @@ def demo():
     ok1, lines = capture(dec, apply=True); print("\n".join(lines))
     print("\n2. re-run of the SAME payload (must be a full no-op):")
     ok2, lines = capture(dec, apply=True); print("\n".join(lines))
-    noop = any("FULL NO-OP" in l for l in lines)
+    # Matched "FULL NO-OP" until 7 Aug 2026 — a string capture() never emits (it prints "— NO-OP",
+    # line 480). So this gate returned FAIL on a perfectly healthy tool, every single run, and was
+    # therefore worthless as a gate: nobody could tell a real regression from the permanent red.
+    # That is why the task-create hole below went unnoticed. A gate that always fails is not a gate.
+    noop = any("NO-OP" in l for l in lines)
     print("\n3. forced post-check failure (must exit non-zero):")
     dec2 = dict(dec, message_id="p2-demo-msg-002", _force_postcheck_fail=True)
     ok3, lines = capture(dec2, apply=True); print("\n".join(lines))
     print(f"   capture returned ok={ok3} → the CLI would exit {'1 (non-zero) ✓' if not ok3 else '0 ✗'}")
-    print("\n4. cleanup:")
+    # ---- the 7 Aug 2026 regressions ----
+    print("\n5. create_task that CANNOT be created (passed as a string, the real 7 Aug payload bug)")
+    print("   — must fail loudly, not report '✓ tasks: state verified':")
+    dec3 = dict(dec, message_id="p2-demo-msg-003", create_task="Chase the CI failure")
+    ok4, lines = capture(dec3, apply=True); print("\n".join(lines))
+    fails_loud = (not ok4) and any("create FAILED" in l for l in lines) \
+        and any("REQUESTED" in l for l in lines) and not any("✓ tasks" in l for l in lines)
+    print(f"   returned ok={ok4}, ✗ on both the create and the post-check: "
+          f"{'✓' if fails_loud else '✗ STILL SILENT'}")
+
+    print("\n6. a row stranded at 'applying' by an EARLIER crashed run, re-running a DIFFERENT")
+    print("   decision in the same session — the batch must NOT print ALL OK:")
+    sess = "00000000-0000-4000-8000-0000000000d0"   # fixed scratch UUID (session_id is a uuid column)
+    tl.cc_sql("INSERT INTO triage_decisions (thread_id, message_id, session_id, final_verb, "
+              "decided_by, apply_status) VALUES ('p2-demo-thread', 'p2-demo-msg-stranded', "
+              f"'{sess}', 'Task P2', 'pete', 'applying')")
+    payload = [dict(dec, message_id="p2-demo-msg-004", session_id=sess)]
+    pf = "/tmp/p2-demo-payload.json"
+    json.dump(payload, open(pf, "w"))
+    r = subprocess.run([sys.executable, os.path.abspath(__file__), "--in", pf, "--apply"],
+                       capture_output=True, text=True, env=os.environ)
+    print("   " + "\n   ".join((r.stdout or "").strip().splitlines()[-6:]))
+    sweep_fired = "SESSION INCOMPLETE" in r.stdout and "ALL OK" not in r.stdout and r.returncode != 0
+    print(f"   exit={r.returncode}, sweep caught the stranded row: "
+          f"{'✓' if sweep_fired else '✗ SILENT — the 7 Aug bug is back'}")
+    os.remove(pf)
+
+    print("\n7. cleanup:")
     tl.cc_sql(f"DELETE FROM triage_decisions WHERE message_id LIKE 'p2-demo-msg-%'")
+    tl.cc_sql("DELETE FROM tasks WHERE name = 'Chase the CI failure' AND source = 'claude'")
     left = tl.cc_sql("SELECT count(*) AS n FROM triage_decisions WHERE message_id LIKE 'p2-demo-msg-%'")[0]["n"]
     print(f"   scratch rows remaining: {left}")
-    verdict = ok1 and ok2 and noop and (not ok3) and left == 0
-    print(f"\nP2 GATE: {'PASS — applied, no-op on re-run, non-zero on forced failure, clean' if verdict else 'FAIL'}")
+    verdict = ok1 and ok2 and noop and (not ok3) and fails_loud and sweep_fired and left == 0
+    print(f"\nP2 GATE: {'PASS — applied, no-op on re-run, non-zero on forced failure, '
+                        'loud on a failed task-create, loud on a stranded row, clean' if verdict else 'FAIL'}")
     return 0 if verdict else 1
 
 
@@ -739,12 +798,51 @@ def main():
     decs = payload if isinstance(payload, list) else [payload]
     all_ok = True
     for dec in decs:
-        ok, lines = capture(dec, apply=apply, manifest=manifest)
         print(f"{dec.get('message_id','?')[:30]}:")
+        try:
+            ok, lines = capture(dec, apply=apply, manifest=manifest)
+        except Exception as e:
+            # The loop had no try/except until 7 Aug 2026: ONE bad decision threw out of capture()
+            # and killed the batch mid-flight. Every remaining decision was silently skipped, and
+            # the row being written was stranded at apply_status='applying' (the flip to 'applied'
+            # sits after the task step). Contain it per-decision -- one bad row is one bad row.
+            ok = False
+            lines = [f"  ✗ CRASHED -- {type(e).__name__}: {e}",
+                     "  ledger row left at apply_status='applying' (half-applied); "
+                     "fix the payload and re-run THIS decision to finish it"]
+            traceback.print_exc(file=sys.stderr)
         print("\n".join(lines))
         all_ok = all_ok and ok
     if manifest:
         manifest.close()
+
+    # ---- SESSION SWEEP: no batch is OK while the session has half-written rows ----
+    # Scoped to the SESSION, not this batch's message_ids, and that scope is the whole point.
+    # 7 Aug 2026: a run crashed partway and stranded two rows at 'applying'. The operator fixed the
+    # payload and re-ran the CORRECTED SUBSET -- which printed "ALL OK", because the two stranded
+    # rows were in the session but not in that batch, so nothing on earth looked at them. Two tasks
+    # Pete had explicitly asked for never existed and nothing said so. A later run must see the
+    # earlier run's wreckage. Second arm catches the silent-loss shape directly: a task-bearing verb
+    # that reached 'applied' with no task on it (zero such rows exist in the ledger's history, so
+    # this cannot false-positive on legitimate work).
+    sids = sorted({d.get("session_id") for d in decs if d.get("session_id")})
+    if apply and sids:
+        inlist = ",".join("'" + tl.esc(s) + "'" for s in sids)
+        bad = tl.cc_sql(
+            "SELECT message_id, final_verb, apply_status, task_id FROM triage_decisions "
+            f"WHERE session_id IN ({inlist}) AND (apply_status = 'applying' OR "
+            "(apply_status = 'applied' AND task_id IS NULL AND "
+            "(final_verb ILIKE 'task%' OR final_verb ILIKE 'hand%' OR final_verb ILIKE '%+ task%')))")
+        if bad:
+            all_ok = False
+            print(f"\n✗ SESSION INCOMPLETE — {len(bad)} decision(s) half-written in this session "
+                  "(not necessarily from this batch):")
+            for r in bad:
+                why = ("stranded mid-apply" if r.get("apply_status") == "applying"
+                       else "applied but its task was never created")
+                print(f"    {r['message_id']}  [{r.get('final_verb') or '?'}]  {why}")
+            print("  These will NOT finish on their own — re-run triage-log.py --apply for them.")
+
     print(f"\n{'ALL OK' if all_ok else 'FAILURES — see ✗ lines above'} ({len(decs)} decision(s), "
           f"{'applied' if apply else 'dry-run'})")
     return 0 if all_ok else 1
