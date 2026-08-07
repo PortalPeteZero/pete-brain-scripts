@@ -28,6 +28,7 @@ Usage:
   VAULT=/tmp/pbs python3 clancy-dn-change-sweep.py --amended-only --report
 """
 import os, sys, json, argparse, hashlib, urllib.request, urllib.parse
+import datetime as _dt
 
 VAULT = os.environ.get("VAULT", "/tmp/pbs")
 SEC = os.path.expanduser("~/.config/pete-secrets")
@@ -109,6 +110,26 @@ def sweep(incident_id=None):
         new_rows.extend(res or [])
     total_new = len(new_rows)
     print(f"timeline entries seen: {total_seen}; new ledger rows: {total_new}")
+
+    # RECORD THAT WE LOOKED, not just what we found (added 7 Aug 2026).
+    #
+    # `spotted_at` is stamped on a ledger row when a change is FIRST SEEN, so on a quiet day this
+    # sweep runs, correctly finds nothing, and the newest spotted_at stays where it was. Anything
+    # reading spotted_at as "when did we last look" therefore reports the mirror as stale forever
+    # until Clancy happen to change something — which is exactly what clancy-dd-workflow.py step 2
+    # and clancy-dd-recapture.py were doing. A gate that cries wolf on a quiet day gets ignored,
+    # and this section already learned that lesson once.
+    #
+    # So the run is recorded separately. spotted_at keeps its own meaning, unchanged.
+    if incident_id is None:                       # a full sweep only; a one-incident sweep is not
+        try:                                      # evidence the whole register was looked at
+            rest("cron_state?on_conflict=cron_key,item_key", "POST",
+                 [{"cron_key": "clancy-dn-change-sweep", "item_key": "last_run",
+                   "value": {"seen": total_seen, "new_rows": total_new},
+                   "updated_at": _dt.datetime.now(_dt.timezone.utc).isoformat()}],
+                 {"Prefer": "resolution=merge-duplicates,return=minimal"})
+        except Exception as e:                    # never fail a good sweep on a bookkeeping write
+            print(f"  (note: could not record the sweep time — {e})")
     if new_rows:
         # Pete's standing rule (3 Aug 2026): every NEW change found gets reported in chat.
         # This block IS the report source — the session relays it verbatim.

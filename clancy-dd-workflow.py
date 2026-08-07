@@ -235,8 +235,18 @@ def check(fy):
     # live pull found Daniel Wilson had amended damage 153523 three times that same evening —
     # rewriting the incident summary to name an LV cable supply, recording that no trial hole was
     # carried out, and replacing the "TBC" lessons field. None of it was visible here.
-    swept = get("clancy_dn_change_ledger?select=spotted_at&order=spotted_at.desc&limit=1")
-    swept_at = _t(swept[0]["spotted_at"]) if swept else None
+    # WHEN WE LAST LOOKED, not when we last FOUND (fixed 7 Aug 2026). `spotted_at` is stamped when
+    # a change is first seen, so a sweep that runs on a quiet day and correctly finds nothing never
+    # advances it — and this step then reported the mirror as stale indefinitely. Measured that day:
+    # the sweep had just run, "new ledger rows: 0", and this said "last swept 2.0h ago" and failed.
+    # A gate that cries wolf gets ignored, which this section has learned once already.
+    # clancy-dn-change-sweep.py now records its own run; spotted_at is the fallback for a register
+    # that has never been swept by the newer tool.
+    run = get("cron_state?cron_key=eq.clancy-dn-change-sweep&item_key=eq.last_run&select=updated_at")
+    swept_at = _t(run[0]["updated_at"]) if run else None
+    if not swept_at:
+        swept = get("clancy_dn_change_ledger?select=spotted_at&order=spotted_at.desc&limit=1")
+        swept_at = _t(swept[0]["spotted_at"]) if swept else None
     newest_capture = max([c for c in capat.values() if c], default=None)
     age_h = (datetime.datetime.now(datetime.timezone.utc) - swept_at).total_seconds() / 3600 \
         if swept_at else None

@@ -99,8 +99,14 @@ def plan(fy, days):
     # capture, an empty "changed since" list means the mirror never looked, not that Depotnet has
     # been quiet — and this tool would hand back a work list saying there is nothing to fetch.
     # Caught 5 Aug 2026 with the sweep 25.5h stale while Clancy were amending a damage that hour.
-    swept = get("clancy_dn_change_ledger?select=spotted_at&order=spotted_at.desc&limit=1")
-    swept_at = ts(swept[0]["spotted_at"]) if swept else None
+    # WHEN WE LAST LOOKED, not when we last FOUND — see the same fix in clancy-dd-workflow.py
+    # (7 Aug 2026). A sweep that finds nothing new never advances spotted_at, so reading it as the
+    # look-time reports the mirror stale forever on a quiet register.
+    run = get("cron_state?cron_key=eq.clancy-dn-change-sweep&item_key=eq.last_run&select=updated_at")
+    swept_at = ts(run[0]["updated_at"]) if run else None
+    if not swept_at:
+        swept = get("clancy_dn_change_ledger?select=spotted_at&order=spotted_at.desc&limit=1")
+        swept_at = ts(swept[0]["spotted_at"]) if swept else None
     newest_cap = max([ts(r.get("raw_api_at")) for r in inc if r.get("raw_api_at")], default=None)
     stale = None
     if not swept_at:
