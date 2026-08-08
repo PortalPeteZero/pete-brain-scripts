@@ -129,5 +129,28 @@ if __name__ == "__main__":
         print(__doc__)
         sys.exit(1)
     method, path = args[0].upper(), args[1]
+
+    # REFUSE A VERB THAT ISN'T ONE (added 8 Aug 2026). This used to take args[0] as the HTTP method
+    # and args[1] as the path, whatever they were. So `stripe-api.py --live customer cus_XXX` — a
+    # perfectly natural thing to type, and wrong — became method "CUSTOMER" and path "cus_XXX",
+    # which built the URL "https://api.stripe.comcus_XXX". That is not a bad request, it is an
+    # invalid HOSTNAME, so urllib raised
+    #     URLError: [Errno 8] nodename nor servname provided, or not known
+    # A typo, rendered as a DNS failure. It was reported to Pete TWICE as "Stripe is unreachable",
+    # about a live billing system, while Stripe was perfectly fine — and the real answer (a customer
+    # who had paid) sat behind it for an hour.
+    #
+    # The cost was never the typo, it was that the error pointed at the network instead of the
+    # command. Say what is actually wrong.
+    if method not in ("GET", "POST", "DELETE", "PUT", "PATCH"):
+        sys.exit(f"stripe-api: '{args[0]}' is not an HTTP method.\n"
+                 f"  This helper takes a METHOD and a PATH, not a resource name:\n"
+                 f"      stripe-api.py --live get /v1/customers/{args[1] if len(args) > 1 else '<id>'}\n"
+                 f"  Methods: get, post, delete, put, patch.  Run it bare for the usage block.")
+    if not path.startswith("/"):
+        sys.exit(f"stripe-api: path must start with '/' — got '{path}'.\n"
+                 f"  Without it the path is concatenated onto the host and you get a DNS error\n"
+                 f"  instead of an HTTP one. Try: /{path.lstrip('/')}")
+
     params = parse_kv(args[2:]) or None
     print(json.dumps(stripe(method, path, params, live, account), indent=2))
