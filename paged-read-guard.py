@@ -64,6 +64,11 @@ COUNT_PROBE = re.compile(r"[\"']Range[\"']\s*:\s*[\"']0-0[\"']")
 # had already taken it from 986 to 14, which made the remainder look like a rounding artefact.
 BIG_LIMIT = re.compile(r"(?<![\w-])limit=(\d+)")
 BIG_LIMIT_MAX = 1000        # PostgREST's default max-rows; above this the read is silently short
+# The cap is PostgREST's, so only a PostgREST QUERY STRING counts. Without this the check fired on
+# an Odoo kwarg, a GA4 report limit, a Python function default — and on its own source line. Nine
+# of its first 21 findings were not database reads at all, and a check that noisy is the one people
+# learn to skip, which is the whole failure it exists to prevent.
+POSTGREST_Q = re.compile(r"select=|\?[\w.]+=|&[\w.]+=eq\.|order=[\w.]+\.(asc|desc)")
 WAIVER = re.compile(r"#\s*paged-read-guard:\s*ok")
 WINDOW = 3          # lines either side, so a call split across lines still sees its own order=
 # A function that refuses to run without an order: `raise ...("… order= …")`.
@@ -133,12 +138,17 @@ def scan(path):
         stripped = line.strip()
         if stripped.startswith("#") or stripped.startswith("print("):
             continue
+        # A function SIGNATURE is not a read. `def f(select="a,b", limit=2000)` are Python kwargs
+        # that happen to share their names with query params.
+        if stripped.startswith("def ") or stripped.startswith("async def "):
+            continue
         # over-large limit with no cursor in sight
         m = BIG_LIMIT.search(line)
-        if m and int(m.group(1)) > BIG_LIMIT_MAX:
+        if m and int(m.group(1)) > BIG_LIMIT_MAX and POSTGREST_Q.search(line) \
+                and path.name != "paged-read-guard.py":
             lo2, hi2 = max(0, i - WINDOW), min(len(lines), i + WINDOW + 1)
             w2 = "\n".join(lines[lo2:hi2])
-            if not WAIVER.search(w2) and not re.search(r"=gt\.|=lt\.|offset=", w2):
+            if not WAIVER.search(w2) and not re.search(r"=gt\.|=lt\.|offset=", w2):  # paged-read-guard: ok this is the detector's own pattern, not a read
                 out.append({"file": str(path.relative_to(ROOT)), "line": i + 1,
                             "code": line.strip()[:150],
                             "why": f"limit={m.group(1)} exceeds PostgREST's 1000-row cap and there "

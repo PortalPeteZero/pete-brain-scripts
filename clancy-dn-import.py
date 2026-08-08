@@ -152,7 +152,7 @@ def verify(register, actions):
         hdr = [c.value for c in ws[1]]
         unmapped = [h for h in hdr if h not in mapping]
         rows = [dict(zip(hdr, [c.value for c in r])) for r in ws.iter_rows(min_row=2)]
-        db = {r["id"]: r for r in rest(f"{table}?select=*&limit=10000")}
+        db = {r["id"]: r for r in _all_rows(rest, f"{table}?select=*")}
         missing, mism = [], 0
         for r in rows:
             rid = int(r["ID"])
@@ -177,6 +177,28 @@ def verify(register, actions):
     if bad:
         sys.exit(1)
 
+
+
+def _all_rows(rest_fn, table_and_query):
+    """Every row, keyset-paged on id. PostgREST caps a response at 1000 rows however large a
+    `limit=` you pass and says nothing, so `limit=10000` on a growing table silently returns the
+    first 1000 as if it were the lot. Harmless while clancy_dn_incidents held 535 rows (8 Aug 2026);
+    the moment the register passes 1000, an unpaged read here makes real damages look NEW and
+    re-inserts them. Added 8 Aug 2026 after the same cap cost an evening elsewhere."""
+    out, last = [], None
+    sep = "&" if "?" in table_and_query else "?"
+    while True:
+        q = f"{table_and_query}{sep}order=id.asc&limit=1000"
+        if last is not None:
+            q += f"&id=gt.{last}"
+        batch = rest_fn(q)
+        if not batch:
+            break
+        out += batch
+        last = batch[-1]["id"]
+        if len(batch) < 1000:
+            break
+    return out
 
 
 def resolve_export(path):
@@ -248,8 +270,8 @@ def main():
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     # current DB state for change detection + utility_confirmed protection
-    existing = {r["id"]: r for r in rest("clancy_dn_incidents?select=*&limit=10000")}
-    existing_act = {r["id"]: r for r in rest("clancy_dn_actions?select=*&limit=10000")}
+    existing = {r["id"]: r for r in _all_rows(rest, "clancy_dn_incidents?select=*")}
+    existing_act = {r["id"]: r for r in _all_rows(rest, "clancy_dn_actions?select=*")}
 
     DN_COLS = ["date_raised", "incident_date", "category", "subcategory", "raised_by", "job_id",
                "job_ref", "contract", "contract_number", "workstream", "business_unit", "location",
@@ -473,7 +495,7 @@ def embed_dirty():
     import hashlib
     for table, mk in (("clancy_dn_incidents", _embed_input_incident),
                       ("clancy_dn_actions", _embed_input_action)):
-        rows = rest(f"{table}?select=*&limit=10000")
+        rows = _all_rows(rest, f"{table}?select=*")
         dirty = []
         for r in rows:
             txt = mk(r)

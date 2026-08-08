@@ -57,6 +57,28 @@ def rest(path, method="GET", body=None, headers=None):
         return json.loads(t) if t else None
 
 
+def _all_rows(rest_fn, table_and_query):
+    """Every row, keyset-paged on id. PostgREST caps a response at 1000 rows however large a
+    `limit=` you pass and says nothing, so `limit=10000` on a growing table silently returns the
+    first 1000 as if it were the lot. Harmless while clancy_dn_incidents held 535 rows (8 Aug 2026);
+    the moment the register passes 1000, an unpaged read here makes real damages look NEW and
+    re-inserts them. Added 8 Aug 2026 after the same cap cost an evening elsewhere."""
+    out, last = [], None
+    sep = "&" if "?" in table_and_query else "?"
+    while True:
+        q = f"{table_and_query}{sep}order=id.asc&limit=1000"
+        if last is not None:
+            q += f"&id=gt.{last}"
+        batch = rest_fn(q)
+        if not batch:
+            break
+        out += batch
+        last = batch[-1]["id"]
+        if len(batch) < 1000:
+            break
+    return out
+
+
 def drive(*args):
     r = subprocess.run(["python3", DRIVE, *args], capture_output=True, text=True,
                        env={**os.environ, "VAULT": VAULT})
@@ -138,9 +160,9 @@ def queue(limit, fy=None, oldest=False, with_actions_only=False):
     todo = rest(q)
     done = rest("clancy_dn_incidents?select=id,incident_date&pdf_captured_at=not.is.null"
                 "&order=incident_date.desc&limit=1")
-    tot = rest("clancy_dn_incidents?select=id&limit=10000")
-    cap = rest("clancy_dn_incidents?select=id&pdf_captured_at=not.is.null&limit=10000")
-    _acts = rest("clancy_dn_actions?select=incident_id,date_raised&limit=10000")
+    tot = _all_rows(rest, "clancy_dn_incidents?select=id")
+    cap = _all_rows(rest, "clancy_dn_incidents?select=id&pdf_captured_at=not.is.null")
+    _acts = _all_rows(rest, "clancy_dn_actions?select=id,incident_id,date_raised")
     have_actions = {a["incident_id"] for a in _acts}
     # There is no export "high-water mark" to worry about. Pete, 1 Aug 2026: there are no Service
     # Damage actions on Depotnet after 23 Jun 2026 at all, and both registers import to the same

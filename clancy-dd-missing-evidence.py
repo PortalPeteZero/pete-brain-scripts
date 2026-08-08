@@ -319,7 +319,7 @@ def main():
             inc = []
             for fy in fys:
                 inc += get("clancy_dn_incidents?select=id,location&fy=eq."
-                           + urllib.parse.quote(fy, safe="") + "&order=id.asc&limit=4000")
+                           + urllib.parse.quote(fy, safe="") + "&order=id.asc&limit=4000")  # paged-read-guard: ok FY-scoped: biggest financial year is 226 damages (8 Aug 2026), 4000 is ~18x headroom
         out, n_gap = [], 0
         for r in inc:
             files, found = scan(r["id"])

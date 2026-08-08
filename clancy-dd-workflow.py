@@ -158,7 +158,7 @@ def check(fy):
     inc = get(f"clancy_dn_incidents?select=id,location,raw_api_at,doc_enriched_at,doc_transcripts,"
               f"doc_conclusions,embedding,lessons_learnt,sygma_findings,sygma_finding_sources,"
               f"sygma_reviewed_at,sygma_plain,sygma_plain_at,"
-              f"import_changed_at,capture_actions,raw_api&fy=eq.{fyq}&order=id.asc&limit=4000")
+              f"import_changed_at,capture_actions,raw_api&fy=eq.{fyq}&order=id.asc&limit=4000")  # paged-read-guard: ok FY-scoped: biggest financial year is 226 damages (8 Aug 2026), 4000 is ~18x headroom
     steps, n = [], len(inc)
     if not n:
         return [{"n": 0, "stage": "CAPTURE", "name": "NO DAMAGES", "ok": False, "detail": f"no damages found for {fy}",
@@ -399,7 +399,7 @@ def check(fy):
 
     # 7 CLASSIFY — the one that breaks the board report
     bucketed = {b["incident_id"] for b in
-                get("clancy_report_lesson_buckets?select=incident_id&order=incident_id.asc&limit=2000")}
+                get("clancy_report_lesson_buckets?select=incident_id&order=incident_id.asc&limit=2000")}  # paged-read-guard: ok clancy_report_lesson_buckets holds 170 rows (8 Aug 2026), one per reviewed damage
     withl = [r for r in inc if (r.get("lessons_learnt") or "").strip()]
     bad = [f"{r['id']} lessons_learnt={r['lessons_learnt'][:40]!r}"
            for r in withl if r["id"] not in bucketed]

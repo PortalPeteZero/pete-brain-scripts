@@ -126,7 +126,7 @@ def disavow_file(target):
     return path
 
 def report(target):
-    rows = json.loads(_sb("GET", "refdomains", params=f"?target=eq.{target}&select=cluster,verdict,verified,disavow_status&limit=2000"))
+    rows = json.loads(_sb("GET", "refdomains", params=f"?target=eq.{target}&select=cluster,verdict,verified,disavow_status&limit=2000"))  # paged-read-guard: ok scoped to ONE target: 721 refdomains in total, biggest single target 520 (8 Aug 2026)
     from collections import Counter
     by_cluster = Counter(r["cluster"] for r in rows)
     tox = [r for r in rows if r["verdict"] == "disavow"]

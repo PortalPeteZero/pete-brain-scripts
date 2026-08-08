@@ -71,7 +71,7 @@ def ts(v):
 def plan(fy, days):
     fyq = urllib.parse.quote(fy, safe="")
     inc = get(f"clancy_dn_incidents?select=id,location,incident_date,raw_api_at,capture_incident,"
-              f"capture_actions,report_submitted_at&fy=eq.{fyq}&order=id.asc&limit=4000")
+              f"capture_actions,report_submitted_at&fy=eq.{fyq}&order=id.asc&limit=4000")  # paged-read-guard: ok FY-scoped: biggest financial year is 226 damages (8 Aug 2026), 4000 is ~18x headroom
     if not inc:
         return None
     ids = [r["id"] for r in inc]
