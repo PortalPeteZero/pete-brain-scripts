@@ -55,6 +55,15 @@ DAY_OFFSET = re.compile(r"for\s+offset\s+in\s+range")
 # `"Range": "0-0"` fetches ONE row so the total can be read off the Content-Range header. A
 # single-row read has nothing to page and cannot come back short.
 COUNT_PROBE = re.compile(r"[\"']Range[\"']\s*:\s*[\"']0-0[\"']")
+# SECOND SHAPE (added 8 Aug 2026): an UNPAGED read that asks for more than the server will give.
+# PostgREST caps a response at 1000 rows however large a `limit=` you pass, and says nothing. So
+# `limit=20000` is not "give me everything" — it is "give me the first 1000 and let me believe it
+# is everything". No offset, no Range, so the check above never looked at it.
+# Cost, 8 Aug 2026: a completeness gate read clancy_dn_image_readings with limit=20000, got 1000 of
+# 1016, and reported 14 images as unread. Fourteen is small enough to be believed. The first fix
+# had already taken it from 986 to 14, which made the remainder look like a rounding artefact.
+BIG_LIMIT = re.compile(r"(?<![\w-])limit=(\d+)")
+BIG_LIMIT_MAX = 1000        # PostgREST's default max-rows; above this the read is silently short
 WAIVER = re.compile(r"#\s*paged-read-guard:\s*ok")
 WINDOW = 3          # lines either side, so a call split across lines still sees its own order=
 # A function that refuses to run without an order: `raise ...("… order= …")`.
@@ -124,6 +133,19 @@ def scan(path):
         stripped = line.strip()
         if stripped.startswith("#") or stripped.startswith("print("):
             continue
+        # over-large limit with no cursor in sight
+        m = BIG_LIMIT.search(line)
+        if m and int(m.group(1)) > BIG_LIMIT_MAX:
+            lo2, hi2 = max(0, i - WINDOW), min(len(lines), i + WINDOW + 1)
+            w2 = "\n".join(lines[lo2:hi2])
+            if not WAIVER.search(w2) and not re.search(r"=gt\.|=lt\.|offset=", w2):
+                out.append({"file": str(path.relative_to(ROOT)), "line": i + 1,
+                            "code": line.strip()[:150],
+                            "why": f"limit={m.group(1)} exceeds PostgREST's 1000-row cap and there "
+                                   f"is no keyset cursor nearby — this read comes back SHORT and "
+                                   f"silent. Page it (order=id.asc + id=gt.<last>) or waive it."})
+                continue
+
         if not PAGED.search(line) or DAY_OFFSET.search(line) or COUNT_PROBE.search(line):
             continue
         lo, hi = max(0, i - WINDOW), min(len(lines), i + WINDOW + 1)

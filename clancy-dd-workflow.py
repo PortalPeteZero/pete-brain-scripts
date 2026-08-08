@@ -420,14 +420,39 @@ def check(fy):
     # So: a Depotnet "Amended" event dated after the judgement means the judgement was made against
     # text that no longer exists. Precise rather than nagging — measured 7 Aug across FY26/27, it
     # flags 2 damages, not 48.
-    amended = {}
-    for c in get("clancy_dn_change_ledger?select=incident_id,changed_at"
-                 "&history_type=ilike.*Amended*&order=changed_at.desc&limit=20000"):
-        i_ = c["incident_id"]
-        if i_ not in amended:                       # ordered desc, so first seen is the newest
-            amended[i_] = c["changed_at"]
-    buckets = {b["incident_id"]: b.get("reviewed_on") for b in
-               get("clancy_report_lesson_buckets?select=incident_id,reviewed_on&limit=2000")}
+    # KEYSET-PAGED on id. limit=20000 was silently capped to 1000 by PostgREST, so this read came
+    # back short and damages whose amendment sat past the cap looked current. Caught by the
+    # extended paged-read-guard, 8 Aug 2026.
+    amended, _last = {}, None
+    while True:
+        _q = ("clancy_dn_change_ledger?select=id,incident_id,changed_at"
+              "&history_type=ilike.*Amended*&order=id.asc&limit=1000")
+        if _last is not None:
+            _q += f"&id=gt.{_last}"
+        _batch = get(_q)
+        if not _batch:
+            break
+        for c in _batch:
+            i_ = c["incident_id"]
+            # keep the NEWEST amendment per incident (we are no longer ordered by changed_at)
+            if i_ not in amended or c["changed_at"] > amended[i_]:
+                amended[i_] = c["changed_at"]
+        _last = _batch[-1]["id"]
+        if len(_batch) < 1000:
+            break
+    buckets, _bl = {}, None
+    while True:
+        _bq = "clancy_report_lesson_buckets?select=incident_id,reviewed_on&order=incident_id.asc&limit=1000"
+        if _bl is not None:
+            _bq += f"&incident_id=gt.{_bl}"
+        _bb = get(_bq)
+        if not _bb:
+            break
+        for b in _bb:
+            buckets[b["incident_id"]] = b.get("reviewed_on")
+        _bl = _bb[-1]["incident_id"]
+        if len(_bb) < 1000:
+            break
     bad = []
     for r in inc:
         amend = amended.get(r["id"])
