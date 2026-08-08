@@ -40,13 +40,59 @@ def load():
     return out
 
 
-def result_of(v):
-    p = f"{RESULTS}/{key(v['path'])}.json"
-    if not os.path.exists(p):
-        return None
+_DB = None
+
+
+def _db_readings():
+    """image_path -> stored reading, keyset-paged, loaded once.
+
+    Added 8 Aug 2026. This tool only ever looked at the /tmp result files, but those are a HANDOFF:
+    `clancy-dn-enrich-index.py --load` copies them into clancy_dn_image_readings, which is what the
+    pages and the promotion actually read. /tmp is cleaned by the OS and by any other session, so a
+    fully-read year came back as "1016 items, 30 read, 986 outstanding" — and the stop hook then
+    demanded 986 already-read images be read AGAIN, which would have doubled the cost and
+    overwritten good readings with a second opinion.
+
+    Paged on id because PostgREST caps a response at 1000 rows however large a limit you pass —
+    the single unpaged read returned 1000 of 1016 and left 16 looking unread.
+    """
+    global _DB
+    if _DB is not None:
+        return _DB
+    _DB = {}
     try:
-        d = json.load(open(p))
-    except Exception:
+        import urllib.request
+        sec = os.path.expanduser("~/.config/pete-secrets")
+        if not os.path.exists(f"{sec}/command-centre-supabase-keys.json"):
+            sec = f"{os.environ.get('VAULT', '/tmp/pbs')}/Library/processes/secrets"
+        k = json.load(open(f"{sec}/command-centre-supabase-keys.json"))
+        url, sr = k["url"], k["service_role_key"]
+        h = {"apikey": sr, "Authorization": f"Bearer {sr}"}
+        last = None
+        while True:
+            q = ("clancy_dn_image_readings?select=id,image_path,description,has_text,transcription"
+                 "&order=id.asc&limit=1000")
+            if last is not None:
+                q += f"&id=gt.{last}"
+            req = urllib.request.Request(f"{url}/rest/v1/{q}", headers=h)
+            batch = json.loads(urllib.request.urlopen(req, timeout=120).read().decode())
+            if not batch:
+                break
+            for r in batch:
+                if r.get("image_path"):
+                    _DB[r["image_path"]] = r
+            last = batch[-1]["id"]
+            if len(batch) < 1000:
+                break
+    except Exception as e:
+        # Never turn a lookup failure into a false "unread" — say so instead.
+        print(f"  (note: could not read stored readings — {e}; counting result files only)",
+              file=sys.stderr)
+    return _DB
+
+
+def _meets_contract(d):
+    if not d:
         return None
     if not (d.get("description") or "").strip():
         return None
@@ -55,6 +101,19 @@ def result_of(v):
     if d.get("has_text") and not (d.get("transcription") or "").strip():
         return None
     return d
+
+
+def result_of(v):
+    """The scratch file if present, else the stored reading. Same anti-skim contract either way."""
+    p = f"{RESULTS}/{key(v['path'])}.json"
+    if os.path.exists(p):
+        try:
+            d = _meets_contract(json.load(open(p)))
+            if d:
+                return d
+        except Exception:
+            pass
+    return _meets_contract(_db_readings().get(v["path"]))
 
 
 def unread():

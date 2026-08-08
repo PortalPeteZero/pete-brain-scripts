@@ -512,15 +512,13 @@ def gate(fy):
     # vision completeness
     vq_path = f"{WORK}/vision-queue.jsonl"
     q = [json.loads(l) for l in open(vq_path)] if os.path.exists(vq_path) else []
+    # An item is READ when a real description exists — in the scratch file OR in the stored
+    # readings. See vision_result(): /tmp is a handoff, clancy_dn_image_readings is the record.
     unread = []
     for v in q:
-        rp = f"{WORK}/vision/results/{hashlib.md5(v['path'].encode()).hexdigest()}.json"
-        if not os.path.exists(rp):
+        d = vision_result(v["path"])
+        if not d or not (d.get("description") or "").strip():
             unread.append(v)
-        else:
-            d = json.load(open(rp))
-            if not (d.get("description") or "").strip():
-                unread.append(v)
     print(f"GATE — in-scope files: {len(files)}")
     print(f"  no ledger row:            {len(missing)}")
     print(f"  unreadable (needs work):  {len(partial)}")
@@ -538,9 +536,53 @@ def gate(fy):
 
 # ---------------------------------------------------------------- assemble
 
+_DB_READINGS = None
+
+
+def db_readings():
+    """image_path -> the stored reading, loaded once.
+
+    The scratch result files under /tmp are a HANDOFF, not the record. `--load` copies them into
+    clancy_dn_image_readings and that table is what pages, promotion and the board reports read.
+    /tmp is cleaned by the OS and by any other session, so a completed enrichment loses its result
+    files while the real record stays intact.
+    """
+    global _DB_READINGS
+    if _DB_READINGS is None:
+        # KEYSET-PAGED. PostgREST caps a response at 1000 rows however big a `limit` you ask for,
+        # so the obvious single read silently returned 1000 of 1016 and left 16 items looking
+        # unread — which is this repo's own paged-read-guard lesson, met again here.
+        out, last = [], None
+        while True:
+            q = ("clancy_dn_image_readings?select=id,image_path,description,has_text,transcription,"
+                 "shows,evidence&order=id.asc&limit=1000")
+            if last is not None:
+                q += f"&id=gt.{last}"
+            batch = rest(q) or []
+            if not batch:
+                break
+            out += batch
+            last = batch[-1]["id"]
+            if len(batch) < 1000:
+                break
+        _DB_READINGS = {r["image_path"]: r for r in out if r.get("image_path")}
+    return _DB_READINGS
+
+
 def vision_result(path):
+    """The scratch file if it is there, otherwise the stored reading.
+
+    Fixed 8 Aug 2026. Both this and the gate below counted ONLY the /tmp result files, so once
+    those were cleaned a fully-read year reported "986 without a result" and the stop-hook demanded
+    986 images be read again — images already read, whose readings were already promoted onto the
+    damages. Re-reading them would have burned the work twice and overwritten good data with a
+    second opinion. Measured at the time: 1016 queue items, 30 result files left, and 1016 of 1016
+    matched a stored reading on image_path.
+    """
     rp = f"{WORK}/vision/results/{hashlib.md5(path.encode()).hexdigest()}.json"
-    return json.load(open(rp)) if os.path.exists(rp) else None
+    if os.path.exists(rp):
+        return json.load(open(rp))
+    return db_readings().get(path)
 
 
 def assemble(fy, incident=None, allow_pending=False):
